@@ -2,6 +2,8 @@ package com.lastwave.app.data.local.db
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.lastwave.app.data.podcast.PodcastProgressDao
+import com.lastwave.app.data.podcast.PodcastProgressEntity
 
 @Database(
     entities = [
@@ -11,8 +13,9 @@ import androidx.room.RoomDatabase
         DownloadedTrackEntity::class,
         SongPlayStatsEntity::class,
         RelatedGraphEdgeEntity::class,
+        PodcastProgressEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,4 +25,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun downloadedTrackDao(): DownloadedTrackDao
     abstract fun songPlayStatsDao(): SongPlayStatsDao
     abstract fun relatedGraphDao(): RelatedGraphDao
+    abstract fun podcastProgressDao(): PodcastProgressDao
 }

@@ -1,6 +1,7 @@
 package com.lastwave.app.data.generate
 
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.network.LastFmApiService
@@ -8,7 +9,6 @@ import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -50,7 +50,7 @@ class TasteProfileProvider @Inject constructor(
     private suspend fun call(params: Map<String, String>): JsonObject? {
         // No shared key: blank means "no Last.fm" — callers treat null as
         // absent taste and fall back to YouTube/local signals.
-        val apiKey = sessionPreferences.session.first().apiKey
+        val apiKey = sessionPreferences.awaitLoadedSession().apiKey
         if (apiKey.isBlank()) return null
         return try {
             val response = api.get(params + ("api_key" to apiKey) + ("format" to "json"))
@@ -63,7 +63,7 @@ class TasteProfileProvider @Inject constructor(
     }
 
     suspend fun get(forceRefresh: Boolean = false): TasteProfile = mutex.withLock {
-        val session = sessionPreferences.session.first()
+        val session = sessionPreferences.awaitLoadedSession()
         val username = session.username
         val isGuest = username.isBlank() || username.equals("Guest User", ignoreCase = true)
         val ytAccountKey = ytMusicAuth.connection.value

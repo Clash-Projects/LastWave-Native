@@ -9,4 +9,7 @@
          four bars in the official logo. Used as the adaptive icon's
          background layer, paired with ic_launcher_foreground for the bars. -->
     <color name="ic_launcher_background">#FFC9FB00</color>
+    <color name="ic_launcher_background_desktop">#FFBFF30C</color>
+    <color name="ic_launcher_background_white">#FFFFFFFF</color>
+    <color name="ic_launcher_background_black">#FF000000</color>
 </resources>

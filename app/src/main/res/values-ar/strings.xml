@@ -6,7 +6,7 @@
 
     <string name="nav_feed">الموجز</string>
     <string name="nav_stats">الإحصائيات</string>
-    <string name="nav_playlists">القوائم</string>
+    <string name="nav_playlists">المكتبة</string>
     <string name="nav_create_playlist">إنشاء / توليد قائمة</string>
     <string name="update_available">يتوفر تحديث</string>
     <string name="update">تحديث</string>
@@ -139,7 +139,7 @@
     <string name="home_section_fresh_title">اكتشافات جديدة</string>
     <string name="home_section_fresh_sub">مقاطع جديدة خارج روتينك</string>
     <string name="home_section_jump_title">تابع الاستماع</string>
-    <string name="home_section_jump_sub">الأخيرة · استمع مجددًا</string>
+    <string name="home_section_jump_sub">الأخيرة • استمع مجددًا</string>
     <string name="home_section_mixes_title">مزيجات للاستكشاف</string>
     <string name="home_section_mixes_sub">مزيجات راديو الفنانين اللامتناهية</string>
     <string name="home_section_spotlight_title">تسليط الضوء</string>
@@ -342,7 +342,7 @@
     <string name="local_scanning">جارٍ البحث... تم العثور على ملفات %1$d</string>
     <string name="local_copying">نسخ %1$d/%2$d — %3$s</string>
     <string name="local_report_space">لا توجد مساحة خالية كافية لنسخ هذه الأغاني.</string>
-    <string name="local_report_summary">تمت إضافة %1$d · تم تحديث %2$d · %3$d بدون تغيير</string>
+    <string name="local_report_summary">تمت إضافة %1$d • تم تحديث %2$d • %3$d بدون تغيير</string>
     <string name="local_report_failed">لا يمكن نسخ الملف (الملفات) %1$d</string>
     <string name="local_report_unreachable">لم يعد من الممكن الوصول إلى المجلد (المجلدات) %1$d — اخترها مرة أخرى</string>
     <string name="local_storage_used">المساحة المستخدمة للأغاني المحلية: %1$s</string>
@@ -499,11 +499,10 @@
     <string name="pl_export_title">تصدير قائمة التشغيل</string>
     <string name="pl_choose_image">اختر الصورة</string>
     <string name="pl_change_image">تغيير الصورة</string>
-    <string name="pl_title">قائمة التشغيل</string>
+    <string name="pl_title">المكتبة</string>
     <string name="pl_selected_count">%1$d تم التحديد</string>
     <string name="pl_select_more_hint">اضغط لفترة طويلة لتحديد المزيد</string>
-    <string name="pl_count_only">%1$d قوائم التشغيل</string>
-    <string name="pl_count_tracks">%1$d قوائم التشغيل · %2$d المقاطع الصوتية</string>
+    <string name="pl_count_tracks">%1$d قوائم التشغيل • %2$d المقاطع الصوتية</string>
     <string name="pl_delete_selected_cd">حذف المحدد</string>
     <string name="pl_clear_selection_cd">مسح التحديد</string>
     <string name="pl_create_cd">إنشاء قائمة تشغيل مخصصة</string>
@@ -513,7 +512,7 @@
     <string name="pl_pinned_cd">مثبت</string>
     <string name="pl_yt_tracks">%1$d المسارات</string>
     <string name="pl_yt_connected">حساب متصل</string>
-    <string name="pl_subtitle_local">%1$d المسارات · %2$s</string>
+    <string name="pl_subtitle_local">%1$d المسارات • %2$s</string>
     <string name="pl_play_cd">تشغيل قائمة التشغيل</string>
     <string name="pl_options_cd">خيارات قائمة التشغيل</string>
     <string name="pl_pin">دبوس</string>
@@ -593,13 +592,13 @@
     <string name="feed_albums">ألبومات لك</string>
     <string name="feed_albums_sub">ألبومات حقيقية حسب ذوقك — Last.fm تصدرت قائمة الأغاني + اختيارات موسيقى YouTube</string>
     <string name="feed_trending">تتجه الآن</string>
-    <string name="feed_trending_sub">الأكثر شعبية الآن · اضغط على رتبة للعب</string>
+    <string name="feed_trending_sub">الأكثر شعبية الآن • اضغط على رتبة للعب</string>
     <string name="feed_releases">الإصدارات الجديدة</string>
     <string name="feed_releases_sub">قطرات جديدة وألبومات جديدة</string>
     <string name="feed_friends">أصدقائك</string>
     <string name="feed_friends_sub">الأشخاص في دائرة الاستماع الخاصة بك</string>
     <string name="feed_footer_default">صنعت لك من ذوقك</string>
-    <string name="feed_footer_updated">تم التحديث %1$s · صنعت لك على ذوقك</string>
+    <string name="feed_footer_updated">تم التحديث %1$s • صنعت لك على ذوقك</string>
     <string name="feed_ago_min">%1$dم مضت</string>
     <string name="feed_ago_hour">%1$dh منذ</string>
     <string name="feed_ago_day">%1$dd منذ</string>
@@ -687,7 +686,7 @@
     <string name="fpd_opening">جارٍ فتح قائمة التشغيل...</string>
     <string name="fpd_retry">حاول مرة أخرى</string>
     <string name="fpd_loading_more">جارٍ تحميل المسارات المتبقية...</string>
-    <string name="fpd_incomplete">قائمة التشغيل غير مكتملة · أعد المحاولة</string>
+    <string name="fpd_incomplete">قائمة التشغيل غير مكتملة • أعد المحاولة</string>
     <string name="fpd_track_options_cd">خيارات المسار</string>
     <string name="add_dup_single_title">الأغنية موجودة بالفعل في قائمة التشغيل</string>
     <string name="add_dup_single_text">%1$s بواسطة %2$s موجود بالفعل في %3$s. يمكنك ترك قائمة التشغيل دون تغيير أو إضافة نسخة أخرى.</string>
@@ -866,6 +865,8 @@
     <string name="set_cat_appear_sub">المواضيع والألوان والأعمال الفنية والأغاني</string>
     <string name="set_cat_yt">يوتيوب والمزامنة</string>
     <string name="set_cat_yt_sub">اتصال الحساب، مزامنة المكتبة على مدار الساعة طوال أيام الأسبوع، القنوات، التاريخ</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">ربط الحساب، Canvas، استيراد قوائم التشغيل ومزامنة الأغاني المفضلة</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">اتصال الحساب ومزامنة Scrobbling وبيانات اعتماد API</string>
     <string name="set_cat_lib">المكتبة والمحتوى</string>
@@ -1071,4 +1072,17 @@
     <string name="lyshare_color_brand">ليموني LastWave</string>
     <string name="lyshare_accessibility_line_selected">محدد، السطر %1$d من %2$d</string>
     <string name="lyshare_accessibility_line_unselected">السطر %1$d من %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">التوصيات</string>
+    <string name="settings_recommendations_title">مزود التوصيات</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • اربط Spotify لتوليد التوصيات منه</string>
+    <string name="settings_recommendations_dialog_desc">اختيار المقاطع في الشاشة الرئيسية والراديو والاستكشاف والميكسات. سيظل التشغيل على YouTube Music في الحالتين.</string>
+    <string name="settings_recommendations_connect_first">قم بربط Spotify أولاً</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">مبني على توصيات YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">مبني على توصيات Spotify، ويتم التشغيل عبر YouTube Music</string>
+    <string name="toast_spotify_connect_first">قم بربط Spotify أولاً</string>
+    <string name="toast_spotify_disconnected">تم فصل حساب Spotify</string>
 </resources>

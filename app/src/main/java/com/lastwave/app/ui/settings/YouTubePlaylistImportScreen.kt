@@ -103,6 +103,7 @@ import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.groupPositionFor
 import com.lastwave.app.ui.common.groupShape
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
@@ -150,13 +151,15 @@ fun YouTubePlaylistImportScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
                 title = stringResource(R.string.ytimp_title),
                 subtitle = stringResource(R.string.ytimp_sub),
                 onBack = onBack,
@@ -176,6 +179,9 @@ fun YouTubePlaylistImportScreen(
                     }
                 },
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize().padding(top = headerInset)) {
 
             // Segmented Tab Selector with Vector Icons
             Surface(
@@ -207,7 +213,7 @@ fun YouTubePlaylistImportScreen(
                         }
                         Surface(
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 viewModel.selectTab(tab)
                             },
                             shape = RoundedCornerShape(16.dp),
@@ -318,7 +324,7 @@ fun YouTubePlaylistImportScreen(
                                         isSelected = isSelected,
                                         position = groupPositionFor(index, state.libraryPlaylists.size),
                                         onToggleSelect = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(if (isSelected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
                                             viewModel.togglePlaylistSelection(playlist.id)
                                         },
                                         onPreview = {
@@ -437,7 +443,7 @@ fun YouTubePlaylistImportScreen(
                                     isSelected = isSelected,
                                     position = groupPositionFor(index, state.searchResults.size),
                                     onToggleSelect = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(if (isSelected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
                                         viewModel.togglePlaylistSelection(playlist.id)
                                     },
                                     onPreview = {
@@ -503,7 +509,7 @@ fun YouTubePlaylistImportScreen(
 
                                 Button(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         keyboard?.hide()
                                         viewModel.resolveDirectLink()
                                     },
@@ -572,7 +578,7 @@ fun YouTubePlaylistImportScreen(
 
                                 Button(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         try {
                                             csvPickerLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "audio/x-mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl", "*/*"))
                                         } catch (error: Exception) {
@@ -619,6 +625,7 @@ fun YouTubePlaylistImportScreen(
                 }
             }
         }
+        }
 
         // Floating Bottom Import CTA (for multi-select on library & search tabs)
         AnimatedVisibility(
@@ -635,7 +642,7 @@ fun YouTubePlaylistImportScreen(
         ) {
             Button(
                 onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.importSelected { savedList ->
                         onImportSuccess(savedList)
                     }
@@ -677,9 +684,10 @@ fun YouTubePlaylistImportScreen(
     state.previewPlaylist?.let { preview ->
         PlaylistPreviewModal(
             preview = preview,
+            isImporting = state.isImporting,
             onDismiss = { viewModel.dismissPreview() },
             onImportThis = {
-                viewModel.importSelected { savedList ->
+                viewModel.importPreview { savedList ->
                     viewModel.dismissPreview()
                     onImportSuccess(savedList)
                 }
@@ -764,6 +772,7 @@ private fun YouTubePlaylistCard(
 @Composable
 private fun PlaylistPreviewModal(
     preview: YouTubePlaylistResult,
+    isImporting: Boolean,
     onDismiss: () -> Unit,
     onImportThis: () -> Unit,
 ) {
@@ -860,6 +869,7 @@ private fun PlaylistPreviewModal(
 
             Button(
                 onClick = onImportThis,
+                enabled = !isImporting,
                 shape = CircleShape,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -867,7 +877,11 @@ private fun PlaylistPreviewModal(
             ) {
                 Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.ytimp_import_btn, preview.title), fontWeight = FontWeight.Bold)
+                Text(
+                    if (isImporting) stringResource(R.string.ytimp_importing)
+                    else stringResource(R.string.ytimp_import_btn, preview.title),
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }

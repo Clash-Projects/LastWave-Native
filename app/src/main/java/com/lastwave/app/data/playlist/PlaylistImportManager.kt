@@ -27,7 +27,7 @@ class PlaylistImportManager @Inject constructor(
             val clean = id.trim()
             return clean == "LM" || clean == "VLLM" || clean.removePrefix("VL") == "LM" ||
                 clean == "LL" || clean == "VLLL" || clean.removePrefix("VL") == "LL" ||
-                clean == "FEmusic_liked_videos"
+                clean == "FEmusic_liked_videos" || clean == "yt_liked" || clean == "VLM"
         }
     }
 
@@ -60,10 +60,9 @@ class PlaylistImportManager @Inject constructor(
      * Liked Songs playlist (deduped by strong song identity). Unlike normal
      * imports this never creates a separate `custom` playlist and never
      * creates a remote mapping — LM is not editable via the playlist-edit
-     * API, so the local Liked Songs copy syncs as its own private
-     * "Liked Songs" mirror instead.
+     * API. The local heart instead follows the account's actual liked state.
      *
-     * The merge itself runs inside [LikedSongsManager.mergeTracks] under the
+     * The merge itself runs inside [LikedSongsManager.mergeYouTubeTracks] under the
      * shared liked mutation mutex, so a heart-tap racing this import can no
      * longer interleave a stale read-modify-write that duplicates entries.
      */
@@ -81,7 +80,7 @@ class PlaylistImportManager @Inject constructor(
             )
         }.distinctSongs()
         if (tracks.isEmpty()) return@withContext playlistRepository.ensureLikedSongs()
-        likedSongsManager.mergeTracks(tracks)
+        check(likedSongsManager.mergeYouTubeTracks(tracks)) { "Could not merge YouTube liked songs" }
         playlistRepository.ensureLikedSongs()
     }
 
@@ -154,4 +153,19 @@ class PlaylistImportManager @Inject constructor(
         )
         Pair(saved, result)
     }
+
+    /**
+     * Imports the user's Spotify Liked Songs collection into the local
+     * Liked Songs playlist, deduped by strong song identity.
+     */
+    suspend fun importSpotifyLikedIntoLikedSongs(): Pair<SavedPlaylist, ExternalImportResult> =
+        withContext(Dispatchers.IO) {
+            val result = spotifyPlaylistImporter.fetchAndMatchLikedSongs()
+            require(result.tracks.isNotEmpty()) {
+                "No liked songs found on Spotify or none could be matched."
+            }
+            likedSongsManager.mergeTracks(result.tracks)
+            val likedPlaylist = playlistRepository.ensureLikedSongs()
+            Pair(likedPlaylist, result)
+        }
 }

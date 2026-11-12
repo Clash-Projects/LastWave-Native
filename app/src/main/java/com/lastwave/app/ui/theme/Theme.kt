@@ -1,21 +1,28 @@
 package com.lastwave.app.ui.theme
 
 import android.app.Activity
+import android.content.res.Configuration
 import android.os.Build
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-import com.lastwave.app.data.local.AccentMode
 import com.lastwave.app.data.repository.ThemeUiState
 
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -24,6 +31,52 @@ import com.lastwave.app.data.local.ThemeMode
 
 /** Shared composition local indicating whether the active theme is dark mode. */
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
+/** Shared composition local indicating whether bottom navigation tabs are hidden. */
+val LocalHideNavTabs = staticCompositionLocalOf { false }
+/** Settings "Use Bold Font": every text, lyrics included, drawn heavier. */
+val LocalUseBoldFont = staticCompositionLocalOf { false }
+
+/** Swallows every haptic request; provided app-wide when Settings > Haptic Feedback is off. */
+private object SilentHapticFeedback : HapticFeedback {
+    override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) = Unit
+}
+
+private const val THEME_TRANSITION_MS = 600
+
+@Composable
+private fun animateColorScheme(target: ColorScheme): ColorScheme {
+    @Composable
+    fun a(color: Color) = animateColorAsState(color, tween(THEME_TRANSITION_MS), label = "themeColor").value
+    return target.copy(
+        primary = a(target.primary),
+        onPrimary = a(target.onPrimary),
+        primaryContainer = a(target.primaryContainer),
+        onPrimaryContainer = a(target.onPrimaryContainer),
+        inversePrimary = a(target.inversePrimary),
+        secondary = a(target.secondary),
+        onSecondary = a(target.onSecondary),
+        secondaryContainer = a(target.secondaryContainer),
+        onSecondaryContainer = a(target.onSecondaryContainer),
+        tertiary = a(target.tertiary),
+        onTertiary = a(target.onTertiary),
+        tertiaryContainer = a(target.tertiaryContainer),
+        onTertiaryContainer = a(target.onTertiaryContainer),
+        background = a(target.background),
+        onBackground = a(target.onBackground),
+        surface = a(target.surface),
+        onSurface = a(target.onSurface),
+        surfaceVariant = a(target.surfaceVariant),
+        onSurfaceVariant = a(target.onSurfaceVariant),
+        surfaceTint = a(target.surfaceTint),
+        surfaceContainerLowest = a(target.surfaceContainerLowest),
+        surfaceContainerLow = a(target.surfaceContainerLow),
+        surfaceContainer = a(target.surfaceContainer),
+        surfaceContainerHigh = a(target.surfaceContainerHigh),
+        surfaceContainerHighest = a(target.surfaceContainerHighest),
+        outline = a(target.outline),
+        outlineVariant = a(target.outlineVariant),
+    )
+}
 
 /**
  * Wraps the whole app. Supports System Default, Light, and Dark modes.
@@ -42,32 +95,12 @@ fun LastWaveTheme(
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
-    // Dynamic Color ON (S+): use the live wallpaper Monet scheme instead of the
-    // default manual accent or monochrome. System dynamic auto-tracks wallpaper
-    // changes, so no manual refresh is needed. Now-playing artwork wins when it
-    // is active; pre-S falls back to the repository's wallpaper-seeded scheme.
-    val context = LocalContext.current
-    val useSystemDynamic = themeState.mode == AccentMode.DYNAMIC &&
-        !themeState.isNowPlayingThemed &&
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val systemDark = if (useSystemDynamic) {
-        val base = dynamicDarkColorScheme(context)
-        if (themeState.amoled) {
-            base.copy(
-                background = Color.Black,
-                surface = Color.Black,
-                surfaceContainerLow = Color.Black,
-                surfaceContainerLowest = Color.Black,
-            )
-        } else base
-    } else null
-    val systemLight = if (useSystemDynamic) dynamicLightColorScheme(context) else null
-    val activeColorScheme = when {
-        systemDark != null && isDark -> systemDark
-        systemLight != null && !isDark -> systemLight
-        isDark -> themeState.darkColorScheme
-        else -> themeState.lightColorScheme
-    }
+    // ThemeRepository resolves the scheme (now-playing artwork, else wallpaper
+    // Monet on S+), so the UI, widgets and notification agree. Animated so
+    // the theme glides between songs instead of jumping.
+    val activeColorScheme = animateColorScheme(
+        if (isDark) themeState.darkColorScheme else themeState.lightColorScheme,
+    )
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -88,16 +121,50 @@ fun LastWaveTheme(
 
     MaterialTheme(
         colorScheme = activeColorScheme,
-        typography = if (themeState.useCustomFont) LastWaveTypography else SystemTypography,
+        typography = when {
+            !themeState.useCustomFont -> SystemTypography
+            themeState.useBoldFont -> LastWaveBoldTypography
+            else -> LastWaveTypography
+        },
         shapes = LastWaveShapes,
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
+            // Settings > Haptic Feedback gates every LocalHapticFeedback call in
+            // the app from this single point (the system "touch feedback"
+            // setting still applies on top when it is on).
+            val systemHaptics = LocalHapticFeedback.current
+            val appHaptics = remember(systemHaptics, themeState.uiHaptics) {
+                if (themeState.uiHaptics) systemHaptics else SilentHapticFeedback
+            }
+            // The system font has real weights, so Android's own "Bold text"
+            // adjustment thickens it everywhere, even text with an explicit
+            // fontWeight. Not used for the app font: its stroke is set by the
+            // wght axis above, and adjusting the requested weight would only
+            // fake-bold it on top.
+            val context = LocalContext.current
+            val defaultFontResolver = LocalFontFamilyResolver.current
+            val fontResolver = remember(context, themeState.useBoldFont, themeState.useCustomFont, defaultFontResolver) {
+                if (themeState.useBoldFont && !themeState.useCustomFont &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ) {
+                    val config = Configuration(context.resources.configuration).apply {
+                        fontWeightAdjustment = BOLD_FONT_BOOST.toInt()
+                    }
+                    createFontFamilyResolver(context.createConfigurationContext(config))
+                } else {
+                    defaultFontResolver
+                }
+            }
             CompositionLocalProvider(
+                LocalFontFamilyResolver provides fontResolver,
+                LocalHapticFeedback provides appHaptics,
                 LocalLiquidGlass provides themeState.liquidGlass,
                 LocalMd3NavBar provides themeState.md3NavBar,
+                LocalHideNavTabs provides themeState.hideNavTabs,
+                LocalUseBoldFont provides themeState.useBoldFont,
                 LocalIsDarkTheme provides isDark,
             ) {
                 content()

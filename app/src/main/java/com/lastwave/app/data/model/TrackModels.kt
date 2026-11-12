@@ -16,6 +16,7 @@ data class TrackAttr(
 )
 
 @Serializable
+@androidx.compose.runtime.Immutable
 data class ArtistRef(
     @SerialName("#text") val textName: String = "",
     val name: String = "",
@@ -31,6 +32,7 @@ data class DateRef(
 )
 
 @Serializable
+@androidx.compose.runtime.Immutable
 data class RecentTrack(
     val name: String = "",
     val artist: ArtistRef = ArtistRef(),
@@ -42,7 +44,7 @@ data class RecentTrack(
 ) {
     val isNowPlaying: Boolean get() = attr?.nowplaying == "true"
 
-    /** extralarge > large > medium > any real image — filtered to exclude
+    /** extralarge > large > medium > any real image â€” filtered to exclude
      *  Last.fm's own gray "no artwork" placeholder, matching every image
      *  read site in the original app exactly (see ArtworkNormalizer). */
     val artworkUrl: String?
@@ -87,7 +89,7 @@ data class TopArtistsEnvelope(val topartists: TopArtistsBody? = null)
 @Serializable
 data class TopAlbumsEnvelope(val topalbums: TopAlbumsBody? = null)
 
-// ── user.getinfo — powers the big "Scrobbles" number and the listen-timer
+// â”€â”€ user.getinfo â€” powers the big "Scrobbles" number and the listen-timer
 //    base (playcount * 210s, the same fixed per-track estimate home.js used).
 @Serializable
 data class UserInfoUser(
@@ -102,10 +104,11 @@ data class UserInfoEnvelope(
     val message: String? = null,
 )
 
-// ── user.gettoptracks (period=overall, limit=50) — carries real playcounts,
+// â”€â”€ user.gettoptracks (period=overall, limit=50) â€” carries real playcounts,
 //    used to (a) merge play counts onto matching Recent entries and (b) supply
 //    "Most Played" / period-tab entries that aren't in the last 50 scrobbles.
 @Serializable
+@androidx.compose.runtime.Immutable
 data class TopTrackEntry(
     val name: String = "",
     val artist: ArtistRef = ArtistRef(),
@@ -134,7 +137,7 @@ data class TopTracksFullEnvelope(
     val message: String? = null,
 )
 
-// ── track.getInfo — the actual first fallback tier _resolveTrackArt() uses:
+// â”€â”€ track.getInfo â€” the actual first fallback tier _resolveTrackArt() uses:
 //    a dedicated per-track lookup for album art, tried only when the track
 //    didn't already carry a real (non-placeholder) image.
 @Serializable
@@ -153,12 +156,13 @@ data class TrackInfoEnvelope(
     val message: String? = null,
 )
 
-// ── user.getfriends — unsigned, needs only api_key + user (the SIGNED-IN
+// â”€â”€ user.getfriends â€” unsigned, needs only api_key + user (the SIGNED-IN
 //    user's own friends list). Powers the friend-switching feature: tap
 //    the username pill on Home, pick a friend, and every Home fetch below
 //    (recent tracks, stats, top tracks) is re-run for that friend's
-//    username instead — same idea as Pano Scrobbler's friend switching.
+//    username instead â€” same idea as Pano Scrobbler's friend switching.
 @Serializable
+@androidx.compose.runtime.Immutable
 data class FriendEntry(
     val name: String = "",
     val realname: String = "",

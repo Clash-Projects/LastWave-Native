@@ -74,7 +74,7 @@ class ArtworkRepository @Inject constructor(
                 val cachedEntities = cacheDao.getNewest(MAX_ARTWORK_MEMORY_ENTRIES).asReversed()
                 val validMap = cachedEntities
                     .filter { it.url.isNotBlank() && now - it.timestampMillis < DISK_CACHE_TTL_MILLIS && it.provider in ArtworkNormalizer.HIGH_RES_PROVIDERS }
-                    .associate { it.cacheKey to it.url }
+                    .associate { it.cacheKey to ArtworkNormalizer.upgradeLastFm(it.url) }
                 _resolved.update { validMap + it }
                 Log.d(TAG, "Pre-warmed memory cache with ${validMap.size} high-res artwork entries")
                 cacheDao.deleteOlderThan(now - DISK_CACHE_TTL_MILLIS)
@@ -96,7 +96,7 @@ class ArtworkRepository @Inject constructor(
     /** Public entry point. Deliberately catches Throwable, not just
      *  Exception — an artwork miss must never take the app down, full stop. */
     suspend fun resolve(name: String, artist: String) {
-        val key = ArtworkNormalizer.cacheKey(name, artist)
+        val key = if (name.startsWith("artist:")) name.trim().lowercase() else ArtworkNormalizer.cacheKey(name, artist)
         try {
             resolveInternal(key, name, artist)
         } catch (cancellation: CancellationException) {
@@ -106,6 +106,30 @@ class ArtworkRepository @Inject constructor(
             Log.e(CRASH_TAG, "Artwork lookup crashed and was suppressed | Track: $name | Artist: $artist | Cache key: $key", t)
             inFlightMutex.withLock { inFlight.remove(key) }
         }
+    }
+
+    suspend fun resolveArtist(artistName: String): String? {
+        val cleanName = artistName.trim()
+        if (cleanName.isBlank()) return null
+        val key = "artist:${cleanName.lowercase()}"
+        _resolved.value[key]?.takeIf { it.isNotBlank() }?.let { return it }
+        val cached = runCatching { cacheDao.get(key) }.getOrNull()
+        if (cached != null && cached.url.isNotBlank()) {
+            publish(key, cached.url)
+            return cached.url
+        }
+        val url = runCatching {
+            innerTube.searchArtists(cleanName, limit = 2)
+                .firstOrNull()
+                ?.artworkUrl
+                ?.takeIf(ArtworkNormalizer::isRealImage)
+        }.getOrNull()
+        if (!url.isNullOrBlank()) {
+            val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url) ?: url
+            save(key, "youtube_artist", upscaled)
+            return upscaled
+        }
+        return null
     }
 
     private suspend fun resolveInternal(key: String, name: String, artist: String) {
@@ -120,6 +144,20 @@ class ArtworkRepository @Inject constructor(
         if (alreadyRunning) return
 
         try {
+            if (key.startsWith("artist:") || name.startsWith("artist:")) {
+                val cleanName = artist.ifBlank { name.removePrefix("artist:") }.trim()
+                val url = runCatching {
+                    innerTube.searchArtists(cleanName, limit = 2)
+                        .firstOrNull()
+                        ?.artworkUrl
+                        ?.takeIf(ArtworkNormalizer::isRealImage)
+                }.getOrNull()
+                if (!url.isNullOrBlank()) {
+                    val upscaled = ArtworkNormalizer.upscaleYoutubeArtwork(url) ?: url
+                    save(key, "youtube_artist", upscaled)
+                }
+                return
+            }
             // 2. Disk (Room) cache — persists across relaunches.
             val cached = try {
                 cacheDao.get(key)
@@ -128,19 +166,19 @@ class ArtworkRepository @Inject constructor(
             }
             if (cached != null && cached.url.isNotBlank() && System.currentTimeMillis() - cached.timestampMillis < DISK_CACHE_TTL_MILLIS) {
                 if (cached.provider in ArtworkNormalizer.HIGH_RES_PROVIDERS) {
-                    publish(key, cached.url)
+                    publish(key, ArtworkNormalizer.upgradeLastFm(cached.url))
                     return
                 }
-                // Old low-res entry (e.g. YouTube): publish immediately as placeholder, but proceed to resolve high-res master art!
-                publish(key, cached.url)
             }
 
             // 3. Strict priority resolution: Apple Music (1200x1200bb) -> Tidal (1280x1280) -> Deezer (1000x1000) -> Spotify (640x640) -> YouTube Music (last fallback)
+            // Lookups use cleaned search terms; YouTube upload noise made most of them miss.
+            val (qName, qArtist) = ArtworkNormalizer.searchTerms(name, artist)
             val winner = networkRaceSemaphore.withPermit {
                 withContext(Dispatchers.IO) {
-                    val appleJob = async { safeFetch("Apple Music", name, artist) { itunes.fetchArtworkUrl(name, artist) } }
-                    val tidalJob = async { safeFetch("Tidal", name, artist) { fetchTidal(name, artist) } }
-                    val deezerJob = async { safeFetch("Deezer", name, artist) { fetchDeezer(name, artist) } }
+                    val appleJob = async { safeFetch("Apple Music", qName, qArtist) { itunes.fetchArtworkUrl(qName, qArtist) } }
+                    val tidalJob = async { safeFetch("Tidal", qName, qArtist) { fetchTidal(qName, qArtist) } }
+                    val deezerJob = async { safeFetch("Deezer", qName, qArtist) { fetchDeezer(qName, qArtist) } }
                     val spotifyJob = async { safeFetch("Spotify", name, artist) { fetchSpotify(name, artist) } }
 
                     // Priority 1: Apple Music (Pristine 1200x1200bb master art)
@@ -149,7 +187,7 @@ class ArtworkRepository @Inject constructor(
                         tidalJob.cancel()
                         deezerJob.cancel()
                         spotifyJob.cancel()
-                        return@withContext "itunes" to appleUrl
+                        return@withContext ArtworkNormalizer.ITUNES_ARTIST_MATCH_CACHE_PROVIDER to appleUrl
                     }
 
                     // Priority 2: Tidal (Pristine 1280x1280 Hi-Fi master art)
@@ -173,8 +211,21 @@ class ArtworkRepository @Inject constructor(
                         return@withContext "spotify" to spotifyUrl
                     }
 
-                    // Priority 5: YouTube Music (Only as last fallback if providers 1-4 found no verified match)
-                    val ytUrl = safeFetch("YouTube Music", name, artist) { fetchYouTubeMusic(name, artist) }
+                    // Priority 5: YouTube Music's own square album art (1200px).
+                    // It beats Last.fm's 300px images, so it goes first; a
+                    // YouTube *video* thumbnail is only the last resort.
+                    val ytUrl = safeFetch("YouTube Music", qName, qArtist) { fetchYouTubeMusic(qName, qArtist) }
+                    if (!ytUrl.isNullOrBlank() && ArtworkNormalizer.isYtMusicThumbnail(ytUrl)) {
+                        return@withContext "youtube_music" to ytUrl
+                    }
+
+                    // Priority 6: Last.fm (curated album art), at 770px instead of 300px.
+                    val lastFmUrl = safeFetch("Last.fm", qName, qArtist) { lastFm.fetchArtworkUrl(qName, qArtist) }
+                    if (!lastFmUrl.isNullOrBlank()) {
+                        return@withContext "lastfm" to ArtworkNormalizer.upgradeLastFm(lastFmUrl)
+                    }
+
+                    // Priority 7: YouTube video thumbnail.
                     if (!ytUrl.isNullOrBlank()) {
                         return@withContext "youtube" to ytUrl
                     }
@@ -375,20 +426,33 @@ class ArtworkRepository @Inject constructor(
 
     private suspend fun fetchYouTubeMusic(name: String, artist: String): String? = withContext(Dispatchers.IO) {
         try {
-            val query = if (artist.isNotBlank()) "$name $artist" else name
-            val results = innerTube.searchSongs(query, limit = 5, prefetchStreams = false)
-            if (results.isEmpty()) return@withContext null
-            val best = results
-                .filter { !it.artworkUrl.isNullOrBlank() }
-                .maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
-                ?.takeIf { ytVerified(it.title, it.artist, name, artist) }
-            val raw = best?.artworkUrl ?: return@withContext null
-            ArtworkNormalizer.upscaleYoutubeArtwork(raw)
+            val direct = queryYouTubeMusic(name, artist)
+            if (!direct.isNullOrBlank()) return@withContext direct
+            val cleanedTitle = ArtworkNormalizer.cleanTitle(name)
+            val cleanedArtist = ArtworkNormalizer.cleanArtist(artist)
+            if (cleanedTitle != name || cleanedArtist != artist) {
+                queryYouTubeMusic(cleanedTitle, cleanedArtist)
+            } else null
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
             null
         }
+    }
+
+    private suspend fun queryYouTubeMusic(name: String, artist: String): String? {
+        val query = if (artist.isNotBlank()) "$name $artist" else name
+        val results = innerTube.searchSongs(query, limit = 5, prefetchStreams = false)
+        if (results.isEmpty()) return null
+        val verified = results
+            .filter { !it.artworkUrl.isNullOrBlank() }
+            .filter { ytVerified(it.title, it.artist, name, artist) }
+        // Strongly prefer official YouTube Music thumbnails (googleusercontent/ggpht) over YouTube video thumbnails (ytimg)
+        val best = verified.filter { ArtworkNormalizer.isYtMusicThumbnail(it.artworkUrl) }
+            .maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
+            ?: verified.maxByOrNull { com.lastwave.app.data.music.TextMatch.matchScore(it, name, artist) }
+        val raw = best?.artworkUrl ?: return null
+        return ArtworkNormalizer.upscaleYoutubeArtwork(raw)
     }
 
     /** Title must strictly agree in version and core title, AND artist must agree (when known). */
@@ -455,7 +519,7 @@ class ArtworkRepository @Inject constructor(
         try {
             val fromItunes = safeFetch("Apple Music (force)", name, artist) { itunes.fetchArtworkUrl(name, artist) }
             val resolved = if (!fromItunes.isNullOrBlank()) {
-                save(key, "itunes", fromItunes)
+                save(key, ArtworkNormalizer.ITUNES_ARTIST_MATCH_CACHE_PROVIDER, fromItunes)
                 fromItunes
             } else {
                 val fromTidal = safeFetch("Tidal (force)", name, artist) { fetchTidal(name, artist) }
@@ -473,13 +537,20 @@ class ArtworkRepository @Inject constructor(
                             save(key, "spotify", fromSpotify)
                             fromSpotify
                         } else {
-                            val fromYt = safeFetch("YouTube Music (force)", name, artist) { fetchYouTubeMusic(name, artist) }
-                            if (!fromYt.isNullOrBlank()) {
-                                save(key, "youtube", fromYt)
-                                fromYt
+                            val fromLastFm = safeFetch("Last.fm (force)", name, artist) { lastFm.fetchArtworkUrl(name, artist) }
+                            if (!fromLastFm.isNullOrBlank()) {
+                                save(key, "lastfm", fromLastFm)
+                                fromLastFm
                             } else {
-                                save(key, "none", "")
-                                ""
+                                val fromYt = safeFetch("YouTube Music (force)", name, artist) { fetchYouTubeMusic(name, artist) }
+                                if (!fromYt.isNullOrBlank()) {
+                                    val prov = if (ArtworkNormalizer.isYtMusicThumbnail(fromYt)) "youtube_music" else "youtube"
+                                    save(key, prov, fromYt)
+                                    fromYt
+                                } else {
+                                    save(key, "none", "")
+                                    ""
+                                }
                             }
                         }
                     }

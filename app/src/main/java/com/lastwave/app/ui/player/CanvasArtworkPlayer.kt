@@ -130,8 +130,14 @@ fun CanvasArtworkPlayer(
             .apply {
                 volume = 0f
                 repeatMode = Player.REPEAT_MODE_ONE
+                // Motion art is adaptive (HLS) with several resolutions: the default starts low and
+                // a short loop rarely climbs, so clips looked soft. Take the sharpest variant the
+                // display can show (the viewport size cap still applies).
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .setForceHighestSupportedBitrate(true)
+                    // No 4K: sharp on any phone screen without straining the decoder.
+                    .setMaxVideoSize(2048, 2048)
                     .build()
             }
     }

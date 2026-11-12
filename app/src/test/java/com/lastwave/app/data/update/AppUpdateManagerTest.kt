@@ -110,4 +110,48 @@ class AppUpdateManagerTest {
         assertThat(selected).isNotNull()
         assertThat(selected?.name).isEqualTo("LastWave-v4.2.4-universal-uncompressed.apk")
     }
+
+    private val assetsWithVivo = sampleAssets + ReleaseAsset(
+        name = "LastWave-v4.2.4-vivo-origin.apk",
+        downloadUrl = "https://example.com/vivo",
+    )
+
+    @Test
+    fun classifyAsset_recognizesVivoOrigin() {
+        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-vivo-origin.apk"))
+            .isEqualTo(ApkVariant.VIVO_ORIGIN)
+    }
+
+    @Test
+    fun selectBestAsset_vivoBuild_onlySelectsVivoApk() {
+        val selected = AppUpdateManager.selectBestAsset(
+            assets = assetsWithVivo,
+            isUncompressed = false,
+            sdkInt = 34,
+            isVivoOrigin = true,
+        )
+        assertThat(selected?.name).isEqualTo("LastWave-v4.2.4-vivo-origin.apk")
+    }
+
+    @Test
+    fun selectBestAsset_vivoBuild_withoutVivoApk_selectsNothing() {
+        val selected = AppUpdateManager.selectBestAsset(
+            assets = sampleAssets,
+            isUncompressed = false,
+            sdkInt = 34,
+            isVivoOrigin = true,
+        )
+        assertThat(selected).isNull()
+    }
+
+    @Test
+    fun selectBestAsset_normalBuild_neverSelectsVivoApk() {
+        val onlyVivo = listOf(ReleaseAsset(name = "LastWave-v4.2.4-vivo-origin.apk", downloadUrl = "https://example.com/vivo"))
+        assertThat(
+            AppUpdateManager.selectBestAsset(assets = onlyVivo, isUncompressed = false, sdkInt = 34),
+        ).isNull()
+        assertThat(
+            AppUpdateManager.selectBestAsset(assets = assetsWithVivo, isUncompressed = false, sdkInt = 34)?.name,
+        ).isEqualTo("LastWave-v4.2.4-universal.apk")
+    }
 }

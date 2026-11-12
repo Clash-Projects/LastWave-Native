@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "ParametricEq.h"
+
 namespace lastwave::audio {
 
 class DspProcessor final {
@@ -212,6 +214,10 @@ private:
     Biquad monoBassFilter_{};
     Biquad airExciterFilter_{};
     Crossfeed crossfeed_{};
+    // AutoEQ / manual parametric EQ. Runs first in the chain and, unlike
+    // the rest of the DSP, also while Bit-Perfect is on: the user asked for
+    // the correction, so it is applied and the verdict reports "Direct + EQ".
+    ParametricEq parametricEq_{};
 
     // Rebuilds one trimmed stage from its design spec plus the smoothed
     // trim value. Peaking/shelf stages keep filter state (coefficients

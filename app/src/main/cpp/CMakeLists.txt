@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(lastwave_audio LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -48,8 +48,16 @@ add_library(
     DirectOutputBridge.cpp
     DirectOutputStream.cpp
     DspProcessor.cpp
+    ParametricEq.cpp
+    ParametricEqBridge.cpp
     NativeBridge.cpp
     SecretsBridge.cpp
+    dsd/DsdDecimator.cpp
+    dsd/DsdJniBridge.cpp
+    automix/AutoMixJniBridge.cpp
+    automix/LinkwitzRileyCrossover.cpp
+    automix/TransientPreservingStretcher.cpp
+    automix/LufsContourNormalizer.cpp
 )
 
 target_include_directories(
@@ -62,6 +70,9 @@ target_include_directories(
 target_compile_options(
     lastwave_audio
     PRIVATE
+    # Debug builds had no -O flag, so the DSP ran at -O0. Keep symbols but
+    # optimize the audio path; release already uses RelWithDebInfo (-O2).
+    $<$<CONFIG:Debug>:-O2>
     -Wall
     -Wextra
     -Wpedantic

@@ -1,10 +1,15 @@
 package com.lastwave.app.data.lyrics
 
+import android.content.Context
+import android.net.Uri
+import com.lastwave.app.data.localmusic.LocalContainerLyricsReader
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -36,6 +41,7 @@ fun isRtlText(text: CharSequence?): Boolean {
     return (firstStrongRtl == true) || (rtlCount > 0 && rtlCount >= ltrCount)
 }
 
+@androidx.compose.runtime.Immutable
 data class LyricSyllable(
     val timeMs: Long,
     val durationMs: Long,
@@ -47,6 +53,19 @@ data class LyricSyllable(
     val appendToPrevious: Boolean = false,
 )
 
+/**
+ * Who sings a row, which decides where it is staged: lead on the start side,
+ * the second voice of a duet on the end side, both / group in the centre.
+ * [BACKGROUND_SUBLINE] marks harmony rows that nest under the lead row.
+ */
+enum class VocalRole {
+    LEAD_LEFT,
+    DUET_RIGHT,
+    UNISON_CENTER,
+    BACKGROUND_SUBLINE,
+}
+
+@androidx.compose.runtime.Immutable
 data class LyricLine(
     val timeMs: Long,
     val durationMs: Long = 0L,
@@ -54,11 +73,22 @@ data class LyricLine(
     val syllables: List<LyricSyllable> = emptyList(),
     val transliteration: String? = null,
     val transliterationSyllables: List<LyricSyllable> = emptyList(),
+    val role: VocalRole = VocalRole.LEAD_LEFT,
 ) {
     val hasSyllables: Boolean get() = syllables.isNotEmpty()
     val isRtl: Boolean get() = isRtlText(text) || syllables.any { isRtlText(it.text) }
 }
 
+@androidx.compose.runtime.Immutable
+enum class LyricsSyncType(val label: String) {
+    WORD_SYNC("Word-sync"),
+    LINE_SYNC("Line-sync"),
+    NO_SYNC("No sync"),
+    NO_LYRICS("No lyrics"),
+    CHECKING("Checking..."),
+}
+
+@androidx.compose.runtime.Immutable
 sealed interface LyricsResult {
     data class Success(
         val lines: List<LyricLine>,
@@ -94,6 +124,7 @@ fun providerForSource(source: String?): com.lastwave.app.data.local.LyricsProvid
         s.startsWith("youtube captions") -> com.lastwave.app.data.local.LyricsProvider.YOUTUBE_CAPTIONS
         s.startsWith("youtube music") -> com.lastwave.app.data.local.LyricsProvider.YOUTUBE_MUSIC
         s.startsWith("megalobiz") -> com.lastwave.app.data.local.LyricsProvider.MEGALOBIZ
+        s.startsWith("spotify") -> com.lastwave.app.data.local.LyricsProvider.SPOTIFY
         s.startsWith("genius") -> com.lastwave.app.data.local.LyricsProvider.GENIUS
         else -> null
     }
@@ -101,6 +132,7 @@ fun providerForSource(source: String?): com.lastwave.app.data.local.LyricsProvid
 
 @Singleton
 class LyricsRepository @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: Context,
     private val betterLyricsApi: BetterLyricsApi,
     private val kugouApi: KugouLyricsApi,
     private val lrclibApi: LrclibLyricsApi,
@@ -115,12 +147,114 @@ class LyricsRepository @Inject constructor(
     private val youtubeLyricsApi: YouTubeLyricsApi,
     private val geniusLyricsApi: GeniusLyricsApi,
     private val megalobizLyricsApi: MegalobizLyricsApi,
+    private val spotifyLyricsApi: SpotifyLyricsApi,
     private val settingsPreferences: com.lastwave.app.data.local.SettingsPreferences,
     private val downloadedTrackDao: dagger.Lazy<com.lastwave.app.data.local.db.DownloadedTrackDao>,
 ) {
     private val cache = ConcurrentHashMap<String, LyricsResult>()
+    private val probeCache = ConcurrentHashMap<String, ConcurrentHashMap<com.lastwave.app.data.local.LyricsProvider, LyricsSyncType>>()
     private val isrcCache = object : LinkedHashMap<String, String>(128, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<String, String>): Boolean = size > 128
+    }
+
+    fun recordHitStatus(title: String, artist: String, videoId: String?, result: LyricsResult) {
+        if (result is LyricsResult.Success) {
+            val prov = providerForSource(result.source) ?: return
+            val status = when {
+                result.isWordSynced -> LyricsSyncType.WORD_SYNC
+                result.isSynced && result.lines.isNotEmpty() -> LyricsSyncType.LINE_SYNC
+                !result.plainLyrics.isNullOrBlank() || result.lines.isNotEmpty() -> LyricsSyncType.NO_SYNC
+                else -> LyricsSyncType.NO_LYRICS
+            }
+            val key = "${videoId ?: ""}|${title.trim().lowercase()}|${artist.trim().lowercase()}"
+            probeCache.getOrPut(key) { ConcurrentHashMap() }[prov] = status
+        }
+    }
+
+    fun getKnownProviderStatuses(
+        title: String,
+        artist: String,
+        videoId: String?,
+    ): Map<com.lastwave.app.data.local.LyricsProvider, LyricsSyncType> {
+        val key = "${videoId ?: ""}|${title.trim().lowercase()}|${artist.trim().lowercase()}"
+        return probeCache[key]?.toMap() ?: emptyMap()
+    }
+
+    suspend fun probeProvider(
+        provider: com.lastwave.app.data.local.LyricsProvider,
+        title: String,
+        artist: String,
+        album: String?,
+        durationSeconds: Int?,
+        videoId: String?,
+    ): LyricsSyncType = withContext(Dispatchers.IO) {
+        if (provider == com.lastwave.app.data.local.LyricsProvider.AUTO) {
+            return@withContext LyricsSyncType.WORD_SYNC
+        }
+        val key = "${videoId ?: ""}|${title.trim().lowercase()}|${artist.trim().lowercase()}"
+        val map = probeCache.getOrPut(key) { ConcurrentHashMap() }
+        map[provider]?.let { return@withContext it }
+
+        val hit = try {
+            withTimeoutOrNull(3500L) {
+                if (provider == com.lastwave.app.data.local.LyricsProvider.LRCLIB) {
+                    fetchFromLrclib(title, artist, album, durationSeconds)
+                } else {
+                    fetchPreferredWord(
+                        preferred = provider,
+                        title = title,
+                        artist = artist,
+                        album = album,
+                        durationSeconds = durationSeconds,
+                        videoId = videoId,
+                        isrc = null,
+                        biniHit = null,
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+            null
+        }
+
+        val status = when {
+            hit == null -> LyricsSyncType.NO_LYRICS
+            hit.isWordSynced -> LyricsSyncType.WORD_SYNC
+            hit.isSynced && hit.lines.isNotEmpty() -> LyricsSyncType.LINE_SYNC
+            !hit.plainLyrics.isNullOrBlank() || hit.lines.isNotEmpty() -> LyricsSyncType.NO_SYNC
+            else -> LyricsSyncType.NO_LYRICS
+        }
+        map[provider] = status
+        status
+    }
+
+    suspend fun probeAllProviders(
+        title: String,
+        artist: String,
+        album: String?,
+        durationSeconds: Int?,
+        videoId: String?,
+        onStatusUpdated: (com.lastwave.app.data.local.LyricsProvider, LyricsSyncType) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val key = "${videoId ?: ""}|${title.trim().lowercase()}|${artist.trim().lowercase()}"
+        val map = probeCache.getOrPut(key) { ConcurrentHashMap() }
+        val providers = com.lastwave.app.data.local.LyricsProvider.entries.filter { it != com.lastwave.app.data.local.LyricsProvider.AUTO }
+
+        // Emit existing statuses immediately
+        providers.forEach { p ->
+            map[p]?.let { onStatusUpdated(p, it) }
+        }
+
+        coroutineScope {
+            providers.forEach { provider ->
+                if (!map.containsKey(provider)) {
+                    onStatusUpdated(provider, LyricsSyncType.CHECKING)
+                    launch {
+                        val status = probeProvider(provider, title, artist, album, durationSeconds, videoId)
+                        onStatusUpdated(provider, status)
+                    }
+                }
+            }
+        }
     }
 
     private fun rememberIsrc(videoId: String?, isrc: String?) {
@@ -139,6 +273,8 @@ class LyricsRepository @Inject constructor(
         isrc: String? = null,
         /** Local songs: `.lrc` imported next to the audio file; wins over every provider. */
         localLrcPath: String? = null,
+        /** Local audio path or `content://` URI to inspect container-embedded lyrics (USLT/SYLT/FLAC/M4A/MKA). */
+        localAudioUrl: String? = null,
         overrideProvider: com.lastwave.app.data.local.LyricsProvider? = null,
         excludedProviders: Set<com.lastwave.app.data.local.LyricsProvider> = emptySet(),
         onPartialResult: suspend (LyricsResult.Success) -> Unit = {},
@@ -147,7 +283,11 @@ class LyricsRepository @Inject constructor(
             excludedProviders.isNotEmpty()
         if (!skipLocal && !localLrcPath.isNullOrBlank()) {
             val lrc = runCatching {
-                java.io.File(localLrcPath).takeIf { it.isFile && it.length() > 0 }?.readText()
+                if (localLrcPath.startsWith("content://")) {
+                    appContext.contentResolver.openInputStream(Uri.parse(localLrcPath))?.bufferedReader()?.use { it.readText() }
+                } else {
+                    java.io.File(localLrcPath.removePrefix("file://")).takeIf { it.isFile && it.length() > 0 }?.readText()
+                }
             }.getOrNull()
             if (!lrc.isNullOrBlank()) {
                 val lines = parseLrc(lrc)
@@ -162,6 +302,33 @@ class LyricsRepository @Inject constructor(
                     LyricsResult.Success(lines = emptyList(), isSynced = false, plainLyrics = lrc.trim(), source = "Local LRC")
                 }
                 return@withContext result
+            }
+        }
+        if (!skipLocal && !localAudioUrl.isNullOrBlank()) {
+            val embedded = withContext(Dispatchers.IO) {
+                LocalContainerLyricsReader.extract(appContext, localAudioUrl)
+            }
+            if (embedded != null && embedded.text.isNotBlank()) {
+                val lines = if (embedded.isLrcFormatted) parseLrc(embedded.text) else emptyList()
+                val embeddedResult = if (lines.isNotEmpty()) {
+                    LyricsResult.Success(
+                        lines = lines,
+                        isSynced = true,
+                        isWordSynced = lines.any { it.hasSyllables },
+                        source = embedded.sourceLabel,
+                    )
+                } else {
+                    LyricsResult.Success(
+                        lines = emptyList(),
+                        isSynced = false,
+                        plainLyrics = embedded.text,
+                        source = embedded.sourceLabel,
+                    )
+                }
+                // If synced lines exist (or no word-by-word upgrade requested), return immediately.
+                if (embeddedResult.isSynced || !wordByWord) {
+                    return@withContext embeddedResult
+                }
             }
         }
 
@@ -296,9 +463,12 @@ class LyricsRepository @Inject constructor(
                 )
             }
             if (directHit != null) {
+                recordHitStatus(title, artist, effectiveVideoId, directHit)
                 cache[cacheKey] = directHit
                 return@withContext directHit
             } else {
+                val key = "${effectiveVideoId ?: ""}|${title.trim().lowercase()}|${artist.trim().lowercase()}"
+                probeCache.getOrPut(key) { java.util.concurrent.ConcurrentHashMap() }[overrideProvider] = LyricsSyncType.NO_LYRICS
                 return@withContext LyricsResult.Empty
             }
         }
@@ -312,6 +482,7 @@ class LyricsRepository @Inject constructor(
             lrclibAttempted = true
             val first = fetchFromLrclib(title, artist, album, durationSeconds)
             if (first != null) {
+                recordHitStatus(title, artist, effectiveVideoId, first)
                 if (first.isWordSynced || first.isInstrumental) {
                     cache[cacheKey] = first
                     return@withContext first
@@ -340,6 +511,7 @@ class LyricsRepository @Inject constructor(
                     )
                 }
                 if (single != null) {
+                    recordHitStatus(title, artist, effectiveVideoId, single)
                     if (single.isWordSynced || single.isInstrumental) {
                         cache[cacheKey] = single
                         return@withContext single
@@ -388,6 +560,9 @@ class LyricsRepository @Inject constructor(
                     if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.YOUTUBE_CAPTIONS)) {
                         requests.add(async<LyricsResult.Success?> { fetchWordFromYouTubeCaptions(effectiveVideoId, durationSeconds) })
                     }
+                    if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.SPOTIFY)) {
+                        requests.add(async<LyricsResult.Success?> { fetchWordFromSpotify(title, artist, durationSeconds) })
+                    }
                     if (requests.isEmpty()) {
                         return@coroutineScope null
                     }
@@ -399,6 +574,9 @@ class LyricsRepository @Inject constructor(
                                 }
                             }
                             requests.remove(request)
+                            if (result != null) {
+                                recordHitStatus(title, artist, effectiveVideoId, result)
+                            }
                             if (result?.isWordSynced == true) {
                                 // Fastest word-sync wins — but only if its
                                 // timeline plausibly fits this recording. A
@@ -444,8 +622,16 @@ class LyricsRepository @Inject constructor(
             // word race so a timed hit from anywhere above still wins.
             if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.MUSIXMATCH)) {
                 fetchWordFromMusixmatch(title, artist, durationSeconds)?.let { mxm ->
+                    recordHitStatus(title, artist, effectiveVideoId, mxm)
                     cache[cacheKey] = mxm
                     return@withContext mxm
+                }
+            }
+            if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.SPOTIFY)) {
+                fetchWordFromSpotify(title, artist, durationSeconds)?.let { sp ->
+                    recordHitStatus(title, artist, effectiveVideoId, sp)
+                    cache[cacheKey] = sp
+                    return@withContext sp
                 }
             }
         }
@@ -459,6 +645,7 @@ class LyricsRepository @Inject constructor(
         // already tried as the preferred provider above).
         if (!lrclibAttempted && !excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.LRCLIB)) {
             fetchFromLrclib(title, artist, album, durationSeconds)?.let { result ->
+                recordHitStatus(title, artist, effectiveVideoId, result)
                 // A local synced copy outranks a remote plain-only hit:
                 // keep scrolling lines over static text.
                 if (result.isSynced && localLyrics != null) {
@@ -487,18 +674,21 @@ class LyricsRepository @Inject constructor(
         // only when every timed source above found nothing.
         if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.MEGALOBIZ)) {
             fetchWordFromMegalobiz(title, artist, durationSeconds)?.let { scraped ->
+                recordHitStatus(title, artist, effectiveVideoId, scraped)
                 cache[cacheKey] = scraped
                 return@withContext scraped
             }
         }
         if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.YOUTUBE_MUSIC)) {
             fetchPlainFromYouTubeMusic(effectiveVideoId)?.let { videoLyrics ->
+                recordHitStatus(title, artist, effectiveVideoId, videoLyrics)
                 cache[cacheKey] = videoLyrics
                 return@withContext videoLyrics
             }
         }
         if (!excludedProviders.contains(com.lastwave.app.data.local.LyricsProvider.GENIUS)) {
             fetchPlainFromGenius(title, artist)?.let { webLyrics ->
+                recordHitStatus(title, artist, effectiveVideoId, webLyrics)
                 cache[cacheKey] = webLyrics
                 return@withContext webLyrics
             }
@@ -605,10 +795,20 @@ class LyricsRepository @Inject constructor(
             fetchPlainFromYouTubeMusic(videoId)
         com.lastwave.app.data.local.LyricsProvider.MEGALOBIZ ->
             fetchWordFromMegalobiz(title, artist, durationSeconds)
+        com.lastwave.app.data.local.LyricsProvider.SPOTIFY ->
+            fetchWordFromSpotify(title, artist, durationSeconds)
         com.lastwave.app.data.local.LyricsProvider.GENIUS ->
             fetchPlainFromGenius(title, artist)
         else -> null
     }
+
+    private suspend fun fetchWordFromSpotify(
+        title: String,
+        artist: String,
+        durationSeconds: Int?,
+    ): LyricsResult.Success? = runCatching {
+        spotifyLyricsApi.fetchLyrics(title, artist, durationSeconds)
+    }.getOrNull()
 
     private suspend fun fetchWordFromLastWave(
         title: String,
@@ -1192,6 +1392,7 @@ class LyricsRepository @Inject constructor(
                 val bothWordSync = c.hasSyllables && line.hasSyllables
                 val gapCap = if (bothWordSync) CONTINUATION_GAP_WORD_MS else CONTINUATION_GAP_LINE_MS
                 val canMerge = !c.isBackgroundLine() && !line.isBackgroundLine() &&
+                    c.role == line.role &&
                     c.text.isNotBlank() && line.text.isNotBlank() &&
                     c.text.trim() != "♪" && line.text.trim() != "♪" &&
                     gap in 0..gapCap &&
@@ -1283,20 +1484,34 @@ class LyricsRepository @Inject constructor(
             val marks = WORD_STAMP_REGEX.findAll(body).toList()
             if (marks.isEmpty()) return emptyList()
             data class Run(val startMs: Long, val text: String)
-            val runs = marks.mapIndexed { index, mark ->
+            val allRuns = mutableListOf<Run>()
+
+            val firstMark = marks.first()
+            val leadingText = body.substring(0, firstMark.range.first)
+            if (leadingText.trim().isNotEmpty()) {
+                val firstMarkMs = stampToMs(
+                    firstMark.groupValues[1].toLongOrNull() ?: 0L,
+                    firstMark.groupValues[2].toLongOrNull() ?: 0L,
+                    firstMark.groupValues[3],
+                )
+                val startMs = minOf(lineStartMs, firstMarkMs)
+                allRuns += Run(startMs, leadingText)
+            }
+
+            marks.forEachIndexed { index, mark ->
                 val until = marks.getOrNull(index + 1)?.range?.first ?: body.length
                 val startMs = stampToMs(
                     mark.groupValues[1].toLongOrNull() ?: 0L,
                     mark.groupValues[2].toLongOrNull() ?: 0L,
                     mark.groupValues[3],
                 )
-                Run(startMs, body.substring(mark.range.last + 1, until))
+                allRuns += Run(startMs, body.substring(mark.range.last + 1, until))
             }
             val words = mutableListOf<LyricSyllable>()
-            runs.forEachIndexed { index, run ->
+            allRuns.forEachIndexed { index, run ->
                 val text = decodeEntities(run.text).trim()
                 if (text.isBlank()) return@forEachIndexed
-                val endMs = runs.getOrNull(index + 1)?.startMs
+                val endMs = allRuns.getOrNull(index + 1)?.startMs
                     ?: lineEndMs
                     ?: (run.startMs + 800L)
                 words += LyricSyllable(
@@ -1308,7 +1523,10 @@ class LyricsRepository @Inject constructor(
             return words
         }
 
+        private val parsedLrcCache = android.util.LruCache<String, List<LyricLine>>(64)
+
         fun parseLrc(lrcContent: String): List<LyricLine> {
+            parsedLrcCache.get(lrcContent)?.let { return it }
             data class Raw(val timeMs: Long, val body: String)
             val raws = mutableListOf<Raw>()
             var offsetMs = 0L
@@ -1348,14 +1566,9 @@ class LyricsRepository @Inject constructor(
                 val displayText = if (isBg) stripBackgroundParens(cleanText) else cleanText
                 if (words.isNotEmpty()) {
                     val lineStart = minOf(raw.timeMs, words.first().timeMs)
-                    val joined = words.joinToString(" ") { it.text }
-                    // Keep the author spacing when the plain body carries
-                    // punctuation the word join would rewrite.
-                    val text = if (!isBg && displayText.isNotBlank() && displayText.length >= joined.length) {
-                        displayText
-                    } else if (isBg) {
-                        displayText.ifBlank { joined }
-                    } else joined
+                    // Keep the authored punctuation, with whitespace runs
+                    // between stamps collapsed to single spaces.
+                    val text = LyricsSanitizer.safeLineText(displayText, words.map { it.text })
                     result += LyricLine(
                         timeMs = lineStart,
                         durationMs = ((nextStart ?: (words.maxOf { it.timeMs + it.durationMs })) - lineStart).coerceAtLeast(0L),
@@ -1386,7 +1599,9 @@ class LyricsRepository @Inject constructor(
                 }
             }
 
-            return result.sortedBy { it.timeMs }
+            val sorted = result.sortedBy { it.timeMs }
+            parsedLrcCache.put(lrcContent, sorted)
+            return sorted
         }
 
         fun parseEnhancedLrc(lrcContent: String): List<LyricLine> {

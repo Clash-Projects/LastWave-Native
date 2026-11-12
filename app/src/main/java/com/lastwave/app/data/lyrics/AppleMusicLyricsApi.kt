@@ -1,6 +1,7 @@
 package com.lastwave.app.data.lyrics
 
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
+import com.lastwave.app.data.network.ITunesSearchClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,10 +10,8 @@ import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.abs
 
 @Serializable
 private data class PaxEnvelope(
@@ -41,19 +40,6 @@ private data class PaxWord(
     val part: Boolean = false,
 )
 
-@Serializable
-private data class ITunesSearchResponse(
-    val results: List<ITunesSong> = emptyList(),
-)
-
-@Serializable
-private data class ITunesSong(
-    val trackId: Long = 0L,
-    val trackName: String? = null,
-    val artistName: String? = null,
-    val trackTimeMillis: Long? = null,
-)
-
 /**
  * Apple Music syllable-synced lyrics via the Lyrically aggregator
  * (https://lyrics.paxsenix.org, free, no API key).
@@ -69,6 +55,7 @@ private data class ITunesSong(
 @Singleton
 class AppleMusicLyricsApi @Inject constructor(
     private val okHttpClient: OkHttpClient,
+    private val iTunesSearchClient: ITunesSearchClient,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -84,14 +71,8 @@ class AppleMusicLyricsApi @Inject constructor(
     ): LyricsResult.Success? = withContext(Dispatchers.IO) {
         if (title.isBlank()) return@withContext null
 
-        val trackId = resolveTrackId(title, artist, durationSeconds)
-            ?: run {
-                val cleanedTitle = LrclibLyricsApi.cleanTrackTitle(title)
-                val cleanedArtist = LrclibLyricsApi.cleanArtistName(artist)
-                if (cleanedTitle != title || cleanedArtist != artist) {
-                    resolveTrackId(cleanedTitle, cleanedArtist, durationSeconds)
-                } else null
-            } ?: return@withContext null
+        val trackId = iTunesSearchClient.searchBestMatch(title, artist, durationSeconds)?.trackId
+            ?: return@withContext null
 
         // Direct TTML carries per-syllable timing; try it first and keep
         // the structured envelope as the fallback.
@@ -149,105 +130,6 @@ class AppleMusicLyricsApi @Inject constructor(
         }
 
         null
-    }
-
-    /** iTunes Search -> best Apple Music trackId for the song. */
-    private suspend fun resolveTrackId(
-        title: String,
-        artist: String,
-        durationSeconds: Int?,
-    ): Long? {
-        if (title.isBlank()) return null
-        val term = if (artist.isNotBlank()) "$title $artist" else title
-        val url = "https://itunes.apple.com/search?term=${URLEncoder.encode(term, "UTF-8")}" +
-            "&media=music&entity=song&limit=5"
-        val body = try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .get()
-                .build()
-            okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            return null
-        }
-        val results = try {
-            json.decodeFromString<ITunesSearchResponse>(body).results
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            return null
-        }
-        val expectedMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L)
-        // Wrong-recording gate first: a live/remix/cover tag on one side only
-        // rejects the candidate outright, however close the duration is.
-        val sameRecording = results
-            .filter { it.trackId > 0 }
-            .filter { LrclibLyricsApi.sameVersion(title, it.trackName.orEmpty()) }
-        if (sameRecording.isEmpty()) return null
-        // Best score wins; duration proximity breaks ties (single vs album
-        // cut can differ by a second with identical names).
-        return sameRecording.maxWithOrNull(
-            compareBy({ score(it, title, artist, expectedMs) }, { -durationDistance(it, expectedMs) }),
-        )?.takeIf { isVerifiedMatch(it, title, artist, expectedMs) }
-            ?.trackId
-    }
-
-    private fun durationDistance(song: ITunesSong, expectedMs: Long?): Long {
-        val songMs = song.trackTimeMillis ?: return Long.MAX_VALUE
-        if (expectedMs == null || expectedMs <= 0 || songMs <= 0) return 0L
-        return abs(songMs - expectedMs)
-    }
-
-    /** A result is usable only with BOTH title and artist agreement; title
-     *  alone (homonym songs) or artist alone (wrong song, same singer) is
-     *  rejected rather than returning another song's lyrics. */
-    private fun isVerifiedMatch(song: ITunesSong, title: String, artist: String, expectedMs: Long?): Boolean {
-        if (!LrclibLyricsApi.sameVersion(title, song.trackName.orEmpty())) return false
-        if (titleScore(song.trackName.orEmpty(), title) <= 0) return false
-        // Unknown-artist requests can't check the singer: demand an exact
-        // title (plus duration when known) instead of failing outright.
-        if (artist.isBlank()) {
-            if (titleScore(song.trackName.orEmpty(), title) < 3) return false
-            return score(song, title, artist, expectedMs) >= MIN_MATCH_SCORE - 2
-        }
-        if (artistScore(song.artistName.orEmpty(), artist) <= 0) return false
-        return score(song, title, artist, expectedMs) >= MIN_MATCH_SCORE
-    }
-
-    private fun titleScore(songTitle: String, title: String): Int {
-        val cleanSong = LrclibLyricsApi.cleanTrackTitle(songTitle)
-        val cleanReq = LrclibLyricsApi.cleanTrackTitle(title)
-        if (cleanSong.equals(cleanReq, ignoreCase = true)) return 3
-        if (LrclibLyricsApi.titlesMatch(cleanSong, cleanReq)) return 1
-        return 0
-    }
-
-    private fun artistScore(songArtist: String, artist: String): Int {
-        if (artist.isBlank() || songArtist.isBlank()) return 0
-        val cleanSong = LrclibLyricsApi.cleanArtistName(songArtist)
-        val cleanReq = LrclibLyricsApi.cleanArtistName(artist)
-        return if (LrclibLyricsApi.artistMatches(cleanSong, cleanReq)) 2 else 0
-    }
-
-    /** Exact title + artist/duration agreement wins; junk matches score ~0
-     *  and are rejected rather than returning another song's lyrics.
-     *  Duration is tiered: near-identical lengths decide between edits of
-     *  one song, loose agreement only supports an already-good text match. */
-    private fun score(song: ITunesSong, title: String, artist: String, expectedMs: Long?): Int {
-        var score = titleScore(song.trackName.orEmpty(), title) + artistScore(song.artistName.orEmpty(), artist)
-        val songMs = song.trackTimeMillis
-        if (expectedMs != null && expectedMs > 0 && songMs != null && songMs > 0) {
-            score += when (abs(songMs - expectedMs)) {
-                in 0..3_000L -> 3
-                in 3_001L..DURATION_TOLERANCE_MS -> 1
-                else -> 0
-            }
-        }
-        return score
     }
 
     private suspend fun fetchTtmlLines(trackId: Long): List<LyricLine>? {
@@ -321,10 +203,6 @@ class AppleMusicLyricsApi @Inject constructor(
 
     companion object {
         const val USER_AGENT = "LastWave"
-        // 3 (exact title) + 2 (artist) = 5: both sides must agree. The old
-        // threshold of 3 accepted a title-exact homonym with no artist match.
-        private const val MIN_MATCH_SCORE = 5
-        private const val DURATION_TOLERANCE_MS = 12_000L
 
         /** Syllable envelope -> [LyricLine]. `part` words continue the
          *  previous token ("with"+"drawals"); background vocals ride along

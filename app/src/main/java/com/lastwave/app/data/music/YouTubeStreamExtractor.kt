@@ -1,11 +1,14 @@
 package com.lastwave.app.data.music
 
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
@@ -37,6 +40,7 @@ class YouTubeStreamExtractor @Inject constructor(
         videoId: String,
         preferM4a: Boolean = false,
         preferOpus: Boolean = false,
+        maxBitrateBps: Int? = null,
     ): YouTubeAudioStream = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         initialize()
@@ -48,13 +52,17 @@ class YouTubeStreamExtractor @Inject constructor(
             throw IOException("YouTube stream extraction failed for $videoId", error)
         }
         val ordered = info.audioStreams.sortedWith(
-            compareBy<org.schabi.newpipe.extractor.stream.AudioStream> { audioPreference(it, preferM4a, preferOpus) }
+            compareBy<org.schabi.newpipe.extractor.stream.AudioStream> { isDrcAudioUrl(it.content.orEmpty()) }
+                .thenBy { audioPreference(it, preferM4a, preferOpus) }
                 .thenByDescending { maxOf(it.averageBitrate, it.bitrate) },
         )
         if (ordered.isEmpty()) throw IOException("YouTube returned no playable audio stream for $videoId")
         val candidates = ordered.map { stream ->
             stream.toYouTubeAudioStream(videoId, info.duration, now)
+        }.filter {
+            it.meetsBitrateLimit(maxBitrateBps)
         }
+        if (candidates.isEmpty()) throw IOException("YouTube returned no audio within the requested bitrate for $videoId")
         val playable = selectProbedCandidate(
             candidates = candidates,
             urlOf = { it.url },
@@ -66,6 +74,259 @@ class YouTubeStreamExtractor @Inject constructor(
         throw IOException("YouTube audio URLs were rejected for $videoId")
     }
 
+    suspend fun resolveVideoStreamBundle(
+        videoId: String,
+    ): SyncedVideoStreamBundle = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        initialize()
+        val info = try {
+            StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId")
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            throw IOException("YouTube video stream extraction failed for $videoId", error)
+        }
+        val allVideoStreams = buildList {
+            addAll(info.videoStreams)
+            addAll(info.videoOnlyStreams)
+        }
+        val validStreams = allVideoStreams.filter { stream ->
+            stream.content.isNotBlank() && (
+                stream.format?.mimeType?.contains("mp4", ignoreCase = true) == true ||
+                stream.format?.mimeType?.contains("webm", ignoreCase = true) == true
+            ) && VideoDecoderSupport.canDecode(
+                stream.codec,
+                stream.width,
+                parseResolutionHeight(stream.resolution, stream.height),
+            )
+        }
+        if (validStreams.isEmpty()) {
+            throw IOException("This device has no decoder for the video streams of $videoId")
+        }
+
+        // Group by resolution height (supports up to 2160p, 1440p, 1080p, 720p, 480p, 360p, 240p, 144p)
+        val streamsByHeight = validStreams
+            .map { stream ->
+                val h = parseResolutionHeight(stream.resolution, stream.height)
+                h to stream
+            }
+            .filter { it.first > 0 }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, streams) ->
+                // Codec first: an MP4 can hold AV1, and a higher bitrate must not
+                // beat H.264 on the many phones that decode AV1 slowly or not at all.
+                streams.maxWithOrNull(
+                    compareBy<org.schabi.newpipe.extractor.stream.VideoStream> {
+                        videoCodecPreference(it.codec)
+                    }.thenBy { it.bitrate }
+                )!!
+            }
+
+        val availableStreams = streamsByHeight.keys.sortedDescending().map { height ->
+            streamsByHeight[height]!!.toYouTubeVideoStream(videoId, info.duration, now)
+        }
+        if (availableStreams.isEmpty()) {
+            throw IOException("YouTube returned no valid video stream resolutions for $videoId")
+        }
+
+        // For default (Auto), prefer 720p or 1080p for instant playback without buffer stalls
+        val playableDefault = selectProbedCandidate(
+            candidates = rankedForAutoPlayback(availableStreams),
+            urlOf = { it.url },
+            probe = ::probePlayableVideo,
+            limit = MAX_PROBED_AUDIO_STREAMS,
+        ) ?: throw IOException("YouTube video URLs were rejected for $videoId")
+
+        val pairedAudioUrl = info.audioStreams.maxByOrNull { it.bitrate }?.content
+        SyncedVideoStreamBundle(
+            videoId = videoId,
+            defaultStream = playableDefault,
+            availableStreams = availableStreams,
+            pairedAudioStreamUrl = pairedAudioUrl,
+            pairedAudioHeaders = mapOf(
+                "User-Agent" to YOUTUBE_WEB_USER_AGENT,
+                "Origin" to YOUTUBE_ORIGIN,
+                "Referer" to "$YOUTUBE_ORIGIN/watch?v=$videoId",
+            ),
+        )
+    }
+
+    suspend fun resolveVideoStream(
+        videoId: String,
+    ): YouTubeVideoStream = resolveVideoStreamBundle(videoId).defaultStream
+
+    private suspend fun resolveVideoStreamBundleWithIosClient(
+        videoId: String,
+        now: Long,
+    ): SyncedVideoStreamBundle? = withContext(Dispatchers.IO) {
+        runCatching {
+            val jsonBody = """
+                {
+                    "context": {
+                        "client": {
+                            "clientName": "IOS",
+                            "clientVersion": "21.10.3",
+                            "clientScreen": "WATCH",
+                            "deviceMake": "Apple",
+                            "deviceModel": "iPhone16,2",
+                            "osName": "iPhone",
+                            "osVersion": "18.1.0.22B83",
+                            "platform": "MOBILE",
+                            "hl": "en",
+                            "gl": "US"
+                        }
+                    },
+                    "videoId": "$videoId",
+                    "contentCheckOk": true,
+                    "racyCheckOk": true
+                }
+            """.trimIndent()
+
+            val request = okhttp3.Request.Builder()
+                .url("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
+                .post(jsonBody.toRequestBody("application/json".toMediaType()))
+                .header("User-Agent", "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)")
+                .header("X-Goog-Api-Format-Version", "2")
+                .header("X-YouTube-Client-Name", "5")
+                .header("X-YouTube-Client-Version", "21.10.3")
+                .build()
+
+            val root = http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@runCatching null
+                val bodyStr = response.body?.string() ?: return@runCatching null
+                JSONObject(bodyStr)
+            }
+
+            val status = root.optJSONObject("playabilityStatus")?.optString("status").orEmpty()
+            if (!status.equals("OK", ignoreCase = true)) return@runCatching null
+
+            val streamingData = root.optJSONObject("streamingData") ?: return@runCatching null
+            val adaptive = streamingData.optJSONArray("adaptiveFormats") ?: return@runCatching null
+            val durationSec = root.optJSONObject("videoDetails")?.optString("lengthSeconds")?.toLongOrNull() ?: 0L
+
+            var pairedAudioUrl: String? = null
+            var bestAudioBitrate = 0
+            val extractedStreams = mutableListOf<YouTubeVideoStream>()
+            for (i in 0 until adaptive.length()) {
+                val f = adaptive.optJSONObject(i) ?: continue
+                val mime = f.optString("mimeType")
+                if (mime.contains("audio", ignoreCase = true)) {
+                    val aUrl = f.optString("url").takeIf { it.isNotBlank() } ?: continue
+                    val aBitrate = f.optInt("bitrate", 0)
+                    if (aBitrate > bestAudioBitrate || (mime.contains("opus", ignoreCase = true) && pairedAudioUrl == null)) {
+                        bestAudioBitrate = aBitrate
+                        pairedAudioUrl = aUrl
+                    }
+                    continue
+                }
+                if (!mime.contains("video", ignoreCase = true)) continue
+                val streamUrl = f.optString("url").takeIf { it.isNotBlank() } ?: continue
+                val height = f.optInt("height", 0).takeIf { it > 0 }
+                    ?: parseResolutionHeight(f.optString("qualityLabel"), 0)
+                val width = f.optInt("width", 0).takeIf { it > 0 }
+                val bitrate = f.optInt("bitrate", 0)
+
+                extractedStreams += YouTubeVideoStream(
+                    videoId = videoId,
+                    url = streamUrl,
+                    itag = f.optInt("itag", 0).takeIf { it > 0 },
+                    resolution = f.optString("qualityLabel").ifBlank { "${height}p" },
+                    height = height,
+                    width = width,
+                    bitrate = bitrate,
+                    mimeType = mime.substringBefore(";"),
+                    durationMs = durationSec.takeIf { it > 0 }?.times(1_000L),
+                    expiresAtEpochMs = now + 5 * 60 * 60 * 1000L,
+                    requestHeaders = mapOf(
+                        "User-Agent" to "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+                        "Range" to "bytes=0-",
+                    )
+                )
+            }
+            if (extractedStreams.isEmpty()) return@runCatching null
+
+            val streamsByHeight = extractedStreams
+                .filter { (it.height ?: 0) > 0 }
+                .groupBy { it.height!! }
+                .mapValues { (_, streams) ->
+                    streams.maxWithOrNull(
+                        compareBy<YouTubeVideoStream> {
+                            if (it.mimeType?.contains("mp4", ignoreCase = true) == true) 1 else 0
+                        }.thenBy { it.bitrate ?: 0 }
+                    )!!
+                }
+
+            val availableStreams = streamsByHeight.keys.sortedDescending().map { streamsByHeight[it]!! }
+            if (availableStreams.isEmpty()) return@runCatching null
+
+            val defaultStream = availableStreams.firstOrNull { it.height == 1080 }
+                ?: availableStreams.firstOrNull { it.height == 720 }
+                ?: availableStreams.first()
+
+            SyncedVideoStreamBundle(
+                videoId = videoId,
+                defaultStream = defaultStream,
+                availableStreams = availableStreams,
+                pairedAudioStreamUrl = pairedAudioUrl,
+                pairedAudioHeaders = mapOf(
+                    "User-Agent" to "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+                    "Range" to "bytes=0-",
+                ),
+            )
+        }.getOrNull()
+    }
+
+    private fun parseResolutionHeight(resolution: String?, height: Int): Int {
+        if (height > 0) return height
+        // First number only: "1080p60" is 1080 tall.
+        return Regex("""\d+""").find(resolution.orEmpty())?.value?.toIntOrNull() ?: 0
+    }
+
+    internal fun probePlayableVideo(stream: YouTubeVideoStream): Boolean {
+        val request = playbackProbeRequest(stream.url, stream.requestHeaders)
+        val call = http.newCall(request)
+        call.timeout().timeout(PROBE_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        return try {
+            call.execute().use { response ->
+                acceptsPlaybackProbe(response.code, response.header("Content-Type").orEmpty())
+            }
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun org.schabi.newpipe.extractor.stream.VideoStream.toYouTubeVideoStream(
+        videoId: String,
+        durationSeconds: Long,
+        now: Long,
+    ): YouTubeVideoStream {
+        val streamUrl = content
+        return YouTubeVideoStream(
+            videoId = videoId,
+            url = streamUrl,
+            itag = itag.takeIf { it >= 0 },
+            mimeType = format?.mimeType,
+            codec = codec?.takeIf(String::isNotBlank),
+            resolution = resolution,
+            width = width.takeIf { it > 0 },
+            height = height.takeIf { it > 0 },
+            bitrate = bitrate.takeIf { it > 0 },
+            durationMs = itagItem?.approxDurationMs?.takeIf { it > 0 }
+                ?: durationSeconds.takeIf { it > 0 }?.times(1_000L),
+            requestHeaders = mapOf(
+                "User-Agent" to YOUTUBE_WEB_USER_AGENT,
+                "Origin" to YOUTUBE_ORIGIN,
+                "Referer" to "$YOUTUBE_ORIGIN/watch?v=$videoId",
+            ),
+            expiresAtEpochMs = streamUrl.toHttpUrlOrNull()
+                ?.queryParameter("expire")
+                ?.toLongOrNull()
+                ?.times(1_000L)
+                ?: (now + UNKNOWN_EXPIRY_TTL_MS),
+        )
+    }
     private fun org.schabi.newpipe.extractor.stream.AudioStream.toYouTubeAudioStream(
         videoId: String,
         durationSeconds: Long,
@@ -75,6 +336,7 @@ class YouTubeStreamExtractor @Inject constructor(
         return YouTubeAudioStream(
             videoId = videoId,
             url = content,
+            isDrc = isDrcAudioUrl(content.orEmpty()),
             itag = itag.takeIf { it >= 0 },
             mimeType = format?.mimeType,
             codec = codec?.takeIf(String::isNotBlank),
@@ -98,6 +360,7 @@ class YouTubeStreamExtractor @Inject constructor(
                 ?.toLongOrNull()
                 ?.times(1_000L)
                 ?: now + UNKNOWN_EXPIRY_TTL_MS,
+            userAgent = YOUTUBE_WEB_USER_AGENT,
         )
     }
 
@@ -152,11 +415,17 @@ class YouTubeStreamExtractor @Inject constructor(
     fun decipherStreamUrl(videoId: String, signatureCipher: String): String? {
         initialize()
         val parameters = "https://cipher.invalid/?$signatureCipher".toHttpUrlOrNull() ?: return null
-        var resolvedUrl = parameters.queryParameter("url") ?: return null
+        var resolvedUrl = parameters.queryParameter("url") ?: run {
+            Log.w("LastWaveCipher", "stage=parse outcome=missing-url")
+            return null
+        }
         val encryptedSignature = parameters.queryParameter("s")
         if (!encryptedSignature.isNullOrBlank()) {
             val signature = runCatching {
                 YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, encryptedSignature)
+            }.onFailure { error ->
+                // Exception messages can contain URLs or cipher material: log types only.
+                Log.w("LastWaveCipher", "stage=signature error=${error.javaClass.simpleName} cause=${error.cause?.javaClass?.simpleName}")
             }.getOrNull() ?: return null
             if (resolvedUrl.toHttpUrlOrNull() == null) return null
             resolvedUrl = appendQueryParameterPreservingUrl(
@@ -221,12 +490,13 @@ class YouTubeStreamExtractor @Inject constructor(
 
 internal const val YOUTUBE_ORIGIN = "https://www.youtube.com"
 
-/** Same Accept headers as the player's [androidx.media3.datasource.DefaultHttpDataSource]. No two-byte Range. */
+/** Match the player's first 1 MiB chunk; two-byte probes can hide media HTTP 403 failures. */
 internal fun playbackProbeRequest(url: String, headers: Map<String, String>): okhttp3.Request =
     okhttp3.Request.Builder()
         .url(url)
         .header("Accept", "audio/*,*/*;q=0.8")
         .header("Accept-Encoding", "identity")
+        .header("Range", "bytes=0-1048575")
         .apply {
             headers.forEach { (name, value) -> header(name, value) }
         }

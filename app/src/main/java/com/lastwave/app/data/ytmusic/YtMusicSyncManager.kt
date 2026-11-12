@@ -6,6 +6,7 @@ import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.generate.isLocalFile
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YtOwnedPlaylist
+import com.lastwave.app.data.playlist.PlaylistImportManager
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.playlist.SavedPlaylist
 import java.util.concurrent.ConcurrentHashMap
@@ -24,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import com.lastwave.app.util.AppVisibility
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -91,9 +93,13 @@ class YtMusicSyncManager @Inject constructor(
                 .collect { runCatching { syncNow("change") } }
         }
 
+        // Startup + heartbeat only while a screen is shown: each pass loads
+        // WebView's CookieManager and reconciles the library, and running it
+        // every minute in a UI-less background process got LastWave killed
+        // for "excessive cpu" (diagnostics, LG L-51A, reason 9).
         applicationScope.launch {
             delay(INITIAL_DELAY_MS)
-            runCatching { syncNow("startup") }
+            if (AppVisibility.isVisible) runCatching { syncNow("startup") }
         }
 
         // Standing heartbeat — catches anything missed while offline and
@@ -101,7 +107,7 @@ class YtMusicSyncManager @Inject constructor(
         applicationScope.launch {
             while (true) {
                 delay(PERIODIC_INTERVAL_MS)
-                runCatching { syncNow("periodic") }
+                if (AppVisibility.isVisible) runCatching { syncNow("periodic") }
             }
         }
     }
@@ -141,8 +147,19 @@ class YtMusicSyncManager @Inject constructor(
             val allPlaylists = playlistRepository.getAll()
                 .filterNot { it.remotePlaylistId != null }
                 .filterNot { it.mode == com.lastwave.app.data.playlist.LOCAL_SONGS_MODE }
+                // The account's "Liked Music" is where this app's likes already go: the
+                // direct like marks the song there. Mirroring the local list as well
+                // would leave the account with two copies of the same likes, and would
+                // rewrite every one of them on every pass.
+                .filterNot { it.mode == com.lastwave.app.data.playlist.LIKED_SONGS_MODE }
             val syncedIds = preferences.syncedPlaylistIds.first()
             val playlists = if (syncedIds != null) allPlaylists.filter { it.id in syncedIds } else allPlaylists
+
+            // Deletion propagation runs before the empty check: deleting the
+            // LAST synced playlist used to return early and leave its remote
+            // mirror (and mapping) behind forever.
+            val mappings = preferences.mappings().toMutableMap()
+            deleteOrphanedMirrors(mappings, liveIds = allPlaylists.mapTo(mutableSetOf()) { it.id })
 
             if (playlists.isEmpty()) {
                 _state.value = YtSyncState.Completed(System.currentTimeMillis(), 0, 0, 0)
@@ -151,28 +168,8 @@ class YtMusicSyncManager @Inject constructor(
                 return true
             }
 
-            val mappings = preferences.mappings().toMutableMap()
             var unmatchedTotal = 0
             var failed = 0
-
-            // Deletion propagation: mappings whose local playlist vanished
-            // mean "deleted in LastWave" — delete the remote mirror too.
-            val liveIds = allPlaylists.mapTo(mutableSetOf()) { it.id }
-            val orphans = mappings.keys.filterNot { it in liveIds }
-            var removedAnyMapping = false
-            for (orphanId in orphans) {
-                val removedMapping = mappings.remove(orphanId)
-                val remoteId = removedMapping?.remotePlaylistId
-                removedAnyMapping = true
-                if (remoteId != null && removedMapping?.deleteRemoteWithLocal == true) {
-                    runCatching { innerTube.deleteRemotePlaylist(remoteId) }
-                        .onFailure { Log.w(TAG, "Orphan remote delete failed ($remoteId)", it) }
-                }
-            }
-            // One persistence pass for ALL orphan removals instead of one
-            // serialized full-map write per deleted playlist.
-            if (removedAnyMapping) preferences.setMappings(mappings)
-
             var authFailure = false
             playlists.forEachIndexed { index, playlist ->
                 if (authFailure) return@forEachIndexed
@@ -184,11 +181,7 @@ class YtMusicSyncManager @Inject constructor(
                 } catch (e: Exception) {
                     failed++
                     Log.w(TAG, "YT sync failed for \"${playlist.title}\"", e)
-                    val isAuthError = (e is InnerTubeMusicApi.InnerTubeHttpException && (e.responseCode == 401 || e.responseCode == 403)) ||
-                        (e.cause is InnerTubeMusicApi.InnerTubeHttpException && ((e.cause as InnerTubeMusicApi.InnerTubeHttpException).responseCode == 401 || (e.cause as InnerTubeMusicApi.InnerTubeHttpException).responseCode == 403))
-                    if (isAuthError) {
-                        authFailure = true
-                    }
+                    if (e.isAuthError() || e.cause?.isAuthError() == true) authFailure = true
                 }
                 delay(WRITE_PACE_MS)
             }
@@ -217,7 +210,17 @@ class YtMusicSyncManager @Inject constructor(
         }
     }
 
-    /** Reconciles one playlist against its remote mirror; returns unmatched track count. */
+    /**
+     * Reconciles one playlist against its remote mirror; returns unmatched track count.
+     *
+     * The account's liked list is not read back.
+     *
+     * It is the account's own list, and the app shows it as it is - streamed from
+     * YouTube when it is opened, the same way YouTube Music shows it. Merging it
+     * into this app's own list would mean paging through every song the account has
+     * ever liked, keeping a second copy of all of them, and never dropping the ones
+     * that go away on the other side.
+     */
     private suspend fun reconcile(playlist: SavedPlaylist, allMappings: MutableMap<Long, YtPlaylistMapping>): Int {
         var mapping = allMappings[playlist.id]
         var remoteId = mapping?.remotePlaylistId
@@ -250,9 +253,21 @@ class YtMusicSyncManager @Inject constructor(
             }
         }
         var mutatedRemote = false
+        // True when this pass linked an already-existing remote instead of
+        // creating one: neither side is authoritative yet, so merge both.
+        var adoptedExisting = false
         if (remoteId == null) {
-            remoteId = innerTube.createRemotePlaylist(playlist.title)
+            // Never stack a second mirror. A create that timed out client-side
+            // has usually succeeded on YouTube; creating again on every
+            // periodic pass is what filled accounts with copies of the same
+            // playlist. Link an unlinked same-title remote first, and re-check
+            // after a failed create before giving up.
+            val adopted = findUnlinkedRemote(playlist.title, allMappings, refreshFirst = false)
+            remoteId = adopted
+                ?: innerTube.createRemotePlaylist(playlist.title)
+                ?: findUnlinkedRemote(playlist.title, allMappings, refreshFirst = true)
                 ?: throw IllegalStateException("Could not create YouTube Music playlist")
+            adoptedExisting = adopted != null
             mapping = YtPlaylistMapping(remoteId, playlist.title)
             allMappings[playlist.id] = mapping
             preferences.setMappings(allMappings)
@@ -336,7 +351,11 @@ class YtMusicSyncManager @Inject constructor(
         // a removal instead of being resurrected by the unchanged copy.
         val removedLocally = baseline - localSet
         val removedRemotely = baseline - remoteSet
-        val finalSet = if (baseline.isEmpty()) {
+        val finalSet = if (adoptedExisting) {
+            // Linking a pre-existing remote: keep everything on both sides so
+            // adopting a same-title playlist can never delete its songs.
+            localSet + remoteSet
+        } else if (baseline.isEmpty()) {
             // A newly linked mirror has no shared history yet; LastWave is
             // authoritative for that first pass so stale remote entries do
             // not get imported as random local songs.
@@ -439,12 +458,58 @@ class YtMusicSyncManager @Inject constructor(
         return unmatched
     }
 
+    /**
+     * Mappings whose local playlist vanished mean "deleted in LastWave":
+     * delete the remote mirror too. Persists once for all removals.
+     */
+    private suspend fun deleteOrphanedMirrors(mappings: MutableMap<Long, YtPlaylistMapping>, liveIds: Set<Long>) {
+        val orphans = mappings.keys.filterNot { it in liveIds }
+        if (orphans.isEmpty()) return
+        for (orphanId in orphans) {
+            val removed = mappings.remove(orphanId) ?: continue
+            if (removed.deleteRemoteWithLocal) {
+                runCatching { innerTube.deleteRemotePlaylist(removed.remotePlaylistId) }
+                    .onFailure { Log.w(TAG, "Orphan remote delete failed (${removed.remotePlaylistId})", it) }
+            }
+        }
+        preferences.setMappings(mappings)
+    }
+
+    /**
+     * An account playlist titled like [title] that no local playlist is linked
+     * to yet (the account's Liked Music never qualifies), or null.
+     */
+    private suspend fun findUnlinkedRemote(
+        title: String,
+        mappings: Map<Long, YtPlaylistMapping>,
+        refreshFirst: Boolean,
+    ): String? {
+        if (refreshFirst || libraryManager.accountPlaylists.value.isEmpty()) {
+            runCatching { libraryManager.refresh() }
+        }
+        val wanted = remoteTitleOf(title)
+        val linked = mappings.values.mapTo(mutableSetOf()) { it.remotePlaylistId.removePrefix("VL") }
+        return libraryManager.accountPlaylists.value
+            .asSequence()
+            .map { it.id.removePrefix("VL") to it.title }
+            .filterNot { (id, _) -> id in linked || PlaylistImportManager.isYtLikedId(id) }
+            .firstOrNull { (_, remoteTitle) -> remoteTitle.trim().equals(wanted, ignoreCase = true) }
+            ?.first
+    }
+
+    /** The title YouTube stores for [title] (same cleanup as createRemotePlaylist). */
+    private fun remoteTitleOf(title: String): String =
+        title.replace("<", "(").replace(">", ")").take(150).ifBlank { "LastWave Playlist" }.trim()
+
+    private fun Throwable.isAuthError(): Boolean =
+        this is InnerTubeMusicApi.InnerTubeHttpException && (responseCode == 401 || responseCode == 403)
+
     private companion object {
         const val TAG = "YtMusicSyncManager"
         const val DEBOUNCE_MS = 750L
         const val INITIAL_DELAY_MS = 2_000L
-        const val PERIODIC_INTERVAL_MS = 60_000L
-        const val WRITE_PACE_MS = 350L
+  const val PERIODIC_INTERVAL_MS = 60_000L
+  const val WRITE_PACE_MS = 350L
         const val NEGATIVE_MATCH_TTL_MS = 6 * 60 * 60_000L
         const val MATCH_CONCURRENCY = 6
         const val MAX_NEGATIVE_CACHE_ENTRIES = 2048

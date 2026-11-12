@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -17,7 +18,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.ui.common.ArtworkViewModel
+import com.lastwave.app.ui.common.LocalArtworkViewModel
+import com.lastwave.app.ui.common.LocalArtworkCellular
 import com.lastwave.app.util.AppLocaleManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -33,7 +38,7 @@ import javax.inject.Inject
 
 // Last.fm redirects its Custom Tab to this Activity after approval.
 @AndroidEntryPoint
-class MainActivity : androidx.fragment.app.FragmentActivity() {
+open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
 
     @Inject
     lateinit var lastFmAuthCallback: LastFmAuthCallbackCoordinator
@@ -50,7 +55,23 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     @Inject
     lateinit var appLocaleManager: AppLocaleManager
 
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    @Inject
+    lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
+
+    @Inject
+    lateinit var musicPlayer: dagger.Lazy<com.lastwave.app.playback.MusicPlayer>
+
+    private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { trackDownloadManager.get().restoreDownloadsAfterReinstall() }
+            }
+        }
+    }
+
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        checkAndRequestAudioPermission()
+    }
 
     override fun attachBaseContext(newBase: Context) {
         // FragmentActivity gets no AppCompat locale backport, so pin the
@@ -65,6 +86,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             .onFailure { android.util.Log.e(STARTUP_TAG, "Splash compatibility layer unavailable", it) }
             .getOrNull()
         super.onCreate(savedInstanceState)
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Adopt choices made via system Settings -> App languages so the
             // in-app picker shows the truth. The framework recreates us itself.
@@ -124,11 +146,36 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 ),
             )
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            runCatching { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
-                .onFailure { android.util.Log.w(STARTUP_TAG, "Notification permission request skipped", it) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            runCatching {
+                val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
+                val modes = currentDisplay?.supportedModes
+                val maxRefreshMode = modes?.maxByOrNull { it.refreshRate }
+                if (maxRefreshMode != null && maxRefreshMode.refreshRate > 60f) {
+                    val params = window.attributes
+                    params.preferredDisplayModeId = maxRefreshMode.modeId
+                    window.attributes = params
+                }
+            }
+        }
+        if (savedInstanceState == null) {
+            val needsNotificationPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+
+            if (needsNotificationPermission) {
+                runCatching { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                    .onFailure {
+                        android.util.Log.w(STARTUP_TAG, "Notification permission request skipped", it)
+                        checkAndRequestAudioPermission()
+                    }
+            } else {
+                checkAndRequestAudioPermission()
+            }
         }
 
         setContent {
@@ -137,20 +184,42 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
             LastWaveTheme(themeState = themeState) {
                 val currentConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
-                androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.ui.platform.LocalViewConfiguration provides object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
+                val customViewConfig = androidx.compose.runtime.remember(currentConfig) {
+                    object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
                         override val touchSlop: Float
                             get() = currentConfig.touchSlop * 1.5f
                         override val minimumTouchTargetSize: androidx.compose.ui.unit.DpSize
                             get() = androidx.compose.ui.unit.DpSize(48.dp, 48.dp)
                     }
+                }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
                 ) {
                     val navController = rememberNavController()
                     val backStackEntry by navController.currentBackStackEntryAsState()
-                    val hasBottomNavigation = backStackEntry?.destination?.route == Screen.MainShell.route
+                    val currentRoute = backStackEntry?.destination?.route
+                    val hasBottomNavigation = currentRoute == Screen.MainShell.route && !themeState.hideNavTabs
+                    val isJamScreen = currentRoute == Screen.Jam.route || currentRoute?.startsWith("jam") == true
 
-                    PlayerHost(hasBottomNavigation = hasBottomNavigation) {
-                        LastWaveNavHost(navController)
+                    val isWebLoginScreen = currentRoute == Screen.SpotifyLogin.route ||
+                        currentRoute == Screen.SpotifyTokenImport.route ||
+                        currentRoute == Screen.YouTubeLogin.route
+
+                    val artworkVm: ArtworkViewModel = hiltViewModel()
+                    val artworkCellular by artworkVm.isCellular.collectAsStateWithLifecycle()
+
+                    CompositionLocalProvider(
+                        LocalArtworkViewModel provides artworkVm,
+                        LocalArtworkCellular provides artworkCellular,
+                    ) {
+                        PlayerHost(
+                            hasBottomNavigation = hasBottomNavigation,
+                            material3NavigationEnabled = themeState.md3NavBar,
+                            hideMiniPlayer = isJamScreen,
+                            webContentScreen = isWebLoginScreen,
+                        ) {
+                            LastWaveNavHost(navController)
+                        }
                     }
                 }
             }
@@ -247,13 +316,17 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             return
         }
         val uri = intent?.data
+        val scheme = uri?.scheme.orEmpty().lowercase()
         val host = uri?.host.orEmpty().lowercase()
         val isSupportedMusicLink = intent?.action == Intent.ACTION_VIEW &&
-            (uri?.scheme == "http" || uri?.scheme == "https") &&
+            (scheme == "http" || scheme == "https") &&
             (host == "youtube.com" || host == "www.youtube.com" ||
                 host == "m.youtube.com" || host == "music.youtube.com" || host == "youtu.be" ||
                 host == "open.spotify.com" || host == "spotify.link")
-        val hasPlaybackTarget = isSupportedMusicLink || intent?.action == Intent.ACTION_SEND
+        val isLocalAudioIntent = intent?.action == Intent.ACTION_VIEW &&
+            (scheme == "content" || scheme == "file") &&
+            uri != null
+        val hasPlaybackTarget = isSupportedMusicLink || isLocalAudioIntent || intent?.action == Intent.ACTION_SEND
         if (hasPlaybackTarget) {
             runCatching { linkPlaybackResolver.get().handleIntent(intent) }
         }
@@ -261,6 +334,22 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent == null) return
+        if (intent.getStringExtra("widget_navigation") == "search") {
+            runCatching { appRouteNavigator.get().navigateTo(Screen.Search.route) }
+            return
+        }
+        if (intent.action == com.lastwave.app.widget.wave.WaveWidgetNavigation.ACTION_OPEN_NOW_PLAYING) {
+            com.lastwave.app.widget.wave.WaveWidgetNavigation.requestOpen()
+            return
+        }
+        val uri = intent.data
+        val isJamDeepLink = (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) ||
+            ((uri?.scheme == "https" || uri?.scheme == "http") && uri?.host == "jam.clashprojects.qd.je")
+        if (isJamDeepLink) {
+            val code = uri?.getQueryParameter("code")
+            runCatching { appRouteNavigator.get().navigateTo(Screen.Jam.createRoute(code)) }
+            return
+        }
         val isDownloadsTarget = intent.action == com.lastwave.app.data.download.TrackDownloadManager.ACTION_VIEW_DOWNLOADS ||
             intent.getStringExtra(com.lastwave.app.data.download.TrackDownloadManager.EXTRA_NAVIGATE_TO) == Screen.Downloads.route
         if (isDownloadsTarget) {
@@ -276,7 +365,55 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         handleNavigationIntent(intent)
     }
 
+    private fun checkAndRequestAudioPermission() {
+        if (hasPromptedAudioThisSession) return
+        hasPromptedAudioThisSession = true
+
+        if (com.lastwave.app.data.download.TrackDownloadManager.isDownloadsScanned(this)) return
+
+        val requiredPermission = com.lastwave.app.data.download.TrackDownloadManager.getRequiredAudioPermission()
+        if (checkSelfPermission(requiredPermission) == PackageManager.PERMISSION_GRANTED) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { trackDownloadManager.get().restoreDownloadsAfterReinstall() }
+            }
+            return
+        }
+
+        runCatching {
+            audioPermissionLauncher.launch(requiredPermission)
+        }.onFailure {
+            android.util.Log.w(STARTUP_TAG, "Audio permission request skipped", it)
+        }
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val player = runCatching { musicPlayer.get() }.getOrNull()
+            if (player != null && player.state.value.isCasting) {
+                when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                        val current = player.state.value.appVolume
+                        player.setAppVolume((current + 0.05f).coerceIn(0f, 1f))
+                        return true
+                    }
+                    android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                        val current = player.state.value.appVolume
+                        player.setAppVolume((current - 0.05f).coerceIn(0f, 1f))
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     private companion object {
         const val STARTUP_TAG = "LastWaveStartup"
+        @Volatile
+        var hasPromptedAudioThisSession = false
     }
 }
+
+/** Legacy alias class retained for backwards compatibility with any explicit intents. */
+@AndroidEntryPoint
+class MainActivity : MainShellActivity()

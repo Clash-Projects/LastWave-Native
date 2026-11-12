@@ -21,6 +21,7 @@ sealed class Screen(val route: String) {
     data object Genres : Screen("genres")
     data object Search : Screen("search")
     data object Settings : Screen("settings")
+    data object Storage : Screen("storage")
     data object Friends : Screen("friends")
     data object Downloads : Screen("downloads")
     data object ProviderModules : Screen("provider_modules")
@@ -28,8 +29,19 @@ sealed class Screen(val route: String) {
     data object ExcludedSongs : Screen("excluded_songs")
     data object YouTubeImport : Screen("youtube_import")
     data object YouTubeLogin : Screen("youtube_login")
+    data object SpotifyLogin : Screen("spotify_login")
+
+    /** The session cookie pasted in by hand, without the browser sign-in. */
+    data object SpotifyTokenImport : Screen("spotify_token_import")
+    data object Jam : Screen("jam?code={code}") {
+        fun createRoute(code: String? = null) = if (code.isNullOrBlank()) "jam" else "jam?code=${encodeArg(code)}"
+    }
     data object ExternalPlaylistImport : Screen("external_playlist_import")
     data object NewReleases : Screen("new_releases")
+    data object Podcasts : Screen("podcasts")
+    data object PodcastShow : Screen("podcast_show/{showId}") {
+        fun createRoute(showId: String) = "podcast_show/${encodeArg(showId)}"
+    }
     data object FeedPlaylistDetail : Screen("feed_playlist/{playlistId}") {
         fun createRoute(playlistId: String) = "feed_playlist/${encodeArg(playlistId)}"
     }

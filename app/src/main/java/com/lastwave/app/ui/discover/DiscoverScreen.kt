@@ -53,16 +53,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.GroupGap
 import com.lastwave.app.ui.common.GroupPosition
@@ -79,7 +83,7 @@ import com.lastwave.app.ui.player.LocalMusicPlayer
 import com.lastwave.app.ui.theme.ExpressivePillShape
 
 @Composable
-private fun shimmerBrush(): Brush {
+private fun shimmerBrush(): () -> Brush {
     val base = MaterialTheme.colorScheme.surfaceContainerHighest
     val highlight = androidx.compose.ui.graphics.lerp(base, MaterialTheme.colorScheme.primary, 0.22f)
     val shimmerColors = listOf(
@@ -88,7 +92,7 @@ private fun shimmerBrush(): Brush {
         base.copy(alpha = 0.35f),
     )
     val transition = rememberInfiniteTransition(label = "shimmer")
-    val translateAnim by transition.animateFloat(
+    val translateAnim = transition.animateFloat(
         initialValue = -400f,
         targetValue = 1200f,
         animationSpec = infiniteRepeatable(
@@ -103,18 +107,22 @@ private fun shimmerBrush(): Brush {
         ),
         label = "shimmerAnim",
     )
-    return Brush.linearGradient(
-        colors = shimmerColors,
-        start = Offset(translateAnim - 300f, translateAnim - 300f),
-        end = Offset(translateAnim, translateAnim),
-    )
+    // Brush is built in the draw phase so the skeleton repaints without recomposing the list each frame.
+    return {
+        val t = translateAnim.value
+        Brush.linearGradient(
+            colors = shimmerColors,
+            start = Offset(t - 300f, t - 300f),
+            end = Offset(t, t),
+        )
+    }
 }
 
 @Composable
 fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val musicPlayer = LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var menuTrack by remember { mutableStateOf<GeneratedTrack?>(null) }
     val playbackQueue = remember(state.tracks) { state.tracks.map(GeneratedTrack::toPlayableTrack) }
@@ -137,12 +145,14 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
             title = "Discover",
             subtitle = "Discover fresh tracks",
             onBack = onBack,
@@ -151,6 +161,9 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                 HeaderActionIcon(Icons.Filled.Shuffle, "Shuffle Recommendations", viewModel::surpriseMe)
             },
         )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
         Box(Modifier.fillMaxSize().safeHorizontalContentPadding()) {
             Crossfade(
@@ -164,7 +177,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = 16.dp,
+                            top = 16.dp + headerInset,
                             bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                         ),
                         verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -185,15 +198,15 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                 } else when {
                     state.error != null && state.tracks.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Something went wrong", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.disc_error_title), style = MaterialTheme.typography.titleMedium)
                             Text(state.error.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextButton(onClick = viewModel::loadInitial) { Text("Retry") }
+                            TextButton(onClick = viewModel::loadInitial) { Text(stringResource(R.string.ly_retry)) }
                         }
                     }
                     state.tracks.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No recommendations yet", style = MaterialTheme.typography.titleMedium)
-                            Text("Listen to more music on Last.fm, then pull to refresh.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.disc_empty_title), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.disc_empty_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     else -> LazyColumn(
@@ -201,7 +214,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = 12.dp,
+                            top = 12.dp + headerInset,
                             bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding()
                         ),
                         verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -209,7 +222,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                     ) {
                         itemsIndexed(
                             state.tracks,
-                            key = { _, t -> t.key },
+                            key = { index, t -> "${t.key}_$index" },
                             contentType = { _, _ -> "discover_track" },
                         ) { index, track ->
                             val position = if (index == 0) GroupPosition.TOP else GroupPosition.MIDDLE
@@ -248,6 +261,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
             }
         }
     }
+        }
     }
 
     menuTrack?.let { track ->
@@ -298,7 +312,7 @@ private fun DiscoverCard(
 
 @Composable
 private fun SkeletonCard(
-    brush: Brush,
+    brush: () -> Brush,
     position: GroupPosition = GroupPosition.SINGLE,
     titleWidthFraction: Float = 0.6f,
     subtitleWidthFraction: Float = 0.4f,
@@ -310,12 +324,12 @@ private fun SkeletonCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(brush))
+            Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).drawBehind { drawRect(brush()) })
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Box(Modifier.fillMaxWidth(titleWidthFraction).height(16.dp).clip(RoundedCornerShape(8.dp)).background(brush))
+                Box(Modifier.fillMaxWidth(titleWidthFraction).height(16.dp).clip(RoundedCornerShape(8.dp)).drawBehind { drawRect(brush()) })
                 Spacer(Modifier.height(8.dp))
-                Box(Modifier.fillMaxWidth(subtitleWidthFraction).height(12.dp).clip(RoundedCornerShape(6.dp)).background(brush))
+                Box(Modifier.fillMaxWidth(subtitleWidthFraction).height(12.dp).clip(RoundedCornerShape(6.dp)).drawBehind { drawRect(brush()) })
             }
         }
     }

@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -32,12 +33,13 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import coil.ImageLoader
+import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.lastwave.app.playback.PlayableTrack
@@ -178,12 +180,14 @@ private const val TWIST_REACH = 1.0f
 private const val BLUR_FRACTION = 0.18f
 private const val BLUR_SIGMA_MIN = 80f
 private const val BLUR_SIGMA_MAX = 360f
+private const val FLUID_RENDER_SCALE = 4
 
 private const val TEXTURE_PX = 256
 private const val TEXTURE_CACHE = 3
 private const val CROSSFADE_MS = 1400
 private const val APPEAR_MS = 800
 private const val FRAME_SECONDS = 1f / 30f
+private const val FRAME_SLEEP_MS = 20L
 
 private val textureCache = LinkedHashMap<String, Bitmap>()
 
@@ -198,7 +202,7 @@ private suspend fun loadTexture(context: Context, url: String, preBlur: Boolean 
         .size(TEXTURE_PX)
         .allowHardware(false)
         .build()
-    val loader = ImageLoader(context)
+    val loader = context.imageLoader
     val result = runCatching { loader.execute(request) }.getOrNull()
     var bitmap = ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap ?: return@withContext null
 
@@ -225,6 +229,10 @@ internal fun fluidBlurSigma(width: Float, height: Float, extraBlur: Boolean = fa
 private class AgslFluidRenderer {
     private val shader = RuntimeShader(FLUID_AGSL)
     private val paint = Paint()
+    private var lastCur: Bitmap? = null
+    private var lastCurShader: BitmapShader? = null
+    private var lastPrev: Bitmap? = null
+    private var lastPrevShader: BitmapShader? = null
 
     fun render(
         canvas: android.graphics.Canvas,
@@ -238,8 +246,18 @@ private class AgslFluidRenderer {
         extraBlur: Boolean = false,
     ) {
         val copies = fluidCopies(width, height, seconds, seed)
-        val curShader = BitmapShader(current, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        val prevShader = BitmapShader(previous, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        val curShader = if (current === lastCur && lastCurShader != null) {
+            lastCurShader!!
+        } else {
+            lastCur = current
+            BitmapShader(current, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also { lastCurShader = it }
+        }
+        val prevShader = if (previous === lastPrev && lastPrevShader != null) {
+            lastPrevShader!!
+        } else {
+            lastPrev = previous
+            BitmapShader(previous, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also { lastPrevShader = it }
+        }
         shader.setInputShader("curArt", curShader)
         shader.setInputShader("prevArt", prevShader)
         shader.setFloatUniform("curArtSize", current.width.toFloat(), current.height.toFloat())
@@ -296,11 +314,12 @@ fun isFluidSupported(): Boolean {
 @Composable
 fun FluidArtworkBackground(
     track: PlayableTrack,
+    isPlaying: Boolean,
     modifier: Modifier = Modifier,
     extraBlur: Boolean = false,
     rotatingBackgroundEnabled: Boolean = true,
-    lyricsRotatingBackgroundEnabled: Boolean = true,
-    artworkViewModel: ArtworkViewModel = hiltViewModel(),
+    lyricsRotatingBackgroundEnabled: Boolean = false,
+    artworkViewModel: ArtworkViewModel = com.lastwave.app.ui.common.LocalArtworkViewModel.current ?: hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {
     val fluidSupported = isFluidSupported()
@@ -314,20 +333,35 @@ fun FluidArtworkBackground(
 
     val context = LocalContext.current
     val embeddedUrl = track.artworkUrl
-    val isReal = remember(embeddedUrl) { ArtworkNormalizer.isRealImage(embeddedUrl) }
-    
+
     val key = remember(track.title, track.artist) { ArtworkNormalizer.cacheKey(track.title, track.artist) }
     val resolvedUrl by remember(key) {
         artworkViewModel.resolved.map { it[key] }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
-    
-    LaunchedEffect(key) {
-        if (!isReal && resolvedUrl.isNullOrBlank()) {
+
+    val localCover = embeddedUrl?.startsWith("file://") == true
+    val highResUrl = resolvedUrl?.takeIf { it.isNotBlank() }
+    val useHighRes = highResUrl != null
+
+    LaunchedEffect(key, localCover) {
+        if (localCover) return@LaunchedEffect
+        if (resolvedUrl == null) {
             artworkViewModel.resolve(track.title, track.artist)
         }
     }
-    
-    val artworkUrl = if (isReal) embeddedUrl else resolvedUrl
+
+    // High-resolution master artwork from metadata providers (Apple Music/Tidal/Deezer/Spotify/YTMusic)
+    // takes priority for the player wallpaper background.
+    // While resolving in background, embeddedUrl (upscaled) is shown as immediate placeholder.
+    val artworkUrl = if (localCover) {
+        embeddedUrl
+    } else if (useHighRes) {
+        highResUrl
+    } else if (ArtworkNormalizer.isRealImage(embeddedUrl)) {
+        ArtworkNormalizer.upscaleYoutubeArtwork(embeddedUrl)
+    } else {
+        null
+    }
     
     var current by remember { mutableStateOf<Bitmap?>(null) }
     var previous by remember { mutableStateOf<Bitmap?>(null) }
@@ -363,9 +397,14 @@ fun FluidArtworkBackground(
     }
 
     var seconds by remember { mutableFloatStateOf(0f) }
-    val shouldPauseLoop = extraBlur && !lyricsRotatingBackgroundEnabled
-    LaunchedEffect(!shouldPauseLoop) {
-        if (shouldPauseLoop) return@LaunchedEffect
+    var cachedSigma by remember { mutableFloatStateOf(0f) }
+    var cachedRenderEffect by remember { mutableStateOf<androidx.compose.ui.graphics.RenderEffect?>(null) }
+    val windowActive = rememberPlayerWindowActive()
+    val motionActive = isPlaying && windowActive
+    // Paused or obscured: hold the current pose. Animating the full-screen shader
+    // + blur while paused or under the shade used most of a CPU core.
+    LaunchedEffect(motionActive) {
+        if (!motionActive) return@LaunchedEffect
         var last = 0L
         var pending = 0f
         while (true) {
@@ -376,6 +415,8 @@ fun FluidArtworkBackground(
             if (pending >= FRAME_SECONDS) {
                 seconds += pending
                 pending = 0f
+                // Effect advances at 30 Hz: sleep through ~2 vsyncs instead of requesting every frame (keeps 120 Hz panels idle).
+                delay(FRAME_SLEEP_MS)
             }
         }
     }
@@ -389,16 +430,30 @@ fun FluidArtworkBackground(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = appear.value
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val sigma = fluidBlurSigma(size.width, size.height, extraBlur)
-                            // A haunted GPU driver must cost us the blur, never the process.
-                            renderEffect = runCatching {
-                                RenderEffect
-                                    .createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
-                                    .asComposeRenderEffect()
-                            }.getOrNull()
+                    .graphicsLayer { alpha = appear.value }
+                    .layout { measurable, constraints ->
+                        val w = constraints.maxWidth
+                        val h = constraints.maxHeight
+                        val sw = (w / FLUID_RENDER_SCALE).coerceAtLeast(1)
+                        val sh = (h / FLUID_RENDER_SCALE).coerceAtLeast(1)
+                        val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(sw, sh))
+                        layout(w, h) {
+                            placeable.placeWithLayer(0, 0) {
+                                scaleX = w.toFloat() / sw
+                                scaleY = h.toFloat() / sh
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    // Sigma from the FULL size, then scaled, so the blur matches the old look.
+                                    val sigma = fluidBlurSigma(w.toFloat(), h.toFloat(), extraBlur) / FLUID_RENDER_SCALE
+                                    if (sigma != cachedSigma || cachedRenderEffect == null) {
+                                        cachedSigma = sigma
+                                        cachedRenderEffect = runCatching {
+                                            RenderEffect.createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP).asComposeRenderEffect()
+                                        }.getOrNull()
+                                    }
+                                    renderEffect = cachedRenderEffect
+                                }
+                            }
                         }
                     }
                     .drawBehind {

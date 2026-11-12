@@ -195,6 +195,7 @@ void DspProcessor::configure(double sampleRate) noexcept {
     appliedEqualizerRevision_ = targetEqualizerRevision_.load(std::memory_order_acquire);
     limiterGain_ = 1.0F;
     clarityChainActive_ = currentWet_ > 0.0F;
+    parametricEq_.configure(sampleRate_, 2);
     reset();
 }
 
@@ -209,6 +210,7 @@ void DspProcessor::reset() noexcept {
     airExciterFilter_.clear();
     crossfeed_.clear();
     for (auto& band : equalizerBands_) band.clear();
+    parametricEq_.reset();
     limiterGain_ = 1.0F;
     microFadePosition_ = 0;
     dcXPrev_.fill(0.0);
@@ -350,7 +352,20 @@ void DspProcessor::process(
     std::int32_t frameCount,
     std::int32_t channelCount) noexcept {
     if (samples == nullptr || frameCount <= 0 || (channelCount != 1 && channelCount != 2)) return;
-    if (bitPerfectEnabled_.load(std::memory_order_acquire)) return;
+    const bool parametricApplied = parametricEq_.process(samples, frameCount, channelCount);
+    const auto clampParametricOutput = [&]() noexcept {
+        if (!parametricApplied) return;
+        const std::size_t count = static_cast<std::size_t>(frameCount) *
+            static_cast<std::size_t>(channelCount);
+        for (std::size_t i = 0; i < count; ++i) {
+            const float value = samples[i];
+            samples[i] = std::isfinite(value) ? std::clamp(value, -1.0F, 1.0F) : 0.0F;
+        }
+    };
+    if (bitPerfectEnabled_.load(std::memory_order_acquire)) {
+        clampParametricOutput();
+        return;
+    }
     // Atmos-aware bypass forces the clarity chain off independent of the
     // on/off toggle, keeping multichannel/spatial content untouched while
     // preserving the toggle state for stereo afterwards.
@@ -395,7 +410,10 @@ void DspProcessor::process(
         std::abs(limiterGain_ - 1.0F) < 0.00001F;
     // With every enhancement disabled, decoded PCM stays transparent. This
     // avoids the old unconditional -1 dB attenuation and limiter/clamp pass.
-    if (controlsBypassed && stateBypassed) return;
+    if (controlsBypassed && stateBypassed) {
+        clampParametricOutput();
+        return;
+    }
 
     for (std::int32_t frame = 0; frame < frameCount; ++frame) {
         if (currentWet_ < target) {

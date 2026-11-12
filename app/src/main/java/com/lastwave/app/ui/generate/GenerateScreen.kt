@@ -76,6 +76,7 @@ import com.lastwave.app.data.generate.RECOMMENDATION_TRACK_COUNT
 import com.lastwave.app.ui.common.ExpressiveGroup
 import com.lastwave.app.ui.common.ExpressiveGroupSelectRow
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.wobbleOverscroll
 import com.lastwave.app.ui.shell.FloatingNavDefaults
@@ -114,21 +115,26 @@ fun GenerateScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 760.dp)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-        ) {
+            header = { headerModifier, headerBackdrop ->
         ExpressiveHeader(
+            modifier = headerModifier,
+            backdrop = headerBackdrop,
             title = "Generator",
             subtitle = "Choose a mode to generate a playlist",
             onBack = onBack,
         )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
         com.lastwave.app.ui.common.WithoutPlatformOverscroll {
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp + headerInset, bottom = FloatingNavDefaults.contentBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxWidth().weight(1f).clipToBounds().wobbleOverscroll(),
         ) {
@@ -262,6 +268,7 @@ fun GenerateScreen(
         }
     }
     }
+        }
     }
 }
 

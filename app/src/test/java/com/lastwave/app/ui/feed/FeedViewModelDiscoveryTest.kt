@@ -5,13 +5,14 @@ import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.feed.FeedData
 import com.lastwave.app.data.feed.FeedRepository
 import com.lastwave.app.data.generate.GeneratedTrack
+import com.lastwave.app.data.generate.GenresRepository
 import com.lastwave.app.data.local.SessionData
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.repository.HomeRepository
-import com.lastwave.app.data.repository.RelatedGraphRepository
+import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.data.ytmusic.YtConnection
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import com.lastwave.app.playback.MusicPlayer
@@ -43,10 +44,11 @@ class FeedViewModelDiscoveryTest {
     private val settingsPreferences: SettingsPreferences = mockk(relaxed = true)
     private val musicPlayer: MusicPlayer = mockk(relaxed = true)
     private val innerTube: InnerTubeMusicApi = mockk(relaxed = true)
-    private val relatedGraph: RelatedGraphRepository = mockk(relaxed = true)
+    private val recommendationRepository: RecommendationRepository = mockk(relaxed = true)
     private val ytAuth: YtMusicAuthManager = mockk(relaxed = true)
     private val homeRepository: HomeRepository = mockk(relaxed = true)
     private val discoverRepository: DiscoverRepository = mockk(relaxed = true)
+    private val genresRepository: GenresRepository = mockk(relaxed = true)
 
     @Before
     fun setUp() {
@@ -55,6 +57,7 @@ class FeedViewModelDiscoveryTest {
         coEvery { ytAuth.awaitLoadedConnection() } returns YtConnection()
         coEvery { sessionPreferences.session } returns MutableStateFlow(SessionData(username = "test_user"))
         coEvery { settingsPreferences.settings } returns MutableStateFlow(mockk(relaxed = true))
+        coEvery { homeRepository.fetchStats() } returns Result.failure(Exception("no stats"))
     }
 
     @After
@@ -74,10 +77,11 @@ class FeedViewModelDiscoveryTest {
             settingsPreferences,
             musicPlayer,
             innerTube,
-            relatedGraph,
+            recommendationRepository,
             ytAuth,
             homeRepository,
             discoverRepository,
+            genresRepository,
         )
 
         assertThat(viewModel.discoveryTracks.value).containsExactly(mockTrack)
@@ -95,10 +99,11 @@ class FeedViewModelDiscoveryTest {
             settingsPreferences,
             musicPlayer,
             innerTube,
-            relatedGraph,
+            recommendationRepository,
             ytAuth,
             homeRepository,
             discoverRepository,
+            genresRepository,
         )
 
         assertThat(viewModel.discoveryTracks.value).isEmpty()

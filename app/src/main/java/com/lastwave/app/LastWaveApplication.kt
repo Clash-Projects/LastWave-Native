@@ -3,10 +3,18 @@ package com.lastwave.app
 import android.app.Application
 import android.app.ActivityManager
 import android.content.Context
+import android.os.SystemClock
+import coil.EventListener
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.annotation.ExperimentalCoilApi
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import coil.request.ErrorResult
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import com.lastwave.app.data.local.CacheStoragePolicy
+import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.repository.ThemeRepository
 import com.lastwave.app.widget.WidgetUpdater
 import dagger.hilt.android.HiltAndroidApp
@@ -17,6 +25,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -33,6 +44,10 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
     @Inject lateinit var discordPresenceManager: dagger.Lazy<com.lastwave.app.presence.DiscordPresenceManager>
     @Inject lateinit var appLocaleManager: dagger.Lazy<com.lastwave.app.util.AppLocaleManager>
+    @Inject lateinit var settingsPreferences: SettingsPreferences
+
+    @Volatile private var cacheTrackingImageLoader: ImageLoader? = null
+    private val artworkCacheRefreshAt = AtomicLong(0L)
 
     override fun attachBaseContext(base: Context) {
         // Pin the selected locale before any component (providers, services,
@@ -52,6 +67,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         StartupTrail.mark("app.onCreate.start")
+        runCatching { com.lastwave.app.util.AppVisibility.install(this) }
         // Sync per-app locale (Settings -> Language) before any UI is drawn.
         // AppCompat restores the last requested locale itself; the collector
         // inside keeps it in sync with DataStore afterwards.
@@ -65,6 +81,11 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         // First-song OPUS warmup: visitorData + NewPipe + BotGuard must be
         // ready before the first tap, not 2.5s after. Immediate and never
         // throws; the delayed block below keeps the rest lazy.
+        // Duplicate launcher icons after an update or icon change: make sure only
+        // the saved icon's alias is enabled. No-op when already correct.
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching { themeRepository.get().reconcileAppIcon() }
+        }
         applicationScope.launch(Dispatchers.IO) {
             // NewPipe is optional fallback infrastructure. A broken extractor
             // install must not escape an application-scope coroutine.
@@ -119,6 +140,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
         // asynchronously on startup so offline playback works immediately.
         applicationScope.launch(Dispatchers.IO) {
             delay(OPTIONAL_STARTUP_DELAY_MS)
+            runCatching { trackDownloadManager.get().restoreDownloadsAfterReinstall() }
             runCatching { trackDownloadManager.get().syncDownloadsFromStorage() }
                 .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Download sync startup failed", it) }
         }
@@ -166,6 +188,24 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
      *    seen rows are pure in-memory hits.
      *  - Hardware acceleration enabled for fast GPU texture uploading.
      */
+    /**
+     * Gives memory back when One UI / Android asks, so LastWave is a less
+     * attractive low-memory-kill target. Coil already trims its own cache.
+     * Only once the process is an idle background app (TRIM_MEMORY_BACKGROUND
+     * and above: no visible UI and no playback foreground service) is the
+     * headless BotGuard WebView released; playback rebuilds it on demand.
+     */
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+            applicationScope.launch {
+                runCatching { com.lastwave.app.data.music.potoken.BotGuardTokenGenerator.releaseForMemoryPressure() }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalCoilApi::class)
     override fun newImageLoader(): ImageLoader {
         val lowRamDevice = runCatching {
             (getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
@@ -191,7 +231,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             okhttp3.OkHttpClient.Builder().build()
         }
 
-        return ImageLoader.Builder(this)
+        val imageLoader = ImageLoader.Builder(this)
             .okHttpClient(imageClient)
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -199,23 +239,65 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
                     .build()
             }
             .diskCache {
+                val cacheLimitMb = runCatching {
+                    if (::settingsPreferences.isInitialized) {
+                        runBlocking(Dispatchers.IO) { settingsPreferences.storageCacheLimitMb.first() }
+                    } else {
+                        CacheStoragePolicy.DEFAULT_LIMIT_MB
+                    }
+                }.getOrDefault(CacheStoragePolicy.DEFAULT_LIMIT_MB)
+                CacheStoragePolicy.setLimitMb(cacheLimitMb)
+                val imageCacheLimitBytes = CacheStoragePolicy.imageCacheBytes(lowRamDevice)
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    // Enough for hundreds of compressed covers without
-                    // allowing artwork to dominate the app's storage usage.
-                    .maxSizeBytes(if (lowRamDevice) LOW_RAM_IMAGE_DISK_CACHE_BYTES else IMAGE_DISK_CACHE_BYTES)
+                    .maxSizeBytes(imageCacheLimitBytes)
                     .build()
+            }
+            .eventListenerFactory {
+                object : EventListener {
+                    private fun updateCacheSize() {
+                        refreshArtworkCacheUsage()
+                    }
+
+                    override fun onSuccess(request: ImageRequest, result: SuccessResult) {
+                        updateCacheSize()
+                    }
+
+                    override fun onError(request: ImageRequest, result: ErrorResult) {
+                        updateCacheSize()
+                    }
+
+                    override fun onCancel(request: ImageRequest) {
+                        updateCacheSize()
+                    }
+                }
             }
             .respectCacheHeaders(false)
             .allowHardware(true)
             .crossfade(150)
             .build()
+        cacheTrackingImageLoader = imageLoader
+        applicationScope.launch(Dispatchers.IO) { refreshArtworkCacheUsage() }
+        return imageLoader
+    }
 
+    @OptIn(ExperimentalCoilApi::class)
+    private fun refreshArtworkCacheUsage() {
+        // DiskLruCache.size() takes its journal lock and has blocked main for
+        // >150 ms during startup. Coil reports every image completion on main,
+        // so scan off-main and coalesce bursts instead of stalling per image.
+        val now = SystemClock.elapsedRealtime()
+        val last = artworkCacheRefreshAt.get()
+        if (now - last < 2_000L) return
+        if (!artworkCacheRefreshAt.compareAndSet(last, now)) return
+        applicationScope.launch(Dispatchers.IO) {
+            CacheStoragePolicy.setArtworkCacheBytes(
+                runCatching { cacheTrackingImageLoader?.diskCache?.size ?: 0L }.getOrDefault(0L),
+            )
+        }
     }
 
     private companion object {
-        const val IMAGE_DISK_CACHE_BYTES = 32L * 1024 * 1024
-        const val LOW_RAM_IMAGE_DISK_CACHE_BYTES = 16L * 1024 * 1024
         const val ORPHAN_TEMP_MAX_AGE_MS = 6L * 60 * 60 * 1000
         const val OPTIONAL_STARTUP_DELAY_MS = 2_500L
     }

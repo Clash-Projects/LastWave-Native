@@ -3,6 +3,7 @@ package com.lastwave.app.ui.theme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -43,6 +44,39 @@ object Md3SchemeBuilder {
             else -> ((r - g) / d + 4f)
         } / 6f
         return (h * 360f).roundToInt().let { ((it % 360) + 360) % 360 }
+    }
+
+    /** HSL saturation (0-1) of a hex colour; 0 for anything unparseable. */
+    private fun saturationOf(hex: String): Float {
+        val rgb = hex.removePrefix("#").take(6).toIntOrNull(16) ?: return 0f
+        val r = ((rgb ushr 16) and 0xFF) / 255f
+        val g = ((rgb ushr 8) and 0xFF) / 255f
+        val b = (rgb and 0xFF) / 255f
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val span = 1f - abs(max + min - 1f)
+        return if (span <= 0f) 0f else (max - min) / span
+    }
+
+    /** True for grey/black/white seeds: their hue is meaningless ([hueOf] gives 0, red). */
+    fun isAchromatic(hex: String): Boolean = saturationOf(hex) < 0.1f
+
+    /** Extra chroma a fully saturated cover adds on top of the fixed levels. */
+    private const val MAX_ARTWORK_CHROMA_BOOST = 20
+
+    /**
+     * (dark, light) schemes for now-playing artwork. Fixed chroma and a
+     * hue+60 tertiary made every cover the same pastel: the cover's own
+     * saturation now sets how vivid the accents are, and its second colour,
+     * when it has one, is the tertiary. Grey covers get the monochrome scheme.
+     */
+    fun buildArtworkSchemes(seed: String, second: String?, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
+        if (isAchromatic(seed)) return buildMonochromeDarkScheme(amoled) to buildMonochromeLightScheme()
+        val h = hueOf(seed)
+        val hT = second?.let(::hueOf) ?: ((h + 60) % 360)
+        val boost = ((saturationOf(seed) * 100).roundToInt() - CHROMA_PRIMARY).coerceIn(0, MAX_ARTWORK_CHROMA_BOOST)
+        // Light primaries sit at 40% lightness under white text: half the boost keeps that readable.
+        return build(h, h, hT, h, amoled, chromaBoost = boost) to buildLight(h, h, hT, h, chromaBoost = boost / 2)
     }
 
     /** Full dynamic dark scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
@@ -102,6 +136,113 @@ object Md3SchemeBuilder {
         monochrome = true,
     )
 
+    /**
+     * LastWave Signature Dark Scheme built specifically around the official app logo colors:
+     * Electric Lime (#C9FB00) and Deep Obsidian Teal (#012226).
+     */
+    fun buildLastWaveDarkScheme(amoled: Boolean, @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
+        val brandLime = Color(0xFFC9FB00)
+        val darkTeal = Color(0xFF012226)
+        val deepTeal = Color(0xFF01181B)
+
+        val backgroundCol = if (amoled) Color.Black else deepTeal
+        val surfaceCol = if (amoled) Color.Black else darkTeal
+        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF011E22)
+        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF001214)
+
+        return darkColorScheme(
+            primary = brandLime,
+            onPrimary = darkTeal,
+            primaryContainer = Color(0xFF063E45),
+            onPrimaryContainer = Color(0xFFD6FF38),
+
+            secondary = Color(0xFF38E5B7),
+            onSecondary = darkTeal,
+            secondaryContainer = Color(0xFF06474F),
+            onSecondaryContainer = Color(0xFF67F8D8),
+
+            tertiary = Color(0xFFA6FF38),
+            onTertiary = Color(0xFF1B3800),
+            tertiaryContainer = Color(0xFF0C464C),
+            onTertiaryContainer = brandLime,
+
+            error = Color(0xFFFFB4AB),
+            errorContainer = Color(0xFF93000A),
+            onErrorContainer = Color(0xFFFFDAD6),
+            onError = Color(0xFF690005),
+
+            background = backgroundCol,
+            onBackground = Color(0xFFE4F8F8),
+            surface = surfaceCol,
+            onSurface = Color(0xFFE4F8F8),
+            surfaceContainer = Color(0xFF02272C),
+            surfaceContainerHigh = Color(0xFF04333A),
+            surfaceContainerHighest = Color(0xFF073F47),
+            surfaceContainerLow = surfaceLowCol,
+            surfaceContainerLowest = surfaceLowestCol,
+            surfaceVariant = Color(0xFF063B42),
+            onSurfaceVariant = Color(0xFFA1CACE),
+
+            outline = Color(0xFF23656E),
+            outlineVariant = Color(0xFF0A444C),
+
+            inverseSurface = Color(0xFFE4F8F8),
+            inverseOnSurface = darkTeal,
+            inversePrimary = Color(0xFF486300),
+            scrim = Color.Black,
+        )
+    }
+
+    /**
+     * LastWave Signature Light Scheme built around the official app logo colors.
+     */
+    fun buildLastWaveLightScheme(@Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
+        val brandLime = Color(0xFFC9FB00)
+        val darkTeal = Color(0xFF012226)
+
+        return androidx.compose.material3.lightColorScheme(
+            primary = Color(0xFF486300),
+            onPrimary = Color.White,
+            primaryContainer = Color(0xFFE0FE5B),
+            onPrimaryContainer = darkTeal,
+
+            secondary = Color(0xFF014D56),
+            onSecondary = Color.White,
+            secondaryContainer = Color(0xFF9FF2E2),
+            onSecondaryContainer = darkTeal,
+
+            tertiary = Color(0xFF2C6855),
+            onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFB8F9A5),
+            onTertiaryContainer = Color(0xFF0E3800),
+
+            error = Color(0xFFBA1A1A),
+            errorContainer = Color(0xFFFFDAD6),
+            onErrorContainer = Color(0xFF410002),
+            onError = Color.White,
+
+            background = Color(0xFFF2FBF7),
+            onBackground = darkTeal,
+            surface = Color(0xFFF2FBF7),
+            onSurface = darkTeal,
+            surfaceContainer = Color(0xFFE0F1EC),
+            surfaceContainerHigh = Color(0xFFD6EAE5),
+            surfaceContainerHighest = Color(0xFFCCE4DE),
+            surfaceContainerLow = Color(0xFFEAF6F2),
+            surfaceContainerLowest = Color.White,
+            surfaceVariant = Color(0xFFD6ECE8),
+            onSurfaceVariant = Color(0xFF1E464B),
+
+            outline = Color(0xFF5A8E89),
+            outlineVariant = Color(0xFFB0D5D0),
+
+            inverseSurface = darkTeal,
+            inverseOnSurface = Color(0xFFE4F8F8),
+            inversePrimary = brandLime,
+            scrim = Color.Black,
+        )
+    }
+
     private fun build(
         primaryHue: Int,
         secondaryHue: Int,
@@ -109,10 +250,11 @@ object Md3SchemeBuilder {
         neutralHue: Int,
         amoled: Boolean,
         monochrome: Boolean = false,
+        chromaBoost: Int = 0,
     ): ColorScheme {
-        val cP = if (monochrome) 0 else CHROMA_PRIMARY
-        val cS = if (monochrome) 0 else CHROMA_SECONDARY
-        val cT = if (monochrome) 0 else CHROMA_TERTIARY
+        val cP = if (monochrome) 0 else CHROMA_PRIMARY + chromaBoost
+        val cS = if (monochrome) 0 else CHROMA_SECONDARY + chromaBoost / 2
+        val cT = if (monochrome) 0 else CHROMA_TERTIARY + chromaBoost / 2
         val cN = if (monochrome) 0 else CHROMA_NEUTRAL
         val cNV = if (monochrome) 0 else CHROMA_NEUTRAL_VARIANT
 
@@ -177,10 +319,11 @@ object Md3SchemeBuilder {
         tertiaryHue: Int,
         neutralHue: Int,
         monochrome: Boolean = false,
+        chromaBoost: Int = 0,
     ): ColorScheme {
-        val cP = if (monochrome) 0 else CHROMA_PRIMARY + 15
-        val cS = if (monochrome) 0 else CHROMA_SECONDARY + 8
-        val cT = if (monochrome) 0 else CHROMA_TERTIARY + 12
+        val cP = if (monochrome) 0 else CHROMA_PRIMARY + 15 + chromaBoost
+        val cS = if (monochrome) 0 else CHROMA_SECONDARY + 8 + chromaBoost / 2
+        val cT = if (monochrome) 0 else CHROMA_TERTIARY + 12 + chromaBoost / 2
         val cN = if (monochrome) 0 else 4
         val cNV = if (monochrome) 0 else 6
 
@@ -225,6 +368,12 @@ object Md3SchemeBuilder {
             inversePrimary = hsl(primaryHue, cP, 80),
             scrim = Color.Black,
         )
+    }
+
+    internal fun contrast(a: Color, b: Color): Double {
+        val la = a.luminance() + 0.05
+        val lb = b.luminance() + 0.05
+        return maxOf(la, lb) / minOf(la, lb)
     }
 
     /**

@@ -201,16 +201,21 @@ class DiscordIpcTransport private constructor(
             // no blocking work here).
             val bound = withTimeoutOrNull(timeoutMs) {
                 suspendCancellableCoroutine { continuation ->
+                    val resumed = java.util.concurrent.atomic.AtomicBoolean(false)
+                    fun safeResume(result: BoundRpc?) {
+                        if (resumed.compareAndSet(false, true) && continuation.isActive) {
+                            continuation.resume(result)
+                        }
+                    }
+
                     val serviceConnection = object : ServiceConnection {
                         override fun onServiceConnected(name: ComponentName?, serviceBinder: IBinder?) {
                             if (serviceBinder == null) {
                                 Log.w(TAG, "Discord RPC onServiceConnected with null binder")
-                                if (continuation.isActive) continuation.resume(null)
+                                safeResume(null)
                                 return
                             }
-                            if (continuation.isActive) {
-                                continuation.resume(BoundRpc(serviceBinder, this))
-                            }
+                            safeResume(BoundRpc(serviceBinder, this))
                         }
 
                         override fun onServiceDisconnected(name: ComponentName?) {
@@ -219,12 +224,12 @@ class DiscordIpcTransport private constructor(
 
                         override fun onBindingDied(name: ComponentName?) {
                             Log.w(TAG, "Discord RPC binding died")
-                            if (continuation.isActive) continuation.resume(null)
+                            safeResume(null)
                         }
 
                         override fun onNullBinding(name: ComponentName?) {
                             Log.w(TAG, "Discord RPC null binding")
-                            if (continuation.isActive) continuation.resume(null)
+                            safeResume(null)
                         }
                     }
 
@@ -236,11 +241,12 @@ class DiscordIpcTransport private constructor(
 
                     if (!ok) {
                         Log.w(TAG, "Discord RPC bindService returned false for $component")
-                        if (continuation.isActive) continuation.resume(null)
+                        safeResume(null)
                         return@suspendCancellableCoroutine
                     }
 
                     continuation.invokeOnCancellation {
+                        resumed.set(true)
                         runCatching { appContext.unbindService(serviceConnection) }
                             .onFailure { Log.d(TAG, "Unbind ignored on cancel", it) }
                     }

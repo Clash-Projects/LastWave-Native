@@ -6,6 +6,7 @@ import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.TasteProfileProvider
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
+import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -48,6 +49,7 @@ class DiscoverRepository @Inject constructor(
     private val tasteProfileProvider: TasteProfileProvider,
     private val innerTube: InnerTubeMusicApi,
     private val ytAuth: YtMusicAuthManager,
+    private val recommendationRepository: RecommendationRepository,
 ) {
     private fun YouTubeMusicTrack.toGeneratedTrack() = GeneratedTrack(
         name = title,
@@ -85,6 +87,7 @@ class DiscoverRepository @Inject constructor(
             }
         }
         val feedSeeds = _feed.value.shuffled()
+        val trackSeedLimit = if (recommendationRepository.isSpotifyActive()) 2 else MAX_TRACK_SEEDS
         val trackSeeds = buildList {
             addAll(profile?.recentTracksRaw.orEmpty().shuffled().take(2).map { TasteSeed(it, 100) })
             addAll(profile?.topTracksRaw.orEmpty().shuffled().take(2).map { TasteSeed(it, 88) })
@@ -98,7 +101,7 @@ class DiscoverRepository @Inject constructor(
             .groupBy { it.track.key }
             .map { (_, seeds) -> seeds.maxBy { it.weight } }
             .sortedByDescending(TasteSeed::weight)
-            .take(MAX_TRACK_SEEDS)
+            .take(trackSeedLimit)
 
         for (seed in trackSeeds) {
             jobs += async(Dispatchers.IO) {

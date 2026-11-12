@@ -1,11 +1,13 @@
 package com.lastwave.app.data.download
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -14,6 +16,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.lastwave.app.MainActivity
 import com.lastwave.app.R
 import com.lastwave.app.data.local.db.DownloadedTrackDao
@@ -62,7 +65,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
@@ -91,60 +97,23 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-data class DownloadProgress(
-    val key: String,
-    val title: String,
-    val artist: String,
-    val progressPercent: Int = 0,
-    val bytesDownloaded: Long = 0L,
-    val totalBytes: Long = -1L,
-    val formatBadge: String = "AUDIO",
-    val isWaitingForConnection: Boolean = false,
-    val isFinished: Boolean = false,
-    val error: String? = null,
-)
-
-private data class DownloadTransfer(
-    val bytesDownloaded: Long,
-    val totalBytes: Long,
-    val contentType: String,
-)
-
-private data class DownloadRange(val start: Long, val endInclusive: Long) {
-    val length: Long get() = endInclusive - start + 1L
-}
-
-private data class ParsedContentRange(
-    val start: Long,
-    val endInclusive: Long,
-    val total: Long,
-)
-
-private class DownloadHttpException(val statusCode: Int) :
-    IOException("HTTP $statusCode downloading track")
-
-private class DownloadProtocolException(message: String) : IOException(message)
-
-private class DownloadInterruptedException(message: String, cause: Throwable? = null) :
-    IOException(message, cause)
-
 @Singleton
 class TrackDownloadManager @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val innerTube: InnerTubeMusicApi,
-    private val artworkRepository: ArtworkRepository,
-    private val lyricsRepository: LyricsRepository,
-    private val audioTagWriter: AudioTagWriter,
+    @ApplicationContext internal val context: Context,
+    internal val innerTube: InnerTubeMusicApi,
+    internal val artworkRepository: ArtworkRepository,
+    internal val lyricsRepository: LyricsRepository,
+    internal val audioTagWriter: AudioTagWriter,
     okHttpClient: OkHttpClient,
-    private val downloadedTrackDao: DownloadedTrackDao,
-    private val settingsPreferences: SettingsPreferences,
-    private val applicationScope: CoroutineScope,
-    private val moduleResolver: ModulePlaybackResolver,
-    private val segBridge: SegmentedDashBridge,
-    private val offlineLicense: ModuleOfflineLicense,
-    private val moduleManager: ModuleManager,
-    private val flacTranscoder: ModuleFlacTranscoder,
-    private val losslessMusicApi: LosslessMusicApi,
+    internal val downloadedTrackDao: DownloadedTrackDao,
+    internal val settingsPreferences: SettingsPreferences,
+    internal val applicationScope: CoroutineScope,
+    internal val moduleResolver: ModulePlaybackResolver,
+    internal val segBridge: SegmentedDashBridge,
+    internal val offlineLicense: ModuleOfflineLicense,
+    internal val moduleManager: ModuleManager,
+    internal val flacTranscoder: ModuleFlacTranscoder,
+    internal val losslessMusicApi: LosslessMusicApi,
 ) {
     companion object {
         const val CHANNEL_ID = "lastwave_downloads"
@@ -155,39 +124,106 @@ class TrackDownloadManager @Inject constructor(
         const val EXTRA_DOWNLOAD_TITLE = "download_title"
         const val EXTRA_DOWNLOAD_ARTIST = "download_artist"
         const val EXTRA_NAVIGATE_TO = "navigate_to"
-        private const val PUBLIC_DIR_NAME = "LastWave"
+        internal const val PUBLIC_DIR_NAME = "LastWave"
         /** Legacy default kept for reading files downloaded before a custom folder was chosen. */
-        private const val LEGACY_PUBLIC_DIR_NAME = "LastWave"
+        internal const val LEGACY_PUBLIC_DIR_NAME = "LastWave"
         // 128 KB keeps per-connection buffers out of the large-object heap:
         // 512 KB chunks fragmented ART heaps on low-RAM devices and a burst
         // of parallel ranges could OOM the process after a few downloads.
-        private const val DOWNLOAD_BUFFER_SIZE = 128 * 1024 // 128 KB
-        private const val PARALLEL_YOUTUBE_PARTS = 4
+        internal const val DOWNLOAD_BUFFER_SIZE = 128 * 1024 // 128 KB
+        internal const val PARALLEL_YOUTUBE_PARTS = 4
         // Up to 5 tracks download at once; per-download buffers stay small
         // (128 KB x 4 ranges) so this remains safe on low-RAM devices.
-        private const val MAX_CONCURRENT_DOWNLOADS = 5
+        internal const val MAX_CONCURRENT_DOWNLOADS = 5
+        internal const val MAX_CONCURRENT_YOUTUBE_RESOLVES = 2
+        internal const val RESOLVE_RETRY_DELAY_MS = 3_000L
+        internal const val RESOLVE_RETRY_NETWORK_WAIT_MS = 15_000L
         /** Reconnectable transfer failures tolerated before the attempt is abandoned. */
-        private const val MAX_TRANSFER_RETRIES = 6
+        internal const val MAX_TRANSFER_RETRIES = 6
         /** Bound on each YouTube stream-resolve step so one candidate can't wedge a slot. */
-        private const val YT_STREAM_RESOLVE_TIMEOUT_MS = 20_000L
-        private const val MIN_PARALLEL_DOWNLOAD_BYTES = 2L * 1024 * 1024
-        private const val MIN_VALID_AUDIO_BYTES = 1_024L
-        private const val RECONNECT_POLL_INTERVAL_MS = 500L
-        private const val RECONNECT_RETRY_BASE_DELAY_MS = 1_000L
-        private const val RECONNECT_RETRY_MAX_DELAY_MS = 30_000L
-        private const val DOWNLOAD_USER_AGENT =
+        internal const val YT_STREAM_RESOLVE_TIMEOUT_MS = 20_000L
+        /** Resolve + transfer passes before a YouTube download is given up. */
+        internal const val YT_DOWNLOAD_ATTEMPTS = 3
+        internal const val MIN_PARALLEL_DOWNLOAD_BYTES = 2L * 1024 * 1024
+        /** googlevideo range limit (same as playback's ChunkedRangeDataSource). */
+        internal const val YOUTUBE_RANGE_BYTES = 512L * 1024
+        internal const val MIN_VALID_AUDIO_BYTES = 1_024L
+        internal const val RECONNECT_POLL_INTERVAL_MS = 500L
+        internal const val RECONNECT_RETRY_BASE_DELAY_MS = 1_000L
+        internal const val RECONNECT_RETRY_MAX_DELAY_MS = 30_000L
+        internal const val DOWNLOAD_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        private val CONTENT_RANGE_PATTERN = Regex("""bytes\s+(\d+)-(\d+)/(\d+)""", RegexOption.IGNORE_CASE)
+        internal val CONTENT_RANGE_PATTERN = Regex("""bytes\s+(\d+)-(\d+)/(\d+)""", RegexOption.IGNORE_CASE)
 
         fun makeDownloadKey(title: String, artist: String): String =
             "${artist.trim().lowercase()}_${title.trim().lowercase()}"
+
+        const val SCAN_PREFS_NAME = "downloads_restore_prefs"
+        const val KEY_DOWNLOADS_SCANNED = "downloads_scanned"
+        internal const val HIDDEN_PREFS_NAME = "download_history_hidden"
+        internal const val KEY_HIDDEN_REFS = "hidden_refs"
+        internal const val SCAN_MARKER_FILE = "downloads_scanned.marker"
+
+        fun isDownloadsScanned(context: Context): Boolean = runCatching {
+            val prefs = context.getSharedPreferences(SCAN_PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(KEY_DOWNLOADS_SCANNED, false)) return@runCatching true
+            val marker = File(context.noBackupFilesDir, SCAN_MARKER_FILE)
+            marker.exists()
+        }.getOrDefault(false)
+
+        fun getRequiredAudioPermission(): String =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Manifest.permission.READ_MEDIA_AUDIO
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+        internal val AUDIO_EXTENSIONS = setOf("flac", "m4a", "mp3", "opus", "ogg", "webm", "wav", "aac")
+        internal val BRACKET_SONG_ID_REGEX = Regex("""\[([a-zA-Z0-9_-]{11})\]""")
+        internal val PAREN_SONG_ID_REGEX = Regex("""\(([a-zA-Z0-9_-]{11})\)""")
+        internal val TRAILING_SONG_ID_REGEX = Regex("""(?:^|[\s\-_])([a-zA-Z0-9_-]{11})$""")
+        internal val EXACT_SONG_ID_REGEX = Regex("""^[a-zA-Z0-9_-]{11}$""")
+
+        fun extractSongId(nameWithoutExt: String): String? {
+            BRACKET_SONG_ID_REGEX.find(nameWithoutExt)?.let { return it.groupValues[1] }
+            PAREN_SONG_ID_REGEX.find(nameWithoutExt)?.let { return it.groupValues[1] }
+            if (EXACT_SONG_ID_REGEX.matches(nameWithoutExt)) return nameWithoutExt
+            TRAILING_SONG_ID_REGEX.find(nameWithoutExt)?.let { return it.groupValues[1] }
+            return null
+        }
+
+        fun cleanSongTitle(rawTitle: String, songId: String?): String {
+            var title = rawTitle.trim()
+            if (!songId.isNullOrBlank()) {
+                title = title
+                    .replace("[$songId]", "")
+                    .replace("($songId)", "")
+                    .replace(" - $songId", "")
+                    .replace("_$songId", "")
+                    .trim()
+            }
+            title = title.replace(BRACKET_SONG_ID_REGEX, "")
+                .replace(PAREN_SONG_ID_REGEX, "")
+                .trim()
+            return title.ifBlank { rawTitle.trim() }
+        }
+
+        fun parseArtistAndTitleFromFilename(nameWithoutExt: String, songId: String?): Pair<String, String> {
+            val cleanName = cleanSongTitle(nameWithoutExt, songId)
+            return if (cleanName.contains(" - ")) {
+                val artist = cleanName.substringBefore(" - ").trim().ifBlank { "Unknown Artist" }
+                val title = cleanName.substringAfter(" - ").trim().ifBlank { cleanName }
+                artist to title
+            } else {
+                "Unknown Artist" to cleanName.ifBlank { nameWithoutExt }
+            }
+        }
     }
 
     // Dedicated HTTP client with extended timeouts and bounded pooling.
     // Caps are deliberately low: each parallel range holds a socket plus a
     // read buffer, and unbounded pooling kept idle connections (and their
     // buffers) alive for minutes across successive downloads.
-    private val downloadClient = okHttpClient.newBuilder()
+    internal val downloadClient = okHttpClient.newBuilder()
         .dispatcher(Dispatcher().apply {
             // 5 concurrent downloads x 4 ranges, usually on one googlevideo
             // host: a per-host cap of 8 queued ranges behind each other.
@@ -206,24 +242,40 @@ class TrackDownloadManager @Inject constructor(
     // service lookup that throws or returns null on a modified ROM would
     // otherwise fail every injection and take down app launch, so the
     // manager is resolved lazily and tolerated as absent.
-    private val notificationManager: NotificationManager? by lazy {
+    internal val notificationManager: NotificationManager? by lazy {
         runCatching {
             context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         }.getOrNull()
     }
-    private val activeKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-    private val activeJobs = ConcurrentHashMap<String, Job>()
+    internal val activeKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    internal val activeJobs = ConcurrentHashMap<String, Job>()
     /** Shared with [downloadTrack] so a wipe can freeze admission before it snapshots jobs. */
-    private val admissionLock = Any()
+    internal val admissionLock = Any()
     @Volatile
-    private var downloadsWiping = false
-    private val activeUris = ConcurrentHashMap<String, Uri>()
-    private val activeFiles = ConcurrentHashMap<String, File>()
-    private val reconnectGenerations = ConcurrentHashMap<String, AtomicLong>()
-    private val downloadSlots = Semaphore(MAX_CONCURRENT_DOWNLOADS)
+    internal var downloadsWiping = false
+    internal val activeUris = ConcurrentHashMap<String, Uri>()
+    internal val activeFiles = ConcurrentHashMap<String, File>()
+    internal val reconnectGenerations = ConcurrentHashMap<String, AtomicLong>()
+    internal val downloadSlots = Semaphore(MAX_CONCURRENT_DOWNLOADS)
+    internal val youtubeResolveGate = Semaphore(MAX_CONCURRENT_YOUTUBE_RESOLVES)
+    internal val restoreMutex = Mutex()
 
-    private val _downloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
+    internal val _downloads = MutableStateFlow<Map<String, DownloadProgress>>(emptyMap())
     val downloads: StateFlow<Map<String, DownloadProgress>> = _downloads.asStateFlow()
+
+    @Volatile
+    internal var hiddenHistoryCache: HiddenHistory? = null
+    internal val hiddenRefsLock = Any()
+
+    suspend fun restoreDownloadsAfterReinstall(): Boolean = restoreDownloadsAfterReinstallImpl()
+    suspend fun syncDownloadsFromStorage() = syncDownloadsFromStorageImpl()
+    suspend fun removeFromHistoryOnly(track: DownloadedTrackEntity) = removeFromHistoryOnlyImpl(track)
+    suspend fun clearHistoryOnly() = clearHistoryOnlyImpl()
+    suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity) = deleteDownloadedTrackImpl(track)
+    suspend fun finishConsentedDelete(track: DownloadedTrackEntity): Boolean = finishConsentedDeleteImpl(track)
+    suspend fun clearAllDownloads() = clearAllDownloadsImpl()
+    suspend fun clearAllDownloadsWithConsent(): ClearAllDownloadsResult = clearAllDownloadsWithConsentImpl()
+    suspend fun finishConsentedClearAllDownloads(tracks: List<DownloadedTrackEntity>): Boolean = finishConsentedClearAllDownloadsImpl(tracks)
 
     init {
         createNotificationChannel()
@@ -251,7 +303,7 @@ class TrackDownloadManager @Inject constructor(
         "${artist.trim().lowercase()}_${title.trim().lowercase()}"
 
     /** Active download subfolder under Music/ (sanitized single segment). */
-    private suspend fun currentDownloadDirName(): String {
+    internal suspend fun currentDownloadDirName(): String {
         val folder = try {
             settingsPreferences.settings.first().downloadFolder
         } catch (cancelled: CancellationException) {
@@ -264,7 +316,7 @@ class TrackDownloadManager @Inject constructor(
 
     /** All dirs to search for existing files: active folder first, then the
      *  legacy default so tracks downloaded before a folder change still resolve. */
-    private fun downloadSearchDirs(preferred: String): List<File> {
+    internal fun downloadSearchDirs(preferred: String): List<File> {
         val dirs = mutableListOf<File>()
         dirs.add(File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), preferred))
         if (preferred != LEGACY_PUBLIC_DIR_NAME) {
@@ -370,28 +422,30 @@ class TrackDownloadManager @Inject constructor(
             }
             if (fileStillPresent) return@withContext true
         }
+        // Removed from history: the file may still be on disk, but offer
+        // Download again so the user can bring it back into the list.
+        if (existing == null && isHiddenFromHistory(key)) return@withContext false
 
-        // Check if file already exists in the download directories (active folder + legacy default, incl. subfolders).
-        // The walk is guarded: on scoped-storage devices the public Music dir
-        // can throw (or a concurrent download can churn it), and that must
-        // degrade to "not found" rather than crashing the caller.
+        val onDisk = findDownloadOnDisk(title, artist) ?: return@withContext false
+        existing != null || !isHiddenFromHistory(key, onDisk.absolutePath)
+    }
+
+    /**
+     * Looks for "Artist - Title.ext" in the download folders (active + legacy,
+     * incl. subfolders). Guarded: on scoped-storage devices the public Music
+     * dir can throw, or a concurrent download can churn it, and that must
+     * degrade to "not found" rather than crashing the caller.
+     */
+    private suspend fun findDownloadOnDisk(title: String, artist: String): File? {
         val dirName = currentDownloadDirName()
-        val candidateExtensions = listOf("flac", "m4a", "opus", "mp3", "webm")
-        val sanitizedBase = sanitizeFilename("${artist.trim()} - ${title.trim()}")
-        val candidateNames = candidateExtensions.map { "$sanitizedBase.$it" }.toSet()
-        val foundOnDisk = runCatching {
-            downloadSearchDirs(dirName).any { publicDir ->
-                publicDir.exists() && publicDir.isDirectory &&
-                    publicDir.walkTopDown().maxDepth(6).any { f ->
-                        f.isFile && f.name in candidateNames && f.length() > 0
-                    }
-            }
-        }.getOrDefault(false)
-        if (foundOnDisk) {
-            return@withContext true
-        }
-
-        false
+        return runCatching {
+            val sanitizedBase = sanitizeFilename("${artist.trim()} - ${title.trim()}")
+            val candidateNames = listOf("flac", "m4a", "opus", "mp3", "webm").map { "$sanitizedBase.$it" }.toSet()
+            downloadSearchDirs(dirName).asSequence()
+                .filter { it.exists() && it.isDirectory }
+                .flatMap { it.walkTopDown().maxDepth(6) }
+                .firstOrNull { f -> f.isFile && f.name in candidateNames && f.length() > 0 }
+        }.getOrNull()
     }
 
     fun cancelDownload(key: String) {
@@ -513,27 +567,21 @@ class TrackDownloadManager @Inject constructor(
                 // and re-download; the unique trackKey index means the insert
                 // below will REPLACE this row instead of duplicating it.
             } else {
-                val dirName = try {
-                    currentDownloadDirName()
-                } catch (cancelled: CancellationException) {
-                    abandonAcquiredDownload(key)
-                    return
-                }
-                val sanitizedBase = sanitizeFilename("${artist.trim()} - ${title.trim()}")
-                val candidateNames = setOf("flac", "m4a", "opus", "mp3", "webm").map { "$sanitizedBase.$it" }.toSet()
-                // Guarded: this ran outside any try/catch, so a filesystem
-                // hiccup here used to escape the coroutine and kill the app.
-                val found = runCatching {
-                    downloadSearchDirs(dirName).any { publicDir ->
-                        publicDir.exists() && publicDir.isDirectory &&
-                            publicDir.walkTopDown().maxDepth(6).any { f ->
-                                f.isFile && f.name in candidateNames && f.length() > 0
-                            }
-                    }
-                }.getOrDefault(false)
-                if (found) {
+                val found = findDownloadOnDisk(title, artist)
+                if (found != null) {
                     downloadSlots.release()
                     forgetDownloadKey(key)
+                    // Removed from history but the file is still here: bring
+                    // the existing file back instead of downloading it again.
+                    if (unhideKey(key, found.absolutePath)) {
+                        try {
+                            syncDownloadsFromStorage()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.w("TrackDownloadManager", "Couldn't restore hidden download $key", error)
+                        }
+                    }
                     return
                 }
             }
@@ -725,6 +773,8 @@ class TrackDownloadManager @Inject constructor(
                 var dashManifestCodec = ""
                 /** Manifest really carries FLAC (so the .m4a wrapper should be unwrapped). */
                 var dashIsFlacInMp4 = false
+                /** Quality badge to use if a progressive .m4a turns out to hold FLAC. */
+                var flacInMp4Badge: String? = null
                 var bytesReadTotal = 0L
                 var totalBytesRecorded = -1L
                 var downloadSucceeded = false
@@ -752,10 +802,13 @@ class TrackDownloadManager @Inject constructor(
                     val qualitiesToAttempt =
                         LosslessMusicApi.getQualityAttemptOrder(requestedDownloadQuality)
                     for (downloadQuality in qualitiesToAttempt) {
-                    // Spatial-tier veto (mirrors playback): never download an
-                    // Atmos manifest on a device that cannot render it. The
-                    // stereo tiers later in this same list are the fallback.
-                    if (downloadQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS && !atmosCapable) {
+                    // Spatial-tier veto: if the device cannot render spatial audio,
+                    // fallback to stereo tiers unless the user explicitly configured
+                    // Download Quality = Dolby Atmos.
+                    if (downloadQuality == LosslessMusicApi.QUALITY_DOLBY_ATMOS &&
+                        !atmosCapable &&
+                        requestedDownloadQuality != LosslessMusicApi.QUALITY_DOLBY_ATMOS
+                    ) {
                         android.util.Log.i(
                             "TrackDownloadManager",
                             "Atmos veto for $finalTitle by $finalArtist: device cannot render spatial; trying stereo tiers",
@@ -811,6 +864,7 @@ class TrackDownloadManager @Inject constructor(
                                     // spatial manifest on an incapable device
                                     // is unplayable — cascade to stereo tiers.
                                     if (!atmosCapable &&
+                                        requestedDownloadQuality != LosslessMusicApi.QUALITY_DOLBY_ATMOS &&
                                         (manifestCodec.startsWith("ec-3") ||
                                             manifestCodec.startsWith("eac3") ||
                                             manifestCodec.startsWith("ac-3"))
@@ -877,6 +931,17 @@ class TrackDownloadManager @Inject constructor(
                                     isLossless -> formatDetailedQualityBadge(depth, rateKHz)
                                     else -> if (extension.equals("mp3", ignoreCase = true)) "MP3" else "AAC"
                                 }
+                                // Lossless tiers served as .m4a are FLAC in an MP4
+                                // wrapper. The file is checked after download.
+                                if (!isAtmosStream &&
+                                    losslessStream.formatId != LosslessMusicApi.QUALITY_MP3_320 &&
+                                    losslessStream.formatId != LosslessMusicApi.QUALITY_DATA_SAVER
+                                ) {
+                                    flacInMp4Badge = formatDetailedQualityBadge(depth, rateKHz)
+                                    // Show the expected lossless quality in the progress
+                                    // notification; it falls back to AAC if the check fails.
+                                    if (extension == "m4a") formatBadge = flacInMp4Badge ?: formatBadge
+                                }
                                 durationMs = (losslessStream.durationSeconds * 1000L).takeIf { it > 0 } ?: 0L
                             }
                         }
@@ -917,6 +982,7 @@ class TrackDownloadManager @Inject constructor(
                                     // request could be stored as AAC while claiming FLAC.
                                     val manifestCodec = parsedDash.codec.ifBlank { s.codec.lowercase() }
                                     if (!atmosCapable &&
+                                        requestedDownloadQuality != LosslessMusicApi.QUALITY_DOLBY_ATMOS &&
                                         (manifestCodec.startsWith("ec-3") ||
                                             manifestCodec.startsWith("eac3") ||
                                             manifestCodec.startsWith("ac-3"))
@@ -1115,7 +1181,7 @@ class TrackDownloadManager @Inject constructor(
                                     } else if (contentType.contains("mp4") || contentType.contains("m4a") || contentType.contains("aac")) {
                                         extension = "m4a"
                                         mimeType = "audio/mp4"
-                                        formatBadge = "M4A AAC"
+                                        formatBadge = flacInMp4Badge ?: "M4A AAC"
                                     }
                                     bytesReadTotal = transfer.bytesDownloaded
                                     totalBytesRecorded = transfer.totalBytes
@@ -1167,6 +1233,7 @@ class TrackDownloadManager @Inject constructor(
                         dashStartNumber = 1
                         dashManifestCodec = ""
                         dashIsFlacInMp4 = false
+                        flacInMp4Badge = null
                         bytesReadTotal = 0L
                         totalBytesRecorded = -1L
                         continue
@@ -1176,7 +1243,15 @@ class TrackDownloadManager @Inject constructor(
                 }
 
                 // 2. Fallback to YouTube Music if module was not requested or module download failed
-                if (!downloadSucceeded) {
+                // A failed YouTube transfer (URL expired, refused mid-file, bad
+                // payload) is retried on a fresh resolve: reporting the stream
+                // cools its client down, so the next pass lands on another one.
+                // It used to skip the song after the first stream failed.
+                var ytAttempt = 0
+                var failedYtStream: com.lastwave.app.data.music.YouTubeAudioStream? = null
+                while (!downloadSucceeded) {
+                    ytAttempt++
+                    failedYtStream = null
                     try {
                         updateStage("Finding YouTube stream…", notify = true)
                         val lookupArtist = safeArtist?.trim()?.takeIf { it.isNotBlank() } ?: ""
@@ -1185,7 +1260,6 @@ class TrackDownloadManager @Inject constructor(
                         // Never single-shot strict match — search more, try each.
                         // Budgeted so one wedged track cannot hold a
                         // download slot and stall the batch queue.
-                        val ytFallbackStartMs = android.os.SystemClock.elapsedRealtime()
                         val ytResolveBudgetMs = 60_000L
                         val candidateTracks = linkedMapOf<String, YouTubeMusicTrack>()
                         val isPlausibleTrack: (YouTubeMusicTrack) -> Boolean = { track ->
@@ -1218,49 +1292,74 @@ class TrackDownloadManager @Inject constructor(
                         var actualVideoId: String? = null
                         var chosenTrack: YouTubeMusicTrack? = null
                         var lastResolveError: Throwable? = null
-                        for ((candidateId, candidateTrack) in candidateTracks) {
-                            if (android.os.SystemClock.elapsedRealtime() - ytFallbackStartMs > ytResolveBudgetMs) {
-                                android.util.Log.w(
-                                    "TrackDownloadManager",
-                                    "YouTube resolve budget exhausted for $finalTitle by $finalArtist; skipping remaining candidates",
-                                )
-                                break
-                            }
-                            // 1. Same waterfall playback uses (cache + multi-client direct URLs).
-                            val playbackStream = try {
-                                kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
-                                    innerTube.peekCachedStream(candidateId)
-                                        ?: innerTube.resolveAudioStream(candidateId)
+                        // Parallel resolves queue on one local cipher until their budgets
+                        // expire, and bursts of player requests invite the bot check.
+                        // Only resolving is limited here; transfers still run in parallel.
+                        youtubeResolveGate.acquire()
+                        try {
+                            val ytFallbackStartMs = android.os.SystemClock.elapsedRealtime()
+                            for (resolveRound in 0..1) {
+                                for ((candidateId, candidateTrack) in candidateTracks) {
+                                    if (android.os.SystemClock.elapsedRealtime() - ytFallbackStartMs > ytResolveBudgetMs) {
+                                        android.util.Log.w(
+                                            "TrackDownloadManager",
+                                            "YouTube resolve budget exhausted for $finalTitle by $finalArtist; skipping remaining candidates",
+                                        )
+                                        break
+                                    }
+                                    // 1. Same waterfall playback uses (cache + multi-client direct URLs).
+                                    val playbackStream = try {
+                                        kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
+                                            innerTube.peekCachedStream(candidateId)
+                                                ?: innerTube.resolveAudioStream(candidateId)
+                                        }
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        lastResolveError = error
+                                        null
+                                    }
+                                    // 2. Opus preference: if playback picked AAC (or failed),
+                                    // ask NewPipe for the WebM/Opus rendition, which is
+                                    // remuxed below into a fully tagged .opus file.
+                                    val opusStream = playbackStream?.takeIf { it.isOpusStream() } ?: try {
+                                        kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
+                                            innerTube.resolveDownloadStream(candidateId)
+                                        }
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        lastResolveError = error
+                                        null
+                                    }
+                                    // An HLS playlist is not a file: saving it wrote the playlist
+                                    // text as the "song". Only progressive streams can be downloaded.
+                                    pickedStream = listOfNotNull(
+                                        opusStream?.takeIf { it.isOpusStream() },
+                                        playbackStream,
+                                        opusStream,
+                                    ).firstOrNull { !it.isAdaptive }
+                                    if (pickedStream != null) {
+                                        actualVideoId = candidateId
+                                        resolvedYtVideoId = candidateId
+                                        chosenTrack = candidateTrack
+                                        break
+                                    }
                                 }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                lastResolveError = error
-                                null
-                            }
-                            // 2. Opus preference: if playback picked AAC (or failed),
-                            // ask NewPipe for the WebM/Opus rendition, which is
-                            // remuxed below into a fully tagged .opus file.
-                            val opusStream = playbackStream?.takeIf { it.isOpusStream() } ?: try {
-                                kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
-                                    innerTube.resolveDownloadStream(candidateId)
+                                if (pickedStream != null ||
+                                    android.os.SystemClock.elapsedRealtime() - ytFallbackStartMs > ytResolveBudgetMs
+                                ) {
+                                    break
                                 }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                lastResolveError = error
-                                null
+                                // One more pass for a dropped connection or a brief failure.
+                                if (resolveRound == 0) awaitNetworkForResolveRetry()
                             }
-                            pickedStream = opusStream?.takeIf { it.isOpusStream() } ?: playbackStream ?: opusStream
-                            if (pickedStream != null) {
-                                actualVideoId = candidateId
-                                resolvedYtVideoId = candidateId
-                                chosenTrack = candidateTrack
-                                break
-                            }
+                        } finally {
+                            youtubeResolveGate.release()
                         }
                         val resolvedStream = pickedStream
                             ?: throw (lastResolveError ?: IOException("No playable YouTube stream for $finalTitle by $finalArtist"))
+                        failedYtStream = resolvedStream
                         if (resolvedArtworkUrl == null) {
                             resolvedArtworkUrl = (chosenTrack?.artworkUrl ?: preloadedBestMatch?.artworkUrl)
                                 ?.takeIf { ArtworkNormalizer.isRealImage(it) }
@@ -1270,9 +1369,22 @@ class TrackDownloadManager @Inject constructor(
                             ?.takeIf { it.isNotBlank() }
                         val ytStream = resolvedStream
                         resolvedUrl = ytStream.url
-                        downloadHeaders = ytStream.requestHeaders
+                        // The URL is bound to the client that minted it: send that
+                        // client's User-Agent, as playback does, or googlevideo 403s.
+                        downloadHeaders = ytStream.requestHeaders.let { headers ->
+                            if (headers.keys.any { it.equals("User-Agent", ignoreCase = true) }) headers
+                            else headers + ("User-Agent" to ytStream.userAgent)
+                        }
                         expectedContentLength = ytStream.contentLength
                             ?: runCatching { Uri.parse(ytStream.url).getQueryParameter("clen")?.toLongOrNull() }.getOrNull()
+                        if (durationMs <= 0L) {
+                            val candidateMs = pickedStream?.durationMs
+                                ?: (chosenTrack?.durationSeconds?.takeIf { it > 0 }?.times(1000L))
+                                ?: (preloadedBestMatch?.durationSeconds?.takeIf { it > 0 }?.times(1000L))
+                            if (candidateMs != null && candidateMs > 0L) {
+                                durationMs = candidateMs
+                            }
+                        }
                         useParallelDownload = true
                         val rawMime = ytStream.mimeType.orEmpty().lowercase()
                         if (rawMime.contains("mp4") || rawMime.contains("m4a") || rawMime.contains("aac")) {
@@ -1421,6 +1533,18 @@ class TrackDownloadManager @Inject constructor(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (ytError: Throwable) {
+                        tempDownloadFile?.let { runCatching { if (it.exists()) it.delete() } }
+                        tempDownloadFile = null
+                        val rejected = failedYtStream
+                        if (rejected != null && ytAttempt < YT_DOWNLOAD_ATTEMPTS) {
+                            android.util.Log.w(
+                                "TrackDownloadManager",
+                                "YouTube transfer failed for $title by $artist (attempt $ytAttempt, ${rejected.clientProfile}); re-resolving",
+                                ytError,
+                            )
+                            runCatching { innerTube.reportPlaybackFailure(rejected.videoId, rejected) }
+                            continue
+                        }
                         // Surface the real reason (no match vs no stream vs
                         // network) so a playable song never shows a generic skip.
                         val reason = ytError.localizedMessage?.takeIf { it.isNotBlank() }
@@ -1490,7 +1614,19 @@ class TrackDownloadManager @Inject constructor(
                     // raw frames from every mdat; nothing is decoded or re-encoded,
                     // so 24-bit hi-res stays bit-exact. On failure the .m4a is kept
                     // rather than losing a completed download.
-                    if (dashIsFlacInMp4 && extension == "m4a") {
+                    // Addon streams can also be progressive FLAC-in-MP4 (served
+                    // as audio/mp4), so check the file and not only the manifest.
+                    val progressiveFlacInMp4 = !dashIsFlacInMp4 && extension == "m4a" &&
+                        flacInMp4Badge != null && Mp4FlacRemuxer.isMp4Flac(currentAudioFile)
+                    if (progressiveFlacInMp4) {
+                        isLossless = true
+                        formatBadge = flacInMp4Badge ?: "FLAC"
+                    } else if (!dashIsFlacInMp4 && extension == "m4a" && flacInMp4Badge != null) {
+                        // Lossless tier, but the file really is AAC.
+                        isLossless = false
+                        formatBadge = "M4A AAC"
+                    }
+                    if ((dashIsFlacInMp4 || progressiveFlacInMp4) && extension == "m4a") {
                         val nativeFlac = File.createTempFile("dl_flac_", ".flac", context.cacheDir)
                         if (Mp4FlacRemuxer.remux(currentAudioFile, nativeFlac)) {
                             runCatching { currentAudioFile.delete() }
@@ -1622,11 +1758,14 @@ class TrackDownloadManager @Inject constructor(
                         artworkFallback?.cancel()
                     }
                     if (resolvedArtworkUrl == null) {
-                        // Last resort (SimpMusic/Metrolist style): the YouTube
-                        // thumbnail for the exact downloaded video always exists.
-                        resolvedArtworkUrl = resolvedYtVideoId?.takeIf { it.isNotBlank() }
-                            ?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
+                        // Last resort (SimpMusic/Metrolist style): prefer YouTube Music thumbnail if available,
+                        // otherwise the YouTube thumbnail for the exact downloaded video.
+                        val ytMusicThumb = preloadedBestMatch?.artworkUrl?.takeIf {
+                            ArtworkNormalizer.isRealImage(it) && ArtworkNormalizer.isYtMusicThumbnail(it)
+                        }
+                        resolvedArtworkUrl = ytMusicThumb
                             ?: preloadedBestMatch?.artworkUrl?.takeIf { ArtworkNormalizer.isRealImage(it) }
+                            ?: resolvedYtVideoId?.takeIf { it.isNotBlank() }?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
                     }
 
                     // 4. Embed metadata, cover art AND lyrics directly into the
@@ -1645,6 +1784,13 @@ class TrackDownloadManager @Inject constructor(
                     )
                     if (!metadataEmbedded) {
                         android.util.Log.w("TrackDownloadManager", "Could not safely embed audio metadata; preserving audio file")
+                    }
+
+                    // 4b. Finalize fragmented MP4 indexing (Atmos & AAC .m4a):
+                    // Patch duration into mvhd/mdhd and append Movie Fragment Random
+                    // Access (mfra) index so ExoPlayer and external players can seek.
+                    if (extension.equals("m4a", ignoreCase = true) || extension.equals("mp4", ignoreCase = true)) {
+                        Fmp4IndexBuilder.finalizeFmp4(currentAudioFile, durationMs)
                     }
 
                     // 5. Transfer tagged file to public storage / MediaStore
@@ -1741,6 +1887,7 @@ class TrackDownloadManager @Inject constructor(
                     downloadedAtMillis = System.currentTimeMillis(),
                 )
                 downloadedTrackDao.insert(entity)
+                unhideFromHistory(entity)
 
                 // 6b. Module DRM: persist offline keys + sidecar so the encrypted
                 // file plays without network. Skipped when transcoding already
@@ -1847,1589 +1994,28 @@ class TrackDownloadManager @Inject constructor(
             }
     }
 
-    private suspend fun downloadToTempFile(
-        downloadKey: String,
-        url: String,
-        target: File,
-        requestHeaders: Map<String, String>,
-        expectedContentLength: Long?,
-        useParallelRanges: Boolean,
-        onConnectionStateChanged: (Boolean) -> Unit,
-        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
-    ): DownloadTransfer {
-        val parallelLength = expectedContentLength
-            ?.takeIf { useParallelRanges && it >= MIN_PARALLEL_DOWNLOAD_BYTES }
-        if (parallelLength != null) {
-            try {
-                return downloadInParallel(
-                    url = url,
-                    target = target,
-                    requestHeaders = requestHeaders,
-                    totalLength = parallelLength,
-                    downloadKey = downloadKey,
-                    onConnectionStateChanged = onConnectionStateChanged,
-                    onProgress = onProgress,
-                )
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Exception) {
-                android.util.Log.w(
-                    "TrackDownloadManager",
-                    "Validated range download unavailable; using one stream",
-                    error,
-                )
-                truncateFile(target)
-            }
-        }
-
-        return downloadSingleStream(
-            downloadKey = downloadKey,
-            url = url,
-            target = target,
-            requestHeaders = requestHeaders,
-            expectedContentLength = expectedContentLength,
-            onConnectionStateChanged = onConnectionStateChanged,
-            onProgress = onProgress,
-        )
-    }
-
-    private suspend fun downloadInParallel(
-        url: String,
-        target: File,
-        requestHeaders: Map<String, String>,
-        totalLength: Long,
-        downloadKey: String,
-        onConnectionStateChanged: (Boolean) -> Unit,
-        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
-    ): DownloadTransfer = coroutineScope {
-        val partSize = (totalLength + PARALLEL_YOUTUBE_PARTS - 1L) / PARALLEL_YOUTUBE_PARTS
-        val ranges = (0 until PARALLEL_YOUTUBE_PARTS).mapNotNull { index ->
-            val start = index * partSize
-            if (start >= totalLength) return@mapNotNull null
-            DownloadRange(start, minOf(totalLength - 1L, start + partSize - 1L))
-        }
-        RandomAccessFile(target, "rw").use { it.setLength(totalLength) }
-
-        val downloadedBytes = AtomicLong(0L)
-        val waitingRanges = AtomicInteger(0)
-        val rangeConnectionStateChanged: (Boolean) -> Unit = { isWaiting ->
-            val waitingCount = if (isWaiting) {
-                waitingRanges.incrementAndGet()
-            } else {
-                waitingRanges.updateAndGet { count -> (count - 1).coerceAtLeast(0) }
-            }
-            onConnectionStateChanged(waitingCount > 0)
-        }
-        val contentTypes = ranges.map { range ->
-            async {
-                var downloadedBytesInRange = 0L
-                retryInterruptedTransfer(downloadKey, rangeConnectionStateChanged) {
-                    downloadRange(
-                        url = url,
-                        target = target,
-                        requestHeaders = requestHeaders,
-                        range = DownloadRange(range.start + downloadedBytesInRange, range.endInclusive),
-                        expectedTotal = totalLength,
-                    ) { delta ->
-                        downloadedBytesInRange += delta
-                        onProgress(downloadedBytes.addAndGet(delta.toLong()), totalLength)
-                    }
-                }
-            }
-        }.awaitAll()
-
-        val finalLength = downloadedBytes.get()
-        if (finalLength != totalLength || target.length() != totalLength) {
-            throw IOException("Parallel download truncated: received $finalLength of $totalLength bytes")
-        }
-        RandomAccessFile(target, "rw").use { it.fd.sync() }
-        DownloadTransfer(
-            bytesDownloaded = finalLength,
-            totalBytes = totalLength,
-            contentType = contentTypes.firstOrNull { it.isNotBlank() }.orEmpty(),
-        )
-    }
-
-    private suspend fun downloadRange(
-        url: String,
-        target: File,
-        requestHeaders: Map<String, String>,
-        range: DownloadRange,
-        expectedTotal: Long,
-        onBytesRead: (Int) -> Unit,
-    ): String = suspendCancellableCoroutine { continuation ->
-        val request = buildDownloadRequest(url, requestHeaders, range)
-        val call = downloadClient.newCall(request)
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, error: IOException) {
-                if (continuation.isActive) continuation.resumeWithException(error)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                try {
-                    val contentType = response.use { currentResponse ->
-                        validateMediaResponse(currentResponse, expectedCode = 206)
-                        val parsedRange = parseContentRange(currentResponse.header("Content-Range"))
-                            ?: throw DownloadProtocolException("Missing Content-Range for parallel download")
-                        if (parsedRange.start != range.start ||
-                            parsedRange.endInclusive != range.endInclusive ||
-                            parsedRange.total != expectedTotal
-                        ) {
-                            throw DownloadProtocolException("Mismatched Content-Range ${currentResponse.header("Content-Range")}")
-                        }
-
-                        val body = currentResponse.body
-                            ?: throw DownloadProtocolException("Empty range response body")
-                        val bodyLength = body.contentLength()
-                        if (bodyLength > 0L && bodyLength != range.length) {
-                            throw DownloadProtocolException("Range length mismatch: received $bodyLength of ${range.length} bytes")
-                        }
-
-                        RandomAccessFile(target, "rw").use { output ->
-                            output.seek(range.start)
-                            body.byteStream().use { input ->
-                                val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
-                                var remaining = range.length
-                                while (remaining > 0L) {
-                                    if (!continuation.isActive) throw CancellationException("Download cancelled")
-                                    val read = try {
-                                        input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                                    } catch (error: IOException) {
-                                        throw DownloadInterruptedException("Connection interrupted while reading audio", error)
-                                    }
-                                    if (read < 0) {
-                                        throw DownloadInterruptedException("Range truncated with $remaining bytes remaining")
-                                    }
-                                    output.write(buffer, 0, read)
-                                    remaining -= read
-                                    onBytesRead(read)
-                                }
-                            }
-                        }
-                        currentResponse.header("Content-Type").orEmpty()
-                    }
-                    if (continuation.isActive) continuation.resume(contentType)
-                } catch (error: Exception) {
-                    if (continuation.isActive) continuation.resumeWithException(error)
-                }
-            }
-        })
-    }
-
-    private suspend fun downloadSingleStream(
-        downloadKey: String,
-        url: String,
-        target: File,
-        requestHeaders: Map<String, String>,
-        expectedContentLength: Long?,
-        onConnectionStateChanged: (Boolean) -> Unit,
-        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
-    ): DownloadTransfer {
-        val expectedLength = expectedContentLength?.takeIf { it > 0L }
-        return retryInterruptedTransfer(downloadKey, onConnectionStateChanged) {
-            if (expectedLength != null && target.length() > expectedLength) truncateFile(target)
-            if (expectedLength != null && target.length() == expectedLength && expectedLength >= MIN_VALID_AUDIO_BYTES) {
-                onProgress(expectedLength, expectedLength)
-                return@retryInterruptedTransfer DownloadTransfer(expectedLength, expectedLength, "")
-            }
-            downloadSingleStreamAttempt(
-                url = url,
-                target = target,
-                requestHeaders = requestHeaders,
-                expectedContentLength = expectedLength,
-                onProgress = onProgress,
-            )
-        }
-    }
-
-    private suspend fun downloadSingleStreamAttempt(
-        url: String,
-        target: File,
-        requestHeaders: Map<String, String>,
-        expectedContentLength: Long?,
-        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
-    ): DownloadTransfer = suspendCancellableCoroutine { continuation ->
-        val resumeOffset = target.length().coerceAtLeast(0L)
-        val call = downloadClient.newCall(
-            buildDownloadRequest(url, requestHeaders, range = null, resumeOffset = resumeOffset),
-        )
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, error: IOException) {
-                if (continuation.isActive) continuation.resumeWithException(error)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                try {
-                    val transfer = response.use { currentResponse ->
-                        validateMediaResponse(currentResponse)
-                        val body = currentResponse.body
-                            ?: throw DownloadProtocolException("Empty response body")
-                        val responseLength = body.contentLength().takeIf { it > 0L }
-                        val partialRange = if (currentResponse.code == 206) {
-                            parseContentRange(currentResponse.header("Content-Range"))
-                                ?: throw DownloadProtocolException("Missing Content-Range for partial response")
-                        } else {
-                            null
-                        }
-                        if (partialRange != null && (partialRange.start != resumeOffset ||
-                                partialRange.endInclusive + 1L != partialRange.total)
-                        ) {
-                            throw DownloadProtocolException("Server returned an unexpected audio range")
-                        }
-                        if (partialRange != null && expectedContentLength != null &&
-                            partialRange.total != expectedContentLength
-                        ) {
-                            throw DownloadProtocolException(
-                                "Download size changed: expected $expectedContentLength, received ${partialRange.total}",
-                            )
-                        }
-
-                        val totalLength = partialRange?.total
-                            ?: responseLength
-                            ?: expectedContentLength?.takeIf { it > 0L }
-                            ?: -1L
-                        if (responseLength != null && expectedContentLength != null &&
-                            currentResponse.code == 200 && responseLength != expectedContentLength
-                        ) {
-                            throw DownloadProtocolException(
-                                "Download size changed: expected $expectedContentLength, received $responseLength",
-                            )
-                        }
-
-                        val append = resumeOffset > 0L && partialRange != null
-                        var downloadedBytes = if (append) resumeOffset else 0L
-                        FileOutputStream(target, append).use { output ->
-                            body.byteStream().use { input ->
-                                val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
-                                while (true) {
-                                    if (!continuation.isActive) throw CancellationException("Download cancelled")
-                                    val read = try {
-                                        input.read(buffer)
-                                    } catch (error: IOException) {
-                                        throw DownloadInterruptedException("Connection interrupted while reading audio", error)
-                                    }
-                                    if (read < 0) break
-                                    output.write(buffer, 0, read)
-                                    downloadedBytes += read
-                                    onProgress(downloadedBytes, totalLength)
-                                }
-                            }
-                            output.flush()
-                            output.fd.sync()
-                        }
-                        if (downloadedBytes < MIN_VALID_AUDIO_BYTES) {
-                            throw DownloadProtocolException("Downloaded audio payload is too small")
-                        }
-                        if (totalLength > 0L && downloadedBytes != totalLength) {
-                            if (downloadedBytes < totalLength) {
-                                throw DownloadInterruptedException(
-                                    "Download truncated: received $downloadedBytes of $totalLength bytes",
-                                )
-                            }
-                            throw DownloadProtocolException(
-                                "Download exceeded expected size: received $downloadedBytes of $totalLength bytes",
-                            )
-                        }
-
-                        DownloadTransfer(
-                            bytesDownloaded = downloadedBytes,
-                            totalBytes = totalLength.takeIf { it > 0L } ?: downloadedBytes,
-                            contentType = currentResponse.header("Content-Type").orEmpty(),
-                        )
-                    }
-                    if (continuation.isActive) continuation.resume(transfer)
-                } catch (error: Exception) {
-                    if (continuation.isActive) continuation.resumeWithException(error)
-                }
-            }
-        })
-    }
-
-    private data class ParsedDashManifest(
-        val initUrl: String,
-        val mediaTemplate: String,
-        val segmentCount: Int,
-        val startNumber: Int = 1,
-        /**
-         * The Representation's declared codec, e.g. `flac`, `mp4a.40.2`, `ec-3`.
-         * Tidal serves AAC for the LOW/HIGH tiers and FLAC-in-MP4 for lossless,
-         * so the manifest — not the descriptor's assumption — decides whether a
-         * download really is lossless.
-         */
-        val codec: String = "",
-    )
-
-    private fun parseTidalDashManifest(baseUrl: String): ParsedDashManifest? = runCatching {
-        val trimmed = baseUrl.trim()
-        val xmlStr = when {
-            trimmed.startsWith("data:application/dash+xml") -> {
-                if (trimmed.contains("base64,")) {
-                    val b64 = trimmed.substringAfter("base64,")
-                    String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT), Charsets.UTF_8)
-                } else {
-                    java.net.URLDecoder.decode(trimmed.substringAfter(","), "UTF-8")
-                }
-            }
-            trimmed.startsWith("<?xml") || trimmed.startsWith("<MPD") -> trimmed
-            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> {
-                if (trimmed.contains(".mpd", ignoreCase = true) || trimmed.contains("dash", ignoreCase = true)) {
-                    val req = Request.Builder().url(trimmed).get().build()
-                    downloadClient.newCall(req).execute().use { resp ->
-                        if (resp.isSuccessful) resp.body?.string().orEmpty() else ""
-                    }
-                } else ""
-            }
-            else -> return@runCatching null
-        }
-        if (xmlStr.isBlank()) return@runCatching null
-
-        val initMatch = Regex("""initialization=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            ?: Regex("""<Initialization\s+[^>]*sourceURL=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            ?: Regex("""sourceURL=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            ?: return@runCatching null
-        var initUrl = initMatch.groupValues[1].replace("&amp;", "&")
-
-        val mediaMatch = Regex("""media=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            ?: Regex("""<SegmentTemplate\s+[^>]*media=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            ?: Regex("""<SegmentURL\s+[^>]*media=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            ?: return@runCatching null
-        var mediaTemplate = mediaMatch.groupValues[1].replace("&amp;", "&")
-
-        val baseMatch = Regex("""<BaseURL[^>]*>([^<]+)</BaseURL>""", RegexOption.IGNORE_CASE).find(xmlStr)
-        val baseUrlPrefix = baseMatch?.groupValues?.get(1)?.trim()?.replace("&amp;", "&")
-            ?: if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-                trimmed.substringBeforeLast('/') + "/"
-            } else null
-        if (!baseUrlPrefix.isNullOrBlank()) {
-            if (!initUrl.startsWith("http://", ignoreCase = true) && !initUrl.startsWith("https://", ignoreCase = true)) {
-                initUrl = if (baseUrlPrefix.endsWith("/") || initUrl.startsWith("/")) {
-                    "${baseUrlPrefix.trimEnd('/')}/${initUrl.trimStart('/')}"
-                } else {
-                    "$baseUrlPrefix$initUrl"
-                }
-            }
-            if (!mediaTemplate.startsWith("http://", ignoreCase = true) && !mediaTemplate.startsWith("https://", ignoreCase = true)) {
-                mediaTemplate = if (baseUrlPrefix.endsWith("/") || mediaTemplate.startsWith("/")) {
-                    "${baseUrlPrefix.trimEnd('/')}/${mediaTemplate.trimStart('/')}"
-                } else {
-                    "$baseUrlPrefix$mediaTemplate"
-                }
-            }
-        }
-        if (!initUrl.startsWith("http://", ignoreCase = true) && !initUrl.startsWith("https://", ignoreCase = true)) {
-            return@runCatching null
-        }
-        if (!mediaTemplate.startsWith("http://", ignoreCase = true) && !mediaTemplate.startsWith("https://", ignoreCase = true)) {
-            return@runCatching null
-        }
-
-        val codec = Regex("""codecs=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            ?.groupValues
-            ?.get(1)
-            ?.trim()
-            ?.lowercase()
-            .orEmpty()
-
-        var count = 0
-        val sRegex = Regex("""<S\s+[^>]*>""", RegexOption.IGNORE_CASE)
-        for (match in sRegex.findAll(xmlStr)) {
-            val sTag = match.value
-            val rMatch = Regex("""r=["']?(\d+)["']?""", RegexOption.IGNORE_CASE).find(sTag)
-            val r = rMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            count += 1 + r
-        }
-        if (count <= 0) {
-            val durationMatch = Regex("""mediaPresentationDuration=["']PT(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-            val segTemplateMatch = Regex("""<(?:SegmentTemplate|SegmentList)\b[^>]*>""", RegexOption.IGNORE_CASE).find(xmlStr)?.value
-            val segDuration = segTemplateMatch?.let { Regex("""\bduration=["']([0-9.]+)["']""", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.toDoubleOrNull() } ?: 1.0
-            val timescale = segTemplateMatch?.let { Regex("""\btimescale=["']([0-9.]+)["']""", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.toDoubleOrNull() } ?: 1.0
-            if (durationMatch != null) {
-                val hours = durationMatch.groupValues.getOrNull(1)?.toDoubleOrNull() ?: 0.0
-                val min = durationMatch.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0
-                val sec = durationMatch.groupValues.getOrNull(3)?.toDoubleOrNull() ?: 0.0
-                val totalSec = hours * 3600.0 + min * 60.0 + sec
-                val segSec = segDuration / timescale
-                if (segSec > 0) {
-                    count = Math.ceil(totalSec / segSec).toInt()
-                }
-            }
-        }
-        if (count <= 0) count = 50
-        val startNumberMatch = Regex("""startNumber=["'](\d+)["']""", RegexOption.IGNORE_CASE).find(xmlStr)
-        val startNumber = startNumberMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
-
-        ParsedDashManifest(
-            initUrl = initUrl,
-            mediaTemplate = mediaTemplate,
-            segmentCount = count,
-            startNumber = startNumber,
-            codec = codec,
-        )
-    }.getOrNull()
-
-    private data class DashFetchResult(
-        val bytesWritten: Long,
-        val stoppedEarly: Boolean,
-        val completedSegments: Int,
-        val expectedSegments: Int,
-    )
-
-    private suspend fun downloadDashSegmentsToTempFile(
-        downloadKey: String,
-        notificationId: Int,
-        title: String,
-        artist: String,
-        formatBadge: String,
-        initUrl: String,
-        mediaTemplate: String,
-        segmentCount: Int,
-        startNumber: Int = 1,
-        headers: Map<String, String>,
-        target: File,
-    ): DashFetchResult = withContext(Dispatchers.IO) {
-        val totalParts = segmentCount + 1
-        var completedParts = 0
-        var totalBytesWritten = 0L
-        var stoppedEarly = false
-        val targetStream = FileOutputStream(target, false)
-
-        try {
-            // 1. Download initialization segment (0.mp4) containing ftyp and moov boxes
-            val initReq = Request.Builder()
-                .url(initUrl)
-                .apply {
-                    headers.forEach { (k, v) -> addHeader(k, v) }
-                    if (headers.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
-                        addHeader("User-Agent", DOWNLOAD_USER_AGENT)
-                    }
-                }
-                .build()
-
-            downloadClient.newCall(initReq).execute().use { resp ->
-                if (!resp.isSuccessful) throw IOException("Failed to download DASH init chunk: HTTP ${resp.code}")
-                val body = resp.body ?: throw IOException("Empty DASH init body")
-                val copied = body.byteStream().copyTo(targetStream, DOWNLOAD_BUFFER_SIZE)
-                totalBytesWritten += copied
-            }
-            completedParts++
-            val initPercent = ((completedParts * 100) / totalParts).coerceIn(0, 100)
-            updateProgress(
-                DownloadProgress(
-                    key = downloadKey, title = title, artist = artist,
-                    progressPercent = initPercent,
-                    bytesDownloaded = totalBytesWritten,
-                    formatBadge = formatBadge,
-                )
-            )
-
-            // 2. Download media segments in order and append directly to the file
-            val endNumber = startNumber + segmentCount - 1
-            for (segIndex in startNumber..endNumber) {
-                currentCoroutineContext().ensureActive()
-                val segUrl = mediaTemplate.replace(Regex("""\${'$'}Number(?:%0(\d+)d)?\${'$'}""")) { m ->
-                    val pad = m.groupValues.getOrNull(1)?.toIntOrNull()
-                    if (pad != null) segIndex.toString().padStart(pad, '0') else segIndex.toString()
-                }
-                val segReq = Request.Builder()
-                    .url(segUrl)
-                    .apply {
-                        headers.forEach { (k, v) -> addHeader(k, v) }
-                        if (headers.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
-                            addHeader("User-Agent", DOWNLOAD_USER_AGENT)
-                        }
-                    }
-                    .build()
-
-                var stopThis = false
-                downloadClient.newCall(segReq).execute().use { resp ->
-                    if (resp.code == 404 && segIndex > startNumber) {
-                        stopThis = true
-                        stoppedEarly = true
-                        return@use
-                    }
-                    if (!resp.isSuccessful) throw IOException("Failed to download DASH segment $segIndex: HTTP ${resp.code}")
-                    val body = resp.body ?: throw IOException("Empty body for DASH segment $segIndex")
-                    val copied = body.byteStream().copyTo(targetStream, DOWNLOAD_BUFFER_SIZE)
-                    totalBytesWritten += copied
-                }
-                if (stopThis) break
-
-                completedParts++
-                val percent = ((completedParts * 100) / totalParts).coerceIn(0, 100)
-                updateProgress(
-                    DownloadProgress(
-                        key = downloadKey, title = title, artist = artist,
-                        progressPercent = percent,
-                        bytesDownloaded = totalBytesWritten,
-                        totalBytes = -1L,
-                        formatBadge = formatBadge,
-                    )
-                )
-                if (percent % 10 == 0 || segIndex == segmentCount) {
-                    runCatching {
-                        showDownloadNotification(notificationId, downloadKey, title, artist, percent, false, formatBadge)
-                    }
-                }
-            }
-            targetStream.flush()
-            targetStream.fd.sync()
-            DashFetchResult(
-                bytesWritten = totalBytesWritten,
-                stoppedEarly = stoppedEarly,
-                completedSegments = completedParts - 1,
-                expectedSegments = segmentCount,
-            )
-        } finally {
-            runCatching { targetStream.close() }
-        }
-    }
-
-    private suspend fun <T> retryInterruptedTransfer(
-        downloadKey: String,
-        onConnectionStateChanged: (Boolean) -> Unit,
-        transfer: suspend () -> T,
-    ): T {
-        var failureCount = 0
-        while (true) {
-            try {
-                return transfer()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: IOException) {
-                if (!error.isReconnectableTransferFailure()) throw error
-                failureCount++
-                // Bounded: an endlessly failing URL used to retry forever and
-                // freeze the download (and its slot). Offline periods still
-                // wait inside awaitRetryOpportunity, costing one attempt each.
-                if (failureCount > MAX_TRANSFER_RETRIES) throw error
-                onConnectionStateChanged(true)
-                try {
-                    awaitRetryOpportunity(downloadKey, failureCount)
-                } finally {
-                    onConnectionStateChanged(false)
-                }
-            }
-        }
-    }
-
-    private suspend fun awaitRetryOpportunity(downloadKey: String, failureCount: Int) {
-        val reconnectGeneration = reconnectGenerations[downloadKey]
-            ?: throw CancellationException("Download cancelled")
-        val observedGeneration = reconnectGeneration.get()
-        val retryDelayMs = (RECONNECT_RETRY_BASE_DELAY_MS *
-            (1L shl (failureCount - 1).coerceIn(0, 5)))
-            .coerceAtMost(RECONNECT_RETRY_MAX_DELAY_MS)
-        var elapsedMs = 0L
-        while (true) {
-            currentCoroutineContext().ensureActive()
-            if (reconnectGeneration.get() != observedGeneration) return
-            if (elapsedMs >= retryDelayMs && hasUsableNetwork()) return
-            delay(RECONNECT_POLL_INTERVAL_MS)
-            elapsedMs += RECONNECT_POLL_INTERVAL_MS
-        }
-    }
-
-    private fun hasUsableNetwork(): Boolean = runCatching {
-        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return@runCatching true
-        val network = manager.activeNetwork ?: return@runCatching false
-        val capabilities = manager.getNetworkCapabilities(network) ?: return@runCatching false
-        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }.getOrDefault(true)
-
-    private fun IOException.isReconnectableTransferFailure(): Boolean {
-        if (this is DownloadProtocolException) return false
-        if (this is DownloadHttpException) {
-            return statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode in 500..599
-        }
-        return generateSequence<Throwable>(this) { it.cause }
-            .take(8)
-            .any {
-                it is DownloadInterruptedException ||
-                    it is EOFException ||
-                    it is ConnectException ||
-                    it is NoRouteToHostException ||
-                    it is SocketException ||
-                    it is UnknownHostException ||
-                    it is InterruptedIOException
-            }
-    }
-
-    private fun buildDownloadRequest(
-        url: String,
-        requestHeaders: Map<String, String>,
-        range: DownloadRange?,
-        resumeOffset: Long = 0L,
-    ): Request {
-        val builder = Request.Builder().url(url)
-        requestHeaders.forEach { (name, value) -> builder.header(name, value) }
-        if (requestHeaders.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
-            builder.header("User-Agent", DOWNLOAD_USER_AGENT)
-        }
-        builder.header("Accept", "*/*")
-        builder.header("Accept-Encoding", "identity")
-        when {
-            range != null -> builder.header("Range", "bytes=${range.start}-${range.endInclusive}")
-            resumeOffset > 0L -> builder.header("Range", "bytes=$resumeOffset-")
-        }
-        return builder.build()
-    }
-
-    private fun validateMediaResponse(response: Response, expectedCode: Int? = null) {
-        if (response.code != 200 && response.code != 206) {
-            throw DownloadHttpException(response.code)
-        }
-        if (expectedCode != null && response.code != expectedCode) {
-            throw DownloadProtocolException("Server does not support resumable byte ranges")
-        }
-
-        val contentType = response.header("Content-Type").orEmpty().lowercase()
-        if (contentType.contains("text/html") ||
-            contentType.contains("application/json") ||
-            contentType.contains("text/plain")
-        ) {
-            throw DownloadProtocolException("Invalid download payload ($contentType)")
-        }
-    }
-
-    private fun parseContentRange(header: String?): ParsedContentRange? {
-        val match = header?.trim()?.let(CONTENT_RANGE_PATTERN::matchEntire) ?: return null
-        return ParsedContentRange(
-            start = match.groupValues[1].toLongOrNull() ?: return null,
-            endInclusive = match.groupValues[2].toLongOrNull() ?: return null,
-            total = match.groupValues[3].toLongOrNull() ?: return null,
-        )
-    }
-
-    private fun truncateFile(file: File) {
-        RandomAccessFile(file, "rw").use { it.setLength(0L) }
-    }
-
-    private fun isDashUrl(url: String, mime: String = ""): Boolean {
-        val trimmed = url.trimStart()
-        return trimmed.startsWith("data:application/dash+xml") ||
-            trimmed.startsWith("<?xml") ||
-            trimmed.startsWith("<MPD") ||
-            url.contains(".mpd", ignoreCase = true) ||
-            mime.contains("dash", ignoreCase = true)
-    }
-
-    private fun detectValidContainer(file: File): String? = runCatching {
-        if (file.length() < 12L) return@runCatching null
-        val header = ByteArray(12)
-        RandomAccessFile(file, "r").use { input ->
-            if (input.read(header) != header.size) return@runCatching null
-        }
-        when {
-            header.copyOfRange(0, 4).contentEquals(byteArrayOf('f'.code.toByte(), 'L'.code.toByte(), 'a'.code.toByte(), 'C'.code.toByte())) -> "flac"
-            header.copyOfRange(4, 8).contentEquals(byteArrayOf('f'.code.toByte(), 't'.code.toByte(), 'y'.code.toByte(), 'p'.code.toByte())) -> "m4a"
-            header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte())) -> "webm"
-            header.copyOfRange(0, 4).contentEquals(byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte())) -> "opus"
-            header.copyOfRange(0, 3).contentEquals(byteArrayOf('I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte())) ||
-                ((header[0].toInt() and 0xFF) == 0xFF && (header[1].toInt() and 0xE0) == 0xE0) -> "mp3"
-            else -> null
-        }
-    }.getOrNull()
-
-    private fun hasExpectedContainer(file: File, extension: String): Boolean = runCatching {
-        if (file.length() < 12L) return@runCatching false
-        val detected = detectValidContainer(file) ?: return@runCatching false
-        val ext = extension.lowercase()
-        when (ext) {
-            "flac" -> detected == "flac"
-            "m4a" -> detected == "m4a"
-            "webm" -> detected == "webm"
-            "opus" -> detected == "opus" || detected == "webm"
-            "ogg" -> detected == "opus"
-            "mp3" -> detected == "mp3"
-            else -> false
-        }
-    }.getOrDefault(false)
-
-    /**
-     * Mirrors playback's spatial check (`MusicPlayer.isSpatialAudioSupportedOnDevice`):
-     * hardware decoder, bundled FFmpeg decoder, or Android S_V2+ Spatializer.
-     */
-    private fun isAtmosCapableDevice(): Boolean = runCatching {
-        val decoder = MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any { info ->
-            !info.isEncoder && info.supportedTypes.any { type ->
-                type.equals("audio/eac3-joc", ignoreCase = true) ||
-                    type.equals("audio/eac3", ignoreCase = true) ||
-                    type.equals("audio/ac3", ignoreCase = true)
-            }
-        }
-        val ffmpeg = runCatching {
-            androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() &&
-                androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(androidx.media3.common.MimeTypes.AUDIO_E_AC3)
-        }.getOrDefault(false)
-        if (decoder || ffmpeg) return@runCatching true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
-            val am = context.getSystemService(AudioManager::class.java)
-            val spatializer = am?.spatializer
-            if (spatializer != null && (spatializer.isAvailable || spatializer.isEnabled)) {
-                return@runCatching true
-            }
-        }
-        false
-    }.getOrDefault(false)
-
-    private fun updateProgress(progress: DownloadProgress) {
+    internal fun updateProgress(progress: DownloadProgress) {
         _downloads.update { it + (progress.key to progress) }
     }
 
-    private fun openPublicOutputStream(
-        filename: String,
-        mimeType: String,
-        title: String,
-        artist: String,
-        album: String?,
-        year: String? = null,
-        durationMs: Long = 0L,
-        dirName: String = PUBLIC_DIR_NAME,
-        subpath: String = "",
-        treeUri: Uri? = null,
-    ): Triple<java.io.OutputStream, Uri?, File?> {
-        val resolver = context.contentResolver
-        val safeDir = sanitizeDownloadFolderName(dirName)
-        val safeSubpath = subpath.split('/').map { sanitizeFilename(it.trim()) }
-            .filter { it.isNotBlank() }.joinToString("/")
-        val audioRelativePath = if (safeSubpath.isNotBlank()) {
-            "${Environment.DIRECTORY_MUSIC}/$safeDir/$safeSubpath"
-        } else {
-            "${Environment.DIRECTORY_MUSIC}/$safeDir"
-        }
+    sealed interface DeleteDownloadResult {
+        object Deleted : DeleteDownloadResult
 
-        // Custom SAF folder (SD card etc.): write straight into the user's
-        // chosen tree, honoring the same artist/album subfolders. Any failure
-        // throws so the download surfaces an error instead of silently
-        // landing in internal storage.
-        if (treeUri != null) {
-            val segments = safeSubpath.split('/').filter { it.isNotBlank() }
-            val audioMime = when {
-                mimeType.contains("mp4") || mimeType.contains("m4a") || mimeType.contains("aac") -> "audio/mp4"
-                mimeType.contains("flac") -> "audio/flac"
-                mimeType.contains("mp3") || mimeType.contains("mpeg") -> "audio/mpeg"
-                mimeType.contains("webm") -> "audio/webm"
-                mimeType.contains("ogg") || mimeType.contains("opus") -> "audio/ogg"
-                mimeType.contains("wav") -> "audio/x-wav"
-                else -> "audio/mp4"
-            }
-            val safUri = SafTreeFiles.createFile(context, treeUri, segments, filename, audioMime)
-                ?: throw IOException("Custom download folder unavailable — reselect it in Downloads → Download location")
-            val stream = SafTreeFiles.openWriteStream(context, safUri)
-                ?: throw IOException("Could not write to the custom download folder")
-            return Triple(stream, safUri, null)
-        }
+        /** The file belongs to another app; the user has to confirm the delete. */
+        class NeedsUserConsent(val request: android.content.IntentSender) : DeleteDownloadResult
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android MediaStore Audio only accepts standard audio MIME types
-            val audioMime = when {
-                mimeType.contains("mp4") || mimeType.contains("m4a") || mimeType.contains("aac") -> "audio/mp4"
-                mimeType.contains("flac") -> "audio/flac"
-                mimeType.contains("mp3") || mimeType.contains("mpeg") -> "audio/mpeg"
-                mimeType.contains("webm") -> "audio/webm"
-                mimeType.contains("ogg") || mimeType.contains("opus") -> "audio/ogg"
-                mimeType.contains("wav") -> "audio/x-wav"
-                else -> "audio/mp4"
-            }
-
-            // Remove any pre-existing entry with the same filename IN THE SAME
-            // FOLDER to avoid Android appending (1), (2), etc. Scoped to the
-            // relative path so identically-named tracks in other album folders survive.
-            runCatching {
-                resolver.query(
-                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                    arrayOf(MediaStore.Audio.Media._ID),
-                    "${MediaStore.Audio.Media.DISPLAY_NAME} = ? AND ${MediaStore.Audio.Media.RELATIVE_PATH} = ?",
-                    arrayOf(filename, "$audioRelativePath/"),
-                    null,
-                )?.use { cursor ->
-                    val idCol = cursor.getColumnIndex(MediaStore.Audio.Media._ID)
-                    while (cursor.moveToNext()) {
-                        val id = cursor.getLong(idCol)
-                        val oldUri = Uri.withAppendedPath(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id.toString())
-                        runCatching { resolver.delete(oldUri, null, null) }
-                    }
-                }
-            }
-
-            val audioContentValues = ContentValues().apply {
-                put(MediaStore.Audio.Media.DISPLAY_NAME, filename)
-                put(MediaStore.Audio.Media.MIME_TYPE, audioMime)
-                put(MediaStore.Audio.Media.RELATIVE_PATH, audioRelativePath)
-                put(MediaStore.Audio.Media.TITLE, title)
-                put(MediaStore.Audio.Media.ARTIST, artist)
-                put(MediaStore.Audio.Media.ALBUM_ARTIST, artist)
-                if (!album.isNullOrBlank()) put(MediaStore.Audio.Media.ALBUM, album)
-                val yearInt = year?.filter { it.isDigit() }?.take(4)?.toIntOrNull()
-                if (yearInt != null && yearInt > 0) {
-                    put(MediaStore.Audio.Media.YEAR, yearInt)
-                }
-                if (durationMs > 0) put(MediaStore.Audio.Media.DURATION, durationMs)
-                put(MediaStore.Audio.Media.IS_PENDING, 1)
-            }
-
-            val audioUri = runCatching { resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, audioContentValues) }.getOrNull()
-            if (audioUri != null) {
-                val stream = resolver.openOutputStream(audioUri, "wt")
-                    ?: resolver.openOutputStream(audioUri)
-                if (stream != null) return Triple(stream, audioUri, null)
-            }
-
-            // Fallback 1: MediaStore.Downloads (pure download columns only)
-            val downloadsRelativePath = if (safeSubpath.isNotBlank()) {
-                "${Environment.DIRECTORY_DOWNLOADS}/$safeDir/Music/$safeSubpath"
-            } else {
-                "${Environment.DIRECTORY_DOWNLOADS}/$safeDir/Music"
-            }
-            val downloadContentValues = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                put(MediaStore.Downloads.MIME_TYPE, if (mimeType.isNotBlank()) mimeType else "application/octet-stream")
-                put(MediaStore.Downloads.RELATIVE_PATH, downloadsRelativePath)
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-
-            val downloadUri = runCatching { resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, downloadContentValues) }.getOrNull()
-            if (downloadUri != null) {
-                val stream = resolver.openOutputStream(downloadUri, "wt")
-                    ?: resolver.openOutputStream(downloadUri)
-                if (stream != null) return Triple(stream, downloadUri, null)
-            }
-
-            // Fallback 2: Direct public / external app music directory
-            val fallbackBase = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
-                ?: File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), safeDir).apply { if (!exists()) mkdirs() }
-            val fallbackDir = if (safeSubpath.isNotBlank()) File(fallbackBase, safeSubpath) else fallbackBase
-            if (!fallbackDir.exists()) fallbackDir.mkdirs()
-            val fallbackFile = File(fallbackDir, filename)
-            val stream = FileOutputStream(fallbackFile)
-            return Triple(stream, null, fallbackFile)
-        } else {
-            // Android 9 and below
-            val musicBase = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), safeDir)
-            val musicDir = if (safeSubpath.isNotBlank()) File(musicBase, safeSubpath) else musicBase
-            if (!musicDir.exists()) musicDir.mkdirs()
-            val file = File(musicDir, filename)
-            val stream = FileOutputStream(file)
-            return Triple(stream, null, file)
-        }
+        object Failed : DeleteDownloadResult
     }
 
+    sealed interface ClearAllDownloadsResult {
+        object Cleared : ClearAllDownloadsResult
 
-    private fun finalizePublicFile(uri: Uri?) {
-        // IS_PENDING only exists on MediaStore Uris — SAF document Uris are
-        // already visible once the stream closes.
-        if (uri != null && uri.authority == MediaStore.AUTHORITY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.IS_PENDING, 0)
-            }
-            runCatching { context.contentResolver.update(uri, contentValues, null, null) }
-        }
+        data class NeedsUserConsent(
+            val request: android.content.IntentSender,
+            val tracks: List<DownloadedTrackEntity>,
+        ) : ClearAllDownloadsResult
+
+        object Failed : ClearAllDownloadsResult
     }
 
-    private fun showDownloadNotification(
-        notificationId: Int,
-        downloadKey: String,
-        title: String,
-        artist: String,
-        progress: Int,
-        isIndeterminate: Boolean,
-        badgeText: String,
-        isWaitingForConnection: Boolean = false,
-    ) {
-        val cancelIntent = Intent(context, DownloadCancelReceiver::class.java).apply {
-            action = ACTION_CANCEL_DOWNLOAD
-            putExtra(EXTRA_DOWNLOAD_KEY, downloadKey)
-        }
-        val cancelPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId,
-            cancelIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0),
-        )
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(if (isWaitingForConnection) "Waiting for connection" else "Downloading \"$title\"")
-            .setContentText(
-                if (isWaitingForConnection) "\"$title\" by $artist \u2022 $progress% saved"
-                else "$artist \u2022 $badgeText ($progress%)",
-            )
-            .setProgress(100, progress, isIndeterminate)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(viewDownloadsPendingIntent(notificationId))
-
-        if (isWaitingForConnection) {
-            builder.addAction(
-                android.R.drawable.ic_popup_sync,
-                "Reconnect",
-                reconnectPendingIntent(notificationId, downloadKey, title, artist),
-            )
-        }
-        val notification = builder
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
-            .build()
-
-        runCatching { notificationManager?.notify(notificationId, notification) }
-    }
-
-    private fun showCompletedNotification(
-        notificationId: Int,
-        title: String,
-        artist: String,
-        badgeText: String,
-    ) {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Download Complete")
-            .setContentText("\"$title\" by $artist ($badgeText)")
-            .setOngoing(false)
-            .setAutoCancel(true)
-            .setContentIntent(viewDownloadsPendingIntent(notificationId))
-            .build()
-
-        runCatching { notificationManager?.notify(notificationId, notification) }
-    }
-
-    private fun showErrorNotification(
-        notificationId: Int,
-        downloadKey: String,
-        title: String,
-        artist: String,
-        error: String,
-    ) {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("Download Failed")
-            .setContentText("\"$title\" by $artist: $error")
-            .setOngoing(false)
-            .setAutoCancel(true)
-            .setContentIntent(viewDownloadsPendingIntent(notificationId))
-            .addAction(
-                android.R.drawable.ic_popup_sync,
-                "Reconnect",
-                reconnectPendingIntent(notificationId, downloadKey, title, artist),
-            )
-            .build()
-
-        runCatching { notificationManager?.notify(notificationId, notification) }
-    }
-
-    private fun viewDownloadsPendingIntent(requestCode: Int): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            action = ACTION_VIEW_DOWNLOADS
-            putExtra(EXTRA_NAVIGATE_TO, "downloads")
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        return PendingIntent.getActivity(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    private fun reconnectPendingIntent(
-        requestCode: Int,
-        downloadKey: String,
-        title: String,
-        artist: String,
-    ): PendingIntent {
-        val intent = Intent(context, DownloadCancelReceiver::class.java).apply {
-            action = ACTION_RECONNECT_DOWNLOAD
-            putExtra(EXTRA_DOWNLOAD_KEY, downloadKey)
-            putExtra(EXTRA_DOWNLOAD_TITLE, title)
-            putExtra(EXTRA_DOWNLOAD_ARTIST, artist)
-        }
-        return PendingIntent.getBroadcast(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    private fun writePublicCompanionFile(
-        filename: String,
-        content: String,
-        mimeType: String,
-        dirName: String = PUBLIC_DIR_NAME,
-        subpath: String = "",
-        treeUri: Uri? = null,
-    ): String? {
-        val safeDir = sanitizeDownloadFolderName(dirName)
-        val safeSubpath = subpath.split('/').map { sanitizeFilename(it.trim()) }
-            .filter { it.isNotBlank() }.joinToString("/")
-        // Custom SAF folder: keep the .lrc next to its track in the same
-        // tree. Lyrics are optional, so failures degrade to null.
-        if (treeUri != null) {
-            return runCatching {
-                val segments = safeSubpath.split('/').filter { it.isNotBlank() }
-                val fileUri = SafTreeFiles.createFile(context, treeUri, segments, filename, mimeType)
-                    ?: return@runCatching null
-                val stream = context.contentResolver.openOutputStream(fileUri, "wt")
-                    ?: return@runCatching null
-                stream.use { os ->
-                    os.write(content.toByteArray(Charsets.UTF_8))
-                    os.flush()
-                }
-                fileUri.toString()
-            }.getOrNull()
-        }
-        // Mirror the audio subfolder so .lrc sits next to its track. Note the
-        // audio lives under Music/ while companions live under Downloads/.
-        val lrcRelativePath = if (safeSubpath.isNotBlank()) {
-            "${Environment.DIRECTORY_DOWNLOADS}/$safeDir/Music/$safeSubpath"
-        } else {
-            "${Environment.DIRECTORY_DOWNLOADS}/$safeDir/Music"
-        }
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val resolver = context.contentResolver
-
-                // Remove pre-existing companion file with the same name IN THE
-                // SAME FOLDER to prevent (1).lrc duplicates.
-                runCatching {
-                    resolver.query(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                        arrayOf(MediaStore.Downloads._ID),
-                        "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ?",
-                        arrayOf(filename, "$lrcRelativePath/"),
-                        null,
-                    )?.use { cursor ->
-                        val idCol = cursor.getColumnIndex(MediaStore.Downloads._ID)
-                        while (cursor.moveToNext()) {
-                            val id = cursor.getLong(idCol)
-                            val oldUri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
-                            runCatching { resolver.delete(oldUri, null, null) }
-                        }
-                    }
-                }
-
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                    put(MediaStore.Downloads.MIME_TYPE, mimeType)
-                    put(MediaStore.Downloads.RELATIVE_PATH, lrcRelativePath)
-                    put(MediaStore.Downloads.IS_PENDING, 0)
-                }
-                val uri = runCatching { resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues) }.getOrNull()
-                if (uri != null) {
-                    resolver.openOutputStream(uri, "wt")?.use { os ->
-                        os.write(content.toByteArray(Charsets.UTF_8))
-                        os.flush()
-                    }
-                    uri.toString()
-                } else {
-                    val fallbackBase = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
-                        ?: File(context.filesDir, "lyrics").apply { if (!exists()) mkdirs() }
-                    val fallbackDir = if (safeSubpath.isNotBlank()) File(fallbackBase, safeSubpath) else fallbackBase
-                    if (!fallbackDir.exists()) fallbackDir.mkdirs()
-                    val file = File(fallbackDir, filename)
-                    file.writeText(content, Charsets.UTF_8)
-                    file.absolutePath
-                }
-            } else {
-                val musicBase = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), safeDir)
-                val musicDir = if (safeSubpath.isNotBlank()) File(musicBase, safeSubpath) else musicBase
-                if (!musicDir.exists()) musicDir.mkdirs()
-                val file = File(musicDir, filename)
-                file.writeText(content, Charsets.UTF_8)
-                file.absolutePath
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-
-    suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity) = withContext(Dispatchers.IO) {
-        downloadedTrackDao.delete(track)
-        // Delete physical audio file
-        if (!track.mediaStoreUri.isNullOrBlank()) {
-            runCatching { context.contentResolver.delete(Uri.parse(track.mediaStoreUri), null, null) }
-        }
-        if (track.filePath.isNotBlank()) {
-            runCatching {
-                val f = File(track.filePath)
-                if (f.exists()) f.delete()
-            }
-        }
-        // Delete companion .lrc file if present
-        if (!track.lrcFilePath.isNullOrBlank()) {
-            if (track.lrcFilePath.startsWith("content://")) {
-                runCatching { context.contentResolver.delete(Uri.parse(track.lrcFilePath), null, null) }
-            } else {
-                runCatching {
-                    val lf = File(track.lrcFilePath)
-                    if (lf.exists()) lf.delete()
-                }
-            }
-        }
-    }
-
-    /**
-     * Cancels in-flight downloads, waits until those workers finish, then deletes
-     * each persisted audio file, lyric file, and content URI before removing that
-     * row. A missing file is success. Permission errors and failed deletes keep
-     * the row so a later wipe can retry, and they fail this call.
-     * New [downloadTrack] calls are refused until the guard is released.
-     */
-    suspend fun clearAllDownloads() {
-        val jobs = synchronized(admissionLock) {
-            downloadsWiping = true
-            activeJobs.values.toList()
-        }
-        // Ask workers to stop before the first suspension point so a caller
-        // cancelled immediately after this still cannot race a new insert in.
-        jobs.forEach { it.cancel() }
-        try {
-            withContext(Dispatchers.IO) {
-                // Existing cancellation also drops partial MediaStore rows and files.
-                cancelAllDownloads()
-                jobs.forEach { job ->
-                    job.cancel()
-                    job.join()
-                }
-                val tracks = downloadedTrackDao.getAllList()
-                val failed = ArrayList<DownloadedTrackEntity>(tracks.size)
-                for (track in tracks) {
-                    ensureActive()
-                    if (deleteRecordedDownload(track)) {
-                        downloadedTrackDao.delete(track)
-                    } else {
-                        failed += track
-                    }
-                }
-                if (failed.isNotEmpty()) {
-                    throw IOException("Failed to delete ${failed.size} downloaded track(s)")
-                }
-            }
-        } finally {
-            synchronized(admissionLock) {
-                downloadsWiping = false
-            }
-        }
-    }
-
-    private suspend fun ensureDownloadStillAllowed() {
-        currentCoroutineContext().ensureActive()
-        if (downloadsWiping) throw CancellationException("Downloads are being cleared")
-    }
-
-    /** Queued worker cancelled before it acquired a download slot. */
-    private fun forgetDownloadKey(key: String) {
-        activeKeys.remove(key)
-        activeJobs.remove(key)
-        reconnectGenerations.remove(key)
-        _downloads.update { it - key }
-    }
-
-    /** Worker that already holds a slot must release it exactly once. */
-    private fun abandonAcquiredDownload(key: String) {
-        runCatching { downloadSlots.release() }
-        activeUris.remove(key)?.let { uri ->
-            runCatching { context.contentResolver.delete(uri, null, null) }
-        }
-        activeFiles.remove(key)?.let { file ->
-            runCatching { if (file.exists()) file.delete() }
-        }
-        forgetDownloadKey(key)
-    }
-
-    private fun deleteRecordedDownload(track: DownloadedTrackEntity): Boolean {
-        val uriDeleted = deleteContentUriIfRecorded(track.mediaStoreUri)
-        val audioDeleted = deleteFileIfRecorded(track.filePath)
-        val lyricsDeleted = deleteFileIfRecorded(track.lrcFilePath)
-        if (!uriDeleted || !audioDeleted || !lyricsDeleted) {
-            android.util.Log.w(
-                "TrackDownloadManager",
-                "Kept download row for ${track.title} by ${track.artist}; deletion can be retried",
-            )
-        }
-        return uriDeleted && audioDeleted && lyricsDeleted
-    }
-
-    private fun deleteFileIfRecorded(path: String?): Boolean {
-        if (path.isNullOrBlank()) return true
-        if (path.startsWith("content://")) return deleteContentUriIfRecorded(path)
-        val file = File(path)
-        if (!file.exists()) return true
-        return try {
-            file.delete() || !file.exists()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (security: SecurityException) {
-            android.util.Log.w("TrackDownloadManager", "Couldn't delete download file $path", security)
-            false
-        }
-    }
-
-    private fun deleteContentUriIfRecorded(uriString: String?): Boolean {
-        if (uriString.isNullOrBlank()) return true
-        val uri = try {
-            Uri.parse(uriString)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return false
-        }
-        try {
-            context.contentResolver.delete(uri, null, null)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: FileNotFoundException) {
-            return true
-        } catch (security: SecurityException) {
-            android.util.Log.w("TrackDownloadManager", "Couldn't delete download uri $uriString", security)
-            return false
-        } catch (error: Exception) {
-            android.util.Log.w("TrackDownloadManager", "Download uri delete failed for $uriString", error)
-        }
-        return !contentUriStillPresent(uri)
-    }
-
-    /** True when the provider can still open the URI, so the row must stay retryable. */
-    private fun contentUriStillPresent(uri: Uri): Boolean = try {
-        context.contentResolver.openInputStream(uri)?.use { true } ?: false
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: FileNotFoundException) {
-        false
-    } catch (_: IllegalArgumentException) {
-        false
-    } catch (_: SecurityException) {
-        true
-    } catch (_: Exception) {
-        true
-    }
-
-    /**
-     * One-time self-heal for libraries corrupted before counter-string
-     * hardening ("15 ml listens", "Track 16", ... as artist, one album fanned
-     * out into N single-track albums). Runs offline-first inside
-     * [syncDownloadsFromStorage]: groups by album to restore the dominant real
-     * artist without network, then best-effort re-resolves leftovers via
-     * InnerTube. Never deletes user files, only fixes DB rows (and best-effort
-     * file tags). Safe to run on every sync; no-ops when clean.
-     */
-    suspend fun repairCorruptedDownloadMetadata() = withContext(Dispatchers.IO) {
-        val all = runCatching { downloadedTrackDao.getAllList() }.getOrNull().orEmpty()
-        if (all.isEmpty()) return@withContext
-        val corrupted = all.filter { ArtistHelper.isPlayCountOrStat(it.artist) }
-        if (corrupted.isEmpty()) return@withContext
-
-        // Offline pass: within each album, adopt the dominant non-stat artist.
-        // This reunites "one album -> N artists/albums" without any network.
-        val byAlbum = all.groupBy { it.album.trim().lowercase() }
-        var fixedOffline = 0
-        for (corrupt in corrupted.toList()) {
-            val albumKey = corrupt.album.trim().lowercase()
-            if (albumKey.isBlank() || albumKey == "singles") continue
-            val siblings = byAlbum[albumKey].orEmpty()
-            val dominant = siblings.map { it.artist.trim() }
-                .filter { it.isNotBlank() && !ArtistHelper.isPlayCountOrStat(it) }
-                .groupBy { it.lowercase() }
-                .maxByOrNull { it.value.size }
-                ?.value?.firstOrNull()
-            if (dominant.isNullOrBlank()) continue
-            val newKey = makeDownloadKey(corrupt.title, dominant)
-            val clash = runCatching { downloadedTrackDao.findByTrackKey(newKey) }.getOrNull()
-            try {
-                if (clash != null && clash.id != corrupt.id) {
-                    // Good row already holds the correct key; drop the dupe.
-                    runCatching { downloadedTrackDao.delete(corrupt) }
-                } else {
-                    runCatching {
-                        downloadedTrackDao.insert(
-                            corrupt.copy(artist = dominant, trackKey = newKey),
-                        )
-                    }
-                    // Best-effort file retag so external players / re-imports
-                    // don't resurrect the counter string.
-                    runCatching {
-                        val f = File(corrupt.filePath)
-                        if (f.exists() && f.isFile) {
-                            audioTagWriter.embedMetadata(
-                                audioFile = f,
-                                title = corrupt.title,
-                                artist = dominant,
-                                album = corrupt.album.takeIf { it.isNotBlank() },
-                                artworkUrl = corrupt.artworkUrl,
-                                artworkFallbackUrl = null,
-                                lyrics = corrupt.syncedLyrics ?: corrupt.plainLyrics,
-                                year = null,
-                            )
-                        }
-                    }
-                }
-                fixedOffline++
-            } catch (_: Exception) { }
-        }
-
-        // Network pass for leftovers (no dominant sibling, or Singles/blank album).
-        val remaining = runCatching { downloadedTrackDao.getAllList() }.getOrNull().orEmpty()
-            .filter { ArtistHelper.isPlayCountOrStat(it.artist) }
-            .take(25)
-        for (corrupt in remaining) {
-            try {
-                val albumHint = corrupt.album.trim()
-                    .takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
-                val match = runCatching {
-                    if (albumHint.isNotBlank()) {
-                        innerTube.findBestMatchOrNull(corrupt.title, albumHint, prefetchStreams = false)
-                    } else {
-                        innerTube.findBestMatchOrNull(corrupt.title, "", prefetchStreams = false)
-                    }
-                }.getOrNull() ?: continue
-                val cleanArtist = match.artist.trim()
-                    .takeUnless { ArtistHelper.isPlayCountOrStat(it) }
-                    ?.takeIf { it.isNotBlank() } ?: continue
-                val cleanAlbum = match.album?.trim()
-                    ?.takeUnless { ArtistHelper.isPlayCountOrStat(it) }
-                    ?.takeIf { it.isNotBlank() } ?: corrupt.album
-                // Don't adopt a different song's metadata: title must still match.
-                if (!match.title.equals(corrupt.title, ignoreCase = true) &&
-                    match.title.lowercase().none { it in corrupt.title.lowercase() } &&
-                    corrupt.title.lowercase().none { it in match.title.lowercase() }
-                ) continue
-                val newKey = makeDownloadKey(corrupt.title, cleanArtist)
-                val clash = runCatching { downloadedTrackDao.findByTrackKey(newKey) }.getOrNull()
-                if (clash != null && clash.id != corrupt.id) {
-                    runCatching { downloadedTrackDao.delete(corrupt) }
-                } else {
-                    runCatching {
-                        downloadedTrackDao.insert(
-                            corrupt.copy(artist = cleanArtist, album = cleanAlbum, trackKey = newKey),
-                        )
-                    }
-                    runCatching {
-                        val f = File(corrupt.filePath)
-                        if (f.exists() && f.isFile) {
-                            audioTagWriter.embedMetadata(
-                                audioFile = f,
-                                title = corrupt.title,
-                                artist = cleanArtist,
-                                album = cleanAlbum.takeIf { it.isNotBlank() },
-                                artworkUrl = corrupt.artworkUrl,
-                                artworkFallbackUrl = match.artworkUrl,
-                                lyrics = corrupt.syncedLyrics ?: corrupt.plainLyrics,
-                                year = null,
-                            )
-                        }
-                    }
-                }
-            } catch (_: Exception) { }
-        }
-    }
-
-    suspend fun syncDownloadsFromStorage() = withContext(Dispatchers.IO) {
-        runCatching { repairCorruptedDownloadMetadata() }
-        val existingEntities = downloadedTrackDao.getAllList().toMutableList()
-        val existingPaths = existingEntities.map { it.filePath }.toMutableSet()
-        val existingUris = existingEntities.mapNotNull { it.mediaStoreUri }.toMutableSet()
-        val existingKeys = existingEntities.map { makeDownloadKey(it.title, it.artist) }.toMutableSet()
-        val dirName = currentDownloadDirName()
-
-        // 1. Scan download directories on device (active folder + legacy default, incl. subfolders)
-        val musicDirs = downloadSearchDirs(dirName).filter { it.exists() && it.isDirectory }
-        val seenDirs = mutableSetOf<String>()
-        val audioExtensions = setOf("flac", "m4a", "mp3", "opus", "ogg", "webm")
-        for (musicDir in musicDirs) {
-            if (!seenDirs.add(musicDir.absolutePath)) continue
-            val audioFiles = musicDir.walkTopDown().maxDepth(6)
-                .filter { file -> file.isFile && file.extension.lowercase() in audioExtensions }
-                .toList()
-
-            for (file in audioFiles) {
-                if (file.absolutePath in existingPaths) continue
-
-                val retriever = android.media.MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(file.absolutePath)
-                    val rawTitle = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
-                        ?.ifBlank { null } ?: file.nameWithoutExtension.substringAfter(" - ").ifBlank { file.nameWithoutExtension }
-                    val rawArtist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
-                        ?.ifBlank { null } ?: file.nameWithoutExtension.substringBefore(" - ").ifBlank { "Unknown Artist" }
-                    val rawAlbum = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM).orEmpty()
-                    // Never import counter strings as metadata; fall back to
-                    // filename/folder rather than "15 ml listens".
-                    val title = rawTitle.trim().takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
-                    var artist = rawArtist.trim().takeUnless { ArtistHelper.isPlayCountOrStat(it) }
-                    if (artist.isNullOrBlank()) {
-                        val parentName = file.parentFile?.name.orEmpty()
-                        artist = parentName.takeUnless {
-                            it.isBlank() || it.equals("Singles", ignoreCase = true) ||
-                                it.equals(dirName, ignoreCase = true) ||
-                                it.equals("Music", ignoreCase = true) ||
-                                ArtistHelper.isPlayCountOrStat(it)
-                        } ?: file.nameWithoutExtension.substringBefore(" - ")
-                            .takeUnless { ArtistHelper.isPlayCountOrStat(it) }
-                        ?: "Unknown Artist"
-                    }
-                    artist = artist!!.trim().ifBlank { "Unknown Artist" }
-                    val trackKey = makeDownloadKey(title, artist)
-                    if (trackKey in existingKeys) continue
-
-                    val album = rawAlbum.trim().takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
-                    val durStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                    val durMs = durStr?.toLongOrNull() ?: 0L
-                    val bitRateStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)
-                    val bitrateKbps = bitRateStr?.toIntOrNull()?.let { it / 1000 }
-
-                    val ext = file.extension.lowercase()
-                    val badge = when (ext) {
-                        "flac" -> "FLAC"
-                        "m4a", "mp4", "aac" -> "M4A AAC"
-                        "mp3" -> "320k MP3"
-                        "opus", "ogg" -> "OPUS"
-                        else -> "AUDIO"
-                    }
-
-                    val lrcFile = File(file.parentFile ?: musicDir, file.nameWithoutExtension + ".lrc")
-                    val hasLyrics = lrcFile.exists() && lrcFile.length() > 0
-                    val lrcText = if (hasLyrics) runCatching { lrcFile.readText() }.getOrNull() else null
-
-                    val entity = DownloadedTrackEntity(
-                        trackKey = trackKey,
-                        title = title,
-                        artist = artist,
-                        album = album,
-                        filePath = file.absolutePath,
-                        fileSizeBytes = file.length(),
-                        formatBadge = badge,
-                        durationMs = durMs,
-                        bitrateKbps = bitrateKbps,
-                        isLossless = ext == "flac",
-                        hasLyrics = hasLyrics,
-                        syncedLyrics = if (lrcText?.contains("[") == true) lrcText else null,
-                        plainLyrics = if (lrcText?.contains("[") != true) lrcText else null,
-                        lrcFilePath = if (hasLyrics) lrcFile.absolutePath else null,
-                        downloadedAtMillis = file.lastModified(),
-                    )
-                    downloadedTrackDao.insert(entity)
-                    existingPaths.add(file.absolutePath)
-                    existingKeys.add(trackKey)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (oom: OutOfMemoryError) {
-                    // One corrupt/huge file's metadata must not abort the
-                    // whole sync or kill the process — skip it.
-                    android.util.Log.e("TrackDownloadManager", "Skipping file after OOM: ${file.name}", oom)
-                } catch (e: Exception) {
-                    android.util.Log.e("TrackDownloadManager", "Failed to import file: ${file.name}", e)
-                } finally {
-                    runCatching { retriever.release() }
-                }
-            }
-        }
-
-        // 2. Query MediaStore for items in the download folders (active + legacy)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val projection = arrayOf(
-                MediaStore.Audio.Media._ID,
-                MediaStore.Audio.Media.TITLE,
-                MediaStore.Audio.Media.ARTIST,
-                MediaStore.Audio.Media.ALBUM,
-                MediaStore.Audio.Media.DURATION,
-                MediaStore.Audio.Media.SIZE,
-                MediaStore.Audio.Media.MIME_TYPE,
-                MediaStore.Audio.Media.RELATIVE_PATH,
-                MediaStore.Audio.Media.DATE_ADDED,
-            )
-            val selection: String
-            val selectionArgs: Array<String>
-            if (dirName != LEGACY_PUBLIC_DIR_NAME) {
-                selection = "(${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?)"
-                selectionArgs = arrayOf("Music/$dirName%", "Music/$LEGACY_PUBLIC_DIR_NAME%")
-            } else {
-                selection = "${MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?"
-                selectionArgs = arrayOf("Music/$dirName%")
-            }
-
-            runCatching {
-                context.contentResolver.query(
-                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                    projection,
-                    selection,
-                    selectionArgs,
-                    null,
-                )?.use { cursor ->
-                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-                    val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-                    val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-                    val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-                    val durCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-                    val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
-                    val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
-                    val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
-
-                    while (cursor.moveToNext()) {
-                        val id = cursor.getLong(idCol)
-                        val uri = Uri.withAppendedPath(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id.toString())
-                        if (uri.toString() in existingUris) continue
-
-                        val rawTitle = cursor.getString(titleCol) ?: "Unknown Track"
-                        val rawArtist = cursor.getString(artistCol) ?: "Unknown Artist"
-                        val rawAlbum = cursor.getString(albumCol).orEmpty()
-                        val title = rawTitle.trim().takeIf { it.isNotBlank() } ?: "Unknown Track"
-                        val artist = rawArtist.trim()
-                            .takeUnless { ArtistHelper.isPlayCountOrStat(it) }
-                            ?.takeIf { it.isNotBlank() } ?: "Unknown Artist"
-                        val trackKey = makeDownloadKey(title, artist)
-                        if (trackKey in existingKeys) continue
-
-                        val album = rawAlbum.trim()
-                            .takeUnless { ArtistHelper.isPlayCountOrStat(it) }.orEmpty()
-                        val durMs = cursor.getLong(durCol)
-                        val size = cursor.getLong(sizeCol)
-                        val mime = cursor.getString(mimeCol).orEmpty().lowercase()
-                        val date = cursor.getLong(dateCol) * 1000L
-
-                        val isFlac = mime.contains("flac")
-                        val isM4a = mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac")
-                        val isMp3 = mime.contains("mp3") || mime.contains("mpeg")
-                        val isOpus = mime.contains("opus") || mime.contains("ogg")
-
-                        val badge = when {
-                            isFlac -> "FLAC"
-                            isM4a -> "M4A AAC"
-                            isMp3 -> "320k MP3"
-                            isOpus -> "OPUS"
-                            else -> "AUDIO"
-                        }
-
-                        val entity = DownloadedTrackEntity(
-                            trackKey = trackKey,
-                            title = title,
-                            artist = artist,
-                            album = album,
-                            filePath = uri.toString(),
-                            mediaStoreUri = uri.toString(),
-                            fileSizeBytes = size,
-                            formatBadge = badge,
-                            durationMs = durMs,
-                            isLossless = isFlac,
-                            downloadedAtMillis = if (date > 0) date else System.currentTimeMillis(),
-                        )
-                downloadedTrackDao.insert(entity)
-                        existingUris.add(uri.toString())
-                        existingKeys.add(trackKey)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun com.lastwave.app.data.music.YouTubeAudioStream.isOpusStream(): Boolean {
-        val m = mimeType.orEmpty().lowercase()
-        return m.contains("webm") || m.contains("ogg") ||
-            codec.orEmpty().contains("opus", ignoreCase = true)
-    }
-
-    private fun sanitizeFilename(title: String): String =
-        title.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "track" }
 }

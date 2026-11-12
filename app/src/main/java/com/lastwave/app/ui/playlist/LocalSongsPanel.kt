@@ -40,6 +40,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.lastwave.app.R
+import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.localmusic.LocalMusicLibrary
 import com.lastwave.app.data.localmusic.LocalMusicLibrary.ImportState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -57,6 +58,13 @@ class LocalSongsViewModel @Inject constructor(
 ) : ViewModel() {
     val importState: StateFlow<ImportState> = library.state
     val folders: StateFlow<List<Uri>> = library.folders
+    val trackFolders: StateFlow<Map<String, String>> = library.trackFolders
+
+    init {
+        if (folders.value.isNotEmpty() && (trackFolders.value.isEmpty() || trackFolders.value.keys.any { it.contains("/local_music/") })) {
+            library.rescanAll()
+        }
+    }
 
     private val _storageBytes = MutableStateFlow(0L)
     val storageBytes: StateFlow<Long> = _storageBytes.asStateFlow()
@@ -70,6 +78,15 @@ class LocalSongsViewModel @Inject constructor(
     fun forget(uri: Uri) = library.forgetFolder(uri)
     fun acknowledge() = library.acknowledgeReport()
     fun label(uri: Uri): String = library.folderLabel(uri)
+
+    fun tracksForFolder(folder: Uri, allTracks: List<GeneratedTrack>): List<GeneratedTrack> {
+        val uriStr = folder.toString()
+        val mapping = trackFolders.value
+        return allTracks.filter { track ->
+            val trackFolder = mapping[track.url]
+            trackFolder == uriStr || (trackFolder == null && folders.value.size == 1 && folders.value.first() == folder)
+        }
+    }
 }
 
 @Composable

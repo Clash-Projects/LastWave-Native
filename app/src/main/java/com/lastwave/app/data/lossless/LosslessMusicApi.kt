@@ -1,20 +1,27 @@
 package com.lastwave.app.data.lossless
 
+import android.os.SystemClock
 import android.util.Log
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import com.lastwave.app.data.plugin.ModuleManager
 import com.lastwave.app.data.addon.AddonClient
 import com.lastwave.app.data.addon.AddonTrack
 import com.lastwave.app.data.addon.AddonStream
+import com.lastwave.app.data.addon.HybridMediaServer
 import com.lastwave.app.data.local.SettingsPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
@@ -24,6 +31,7 @@ import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -89,14 +97,22 @@ class LosslessMusicApi @Inject constructor(
     private val moduleManager: ModuleManager,
     private val nativeSecrets: NativeSecrets,
     private val settingsPreferences: SettingsPreferences,
+    private val hybridServer: HybridMediaServer,
 ) {
     private val client = okHttpClient.newBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
         .build()
+    // Mobile radios pay a cold DNS+TLS handshake per addon call; a 5s hard
+    // ceiling aborted healthy searches/mints and dropped playback to YouTube.
+    // Desktop allows 12s for search and 4s for a warm mint.
     private val resolutionClient = client.newBuilder()
-        .callTimeout(4, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(12, TimeUnit.SECONDS)
         .build()
+
+    private val raceAttemptIds = AtomicLong(0)
 
     @Volatile
     private var cachedCredentials: BackendCredentials? = null
@@ -122,7 +138,13 @@ class LosslessMusicApi @Inject constructor(
      * timeout before falling back to YouTube anyway.
      */
     val isCoolingDown: Boolean
-        get() = System.currentTimeMillis() < failureCooldownUntilMs
+        get() {
+            val cooling = System.currentTimeMillis() < failureCooldownUntilMs
+            if (!cooling && consecutiveFailures > 0) {
+                consecutiveFailures = 0
+            }
+            return cooling
+        }
 
     companion object {
         // Quality presets
@@ -138,10 +160,13 @@ class LosslessMusicApi @Inject constructor(
          * Consecutive backend misses before the chain is treated as down and
          * every resolve falls through to YouTube directly.
          */
-        private const val FAILURE_COOLDOWN_THRESHOLD = 2
+        private const val FAILURE_COOLDOWN_THRESHOLD = 3
 
         /** How long a backed-off backend stays out of the resolve path. */
         private const val FAILURE_COOLDOWN_MS = 30_000L
+
+        /** Ceiling for one lossless resolve while playback continues on another source. */
+        private const val RESOLVE_BUDGET_MS = 30_000L
 
         fun getQualityAttemptOrder(preferred: Int): List<Int> {
             // YouTube is strict: no lossless attempt, no upgrade. Empty = caller goes straight to YouTube.
@@ -173,6 +198,10 @@ class LosslessMusicApi @Inject constructor(
                     QUALITY_MP3_320,
                 )
             }
+            // A selected bitrate is a ceiling. Never turn a 320 kbps or
+            // Data Saver request into a lossless/Hi-Res rendition.
+            if (preferred == QUALITY_MP3_320) return listOf(QUALITY_MP3_320, QUALITY_DATA_SAVER)
+            if (preferred == QUALITY_DATA_SAVER) return listOf(QUALITY_DATA_SAVER)
             // Lower tiers: preferred first, then higher above, then lower below.
             // Never includes Atmos (28) — Atmos plays only when explicitly selected.
             // Data Saver is excluded from fallback (YouTube beats 96k) unless explicitly chosen.
@@ -266,7 +295,7 @@ class LosslessMusicApi @Inject constructor(
         /** True for E-AC-3 spatial codec labels. Pure; safe to unit-test on JVM. */
         fun isAtmosCodec(codec: String?): Boolean {
             val c = codec?.trim()?.lowercase().orEmpty()
-            return c.startsWith("ec-3") || c.startsWith("eac3") || c.startsWith("ac-3")
+            return c.startsWith("ec-3") || c.startsWith("eac3") || c.startsWith("ac-3") || c.contains("atmos") || c.contains("dolby")
         }
 
         /** True when the stream bytes are E-AC-3 spatial. Fail-open (false) when unreadable. */
@@ -370,9 +399,19 @@ class LosslessMusicApi @Inject constructor(
             "live", "concert", "unplugged", "acoustic", "instrumental", "karaoke",
             "vocals", "vocal", "acapella", "acappella", "backing", "stems", "stem",
             "cover", "demo", "reprise", "remake", "rework", "extended", "edit",
+            "version", "mix", "dub", "vip", "session", "sessions",
             "sped", "slowed", "reverb", "nightcore", "lofi", "orchestral", "symphonic",
             "part", "pt", "chapter", "atmos", "dolby", "spatial",
-        )
+            "カバー", "カラオケ", "リミックス", "ライブ", "アコースティック",
+            "インスト", "バージョン", "歌ってみた", "踊ってみた", "弾いてみた",
+            "翻唱", "现场", "混音",
+            "커버", "라이브", "리믹스",
+        ) + LANGUAGE_TOKENS
+
+        /** Markers for a singer's own cut of the same song ("Reprise - Female", "Female Version"). */
+        private val SOFT_VERSION_WORDS = setOf("reprise", "version")
+        private const val SOFT_VERSION_MAX_DURATION_DIFF = 5
+        private const val SOFT_VERSION_PENALTY = 400
 
         private val NEUTRAL_SEGMENTS = setOf(
             "albumversion", "originalversion", "originalmix", "singleversion",
@@ -388,7 +427,6 @@ class LosslessMusicApi @Inject constructor(
             "featuring", "with", "new", "latest", "free", "download", "remaster",
             "remastered", "explicit", "clean", "bonus", "track", "deluxe", "original",
             "album", "single", "hd", "hq", "4k", "mp3", "ost", "soundtrack", "mv",
-            "version", "versions", "mix", "mixes",
         )
 
         private val RECORD_LABELS = setOf(
@@ -415,12 +453,19 @@ class LosslessMusicApi @Inject constructor(
         private val ARTIST_SEPARATORS =
             Regex("""\s*(?:[,&/;·|]|\band\b|\bx\b|\bvs\.?\b|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*""", RegexOption.IGNORE_CASE)
 
-        private val DIACRITICS = Regex("\\p{M}+")
-        private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
+        /** Candidates scoring further than this below the best match are dropped. */
+        private const val MATCH_SCORE_MARGIN = 250
+        // Only strip accents from Latin letters: stripping marks from kana
+        // (dakuten), Hangul jamo or Indic vowel signs destroys the title and
+        // made non-English songs normalize to blank, so they never matched a
+        // lossless candidate and fell back to the Opus stream.
+        private val DIACRITICS = Regex("(?<=\\p{Script=Latin})\\p{M}+")
+        private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{N}\\p{M}]+")
         private val MULTI_SPACE = Regex("\\s+")
 
         fun normalizeText(raw: String): String = Normalizer.normalize(raw, Normalizer.Form.NFD)
             .replace(DIACRITICS, "")
+            .let { Normalizer.normalize(it, Normalizer.Form.NFKC) }
             .lowercase(Locale.ROOT)
             .replace("$", "s")
             .replace(NON_ALPHANUMERIC, " ")
@@ -468,6 +513,33 @@ class LosslessMusicApi @Inject constructor(
             var text = raw.lowercase(Locale.ROOT)
                 .replace("&", " and ")
                 .replace("$", "s")
+
+            // 0. Pipe-separated video titles put the song first:
+            // "Vaaroon Forever (Official Video) | Mirzapur The Movie | Shreya Ghoshal | Romy"
+            // Keep the first segment that is not ONLY the artist/album (a segment
+            // merely containing the artist, "Arijit Singh: Tum Hi Ho", is the song).
+            // Later segments are context; they count as a version only when they
+            // are nothing but version words ("Remix"), so a trailing genre tag
+            // like "Hindi Love song" never becomes a version marker.
+            val wasPipeTitle = '|' in text
+            if (wasPipeTitle) {
+                val segments = text.split('|').map { it.trim() }.filter { it.isNotBlank() }
+                if (segments.size > 1) {
+                    val titleIndex = segments.indexOfFirst { !isOnlyArtistOrAlbum(it, artist, album) }
+                        .takeIf { it >= 0 } ?: 0
+                    segments.forEachIndexed { i, segment ->
+                        if (i == titleIndex) return@forEachIndexed
+                        if (isPureVersionSegment(segment)) {
+                            classifySegment(segment, versions, context)
+                        } else {
+                            context += segmentWords(segment).filter { it.length > 2 && it !in NOISE_WORDS }
+                        }
+                    }
+                    text = segments[titleIndex]
+                } else if (segments.size == 1) {
+                    text = segments[0]
+                }
+            }
 
             // 1. Bracketed asides, innermost first: "(From "Satyamev Jayate")", "[Official Audio]"
             val bracketRegex = Regex("""[(\[]([^()\[\]]*)[)\]]""")
@@ -521,6 +593,15 @@ class LosslessMusicApi @Inject constructor(
                 words = words.dropLast(1)
             }
 
+            // Video titles often append the singer after the song:
+            // "Heeriye (Official Video) Jasleen Royal ft Arijit Singh | ...".
+            if (wasPipeTitle) {
+                val artistWords = segmentWords(artist.lowercase(Locale.ROOT)).filter { it !in JOINING_WORDS }
+                while (words.size > 1 && words.last() in artistWords) {
+                    words = words.dropLast(1)
+                }
+            }
+
             return TitleParts(
                 words = words,
                 core = words.joinToString(""),
@@ -528,6 +609,9 @@ class LosslessMusicApi @Inject constructor(
                 context = context,
             )
         }
+
+        internal fun albumVersionMarkers(album: String?): Set<String> =
+            if (album.isNullOrBlank()) emptySet() else parseTitle(album).versions
 
         private fun classifySegment(
             segment: String,
@@ -545,6 +629,27 @@ class LosslessMusicApi @Inject constructor(
                 return
             }
             context += words.filter { it.length > 2 && it !in NOISE_WORDS }
+        }
+
+        private fun segmentWords(segment: String): List<String> =
+            segment.split(Regex("""[\s.·/,:&+]+"""))
+                .map { it.replace(NON_ALPHANUMERIC, "") }
+                .filter { it.isNotEmpty() }
+
+        /** Every word belongs to the artist (or album) name: "Arijit Singh", "Arijit S, Shilpa R" is not. */
+        private fun isOnlyArtistOrAlbum(segment: String, artist: String, album: String?): Boolean {
+            val words = segmentWords(segment).filter { it !in JOINING_WORDS }
+            if (words.isEmpty()) return true
+            val known = (segmentWords(artist.lowercase(Locale.ROOT)) +
+                segmentWords(album.orEmpty().lowercase(Locale.ROOT))).toSet()
+            return known.isNotEmpty() && words.all { it in known }
+        }
+
+        /** "Remix", "Slowed + Reverb", "Lofi Version": only version/noise words. */
+        private fun isPureVersionSegment(segment: String): Boolean {
+            val words = segmentWords(segment)
+            return words.any { it in VERSION_WORDS } &&
+                words.all { it in VERSION_WORDS || it in NOISE_WORDS || it in NEUTRAL_SEGMENTS }
         }
 
         private fun isSegmentMetadata(segment: String): Boolean {
@@ -626,8 +731,10 @@ class LosslessMusicApi @Inject constructor(
      */
     private fun noteBackendFailure() {
         consecutiveFailures++
+        Log.w(TAG, "noteBackendFailure: consecutiveFailures=$consecutiveFailures threshold=$FAILURE_COOLDOWN_THRESHOLD")
         if (consecutiveFailures >= FAILURE_COOLDOWN_THRESHOLD) {
             failureCooldownUntilMs = System.currentTimeMillis() + FAILURE_COOLDOWN_MS
+            Log.w(TAG, "noteBackendFailure: backend cooldown triggered for ${FAILURE_COOLDOWN_MS}ms")
         }
     }
 
@@ -661,19 +768,45 @@ class LosslessMusicApi @Inject constructor(
         preferredQuality: Int = QUALITY_MAX_HI_RES,
         excludedUrls: Set<String> = emptySet(),
         isDownload: Boolean = false,
+        timeoutMs: Long? = null,
     ): LosslessAudioStream? = withContext(Dispatchers.IO) {
-        if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank()) {
+        if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank() || isCoolingDown) {
             return@withContext null
         }
 
+        // Overlaps the CDN handshake with the addon search/stream round trips.
+        hybridServer.prewarm()
+        val budgetMs = timeoutMs ?: if (isDownload) 25_000L else RESOLVE_BUDGET_MS
+        withTimeoutOrNull(budgetMs) {
+            resolveStreamInternal(
+                title = title,
+                artist = artist,
+                expectedDurationSeconds = expectedDurationSeconds,
+                expectedAlbum = expectedAlbum,
+                preferredQuality = preferredQuality,
+                excludedUrls = excludedUrls,
+                isDownload = isDownload,
+            )
+        }
+    }
+
+    private suspend fun resolveStreamInternal(
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        preferredQuality: Int,
+        excludedUrls: Set<String>,
+        isDownload: Boolean,
+    ): LosslessAudioStream? {
         val allCreds = getAllEnabledCredentials()
         if (allCreds.isEmpty()) {
-            return@withContext null
+            return null
         }
 
         if (allCreds.size == 1) {
             Log.i(TAG, "resolveStream starting for '$title' by '$artist' via addon (preferredQuality=$preferredQuality, isDownload=$isDownload)")
-            val resolved = runCatching {
+            val resolved = try {
                 resolveFromAddon(
                     title = title,
                     artist = artist,
@@ -684,14 +817,20 @@ class LosslessMusicApi @Inject constructor(
                     excludedUrls = excludedUrls,
                     isDownload = isDownload,
                 )
-            }.getOrNull()
-            if (resolved != null) return@withContext resolved
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Throwable) {
+                Log.w(TAG, "resolveFromAddon failed for '$title': ${e.message}")
+                null
+            }
+            if (resolved != null) return resolved
 
             // Atmos fallback: if Dolby Atmos was selected but not found on the track,
             // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
             if (preferredQuality == QUALITY_DOLBY_ATMOS) {
+                if (isCoolingDown) return null
                 Log.i(TAG, "resolveStream: Dolby Atmos not found for '$title' by '$artist', falling back to stereo lossless")
-                return@withContext resolveStream(
+                return resolveStreamInternal(
                     title = title,
                     artist = artist,
                     expectedDurationSeconds = expectedDurationSeconds,
@@ -702,61 +841,79 @@ class LosslessMusicApi @Inject constructor(
                 )
             }
 
-            noteBackendFailure()
-            return@withContext null
+            return null
         }
 
-        Log.i(TAG, "resolveStream racing for '$title' by '$artist' across ${allCreds.size} addons concurrently (preferredQuality=$preferredQuality, isDownload=$isDownload)")
-        val deferreds = allCreds.map { creds ->
-            async {
-                runCatching {
-                    resolveFromAddon(
-                        title = title,
-                        artist = artist,
-                        expectedDurationSeconds = expectedDurationSeconds,
-                        expectedAlbum = expectedAlbum,
-                        preferredQuality = preferredQuality,
-                        addonBaseUrl = creds.baseUrl,
-                        excludedUrls = excludedUrls,
-                        isDownload = isDownload,
-                    )
-                }.getOrNull()
+        // All enabled addons are queried in parallel and the first one that
+        // resolves a stream wins; the slower ones are cancelled. A dead or slow
+        // addon therefore never delays (or cools down) the working ones.
+        val raceAttempt = raceAttemptIds.incrementAndGet()
+        val raceStartedAt = SystemClock.elapsedRealtime()
+        var winnerSelectedAt = 0L
+        Log.i("LastWaveAddonRace", "event=race_start attempt=$raceAttempt providers=${allCreds.size}")
+        val winner = coroutineScope {
+            val results = Channel<Pair<Int, LosslessAudioStream?>>(allCreds.size)
+            val jobs = allCreds.mapIndexed { providerIndex, creds ->
+                launch {
+                    val resolved = try {
+                        resolveFromAddon(
+                            title = title,
+                            artist = artist,
+                            expectedDurationSeconds = expectedDurationSeconds,
+                            expectedAlbum = expectedAlbum,
+                            preferredQuality = preferredQuality,
+                            addonBaseUrl = creds.baseUrl,
+                            excludedUrls = excludedUrls,
+                            isDownload = isDownload,
+                            noteFailures = false,
+                        )
+                    } catch (c: CancellationException) {
+                        throw c
+                    } catch (e: Throwable) {
+                        Log.w("LastWaveAddonRace", "event=provider_failed attempt=$raceAttempt providerIndex=$providerIndex error=${e.javaClass.simpleName}")
+                        null
+                    }
+                    results.trySend(providerIndex to resolved)
+                }
             }
-        }
-
-        val candidates = deferreds.awaitAll().filterNotNull()
-        if (candidates.isEmpty()) {
-            // Atmos fallback: if Dolby Atmos was selected but not found across addons,
-            // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
-            if (preferredQuality == QUALITY_DOLBY_ATMOS) {
-                Log.i(TAG, "resolveStream: Dolby Atmos not found across addons for '$title' by '$artist', falling back to stereo lossless")
-                return@withContext resolveStream(
-                    title = title,
-                    artist = artist,
-                    expectedDurationSeconds = expectedDurationSeconds,
-                    expectedAlbum = expectedAlbum,
-                    preferredQuality = QUALITY_MAX_HI_RES,
-                    excludedUrls = excludedUrls,
-                    isDownload = isDownload,
-                )
+            var first: LosslessAudioStream? = null
+            repeat(allCreds.size) {
+                if (first == null) {
+                    val (providerIndex, resolved) = results.receive()
+                    first = resolved
+                    if (resolved != null) {
+                        winnerSelectedAt = SystemClock.elapsedRealtime()
+                        Log.i("LastWaveAddonRace", "event=winner_selected attempt=$raceAttempt providerIndex=$providerIndex elapsedMs=${winnerSelectedAt - raceStartedAt}")
+                    }
+                }
             }
-
-            noteBackendFailure()
-            return@withContext null
+            jobs.forEach { it.cancel() }
+            first
+        }
+        val raceReturnedAt = SystemClock.elapsedRealtime()
+        Log.i("LastWaveAddonRace", "event=race_returned attempt=$raceAttempt elapsedMs=${raceReturnedAt - raceStartedAt} winnerToReturnMs=${if (winnerSelectedAt > 0L) raceReturnedAt - winnerSelectedAt else -1L} outcome=${if (winner != null) "winner" else "no_match"}")
+        if (winner != null) {
+            consecutiveFailures = 0
+            failureCooldownUntilMs = 0L
+            return winner
         }
 
-        candidates.maxByOrNull { stream ->
-            val tierScore = when (stream.formatId) {
-                QUALITY_DOLBY_ATMOS -> 1000
-                QUALITY_MAX_HI_RES -> 800
-                QUALITY_HI_RES_96 -> 700
-                QUALITY_CD_LOSSLESS -> 500
-                QUALITY_MP3_320 -> 300
-                QUALITY_DATA_SAVER -> 100
-                else -> 50
-            }
-            tierScore + (stream.bitDepth * 5) + stream.samplingRate.toInt()
+        // Atmos fallback: if Dolby Atmos was selected but not found across addons,
+        // fall back to stereo hi-res / lossless rather than failing and cooling down the backend.
+        if (preferredQuality == QUALITY_DOLBY_ATMOS) {
+            if (isCoolingDown) return null
+            Log.i(TAG, "resolveStream: Dolby Atmos not found across addons for '$title' by '$artist', falling back to stereo lossless")
+            return resolveStreamInternal(
+                title = title,
+                artist = artist,
+                expectedDurationSeconds = expectedDurationSeconds,
+                expectedAlbum = expectedAlbum,
+                preferredQuality = QUALITY_MAX_HI_RES,
+                excludedUrls = excludedUrls,
+                isDownload = isDownload,
+            )
         }
+        return null
     }
 
     private fun isNetworkException(error: Throwable): Boolean {
@@ -773,17 +930,19 @@ class LosslessMusicApi @Inject constructor(
         return false
     }
 
-    private suspend fun resolveFromAddon(
+    private class AddonSearchPlan(
+        val queries: List<String>,
+        val qualityParam: String,
+        val isAtmosPreferred: Boolean,
+    )
+
+    /** The exact search requests [resolveFromAddon] sends, in order. */
+    private fun addonSearchPlan(
         title: String,
         artist: String,
-        expectedDurationSeconds: Int?,
         expectedAlbum: String?,
         preferredQuality: Int,
-        addonBaseUrl: String,
-        excludedUrls: Set<String>,
-        isDownload: Boolean = false,
-    ): LosslessAudioStream? {
-        val addonClient = AddonClient(addonBaseUrl, client, nativeSecrets = nativeSecrets)
+    ): AddonSearchPlan {
         val cleanArtist = cleanForSearch(artist).ifBlank { artist }
         val cleanTitle = cleanForSearch(title).ifBlank { title }
         val parsedTarget = parseTitle(title, cleanArtist, expectedAlbum)
@@ -803,7 +962,6 @@ class LosslessMusicApi @Inject constructor(
             if (parsedTarget.core.length >= 4) foldTransliteration(searchableTitle).trim() else null,
         ).filter { it.isNotBlank() }.distinct()
 
-        val isAtmosPreferred = preferredQuality == QUALITY_DOLBY_ATMOS
         val qualityParam = when (preferredQuality) {
             QUALITY_DOLBY_ATMOS -> "lossless"
             QUALITY_MAX_HI_RES, QUALITY_HI_RES_96 -> "hi_res"
@@ -812,56 +970,228 @@ class LosslessMusicApi @Inject constructor(
             QUALITY_DATA_SAVER -> "low"
             else -> "lossless"
         }
+        return AddonSearchPlan(queries, qualityParam, preferredQuality == QUALITY_DOLBY_ATMOS)
+    }
+
+    /** Search keys already warmed this process; bounded LRU. */
+    private val warmedSearchKeys = object : LinkedHashMap<String, Unit>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Unit>?) = size > 256
+    }
+
+    /**
+     * Fires the first addon search [resolveStream] would send for this track
+     * and discards the answer. The addon caches searches server-side, so a
+     * later tap/skip to this track skips the cold upstream lookup (~0.8 s).
+     * Never records backend failures: a warm-up must not trip the cooldown.
+     */
+    suspend fun warmSearch(
+        title: String,
+        artist: String,
+        expectedAlbum: String?,
+        preferredQuality: Int,
+        expectedDurationSeconds: Int? = null,
+    ) = withContext(Dispatchers.IO) {
+        if (preferredQuality == QUALITY_YOUTUBE || title.isBlank() || artist.isBlank() || isCoolingDown) {
+            return@withContext
+        }
+        hybridServer.prewarm()
+        val plan = addonSearchPlan(title, artist, expectedAlbum, preferredQuality)
+        val query = plan.queries.firstOrNull() ?: return@withContext
+        val targetSeconds = expectedDurationSeconds?.takeIf { it in 1..86400 }
+        val warmTarget = targetSeconds
+            ?.takeIf { title.trim().length <= 512 && artist.trim().length <= 512 }
+            ?.let { seconds ->
+                android.util.Base64.encodeToString(
+                    JSONObject()
+                        .put("title", title.trim())
+                        .put("artist", artist.trim())
+                        .put("durationSeconds", seconds)
+                        .toString()
+                        .toByteArray(Charsets.UTF_8),
+                    android.util.Base64.URL_SAFE or
+                        android.util.Base64.NO_WRAP or
+                        android.util.Base64.NO_PADDING,
+                )
+            }
+        for (creds in getAllEnabledCredentials()) {
+            // Include the target duration so two versions with the same query
+            // are warmed separately instead of the second being skipped.
+            val key = "${creds.baseUrl}|${plan.qualityParam}|${plan.isAtmosPreferred}|${targetSeconds ?: 0}|$query"
+            val fresh = synchronized(warmedSearchKeys) { warmedSearchKeys.put(key, Unit) == null }
+            if (!fresh) continue
+            val client = AddonClient(creds.baseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+            val result = try {
+                currentCoroutineContext().ensureActive()
+                client.search(query, plan.qualityParam, plan.isAtmosPreferred, warmTarget)
+            } catch (cancelled: CancellationException) {
+                // An abandoned warm-up did not populate the server cache.
+                synchronized(warmedSearchKeys) { warmedSearchKeys.remove(key) }
+                throw cancelled
+            }
+            if (result.isFailure) {
+                // Let a later warm-up retry it.
+                synchronized(warmedSearchKeys) { warmedSearchKeys.remove(key) }
+                continue
+            }
+            // The server only pre-prepares its own #1 hit; ask it for the
+            // candidate and tier this app's matcher will actually stream first.
+            val first = firstStreamAttempt(
+                result.getOrNull().orEmpty(), title, artist, expectedDurationSeconds, expectedAlbum, plan,
+            ) ?: continue
+            currentCoroutineContext().ensureActive()
+            client.prewarm(first.first, first.second, first.second == "atmos")
+        }
+    }
+
+    /** (track id, tier) of the first `/stream` call [resolveFromAddon] makes for these hits. */
+    private fun firstStreamAttempt(
+        tracks: List<AddonTrack>,
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        plan: AddonSearchPlan,
+    ): Pair<String, String>? {
+        if (tracks.isEmpty()) return null
+        val candidates = verifiedCandidates(tracks, title, artist, expectedDurationSeconds, expectedAlbum, plan.isAtmosPreferred)
+            ?: return null
+        val ordered = orderCandidates(candidates, plan.qualityParam, plan.isAtmosPreferred)
+        val tier = qualityTiers(plan.qualityParam, plan.isAtmosPreferred).first()
+        val candidate = tierCandidates(ordered, tier).firstOrNull() ?: return null
+        return candidate.rawAddonId.ifBlank { candidate.id.toString() } to tier
+    }
+
+    /** Search hits that pass identity verification, best first (language-gated). */
+    private fun verifiedCandidates(
+        tracks: List<AddonTrack>,
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        isAtmosPreferred: Boolean,
+    ): List<TidalCandidateItem>? {
+        val scored = tracks.asSequence()
+            .map { track ->
+                TidalCandidateItem(
+                    id = track.id.toLongOrNull() ?: track.id.hashCode().toLong(),
+                    title = track.title,
+                    duration = track.duration.toInt(),
+                    performerName = track.artist,
+                    albumArtistName = track.artist,
+                    albumTitle = track.album,
+                    performers = track.artist,
+                    isAtmos = track.isDolbyAtmos || track.atmos || track.audioModes.any { it.contains("DOLBY", ignoreCase = true) || it.contains("ATMOS", ignoreCase = true) },
+                    isSpatial = track.audioModes.any { it.contains("360", ignoreCase = true) || it.contains("SPATIAL", ignoreCase = true) },
+                    rawAddonId = track.id,
+                    audioQuality = track.audioQuality,
+                    bitDepth = track.bitDepth,
+                    directStreamUrl = track.directStreamUrl,
+                )
+            }
+            .mapNotNull { item ->
+                verifiedMatchScore(
+                    item = item,
+                    title = title,
+                    artist = artist,
+                    expectedDurationSeconds = expectedDurationSeconds,
+                    expectedAlbum = expectedAlbum,
+                )?.let { score ->
+                    var finalScore = score
+                    if (isAtmosPreferred && isAtmosCandidate(item)) finalScore += 200
+                    item to finalScore
+                }
+            }
+            .sortedWith(compareByDescending { it.second })
+            .toList()
+        // Wrong-song guard: orderCandidates() later floats hi-res/Atmos
+        // entries to the front regardless of score, so a weak match (fuzzy
+        // title, uncredited artist, off duration) could be streamed ahead of
+        // the exact one. Keep only candidates near the best score.
+        val bestScore = scored.firstOrNull()?.second ?: return emptyList()
+        val verified = scored
+            .filter { it.second >= bestScore - MATCH_SCORE_MARGIN }
+            .map { it.first }
+            .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
+        if (verified.isEmpty()) return emptyList()
+        return gateAmbiguousLanguage(verified, title, expectedAlbum)
+    }
+
+    /** Hi-res masters first for hi-res, Atmos first for Atmos; score order kept within groups. */
+    private fun orderCandidates(
+        candidates: List<TidalCandidateItem>,
+        qualityParam: String,
+        isAtmosPreferred: Boolean,
+    ): List<TidalCandidateItem> = when {
+        isAtmosPreferred -> candidates.sortedWith(compareByDescending<TidalCandidateItem> { isAtmosCandidate(it) })
+        qualityParam == "hi_res" -> candidates.sortedWith(compareByDescending<TidalCandidateItem> { it.isHiResFlagged() })
+        else -> candidates
+    }
+
+    private fun qualityTiers(qualityParam: String, isAtmosPreferred: Boolean): List<String> = when {
+        isAtmosPreferred -> listOf("atmos", "hi_res", "lossless", "high")
+        qualityParam == "hi_res" -> listOf("hi_res", "lossless", "high")
+        qualityParam == "lossless" -> listOf("lossless", "hi_res", "high")
+        qualityParam == "high" -> listOf("high")
+        qualityParam == "low" -> listOf("low")
+        else -> listOf(qualityParam, "lossless", "high")
+    }
+
+    /** Candidates [resolveFromAddon] streams for tier [q], in attempt order. */
+    private fun tierCandidates(ordered: List<TidalCandidateItem>, q: String): List<TidalCandidateItem> =
+        if (q == "atmos") {
+            ordered.filter { isAtmosCandidate(it) }.ifEmpty { ordered }
+        } else {
+            ordered.filter { !isAtmosCandidate(it) }.ifEmpty { ordered }
+        }
+
+    private suspend fun resolveFromAddon(
+        title: String,
+        artist: String,
+        expectedDurationSeconds: Int?,
+        expectedAlbum: String?,
+        preferredQuality: Int,
+        addonBaseUrl: String,
+        excludedUrls: Set<String>,
+        isDownload: Boolean = false,
+        noteFailures: Boolean = true,
+    ): LosslessAudioStream? {
+        val addonClient = AddonClient(addonBaseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+        val plan = addonSearchPlan(title, artist, expectedAlbum, preferredQuality)
+        val queries = plan.queries
+        val isAtmosPreferred = plan.isAtmosPreferred
+        val qualityParam = plan.qualityParam
 
         var candidates: List<TidalCandidateItem> = emptyList()
+        var candidatePositions: Map<String, Int> = emptyMap()
         for (query in queries) {
             currentCoroutineContext().ensureActive()
             val searchResult = addonClient.search(query, qualityParam, isAtmosPreferred)
+            val searchError = searchResult.exceptionOrNull()
+            if (searchError != null) {
+                val isDefinitive = searchError.message?.contains("HTTP 429") == true ||
+                    isNetworkException(searchError)
+                if (isDefinitive) {
+                    Log.w(TAG, "resolveFromAddon: Addon unreachable/limited for query '$query' (${searchError.message}); falling back")
+                    if (noteFailures) noteBackendFailure()
+                    return null
+                }
+                Log.w(TAG, "resolveFromAddon: search error for query '$query' (${searchError.message}); trying next query")
+                continue
+            }
             val tracks = searchResult.getOrNull() ?: continue
             if (tracks.isEmpty()) continue
 
-            val verified = tracks.asSequence()
-                .map { track ->
-                    TidalCandidateItem(
-                        id = track.id.toLongOrNull() ?: track.id.hashCode().toLong(),
-                        title = track.title,
-                        duration = track.duration.toInt(),
-                        performerName = track.artist,
-                        albumArtistName = track.artist,
-                        albumTitle = track.album,
-                        performers = track.artist,
-                        isAtmos = track.isDolbyAtmos || track.atmos || track.audioModes.any { it.contains("DOLBY", ignoreCase = true) || it.contains("ATMOS", ignoreCase = true) },
-                        isSpatial = track.audioModes.any { it.contains("360", ignoreCase = true) || it.contains("SPATIAL", ignoreCase = true) },
-                        rawAddonId = track.id,
-                        audioQuality = track.audioQuality,
-                        bitDepth = track.bitDepth,
-                        directStreamUrl = track.directStreamUrl,
-                    )
-                }
-                .mapNotNull { item ->
-                    verifiedMatchScore(
-                        item = item,
-                        title = title,
-                        artist = artist,
-                        expectedDurationSeconds = expectedDurationSeconds,
-                        expectedAlbum = expectedAlbum,
-                    )?.let { score ->
-                        var finalScore = score
-                        if (isAtmosPreferred && isAtmosCandidate(item)) finalScore += 200
-                        item to finalScore
-                    }
-                }
-                .sortedWith(compareByDescending { it.second })
-                .map { it.first }
-                .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
-                .toList()
-
-            if (verified.isNotEmpty()) {
-                val gated = gateAmbiguousLanguage(verified, title, expectedAlbum)
-                if (gated.isNotEmpty()) {
-                    candidates = gated
-                    break
-                }
+            val gated = verifiedCandidates(tracks, title, artist, expectedDurationSeconds, expectedAlbum, isAtmosPreferred)
+            if (gated == null) {
+                // A narrower query could return just one of the languages and
+                // read as unambiguous; the answer is already "can't tell".
+                Log.i(TAG, "resolveFromAddon: '$title' exists in several languages and the request names none; staying on YouTube")
+                return null
+            }
+            if (gated.isNotEmpty()) {
+                candidates = gated
+                candidatePositions = tracks.mapIndexed { index, track -> track.id to index }.toMap()
+                break
             }
         }
 
@@ -869,46 +1199,28 @@ class LosslessMusicApi @Inject constructor(
             Log.w(TAG, "resolveFromAddon: No matching candidate found for '$title' by '$artist'")
             return null
         }
+        currentCoroutineContext()[AddonTrackMatched]?.matched = true
 
         // Hi-res preference: hi-res-flagged masters first (stable — score
         // order kept within each group). A CD-only master otherwise scores
         // identically to the 24-bit master and backend order wins the coin
         // flip, parking playback at 16-bit forever.
         val wantsHiRes = qualityParam == "hi_res" && !isAtmosPreferred
-        val ordered = if (isAtmosPreferred) {
-            candidates.sortedWith(compareByDescending<TidalCandidateItem> { isAtmosCandidate(it) })
-        } else if (wantsHiRes) {
-            candidates.sortedWith(compareByDescending<TidalCandidateItem> { it.isHiResFlagged() })
-        } else {
-            candidates
-        }
+        val ordered = orderCandidates(candidates, qualityParam, isAtmosPreferred)
 
         // Tier waterfall (backend search params). Rules:
         // - YouTube: strict, never reaches here (resolveStream returns null early).
         // - Atmos (28): atmos -> hi_res -> lossless -> high, then YouTube. Only path containing "atmos".
         // - Hi-Res (27/7): step DOWN only (hi_res -> lossless -> high), never up to Atmos. YouTube last.
-        // - Lower tiers: preferred first, then higher above, then lower. Never Atmos.
-        val qualitiesToTry = when {
-            isAtmosPreferred -> listOf("atmos", "hi_res", "lossless", "high")
-            qualityParam == "hi_res" -> listOf("hi_res", "lossless", "high")
-            qualityParam == "lossless" -> listOf("lossless", "hi_res", "high")
-            qualityParam == "high" -> listOf("high", "lossless", "hi_res")
-            qualityParam == "low" -> listOf("low", "high", "lossless", "hi_res")
-            else -> listOf(qualityParam, "lossless", "high")
-        }
+        // - 320 / Data Saver: exact lossy tier only; never resolve to lossless or Hi-Res.
+        val qualitiesToTry = qualityTiers(qualityParam, isAtmosPreferred)
         for (q in qualitiesToTry) {
             // Each tier declares its own intent: only the immersive tier
             // asks for the spatial mix, later tiers ask for stereo so a
             // missing/unplayable spatial mix still resolves to stereo
             // instead of failing the whole waterfall.
             val wantAtmos = q == "atmos"
-            val targetCandidates = if (wantAtmos) {
-                val atmosMatches = ordered.filter { isAtmosCandidate(it) }
-                if (atmosMatches.isNotEmpty()) atmosMatches else ordered
-            } else {
-                val stereoMatches = ordered.filter { !isAtmosCandidate(it) }
-                if (stereoMatches.isNotEmpty()) stereoMatches else ordered
-            }
+            val targetCandidates = tierCandidates(ordered, q)
 
             // Hi-res / Atmos tiers scan wider: a silently-downgraded answer
             // below must not consume the attempt budget for the whole tier.
@@ -916,20 +1228,61 @@ class LosslessMusicApi @Inject constructor(
             for (candidate in targetCandidates.take(tierBudget)) {
                 currentCoroutineContext().ensureActive()
                 val trackId = candidate.rawAddonId.ifBlank { candidate.id.toString() }
-                val streamResult = addonClient.stream(trackId, q, wantAtmos, isDownload = isDownload)
+                var streamResult = addonClient.stream(trackId, q, wantAtmos, isDownload = isDownload)
+                // One quick retry (desktop parity): a transient mint failure
+                // clears on the second request; 429/quota is definitive.
+                streamResult.exceptionOrNull()?.let { first ->
+                    val retryable = first.message?.contains("HTTP 429") != true &&
+                        (first.message?.contains("HTTP 5") == true || isNetworkException(first))
+                    if (retryable) {
+                        delay(150)
+                        streamResult = addonClient.stream(trackId, q, wantAtmos, isDownload = isDownload)
+                    }
+                }
+                val streamError = streamResult.exceptionOrNull()
+                if (streamError != null) {
+                    val isDefinitive = streamError.message?.contains("HTTP 429") == true ||
+                        isNetworkException(streamError)
+                    if (isDefinitive) {
+                        Log.w(TAG, "resolveFromAddon: Addon stream unreachable/limited for track '$trackId' (${streamError.message}); falling back")
+                        if (noteFailures) noteBackendFailure()
+                        return null
+                    }
+                    // A 5xx minting ONE catalog entry must not drop the whole
+                    // song to YouTube: try the next entry / tier first.
+                    Log.w(TAG, "resolveFromAddon: stream error for track '$trackId' q=$q (${streamError.message}); trying next candidate")
+                    continue
+                }
                 val stream = streamResult.getOrNull()
 
-                val rawUrl = stream?.dataUrl?.takeIf { it.isNotBlank() }
+                // hybrid-v1: the addon only brokers the key + CDN byte ranges;
+                // the loopback server pulls the encrypted chunks from the CDN
+                // and decrypts them on-device, so no FLAC flows through the addon.
+                val hybridUrl = stream?.hybrid?.takeIf { it.isUsable }?.let { plan ->
+                    val host = runCatching { java.net.URI(addonBaseUrl).host }.getOrNull() ?: "addon"
+                    hybridServer.urlFor(plan, "${host}_${trackId}_$q")
+                }
+                // A plain FLAC needs no decrypting or manifest, so it wins when offered.
+                val progressiveFlac = if (wantAtmos) null else stream?.directUrls?.firstOrNull {
+                    it.substringBefore('?').endsWith(".flac", ignoreCase = true)
+                }
+                val rawUrl = progressiveFlac
+                    ?: hybridUrl
+                    ?: stream?.dataUrl?.takeIf { it.isNotBlank() }
                     ?: stream?.manifestXml?.takeIf { it.isNotBlank() }?.let { xml ->
                         val b64 = android.util.Base64.encodeToString(xml.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                         "data:application/dash+xml;base64,$b64"
                     }
-                    ?: stream?.url?.takeIf { it.isNotBlank() }
+                    ?: stream?.directUrls?.firstOrNull()
                     ?: candidate.directStreamUrl?.takeIf { it.isNotBlank() }
                     ?: continue
 
                 if (rawUrl in excludedUrls) continue
-                if (isDecoyStream(rawUrl) || (stream?.url?.let(::isDecoyStream) == true)) {
+                if (isDecoyStream(rawUrl) ||
+                    stream?.directUrls?.any { isDecoyStream(it) } == true ||
+                    isDecoyStream(stream?.dataUrl) ||
+                    isDecoyStream(stream?.manifestXml)
+                ) {
                     Log.w(TAG, "resolveFromAddon: candidate $trackId returned decoy prank stream ($rawUrl); skipping")
                     continue
                 }
@@ -958,7 +1311,21 @@ class LosslessMusicApi @Inject constructor(
                 val effectiveSampleRate = manifestSampleRate?.toDouble() ?: rawSampleRate
                 val streamCodec = stream?.codec.orEmpty().lowercase()
                 val isLossyCodec = streamCodec.contains("mp4a") || streamCodec.contains("aac") || streamCodec.contains("mp3") || streamCodec.contains("opus")
-                val isLossyStream = isLossyCodec || stream?.quality.equals("high", ignoreCase = true) || stream?.quality.equals("low", ignoreCase = true) || q == "high" || q == "low"
+                val rawUrlPath = rawUrl.substringBefore('?').lowercase()
+                val manifestCodec = manifestCodecOf(rawUrl)?.lowercase().orEmpty()
+                val explicitLosslessStream = !isLossyCodec && (
+                    streamCodec.contains("flac") || manifestCodec.contains("flac") ||
+                        rawUrlPath.endsWith(".flac") || (stream?.bitDepth ?: candidate.bitDepth ?: 0) > 16 ||
+                        effectiveSampleRate > 48_000.0
+                    )
+                val isLossyStream = !explicitLosslessStream && (
+                    isLossyCodec ||
+                        stream?.quality.equals("high", ignoreCase = true) ||
+                        stream?.quality.equals("low", ignoreCase = true) ||
+                        stream?.audioQuality.equals("high", ignoreCase = true) ||
+                        stream?.audioQuality.equals("low", ignoreCase = true) ||
+                        q == "high" || q == "low"
+                    )
 
                 val isHiResFlagged = !isLossyStream && (candidate.isHiResFlagged() ||
                     stream?.quality?.contains("HI_RES", ignoreCase = true) == true ||
@@ -988,17 +1355,28 @@ class LosslessMusicApi @Inject constructor(
                 }
                 val formatId = when {
                     isStreamAtmos -> QUALITY_DOLBY_ATMOS
+                    explicitLosslessStream && ((effectiveBitDepth ?: 0) > 16 || effectiveSampleRate > 48_000.0 || isHiResFlagged) -> {
+                        if (effectiveSampleRate > 96_000.0) QUALITY_MAX_HI_RES else QUALITY_HI_RES_96
+                    }
+                    explicitLosslessStream -> QUALITY_CD_LOSSLESS
+                    isLossyCodec && (stream?.bitrate ?: 0) in 1..160_000 -> QUALITY_DATA_SAVER
+                    isLossyCodec && (stream?.bitrate ?: 0) > 160_000 -> QUALITY_MP3_320
                     // 96k / Low / Data Saver tier:
-                    q == "low" || stream?.quality.equals("low", ignoreCase = true) || stream?.audioQuality.equals("low", ignoreCase = true) ||
-                        (isLossyCodec && (stream?.bitrate ?: 0) in 1..160_000) -> QUALITY_DATA_SAVER
+                    isLossyStream && (q == "low" || stream?.quality.equals("low", ignoreCase = true) || stream?.audioQuality.equals("low", ignoreCase = true)) -> QUALITY_DATA_SAVER
                     // 320k / High tier:
-                    q == "high" || stream?.quality.equals("high", ignoreCase = true) || stream?.audioQuality.equals("high", ignoreCase = true) ||
-                        (isLossyCodec && (stream?.bitrate ?: 0) > 160_000) -> QUALITY_MP3_320
+                    isLossyStream && (q == "high" || stream?.quality.equals("high", ignoreCase = true) || stream?.audioQuality.equals("high", ignoreCase = true)) -> QUALITY_MP3_320
                     (effectiveBitDepth ?: 0) > 16 || effectiveSampleRate > 48000.0 || isHiResFlagged -> {
                         if (effectiveSampleRate > 96000.0) QUALITY_MAX_HI_RES else QUALITY_HI_RES_96
                     }
                     streamCodec.equals("flac", ignoreCase = true) || effectiveBitDepth == 16 -> QUALITY_CD_LOSSLESS
                     else -> QUALITY_CD_LOSSLESS
+                }
+
+                if ((q == "high" && formatId != QUALITY_MP3_320) ||
+                    (q == "low" && formatId != QUALITY_DATA_SAVER)
+                ) {
+                    Log.i(TAG, "resolveFromAddon: candidate $trackId answered $q with tier $formatId; trying the next candidate")
+                    continue
                 }
 
                 // A hi_res request answered with ≤16-bit/≤48kHz is a silent
@@ -1013,6 +1391,7 @@ class LosslessMusicApi @Inject constructor(
                     continue
                 }
 
+                Log.i("LastWaveAddonChoice", "searchCandidateIndex=${candidatePositions[trackId] ?: -1} requestedQuality=$q formatId=$formatId hybrid=${hybridUrl != null}")
                 Log.i(TAG, "resolveFromAddon: Acquired stream for track $trackId: formatId=$formatId, bitDepth=${effectiveBitDepth ?: "unknown"}, sampleRate=${effectiveSampleRate}Hz, codec=$streamCodec")
                 consecutiveFailures = 0
                 failureCooldownUntilMs = 0L
@@ -1088,9 +1467,22 @@ class LosslessMusicApi @Inject constructor(
 
         // 1. Version agreement: asking for original must never land on remix, live, acoustic, karaoke, etc.
         // And asking for remix must never land on original cut.
-        if (wanted.versions != got.versions) {
-            Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=${wanted.versions} got=${got.versions} for '$title'")
-            return null
+        val albumMarks = albumVersionMarkers(item.albumTitle)
+        val effectiveVersions = got.versions + (albumMarks intersect wanted.versions)
+        // A singer's own cut is often catalogued as "Saiyaara Reprise - Female"
+        // while the player shows just "Saiyaara" by Shreya Ghoshal. Extra
+        // soft markers (reprise/female/male/version) are tolerated, but only
+        // with a verified artist credit and a matching length (checked below),
+        // and with a penalty so an exact-version master always wins.
+        var softVersionOnly = false
+        if (wanted.versions != effectiveVersions) {
+            val extra = effectiveVersions - wanted.versions
+            softVersionOnly = (wanted.versions - effectiveVersions).isEmpty() &&
+                extra.isNotEmpty() && extra.all { it in SOFT_VERSION_WORDS }
+            if (!softVersionOnly) {
+                Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=${wanted.versions} got=$effectiveVersions for '$title'")
+                return null
+            }
         }
 
         // Severe mismatches (karaoke, instrumental, tribute, cover)
@@ -1138,6 +1530,10 @@ class LosslessMusicApi @Inject constructor(
 
         if (!hasArtistMatch && !creditDisagreeOverride) {
             Log.d(TAG, "reject candidate id=${item.id}: artist mismatch target='$matchArtist' performer='${item.performerName}' for '$title'")
+            return null
+        }
+        if (softVersionOnly && (!hasArtistMatch || (durationDifference != null && durationDifference > SOFT_VERSION_MAX_DURATION_DIFF))) {
+            Log.d(TAG, "reject candidate id=${item.id}: soft version ${got.versions} needs artist credit and length within ${SOFT_VERSION_MAX_DURATION_DIFF}s (artist=$hasArtistMatch Δ=${durationDifference}s) for '$title'")
             return null
         }
 
@@ -1205,12 +1601,31 @@ class LosslessMusicApi @Inject constructor(
             }
         }
         durationDifference?.let { score += (maxDurationDifference - it) * 5 }
+        if (softVersionOnly) score -= SOFT_VERSION_PENALTY
         return score
     }
 
     private fun extractLanguages(raw: String): Set<String> {
         if (raw.isBlank()) return emptySet()
-        return normalizeText(raw).split(' ').toSet().intersect(LANGUAGE_TOKENS)
+        val result = mutableSetOf<String>()
+        if (Regex("""\p{Script=Telugu}""").containsMatchIn(raw)) result += "telugu"
+        if (Regex("""\p{Script=Tamil}""").containsMatchIn(raw)) result += "tamil"
+        if (Regex("""\p{Script=Kannada}""").containsMatchIn(raw)) result += "kannada"
+        if (Regex("""\p{Script=Malayalam}""").containsMatchIn(raw)) result += "malayalam"
+        if (Regex("""\p{Script=Gurmukhi}""").containsMatchIn(raw)) result += "punjabi"
+        if (Regex("""\p{Script=Bengali}""").containsMatchIn(raw)) result += "bengali"
+        if (Regex("""\p{Script=Gujarati}""").containsMatchIn(raw)) result += "gujarati"
+        if (Regex("""\p{Script=Devanagari}""").containsMatchIn(raw)) result += "hindi"
+
+        val tokens = normalizeText(raw).split(' ').toSet()
+        for (token in tokens) {
+            when (token) {
+                in LANGUAGE_TOKENS -> result += token
+                "panjabi" -> result += "punjabi"
+                "bangla" -> result += "bengali"
+            }
+        }
+        return result
     }
 
     private fun hasAlbumOrContextOverlap(
@@ -1246,21 +1661,28 @@ class LosslessMusicApi @Inject constructor(
     /**
      * When multiple language releases exist and the request specifies an
      * expected language, filter candidates to match that language.
-     * Never drops all candidates to empty.
+     * When no language is specified, prefer clean/original candidates without
+     * dub/foreign-language markers over dubbed versions; if every close copy
+     * names a language and they disagree, returns null: nothing says which
+     * one the listener is hearing, so the caller stays on YouTube.
      */
     private fun gateAmbiguousLanguage(
         verified: List<TidalCandidateItem>,
         title: String,
         expectedAlbum: String?,
-    ): List<TidalCandidateItem> {
+    ): List<TidalCandidateItem>? {
         if (verified.size < 2) return verified
         val expectedLanguages = extractLanguages("$title ${expectedAlbum.orEmpty()}")
+        val candidateLanguages = verified.map { extractLanguages("${it.title} ${it.albumTitle}") }
         if (expectedLanguages.isNotEmpty()) {
-            val matching = verified.filter {
-                val candidateLangs = extractLanguages("${it.title} ${it.albumTitle}")
-                candidateLangs.isEmpty() || candidateLangs.intersect(expectedLanguages).isNotEmpty()
+            val matching = verified.filterIndexed { i, _ ->
+                candidateLanguages[i].intersect(expectedLanguages).isNotEmpty()
             }
             if (matching.isNotEmpty()) return matching
+        } else {
+            val clean = verified.filterIndexed { i, _ -> candidateLanguages[i].isEmpty() }
+            if (clean.isNotEmpty()) return clean
+            if (candidateLanguages.flatten().toSet().size > 1) return null
         }
         return verified
     }

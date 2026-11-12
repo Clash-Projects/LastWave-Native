@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave प्लेयर</string>
@@ -6,7 +6,7 @@
 
     <string name="nav_feed">फ़ीड</string>
     <string name="nav_stats">आँकड़े</string>
-    <string name="nav_playlists">प्लेलिस्ट</string>
+    <string name="nav_playlists">लाइब्रेरी</string>
     <string name="nav_create_playlist">प्लेलिस्ट बनाएँ / जनरेट करें</string>
     <string name="update_available">अपडेट उपलब्ध</string>
     <string name="update">अपडेट करें</string>
@@ -35,6 +35,8 @@
     <string name="settings_downloads_title">डाउनलोड और ऑफ़लाइन संगीत</string>
 
     <string name="settings_section_appearance">दिखावट</string>
+    <string name="settings_lastwave_theme">लास्टवेव सिग्नेचर थीम</string>
+    <string name="settings_lastwave_theme_sub">लोगो आइकन के रंगों पर आधारित स्पेशल थीम • इलेक्ट्रिक लाइम और टील</string>
     <string name="settings_amoled">AMOLED मोड</string>
     <string name="settings_amoled_sub">शुद्ध काली पृष्ठभूमि</string>
     <string name="settings_dynamic_color">डायनामिक रंग</string>
@@ -139,7 +141,7 @@
     <string name="home_section_fresh_title">ताज़ा खोजें</string>
     <string name="home_section_fresh_sub">रूटीन से हटकर नए गाने</string>
     <string name="home_section_jump_title">फिर से शुरू करें</string>
-    <string name="home_section_jump_sub">हाल में बजाए · दोबारा सुनें</string>
+    <string name="home_section_jump_sub">हाल में बजाए • दोबारा सुनें</string>
     <string name="home_section_mixes_title">खोजने लायक मिक्स</string>
     <string name="home_section_mixes_sub">अंतहीन कलाकार रेडियो मिक्स</string>
     <string name="home_section_spotlight_title">स्पॉटलाइट</string>
@@ -277,7 +279,9 @@
     <string name="theme_mode_light">रोशनी</string>
     <string name="theme_mode_dark">अंधेरा</string>
     <string name="settings_md3_nav_bar">Material 3 नेविगेशन बार</string>
-    <string name="settings_md3_nav_bar_sub">फ्लोटिंग डॉक के बजाय क्लासिक पूर्ण-चौड़ाई वाले बॉटम नेविगेशन का उपयोग करें</string>
+    <string name="settings_md3_nav_bar_sub">क्लासिक बॉटम टैब्स के बजाय मॉडर्न फ्लोटिंग डॉक नेविगेशन चालू करें</string>
+    <string name="settings_hide_nav_tabs">नेविगेशन टैब्स छिपाएं</string>
+    <string name="settings_hide_nav_tabs_sub">नेविगेशन टैब्स को पूरी तरह छिपाएं और केवल स्वाइप जेस्चर से स्क्रीन बदलें</string>
     <string name="settings_lyrics_provider">गीत प्रदाता</string>
     <string name="settings_lyrics_provider_desc">हर गाने के लिए पहले प्रयास किया। यदि यह कुछ भी नहीं लौटाता है, तो ऐप स्वचालित रूप से अन्य प्रदाताओं के पास चला जाता है।</string>
     <string name="settings_rotating_background">घूमती पृष्ठभूमि</string>
@@ -342,7 +346,7 @@
     <string name="local_scanning">खोज रहे हैं... %1$d फ़ाइलें मिलीं</string>
     <string name="local_copying">कॉपी किया जा रहा है %1$d/%2$d — %3$s</string>
     <string name="local_report_space">इन गानों की नकल करने के लिए पर्याप्त खाली जगह नहीं है।</string>
-    <string name="local_report_summary">%1$d जोड़ा गया · %2$d अद्यतन किया गया · %3$d अपरिवर्तित</string>
+    <string name="local_report_summary">%1$d जोड़ा गया • %2$d अद्यतन किया गया • %3$d अपरिवर्तित</string>
     <string name="local_report_failed">%1$d फ़ाइल(फ़ाइलों) की प्रतिलिपि नहीं बनाई जा सकी</string>
     <string name="local_report_unreachable">%1$d फ़ोल्डर अब पहुंच योग्य नहीं हैं - उन्हें फिर से चुनें</string>
     <string name="local_storage_used">स्थानीय गीतों द्वारा प्रयुक्त स्थान: %1$s</string>
@@ -499,11 +503,10 @@
     <string name="pl_export_title">प्लेलिस्ट निर्यात करें</string>
     <string name="pl_choose_image">छवि चुनें</string>
     <string name="pl_change_image">छवि बदलें</string>
-    <string name="pl_title">प्लेलिस्ट</string>
+    <string name="pl_title">लाइब्रेरी</string>
     <string name="pl_selected_count">%1$d चयनित</string>
     <string name="pl_select_more_hint">अधिक चुनने के लिए देर तक दबाएँ</string>
-    <string name="pl_count_only">%1$d प्लेलिस्ट</string>
-    <string name="pl_count_tracks">%1$d प्लेलिस्ट · %2$d ट्रैक</string>
+    <string name="pl_count_tracks">%1$d प्लेलिस्ट • %2$d ट्रैक</string>
     <string name="pl_delete_selected_cd">चयनित हटाएँ</string>
     <string name="pl_clear_selection_cd">स्पष्ट चयन</string>
     <string name="pl_create_cd">कस्टम प्लेलिस्ट बनाएं</string>
@@ -513,7 +516,7 @@
     <string name="pl_pinned_cd">पिन किया गया</string>
     <string name="pl_yt_tracks">%1$d ट्रैक</string>
     <string name="pl_yt_connected">जुड़ा हुआ खाता</string>
-    <string name="pl_subtitle_local">%1$d ट्रैक · %2$s</string>
+    <string name="pl_subtitle_local">%1$d ट्रैक • %2$s</string>
     <string name="pl_play_cd">प्लेलिस्ट चलाएँ</string>
     <string name="pl_options_cd">प्लेलिस्ट विकल्प</string>
     <string name="pl_pin">पिन</string>
@@ -593,13 +596,13 @@
     <string name="feed_albums">आपके लिए एल्बम</string>
     <string name="feed_albums_sub">आपकी रुचि के अनुसार वास्तविक एल्बम - Last.fm शीर्ष + YT संगीत चयन</string>
     <string name="feed_trending">अभी ट्रेंड कर रहा है</string>
-    <string name="feed_trending_sub">अभी सबसे लोकप्रिय · खेलने के लिए रैंक पर टैप करें</string>
+    <string name="feed_trending_sub">अभी सबसे लोकप्रिय • खेलने के लिए रैंक पर टैप करें</string>
     <string name="feed_releases">नई रिलीज़</string>
     <string name="feed_releases_sub">ताज़ा बूँदें और नए एल्बम</string>
     <string name="feed_friends">आपके दोस्त</string>
     <string name="feed_friends_sub">आपके सुनने वाले समूह के लोग</string>
     <string name="feed_footer_default">आपके स्वाद से आपके लिए बनाया गया</string>
-    <string name="feed_footer_updated">अपडेट किया गया %1$s · आपकी पसंद के अनुसार आपके लिए बनाया गया</string>
+    <string name="feed_footer_updated">अपडेट किया गया %1$s • आपकी पसंद के अनुसार आपके लिए बनाया गया</string>
     <string name="feed_ago_min">%1$dm पहले</string>
     <string name="feed_ago_hour">%1$dh पहले</string>
     <string name="feed_ago_day">%1$dd पहले</string>
@@ -687,7 +690,7 @@
     <string name="fpd_opening">प्लेलिस्ट खुल रही है...</string>
     <string name="fpd_retry">पुनः प्रयास करें</string>
     <string name="fpd_loading_more">शेष ट्रैक लोड हो रहे हैं...</string>
-    <string name="fpd_incomplete">प्लेलिस्ट अधूरी · पुनः प्रयास करें</string>
+    <string name="fpd_incomplete">प्लेलिस्ट अधूरी • पुनः प्रयास करें</string>
     <string name="fpd_track_options_cd">ट्रैक विकल्प</string>
     <string name="add_dup_single_title">गाना पहले से ही प्लेलिस्ट में है</string>
     <string name="add_dup_single_text">%1$s द्वारा %2$s पहले से ही %3$s में मौजूद है। आप प्लेलिस्ट को अपरिवर्तित छोड़ सकते हैं या दूसरी प्रति जोड़ सकते हैं।</string>
@@ -866,6 +869,8 @@
     <string name="set_cat_appear_sub">थीम, रंग, कलाकृति, गीत</string>
     <string name="set_cat_yt">यूट्यूब और सिंक</string>
     <string name="set_cat_yt_sub">खाता कनेक्शन, 24/7 लाइब्रेरी सिंक, चैनल, इतिहास</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">खाता कनेक्शन, Canvas, प्लेलिस्ट इम्पोर्ट और पसंदीदा गाने सिंक</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">खाता कनेक्शन, स्क्रोब्लिंग सिंक और एपीआई क्रेडेंशियल</string>
     <string name="set_cat_lib">पुस्तकालय एवं सामग्री</string>
@@ -1020,7 +1025,7 @@
     <string name="nr_empty_hint">दोबारा जांचने के लिए नीचे खींचें या ताज़ा करें टैप करें।</string>
     <string name="nr_more_fail">अधिक रिलीज़ लोड नहीं किया जा सका. पुन: प्रयास करें</string>
     <string name="ge_title">आपकी शैलियाँ</string>
-    <string name="ge_sub">आपके सुनने के इतिहास के आधार पर</string>
+    <string name="ge_sub">Your Genres</string>
     <string name="ge_empty">अभी तक कोई शैली डेटा नहीं</string>
     <string name="ge_tracks">आपके ट्रैक</string>
     <string name="ge_discover">और अधिक खोजें</string>
@@ -1071,4 +1076,17 @@
     <string name="lyshare_color_brand">लास्टवेव लाइम</string>
     <string name="lyshare_accessibility_line_selected">चयनित, पंक्ति %1$d / %2$d</string>
     <string name="lyshare_accessibility_line_unselected">पंक्ति %1$d / %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">सिफारिशें</string>
+    <string name="settings_recommendations_title">सिफारिश प्रदाता</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Spotify से सिफारिशें पाने के लिए Spotify कनेक्ट करें</string>
+    <string name="settings_recommendations_dialog_desc">होम, रेडियो, डिस्कवर और मिक्स के लिए गाने चुनता है। प्लेबैक हमेशा YouTube Music पर ही रहेगा।</string>
+    <string name="settings_recommendations_connect_first">पहले Spotify कनेक्ट करें</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">YouTube Music द्वारा सिफारिशें</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Spotify द्वारा सिफारिशें, YouTube Music पर प्लेबैक</string>
+    <string name="toast_spotify_connect_first">पहले Spotify कनेक्ट करें</string>
+    <string name="toast_spotify_disconnected">Spotify खाता डिस्कनेक्ट हो गया</string>
 </resources>

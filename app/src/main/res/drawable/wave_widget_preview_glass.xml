@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    <path
+        android:fillColor="#FF6C799E"
+        android:pathData="M28,0H172Q200,0 200,28V172Q200,200 172,200H28Q0,200 0,172V28Q0,0 28,0" />
+    <path
+        android:fillColor="#99BD596B"
+        android:pathData="M28,2H98L140,150L2,172V28Q2,2 28,2" />
+    <path
+        android:fillColor="#990F5677"
+        android:pathData="M98,2H172Q198,2 198,28V172Q198,198 172,198H80Z" />
+    <path
+        android:fillColor="#AA252536"
+        android:pathData="M2,92H198V172Q198,198 172,198H28Q2,198 2,172Z" />
+    <path
+        android:strokeColor="#77EBE9FF"
+        android:strokeWidth="1.5"
+        android:fillColor="#00000000"
+        android:pathData="M28,1H172Q199,1 199,28V172Q199,199 172,199H28Q1,199 1,172V28Q1,1 28,1" />
+    <path
+        android:fillColor="#FFF6F4FF"
+        android:pathData="M16,101H124V107H16Z M16,114H94V118H16Z M16,136H88V139H16Z" />
+    <path
+        android:strokeColor="#77FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M16,137L184,137" />
+    <path
+        android:fillColor="#FFF6F4FF"
+        android:pathData="M84,137a4,4 0,1 0,8 0a4,4 0,1 0,-8 0 M16,167L20,163Q24,160 28,165Q32,160 36,163L40,167L28,179Z M60,163H63V179H60Z M65,171L78,163V179Z M124,163L137,171L124,179Z M140,163H143V179H140Z M170,16H173V27H170Z M176,12H179V31H176Z M182,18H185V25H182Z" />
+    <path
+        android:fillColor="#FFF0E9FF"
+        android:pathData="M100,151a20,20 0,1 0,0 40a20,20 0,1 0,0 -40" />
+    <path
+        android:fillColor="#FF19182C"
+        android:pathData="M92,163H97V180H92Z M103,163H108V180H103Z" />
+    <path
+        android:strokeColor="#FFF6F4FF"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M161,164L177,179M161,179L177,164M172,164H177V169M172,179H177V174" />
+</vector>

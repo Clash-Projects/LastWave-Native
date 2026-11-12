@@ -132,37 +132,6 @@ static double packetPeriodMicroframes(const UsbAudioContext *ctx) {
     return static_cast<double>(1u << exponent);
 }
 
-static double readFeedback(int fd, int ep, int feedbackPacketSize) {
-    if (feedbackPacketSize != 3 && feedbackPacketSize != 4) return 0;
-    uint8_t fb[4] = {};
-    size_t sz = sizeof(struct usbdevfs_urb) + sizeof(struct usbdevfs_iso_packet_desc);
-    auto *u = (struct usbdevfs_urb *)calloc(1, sz);
-    if (!u) return 0;
-    u->type = USBDEVFS_URB_TYPE_ISO;
-    u->flags = USBDEVFS_URB_ISO_ASAP;
-    u->endpoint = (unsigned char)ep;
-    u->buffer = fb;
-    u->buffer_length = feedbackPacketSize;
-    u->number_of_packets = 1;
-    u->iso_frame_desc[0].length = feedbackPacketSize;
-    if (ioctl(fd, USBDEVFS_SUBMITURB, u) < 0) { free(u); return 0; }
-    struct usbdevfs_urb *c = nullptr;
-    usleep(2000);
-    if (ioctl(fd, USBDEVFS_REAPURBNDELAY, &c) < 0) {
-        ioctl(fd, USBDEVFS_DISCARDURB, u);
-        ioctl(fd, USBDEVFS_REAPURBNDELAY, &c);
-        free(u); return 0;
-    }
-    double r = 0;
-    if (u->iso_frame_desc[0].actual_length >= static_cast<unsigned>(feedbackPacketSize)) {
-        uint32_t raw = fb[0] | (fb[1] << 8) | (fb[2] << 16);
-        if (feedbackPacketSize == 4) raw |= static_cast<uint32_t>(fb[3]) << 24;
-        r = raw / (feedbackPacketSize == 3 ? 16384.0 : 65536.0);
-    }
-    free(u);
-    return r;
-}
-
 // ── Continuous feedback ─────────────────────────────────────────────
 
 /**
@@ -183,7 +152,8 @@ static bool allocFeedbackUrb(UsbAudioContext *ctx) {
  * actual frames-per-microframe.
  */
 static bool submitFeedbackUrb(UsbAudioContext *ctx) {
-    if (ctx->endpointFeedback <= 0 || !ctx->feedbackUrb || ctx->feedbackInFlight)
+    if (!ctx->continuousFeedback || ctx->endpointFeedback <= 0 || !ctx->feedbackUrb ||
+        ctx->feedbackInFlight)
         return false;
 
     struct usbdevfs_urb *u = ctx->feedbackUrb;
@@ -239,8 +209,8 @@ static void handleFeedbackCompletion(UsbAudioContext *ctx) {
         }
     }
 
-    // Resubmit for continuous tracking
-    submitFeedbackUrb(ctx);
+    // Resubmit for continuous tracking, but never while tearing the stream down.
+    if (ctx->running.load()) submitFeedbackUrb(ctx);
 }
 
 // ── ISO URB submission / reap ───────────────────────────────────────
@@ -337,14 +307,23 @@ static int drainAllUrbs(UsbAudioContext *ctx) {
     // Discard the feedback URB first so it doesn't interfere with draining
     if (ctx->feedbackInFlight && ctx->feedbackUrb) {
         ioctl(ctx->fd, USBDEVFS_DISCARDURB, ctx->feedbackUrb);
-        struct usbdevfs_urb *c = nullptr;
-        for (int i = 0; i < 50; i++) {
-            if (ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c) == 0 && c == ctx->feedbackUrb) {
-                break;
+        // Reap returns completions from any endpoint. Audio URBs seen here must
+        // still be counted, or the ring accounting below waits on URBs already gone.
+        for (int i = 0; i < 500 && ctx->feedbackInFlight; i++) {
+            struct usbdevfs_urb *c = nullptr;
+            if (ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c) == 0 && c != nullptr) {
+                if (c == ctx->feedbackUrb) {
+                    ctx->feedbackInFlight = false;
+                } else if (ctx->urbsInFlight > 0) {
+                    ctx->reapIdx = (ctx->reapIdx + 1) % USB_AUDIO_NUM_URBS;
+                    ctx->urbsInFlight--;
+                    drained++;
+                }
+                continue;
             }
+            if (errno != EAGAIN) break;
             usleep(100);
         }
-        ctx->feedbackInFlight = false;
     }
 
     // Phase 1: try to reap naturally (URBs that completed normally)
@@ -377,7 +356,9 @@ static int drainAllUrbs(UsbAudioContext *ctx) {
         for (int attempt = 0; attempt < 500 && reaped < toDiscard; attempt++) {
             struct usbdevfs_urb *c = nullptr;
             int ret = ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c);
-            if (ret == 0 && c != nullptr) {
+            if (ret == 0 && c == ctx->feedbackUrb) {
+                ctx->feedbackInFlight = false;
+            } else if (ret == 0 && c != nullptr) {
                 reaped++;
             } else if (ret < 0 && errno != EAGAIN) {
                 LOGE("drainAllUrbs: reap error errno=%d", errno);
@@ -406,6 +387,9 @@ static int drainAllUrbs(UsbAudioContext *ctx) {
     ctx->urbsInFlight = 0;
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
+    ctx->frameAccumulator = 0.0;
+    ctx->residualBytes = 0;
+    memset(ctx->residualBuffer, 0, sizeof(ctx->residualBuffer));
     if (ctx->running.load() && ctx->endpointFeedback > 0 && !ctx->feedbackInFlight) {
         submitFeedbackUrb(ctx);
     }
@@ -425,7 +409,7 @@ JNIEXPORT jlong JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
         JNIEnv *, jobject, jint fd, jint ifId, jint epOut, jint epFb,
         jint rate, jint ch, jint bits, jint maxPkt, jint dataInterval,
-        jint feedbackPacketSize, jint feedbackInterval) {
+        jint feedbackPacketSize, jint feedbackInterval, jboolean continuousFeedback) {
     const int usbSpeed = ioctl(fd, USBDEVFS_GET_SPEED, 0);
     if (usbSpeed != USB_SPEED_FULL && usbSpeed != USB_SPEED_HIGH &&
         usbSpeed != USB_SPEED_SUPER && usbSpeed != USB_SPEED_SUPER_PLUS) {
@@ -471,6 +455,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     memset(ctx->ring, 0, sizeof(ctx->ring));
     ctx->feedbackUrb = nullptr;
     ctx->feedbackInFlight = false;
+    ctx->continuousFeedback = continuousFeedback == JNI_TRUE && epFb > 0;
     memset(ctx->feedbackBuffer, 0, sizeof(ctx->feedbackBuffer));
 
     if (!allocRing(ctx)) {
@@ -522,42 +507,16 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
     ctx->frameAccumulator = 0.0;
     ctx->residualBytes = 0;
 
-    // Initial calibration from the DAC's async feedback endpoint.
-    // Pipeline is empty here, so REAPURBNDELAY can only return the feedback URB.
-    const double packetPeriod = packetPeriodMicroframes(ctx);
-    double nominalFpmf = ctx->sampleRate * packetPeriod / 8000.0;
-    ctx->calibratedFpmf = nominalFpmf;
+    ctx->calibratedFpmf = ctx->sampleRate * packetPeriodMicroframes(ctx) / 8000.0;
 
-    if (ctx->endpointFeedback > 0 && USB_AUDIO_ENABLE_CONTINUOUS_FEEDBACK) {
-        double fb = readFeedback(ctx->fd, ctx->endpointFeedback, ctx->feedbackPacketSize);
-        if (fb > 0) {
-            const double period = ctx->usbSpeed == USB_SPEED_FULL
-                    ? static_cast<double>(ctx->dataInterval) : packetPeriod;
-            const double candidate = fb * period;
-            if (candidate >= nominalFpmf * 0.98 && candidate <= nominalFpmf * 1.02) {
-                ctx->calibratedFpmf = candidate;
-                LOGI("Start: initial feedback=%.4f fpmf (%.1f Hz), nominal=%.4f (%.1f Hz)",
-                     fb, fb * 8000.0, nominalFpmf, nominalFpmf * 8000.0);
-            } else {
-                LOGW("Start: feedback %.4f outside ±2%% of nominal %.4f; keeping nominal",
-                     candidate, nominalFpmf);
-            }
-        } else {
-            LOGW("Start: feedback not responding, using nominal %.4f fpmf", nominalFpmf);
-        }
-
-        // Start continuous feedback: submit a feedback URB that will be
-        // automatically recycled in the reap loop during streaming.
-        // The host controller schedules the feedback endpoint once per
-        // microframe (~1 ms effective interval).
-        submitFeedbackUrb(ctx);
-    }
+    // Starts at the nominal rate; each completion in the reap loop refines it.
+    submitFeedbackUrb(ctx);
 
     LOGI("Start: rate=%d ch=%d bits=%d ring=%d slots×%dpkt fpmf=%.4f feedback=%s",
          ctx->sampleRate, ctx->channelCount, ctx->bitDepth,
          USB_AUDIO_NUM_URBS, USB_AUDIO_PACKETS_PER_URB,
          ctx->calibratedFpmf,
-         ctx->feedbackInFlight ? "continuous" : "one-shot");
+         ctx->feedbackInFlight ? "continuous" : "off");
     return JNI_TRUE;
 }
 
@@ -603,8 +562,14 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioWrite(
     clock_gettime(CLOCK_MONOTONIC, &writeEnd);
     long writeUs = (writeEnd.tv_sec - writeStart.tv_sec) * 1000000L +
                    (writeEnd.tv_nsec - writeStart.tv_nsec) / 1000L;
-    // Log every call that took > 10ms, or every 100th call
-    if (writeUs > 10000 || writeCallCount % 100 == 0) {
+    // A write normally blocks for about as long as the audio it carries
+    // (the URB ring is full, so the DAC paces us). Logging every call over
+    // 10ms therefore logged EVERY write (~43 lines/s at 44.1k), burning CPU
+    // and flooding the diagnostics buffer. Only report real stalls (longer
+    // than twice the block's own duration plus 20ms) or a periodic heartbeat.
+    const long blockUs = ctx->sampleRate > 0
+            ? static_cast<long>((int64_t)totalFrames * 1000000LL / ctx->sampleRate) : 0L;
+    if (writeUs > blockUs * 2 + 20000L || writeCallCount % 2000 == 0) {
         LOGI("nativeWrite #%ld: %d samples, %ldus (%.1fms), inflight=%d",
              writeCallCount, totalSamples, writeUs, writeUs / 1000.0, ctx->urbsInFlight);
     }
@@ -659,6 +624,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeFlush(
     if (!ctx) return;
     ctx->frameAccumulator = 0.0;
     ctx->residualBytes = 0;
+    memset(ctx->residualBuffer, 0, sizeof(ctx->residualBuffer));
     LOGI("Flush: frameAccumulator and residual reset (framesWritten=%lld)",
          (long long)ctx->framesWritten);
 }
@@ -679,12 +645,18 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioDestroy(
     if (!ctx) return;
     ctx->running.store(false);
 
-    if (ctx->urbsInFlight > 0) {
+    if (ctx->urbsInFlight > 0 || ctx->feedbackInFlight) {
         drainAllUrbs(ctx);
     }
 
     freeRing(ctx);
-    free(ctx->feedbackUrb);
+    // A URB the kernel never gave back is leaked on purpose: a later reap on
+    // this fd would write its completion status into freed memory.
+    if (ctx->feedbackInFlight) {
+        LOGW("Destroy: feedback URB still owned by the kernel; not freeing it");
+    } else {
+        free(ctx->feedbackUrb);
+    }
     ctx->feedbackUrb = nullptr;
     free(ctx->transferBuffer);
     LOGI("Destroy: %lld frames total", (long long)ctx->framesWritten);
@@ -719,14 +691,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbReset(
     LOGI("USBDEVFS_RESET fd=%d", fd);
     int ret = ioctl(fd, USBDEVFS_RESET, 0);
     if (ret < 0) { LOGE("RESET FAILED errno=%d", errno); return ret; }
-    LOGI("RESET OK, claiming interfaces...");
-    struct usbdevfs_ioctl cmd = {}; cmd.ifno = 0; cmd.ioctl_code = USBDEVFS_DISCONNECT;
-    ioctl(fd, USBDEVFS_IOCTL, &cmd);
-    int i0 = 0; ioctl(fd, USBDEVFS_CLAIMINTERFACE, &i0);
-    cmd.ifno = 1; ioctl(fd, USBDEVFS_IOCTL, &cmd);
-    int i1 = 1; ioctl(fd, USBDEVFS_CLAIMINTERFACE, &i1);
-    struct usbdevfs_setinterface si = {}; si.interface = 1; si.altsetting = 0;
-    ioctl(fd, USBDEVFS_SETINTERFACE, &si);
+    LOGI("RESET OK (descriptor-directed claiming handled in UsbAudioDevice.openDevice)");
     return 0;
 }
 
@@ -747,23 +712,32 @@ void padInt16ToInt24(const uint8_t *src, uint8_t *dst, int numSamples) {
 void padInt16ToInt32(const uint8_t *src, uint8_t *dst, int numSamples) {
     auto *out = reinterpret_cast<int32_t *>(dst);
     auto *in16 = reinterpret_cast<const int16_t *>(src);
-    for (int i = 0; i < numSamples; i++) out[i] = (int32_t)in16[i] << 16;
+    for (int i = 0; i < numSamples; i++) {
+        out[i] = static_cast<int32_t>(static_cast<uint32_t>(static_cast<int32_t>(in16[i])) << 16);
+    }
 }
 
 // int32 (24-bit sign-extended from libFLAC) → 32-bit: shift left 8
 void shiftInt32From24(const uint8_t *src, uint8_t *dst, int numSamples) {
     auto *out = reinterpret_cast<int32_t *>(dst);
     auto *in32 = reinterpret_cast<const int32_t *>(src);
-    for (int i = 0; i < numSamples; i++) out[i] = in32[i] << 8;
+    for (int i = 0; i < numSamples; i++) {
+        out[i] = static_cast<int32_t>(static_cast<uint32_t>(in32[i]) << 8);
+    }
 }
 
 // 24-bit packed (3 bytes/sample) → 32-bit: read 3 bytes, sign-extend, shift left 8
 void padInt24ToInt32(const uint8_t *src, uint8_t *dst, int numSamples) {
     auto *out = reinterpret_cast<int32_t *>(dst);
     for (int i = 0; i < numSamples; i++) {
-        int32_t s = src[i*3] | (src[i*3+1] << 8) | (src[i*3+2] << 16);
-        if (s & 0x800000) s |= 0xFF000000;  // sign-extend from 24 to 32 bits
-        out[i] = s << 8;  // shift to fill 32-bit range
+        uint32_t b0 = static_cast<uint32_t>(src[i * 3]);
+        uint32_t b1 = static_cast<uint32_t>(src[i * 3 + 1]);
+        uint32_t b2 = static_cast<uint32_t>(src[i * 3 + 2]);
+        uint32_t u = (b2 << 16) | (b1 << 8) | b0;
+        if (u & 0x800000) {
+            u |= 0xFF000000;
+        }
+        out[i] = static_cast<int32_t>(u << 8);
     }
 }
 
@@ -883,13 +857,14 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         if (ctx->urbsInFlight >= USB_AUDIO_NUM_URBS) {
             int result = reapOldestUrb(ctx, 200);
             if (result == -2) {
-                // A forward seek leaves the ring full while the next network
-                // bytes are still downloading. Killing the stream here is what
-                // stops audio after ~2s and sticks ExoPlayer on BUFFERING.
-                LOGW("submitPcmToUrbs: reap timeout, inflight=%d — drain and continue",
-                     ctx->urbsInFlight);
-                drainAllUrbs(ctx);
-                continue;
+                // Reap timed out: retry with a longer wait instead of discarding
+                // in-flight URBs, which would destroy valid audio frames.
+                result = reapOldestUrb(ctx, 300);
+                if (result == -2) {
+                    LOGW("submitPcmToUrbs: reap timeout, inflight=%d", ctx->urbsInFlight);
+                    usleep(1000);
+                    continue;
+                }
             } else if (result < 0) {
                 ctx->running.store(false);
                 free(mergedBuf);
@@ -898,6 +873,9 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
         }
 
         UrbSlot *slot = &ctx->ring[ctx->submitIdx];
+        if (slot->dataLength > urbBytes) {
+            memset(slot->buffer + urbBytes, 0, slot->dataLength - urbBytes);
+        }
         memcpy(slot->buffer, data + offset, urbBytes);
 
         if (submitRingUrb(ctx, pktSizes, numPackets, urbBytes) < 0) {

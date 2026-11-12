@@ -15,10 +15,15 @@ import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -116,6 +121,16 @@ class DownloadsViewModel @Inject constructor(
 
     val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
 
+    sealed interface DeleteEvent {
+        /** Android needs the user to approve deleting a file the app doesn't own. */
+        class NeedsConsent(val track: DownloadedTrackEntity, val request: android.content.IntentSender) : DeleteEvent
+
+        object Failed : DeleteEvent
+    }
+
+    private val _deleteEvents = MutableSharedFlow<DeleteEvent>(extraBufferCapacity = 4)
+    val deleteEvents: SharedFlow<DeleteEvent> = _deleteEvents.asSharedFlow()
+
     val downloadedTracks: StateFlow<List<DownloadedTrackEntity>> =
         downloadedTrackDao.getAll().withDownloadsFallback(emptyList()).stateIn(
             viewModelScope,
@@ -162,7 +177,7 @@ class DownloadsViewModel @Inject constructor(
                 )
             }
             .sortedBy { it.name.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val downloadedAlbums: StateFlow<List<DownloadedAlbum>> = downloadedTracks.map { tracks ->
         val albumsList = mutableListOf<DownloadedAlbum>()
@@ -212,7 +227,7 @@ class DownloadsViewModel @Inject constructor(
             }
         }
         albumsList.sortedBy { it.title.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalBytes: StateFlow<Long?> =
         downloadedTrackDao.totalBytes().withDownloadsFallback(0L).stateIn(
@@ -365,6 +380,7 @@ class DownloadsViewModel @Inject constructor(
 
     init {
         launchDownloadAction("sync downloads from storage") {
+            downloadManager.restoreDownloadsAfterReinstall()
             downloadManager.syncDownloadsFromStorage()
         }
     }
@@ -428,13 +444,25 @@ class DownloadsViewModel @Inject constructor(
 
     fun deleteTrack(track: DownloadedTrackEntity) {
         launchDownloadAction("delete download") {
-            downloadManager.deleteDownloadedTrack(track)
+            when (val result = downloadManager.deleteDownloadedTrack(track)) {
+                TrackDownloadManager.DeleteDownloadResult.Deleted -> Unit
+                is TrackDownloadManager.DeleteDownloadResult.NeedsUserConsent ->
+                    _deleteEvents.emit(DeleteEvent.NeedsConsent(track, result.request))
+                TrackDownloadManager.DeleteDownloadResult.Failed -> _deleteEvents.emit(DeleteEvent.Failed)
+            }
+        }
+    }
+
+    fun onDeleteConsentResult(track: DownloadedTrackEntity, approved: Boolean) {
+        if (!approved) return
+        launchDownloadAction("finish delete") {
+            if (!downloadManager.finishConsentedDelete(track)) _deleteEvents.emit(DeleteEvent.Failed)
         }
     }
 
     fun deleteHistoryRecordOnly(track: DownloadedTrackEntity) {
         launchDownloadAction("delete download history") {
-            downloadedTrackDao.delete(track)
+            downloadManager.removeFromHistoryOnly(track)
         }
     }
 
@@ -446,7 +474,7 @@ class DownloadsViewModel @Inject constructor(
 
     fun clearHistoryOnly() {
         launchDownloadAction("clear download history") {
-            downloadedTrackDao.clearAll()
+            downloadManager.clearHistoryOnly()
         }
     }
 
@@ -533,8 +561,7 @@ class DownloadsViewModel @Inject constructor(
                 val label = describeCustomLocation() ?: tree
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(treeUri, android.provider.DocumentsContract.Document.MIME_TYPE_DIR)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(
                     Intent.createChooser(intent, context.getString(com.lastwave.app.R.string.dl_open_location, label))

@@ -7,6 +7,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
@@ -39,6 +40,13 @@
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- WorkManager (pulled in by Glance widgets) adds a boot receiver. LastWave
+         schedules no persistent work and must never start at boot, so drop it:
+         auto-start-at-boot is a key signal antivirus "dropper" heuristics use. -->
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"
+        tools:node="remove" />
 
     <uses-feature
         android:name="android.hardware.usb.host"
@@ -47,6 +55,8 @@
     <application
         android:name=".LastWaveApplication"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:appCategory="audio"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -54,6 +64,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LastWave.Splash"
         android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:localeConfig="@xml/locales_config"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
@@ -70,19 +81,12 @@
             android:resource="@drawable/ic_car_attribution" />
 
         <activity
-            android:name=".MainActivity"
+            android:name=".MainShellActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.LastWave.Splash"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize">
-
-            <!-- Launcher -->
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
 
             <!-- Music app discovery and external playback requests -->
             <intent-filter>
@@ -91,6 +95,7 @@
                 <category android:name="android.intent.category.APP_MUSIC" />
             </intent-filter>
 
+            <!-- External playback requests from media search -->
             <intent-filter>
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -102,6 +107,25 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lastwave" android:host="auth-callback" />
+            </intent-filter>
+
+            <!-- LastWave Jam deep links (lastwave://jam?code=... and lastwave://sync?code=...) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lastwave" android:host="jam" />
+                <data android:scheme="lastwave" android:host="sync" />
+            </intent-filter>
+
+            <!-- LastWave Jam web invite deep links (https://jam.clashprojects.qd.je/?code=...) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="jam.clashprojects.qd.je" />
             </intent-filter>
 
             <!-- YouTube & YouTube Music deep links / Open With -->
@@ -129,6 +153,20 @@
                 <data android:host="spotify.link" />
             </intent-filter>
 
+            <!-- Local audio files ("Open With" from Files / file managers) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+                <data android:mimeType="application/x-ogg" />
+                <data android:mimeType="application/flac" />
+                <data android:mimeType="application/x-flac" />
+            </intent-filter>
+
             <!-- Share target for music links & song titles -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -137,6 +175,78 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Dynamic App Icon Launcher Aliases -->
+        <!-- Legacy launcher alias (.MainActivity): 100% matches existing home screen shortcuts so they never open App Info! -->
+        <activity-alias
+            android:name=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainShellActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDefault"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainShellActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityDesktop"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_desktop"
+            android:roundIcon="@mipmap/ic_launcher_round_desktop"
+            android:label="@string/app_name"
+            android:targetActivity=".MainShellActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityWhite"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_white"
+            android:roundIcon="@mipmap/ic_launcher_round_white"
+            android:label="@string/app_name"
+            android:targetActivity=".MainShellActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityBlack"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_black"
+            android:roundIcon="@mipmap/ic_launcher_round_black"
+            android:label="@string/app_name"
+            android:targetActivity=".MainShellActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
 
         <!-- Native background music player service -->
@@ -151,6 +261,10 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
+            <!-- OriginOS (vivo / iQOO) music card: heart, loop mode and lists. -->
+            <intent-filter>
+                <action android:name="com.vivo.musicwidgetmix.support.service" />
+            </intent-filter>
         </service>
 
         <receiver
@@ -161,7 +275,60 @@
             </intent-filter>
         </receiver>
 
-        <!-- Now playing widgets -->
+        <!-- Four widget designs; strip and library resize horizontally. -->
+        <receiver
+            android:name=".widget.wave.WaveStripWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_strip_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_strip_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveGlassWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_glass_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_glass_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveCircularWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_circular_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_circular_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveLibraryWidgetProvider"
+            android:exported="false"
+            android:label="@string/wave_widget_library_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wave_library_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.wave.WaveWidgetActionReceiver"
+            android:exported="false" />
+
+        <!-- Classic Now Playing widget -->
         <receiver
             android:name=".widget.NowPlayingWidgetReceiver"
             android:exported="false"
@@ -172,18 +339,6 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/now_playing_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".widget.ObsidianGlassWidgetReceiver"
-            android:exported="false"
-            android:label="@string/widget_obsidian_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/obsidian_glass_widget_info" />
         </receiver>
 
         <!-- Receiver for cancel/reconnect actions on background-download notifications -->
@@ -206,6 +361,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- WorkManager's boot/time-change rescheduler (see RECEIVE_BOOT_COMPLETED
+             above). Disabled by default and only toggled by WorkManager, which
+             tolerates the component being absent. -->
+        <receiver
+            android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver"
+            tools:node="remove" />
 
     </application>
 </manifest>

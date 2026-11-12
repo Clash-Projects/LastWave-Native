@@ -27,6 +27,7 @@ class SongPlayStatsRepository @Inject constructor(
         completed: Boolean,
     ) {
         if (title.isBlank() || artist.isBlank() || listenedMs <= 0L) return
+        if (artist.equals("Podcast", ignoreCase = true)) return
         val key = trackKeyOf(title, artist)
         val existing = dao.find(key)
         dao.upsert(
@@ -42,6 +43,7 @@ class SongPlayStatsRepository @Inject constructor(
 
     suspend fun recordSkip(title: String, artist: String, videoId: String?) {
         if (title.isBlank() || artist.isBlank()) return
+        if (artist.equals("Podcast", ignoreCase = true)) return
         val key = trackKeyOf(title, artist)
         val existing = dao.find(key)
         dao.upsert(

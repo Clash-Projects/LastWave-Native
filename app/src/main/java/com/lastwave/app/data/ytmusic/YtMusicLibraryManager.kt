@@ -11,12 +11,14 @@ import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 import com.lastwave.app.data.music.distinctPlaylistSongs
+import com.lastwave.app.data.playlist.LIKED_YT_SONGS_TITLE
 import com.lastwave.app.data.playlist.PlaylistImportManager
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.playlist.SavedPlaylist
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import com.lastwave.app.util.AppVisibility
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -88,11 +90,13 @@ class YtMusicLibraryManager @Inject constructor(
         val localIds = local.mapTo(mutableSetOf()) { it.id }
         val linkedRemoteIds = mappings.filterKeys { it in localIds }.values
             .mapTo(mutableSetOf()) { it.remotePlaylistId.removePrefix("VL") }
-        val localHasLiked = local.any { it.mode == com.lastwave.app.data.playlist.LIKED_SONGS_MODE }
+        // The account's Liked Music holds the same songs as this app's own Liked Songs - a
+        // heart writes to both - but they are two different lists and they keep their own
+        // names, so both are shown. Hiding one of them made the account look like it had
+        // no liked playlist of its own.
         account.filterNot {
             it.id in hiddenIds ||
-            it.id.removePrefix("VL") in linkedRemoteIds ||
-            (localHasLiked && (it.id == "LM" || it.id == "FEmusic_liked_videos" || it.id.removePrefix("VL") == "LM"))
+            it.id.removePrefix("VL") in linkedRemoteIds
         }.map { summary ->
             summaryToPlaylist(summary).copy(isPinned = summary.id in pinnedIds)
         }
@@ -132,10 +136,12 @@ class YtMusicLibraryManager @Inject constructor(
         }
         // InnerTube has no push subscription. Short foreground-process polling
         // gives connected playlists near-real-time behavior without importing.
+        // Only while a screen is shown: polling in a UI-less background
+        // process got the app killed for excessive CPU.
         applicationScope.launch {
             while (true) {
                 delay(REALTIME_REFRESH_MS)
-                if (auth.connection.value.isConnected) refresh()
+                if (AppVisibility.isVisible && auth.connection.value.isConnected) refresh()
             }
         }
     }
@@ -196,13 +202,13 @@ class YtMusicLibraryManager @Inject constructor(
             account
         } else {
             listOf(
-                YouTubePlaylistSummary(
-                    id = LIKED_MUSIC_REMOTE_ID,
-                    title = "Liked Music",
-                    author = "YouTube Music",
-                    trackCountText = null,
-                    artworkUrl = null,
-                ),
+                    YouTubePlaylistSummary(
+                        id = LIKED_MUSIC_REMOTE_ID,
+                        title = LIKED_YT_SONGS_TITLE,
+                        author = "YouTube Music",
+                        trackCountText = null,
+                        artworkUrl = LIKED_MUSIC_ARTWORK,
+                    ),
             ) + account
         }
         val previous = _accountPlaylists.value.associateBy(YouTubePlaylistSummary::id)
@@ -234,6 +240,11 @@ class YtMusicLibraryManager @Inject constructor(
         applicationScope.launch {
             allRemote.filter { it.remoteArtworkUrl.isNullOrBlank() }.forEach { playlist ->
                 val remoteId = playlist.remotePlaylistId ?: return@forEach
+                // The account's liked list is a whole library of songs, and reading its
+                // cover means reading the list. A thumbnail is not worth that: the row
+                // shows without one and the cover arrives with the details, when the
+                // list is being read anyway.
+                if (PlaylistImportManager.isYtLikedId(remoteId)) return@forEach
                 if (System.currentTimeMillis() < (artworkRetryAfter[remoteId] ?: 0L)) return@forEach
                 if (!artworkRequests.add(remoteId)) return@forEach
                 launch(Dispatchers.IO) {
@@ -288,7 +299,7 @@ class YtMusicLibraryManager @Inject constructor(
     }
 
     private fun writeToDiskCache(localId: Long, playlist: SavedPlaylist) {
-        if (playlist.remoteTrackCount == null) return
+        if (playlist.tracks.isEmpty()) return
         try {
             val file = File(cacheDir, "$localId.json")
             val cached = YtCachedDetail(
@@ -318,15 +329,20 @@ class YtMusicLibraryManager @Inject constructor(
         localId: Long,
         onUpdate: ((SavedPlaylist) -> Unit)? = null,
     ): SavedPlaylist? = withContext(Dispatchers.IO) {
-        // 1. Check in-memory cache for immediate zero-latency result
-        details[localId]?.takeIf { it.tracks.isNotEmpty() && it.remoteTrackCount != null }?.let { mem ->
+        // 1. Check in-memory cache for immediate zero-latency result.
+        // A list that is still being paged in counts: it has tracks, and showing
+        // them now is the point. The rest arrives behind them.
+        details[localId]?.takeIf { it.tracks.isNotEmpty() }?.let { mem ->
             onUpdate?.invoke(mem)
+            applicationScope.launch {
+                refreshDetailFromNetwork(localId, onUpdate)
+            }
             return@withContext mem
         }
 
         // 2. Check persistent disk cache for instant startup load
         val disk = readFromDiskCache(localId)
-        if (disk != null && disk.tracks.isNotEmpty() && disk.remoteTrackCount != null) {
+        if (disk != null && disk.tracks.isNotEmpty()) {
             details[localId] = disk
             onUpdate?.invoke(disk)
             // Trigger background refresh so any playlist changes on YouTube are updated
@@ -349,7 +365,9 @@ class YtMusicLibraryManager @Inject constructor(
         if (summary != null) {
             val stub = disk ?: summaryToPlaylist(summary)
             details[localId] = stub
-            onUpdate?.invoke(stub)
+            if (stub.tracks.isNotEmpty()) {
+                onUpdate?.invoke(stub)
+            }
         }
 
         refreshDetailFromNetwork(localId, onUpdate)
@@ -362,13 +380,19 @@ class YtMusicLibraryManager @Inject constructor(
         val remoteId = remoteIdsByLocalId[localId] ?: return@withContext details[localId]
         val summary = _accountPlaylists.value.firstOrNull { stableRemoteId(it.id) == localId || it.id == remoteId }
 
-        val result = innerTube.fetchPlaylist(remoteId) { partialSongs ->
+        val result = innerTube.fetchPlaylist(remoteId, progressive = true) { partialSongs ->
             val partialArtwork = summary?.artworkUrl?.takeIf(String::isNotBlank)
                 ?: partialSongs.firstNotNullOfOrNull { it.artworkUrl?.takeIf(String::isNotBlank) }
             publishArtwork(remoteId, partialArtwork)
             val partialPlaylist = SavedPlaylist(
                 id = localId,
-                title = summary?.title?.takeIf { it.isNotBlank() } ?: "YouTube Playlist",
+                // The account's liked list is shown under our name for it, here as well
+                // as in the library row, so the two are never called different things.
+                title = if (PlaylistImportManager.isYtLikedId(remoteId)) {
+                    LIKED_YT_SONGS_TITLE
+                } else {
+                    summary?.title?.takeIf { it.isNotBlank() } ?: "YouTube Playlist"
+                },
                 subtitle = "YouTube Music • Connected account",
                 mode = "youtube_remote",
                 tracks = partialSongs.distinctPlaylistSongs().map(YouTubeMusicTrack::toGeneratedTrack),
@@ -380,8 +404,26 @@ class YtMusicLibraryManager @Inject constructor(
             details[localId] = partialPlaylist
             onUpdate?.invoke(partialPlaylist)
         } ?: run {
-            val fallback = details[localId] ?: readFromDiskCache(localId)
-            if (fallback != null) onUpdate?.invoke(fallback)
+            val fallback = details[localId]?.takeIf { it.tracks.isNotEmpty() } ?: readFromDiskCache(localId)
+            if (fallback != null) {
+                onUpdate?.invoke(fallback)
+                return@withContext fallback
+            }
+            if (PlaylistImportManager.isYtLikedId(remoteId)) {
+                val localLiked = playlistRepository.getLikedSongs()
+                if (localLiked != null && localLiked.tracks.isNotEmpty()) {
+                    val adopted = localLiked.copy(
+                        id = localId,
+                        title = LIKED_YT_SONGS_TITLE,
+                        subtitle = "YouTube Music • Connected account",
+                        mode = "youtube_remote",
+                        remotePlaylistId = remoteId,
+                    )
+                    details[localId] = adopted
+                    onUpdate?.invoke(adopted)
+                    return@withContext adopted
+                }
+            }
             return@withContext fallback
         }
 
@@ -405,15 +447,12 @@ class YtMusicLibraryManager @Inject constructor(
             createdAtMillis = 0L,
             remotePlaylistId = result.id,
             remoteArtworkUrl = artworkUrl,
-            // Track count is unknown when continuation pages failed — leave it
-            // null so loadDetail treats this as refreshable instead of
-            // serving a truncated snapshot as final.
-            remoteTrackCount = trackCount.takeIf { result.isComplete },
+            remoteTrackCount = trackCount ?: result.tracks.size,
         )
         details[localId] = playlist
-        if (result.isComplete) {
+        if (playlist.tracks.isNotEmpty()) {
             writeToDiskCache(localId, playlist)
-            updateRemoteTrackCount(remoteId, trackCount)
+            updateRemoteTrackCount(remoteId, trackCount ?: result.tracks.size)
         }
         onUpdate?.invoke(playlist)
         playlist
@@ -506,12 +545,6 @@ class YtMusicLibraryManager @Inject constructor(
      * mirror: no account connected, or the track carries no YouTube videoId
      * (an imported local file). Those cases must not read as errors.
      */
-    suspend fun mirrorLikeToYouTube(track: GeneratedTrack, loved: Boolean): Boolean {
-        if (!auth.connection.value.isConnected) return true
-        val videoId = track.youtubeVideoIdOrNull() ?: return true
-        return if (loved) innerTube.likeVideo(videoId) else innerTube.removeVideoLike(videoId)
-    }
-
     suspend fun findDuplicatePlaylistIds(
         localIds: Set<Long>,
         track: GeneratedTrack,
@@ -638,6 +671,38 @@ class YtMusicLibraryManager @Inject constructor(
         saved
     }
 
+    /**
+     * Deletes a connected-account playlist and removes it from LastWave's
+     * library projection. The visibility preference is written only after the
+     * remote delete succeeds, so a failed request leaves the playlist usable.
+     * YouTube Music's Liked Music is a built-in library, not a deletable
+     * playlist; deleting that row only hides it in LastWave.
+     */
+    suspend fun deleteLibraryPlaylist(localId: Long): Boolean = withContext(Dispatchers.IO) {
+        val remoteId = remoteIdsByLocalId[localId]
+            ?: details[localId]?.remotePlaylistId
+            ?: readFromDiskCache(localId)?.remotePlaylistId
+            ?: _accountPlaylists.value.firstOrNull { stableRemoteId(it.id) == localId }?.id
+            ?: return@withContext false
+
+        if (!PlaylistImportManager.isYtLikedId(remoteId) &&
+            !innerTube.deleteRemotePlaylist(remoteId.removePrefix("VL"))
+        ) {
+            return@withContext false
+        }
+
+        preferences.setLibraryPlaylistVisible(remoteId, visible = false)
+        _accountPlaylists.update { account -> account.filterNot { it.id == remoteId } }
+        remoteIdsByLocalId.remove(localId)
+        details.remove(localId)
+        ownedPlaylistCache.remove(localId)
+        File(cacheDir, "$localId.json").delete()
+        // Keep an immediate follow-up load from consuming the old combined
+        // projection and putting this row back into the screen state.
+        playlists.first { current -> current.none { it.remotePlaylistId == remoteId } }
+        true
+    }
+
     suspend fun togglePinned(localId: Long, isPinned: Boolean) {
         val remoteId = remoteIdsByLocalId[localId]
             ?: details[localId]?.remotePlaylistId
@@ -653,18 +718,22 @@ class YtMusicLibraryManager @Inject constructor(
 
     private fun summaryToPlaylist(summary: YouTubePlaylistSummary): SavedPlaylist {
         val id = stableRemoteId(summary.id)
-        val count = if (summary.id.removePrefix("VL") == "LM") {
+        val isLiked = PlaylistImportManager.isYtLikedId(summary.id)
+        val count = if (isLiked) {
             details[id]?.remoteTrackCount
         } else {
             summary.trackCountText?.let(::parseTrackCount)
         }
         val artwork = summary.artworkUrl ?: knownArtworkByRemoteId[summary.id]
+            ?: if (isLiked) LIKED_MUSIC_ARTWORK else null
         return SavedPlaylist(
             id = id,
-            title = summary.title,
+            // The account's liked list is shown under its own name, so it is never
+            // mistaken for this app's "Liked Local Song".
+            title = if (isLiked) LIKED_YT_SONGS_TITLE else summary.title,
             subtitle = "YouTube Music • Connected account",
             mode = "youtube_remote",
-            tracks = emptyList(),
+            tracks = details[id]?.tracks ?: readFromDiskCache(id)?.tracks ?: emptyList(),
             createdAtMillis = 0L,
             remotePlaylistId = summary.id,
             remoteArtworkUrl = artwork,
@@ -710,6 +779,15 @@ class YtMusicLibraryManager @Inject constructor(
 
     private companion object {
         const val LIKED_MUSIC_REMOTE_ID = "LM"
+
+/**
+ * The liked list's own cover, which is the same for every account.
+ *
+ * Reading it off the list would mean browsing the whole of it - a library of songs -
+ * for a thumbnail. This is that picture.
+ */
+const val LIKED_MUSIC_ARTWORK =
+    "https://www.gstatic.com/youtube/media/ytm/images/pbg/liked-songs-delhi-1200.png"
         const val PLAYLIST_CONTENT_VERSION = 2
         const val REALTIME_REFRESH_MS = 8_000L
         const val ARTWORK_RETRY_DELAY_MS = 5 * 60 * 1000L

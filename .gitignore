@@ -46,6 +46,9 @@ Thumbs.db
 *.codex
 *.codex*
 *.pid
+*.exe
+*.raw
+*.obj
 
 # Credentials & Environment
 Screenshot/release.jks
@@ -57,7 +60,6 @@ keystore_credentials.txt
 app/src/main/assets/modules/
 *.lwp
 tools/*
-!tools/generate_native_secrets.py
 provider.js
 # Single raw provider source at repo base only (plaintext JSON, encrypted at build)
 provider.json
@@ -78,3 +80,17 @@ credentials_backup*
 # Standalone Telemetry Repository (separated to Clash-Projects/LastWave-Telemetry)
 lastwave-live/
 
+# Standalone Jam Sync Repository (separated to Clash-Projects/LastWave-Jam)
+lastwave-jam/
+
+# Superpowers artifacts and documentation
+docs/superpowers/
+.superpowers/
+
+# Reference screenshots and zip archives
+reference screenshot/
+reference zip/
+
+
+320kbps-addon/
+plan.md

@@ -40,7 +40,7 @@ fun LyricsOffsetDialog(
     var draftMs by remember(currentMs) { mutableLongStateOf(currentMs) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Lyrics sync offset") },
+        title = { Text(stringResource(R.string.ly_offset_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -54,13 +54,13 @@ fun LyricsOffsetDialog(
                     fontWeight = FontWeight.Bold,
                 )
                 Slider(
-                    value = draftMs.toFloat().coerceIn(-5000f, 5000f),
+                    value = draftMs.toFloat().coerceIn(-10000f, 10000f),
                     onValueChange = {
                         val rounded = it.roundToLong()
                         draftMs = rounded
                         onSelect(rounded)
                     },
-                    valueRange = -5000f..5000f,
+                    valueRange = -10000f..10000f,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),

@@ -34,8 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.lastwave.app.R
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
@@ -59,7 +61,7 @@ fun LyricsSizeDialog(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                 )
-                Text("Lyrics text size")
+                Text(stringResource(R.string.ly_size_title))
             }
         },
         text = {
@@ -186,7 +188,7 @@ fun LyricsSizeDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Done")
+                Text(stringResource(R.string.common_done))
             }
         },
         dismissButton = {
@@ -203,7 +205,7 @@ fun LyricsSizeDialog(
                         modifier = Modifier.size(16.dp),
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text("Reset")
+                    Text(stringResource(R.string.common_reset))
                 }
             }
         },

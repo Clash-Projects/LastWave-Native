@@ -1,5 +1,6 @@
 package com.lastwave.app.ui.common
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
@@ -13,17 +14,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.imageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.transform.Transformation
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Faithful port of home.js's art-loading behavior for a single row:
@@ -48,7 +53,7 @@ fun ArtworkImage(
     decodeSizePx: Int? = null,
     alignment: Alignment = Alignment.Center,
     transformations: List<Transformation> = emptyList(),
-    artworkViewModel: ArtworkViewModel = hiltViewModel(),
+    artworkViewModel: ArtworkViewModel = LocalArtworkViewModel.current ?: hiltViewModel(),
 ) {
     val context = LocalContext.current
     val key = remember(name, artist) { ArtworkNormalizer.cacheKey(name, artist) }
@@ -59,9 +64,11 @@ fun ArtworkImage(
     val resolvedUrl by remember(key) {
         artworkViewModel.resolved.map { it[key] }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
+    val isCellular = LocalArtworkCellular.current ?: artworkViewModel.isCellular.collectAsStateWithLifecycle().value
     var resolvedFailed by remember(key, resolvedUrl) { mutableStateOf(false) }
     var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
     var refreshRequested by remember(key) { mutableStateOf(false) }
+    var lastSuccessfulPainter by remember(key) { mutableStateOf<Painter?>(null) }
 
     // Local songs: a cover extracted from the user's own file wins
     // over any online lookup, and no lookup is started for it.
@@ -92,11 +99,40 @@ fun ArtworkImage(
         null
     }
 
+    val mobileDataUrl = remember(displayUrl, embeddedUrl, localCover) {
+        if (localCover) null else ArtworkNormalizer.mobileDataArtwork(displayUrl, embeddedUrl)
+    }
+    var highResCacheHit by remember(displayUrl, mobileDataUrl, isCellular, decodeSizePx, transformations) {
+        mutableStateOf<Boolean?>(null)
+    }
+    val useMobileVariant = isCellular && !localCover &&
+        !displayUrl.isNullOrBlank() && !mobileDataUrl.isNullOrBlank() && mobileDataUrl != displayUrl
+    LaunchedEffect(displayUrl, mobileDataUrl, isCellular, localCover, context) {
+        val cachedUrl = displayUrl
+        if (!useMobileVariant || cachedUrl.isNullOrBlank()) {
+            highResCacheHit = null
+            return@LaunchedEffect
+        }
+        val snapshot = withContext(Dispatchers.IO) {
+            context.imageLoader.diskCache?.openSnapshot(cachedUrl)
+        }
+        highResCacheHit = snapshot != null
+        snapshot?.close()
+    }
+    val requestUrl = when {
+        useMobileVariant && highResCacheHit == null -> null
+        useMobileVariant && highResCacheHit == true -> displayUrl
+        useMobileVariant -> mobileDataUrl
+        else -> displayUrl
+    }
+
+    val retainedPainter = lastSuccessfulPainter
     Box(modifier = modifier, contentAlignment = alignment) {
-        if (!displayUrl.isNullOrBlank()) {
-            val model = remember(displayUrl, decodeSizePx, transformations, context) {
+        if (!requestUrl.isNullOrBlank()) {
+            val model = remember(requestUrl, decodeSizePx, transformations, context) {
                 val builder = ImageRequest.Builder(context)
-                    .data(displayUrl)
+                    .data(requestUrl)
+                    .diskCacheKey(requestUrl)
                     .crossfade(300)
                 if (decodeSizePx != null) builder.size(decodeSizePx)
                 if (transformations.isNotEmpty()) builder.transformations(transformations)
@@ -107,16 +143,29 @@ fun ArtworkImage(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 alignment = alignment,
+                placeholder = retainedPainter,
+                error = retainedPainter,
+                onSuccess = {
+                    lastSuccessfulPainter = it.painter
+                },
                 modifier = Modifier.fillMaxSize(),
                 onError = {
                     if (localCover) {
                         embeddedFailed = true
-                    } else if (useHighRes) {
+                    } else if (requestUrl == displayUrl && useHighRes) {
                         resolvedFailed = true
                     } else {
                         embeddedFailed = true
                     }
                 },
+            )
+        } else if (retainedPainter != null) {
+            Image(
+                painter = retainedPainter,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alignment = alignment,
+                modifier = Modifier.fillMaxSize(),
             )
         } else {
             Icon(

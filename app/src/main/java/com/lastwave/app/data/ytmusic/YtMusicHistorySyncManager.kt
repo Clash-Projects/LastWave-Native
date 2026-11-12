@@ -136,6 +136,15 @@ class YtMusicHistorySyncManager @Inject constructor(
             return
         }
         if (!historyEnabled || !activeAccount.isConnected) return
+        val currentTrack = track ?: return
+        if (currentTrack.mediaType != com.lastwave.app.playback.MediaType.SONG ||
+            !currentTrack.showId.isNullOrBlank() ||
+            currentTrack.artist.equals("Podcast", ignoreCase = true)
+        ) {
+            // Podcast episodes are not songs: they never enter the account's
+            // music history.
+            return
+        }
         val sessionId = "$sessionEpoch|$key"
         if (submittedSessionId == sessionId) return
 

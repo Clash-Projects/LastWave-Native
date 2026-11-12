@@ -61,4 +61,87 @@ class CanvasMatchingTest {
         // Malformed UUID returns null
         assertThat(TidalCanvas.coverUrl("invalid-uuid")).isNull()
     }
+
+    @Test
+    fun testSpotifyCanvasIsCheckedAgainstTheTrack() {
+        val canvas = CanvasArtwork(
+            url = "https://example.com/loop.mp4",
+            title = "Crazy In Love",
+            artist = "Beyoncé, Jay-Z",
+            album = "Dangerously in Love",
+            source = CanvasSource.SPOTIFY,
+        )
+
+        assertThat(
+            canvas.matches(
+                wantTitle = "Crazy In Love",
+                wantArtist = "Beyoncé ft. Jay-Z",
+                wantAlbum = "Dangerously In Love",
+            ),
+        ).isTrue()
+
+        // A canvas for a different song is refused.
+        assertThat(
+            canvas.matches(
+                wantTitle = "Halo",
+                wantArtist = "Beyoncé",
+                wantAlbum = "Dangerously In Love",
+            ),
+        ).isFalse()
+
+        // So is one by a different artist.
+        assertThat(
+            canvas.matches(
+                wantTitle = "Crazy In Love",
+                wantArtist = "Adele",
+                wantAlbum = "Dangerously in Love",
+            ),
+        ).isFalse()
+    }
+
+    @Test
+    fun testSpotifyCanvasAcceptsTheSameReleasePackagedDifferently() {
+        val canvas = CanvasArtwork(
+            url = "https://example.com/loop.mp4",
+            title = "Crazy In Love",
+            artist = "Beyoncé",
+            album = "Dangerously in Love",
+            source = CanvasSource.SPOTIFY,
+        )
+
+        assertThat(
+            canvas.matches(
+                wantTitle = "Crazy In Love (Remastered 2011)",
+                wantArtist = "Beyonce",
+                wantAlbum = "Dangerously in Love",
+            ),
+        ).isTrue()
+
+        assertThat(
+            canvas.matches(
+                wantTitle = "Crazy In Love (feat. Jay-Z)",
+                wantArtist = "Beyoncé",
+                wantAlbum = "Dangerously in Love",
+            ),
+        ).isTrue()
+    }
+
+    @Test
+    fun testTitlesThatOnlyShareAWordAreNotTheSameSong() {
+        val canvas = CanvasArtwork(
+            url = "https://example.com/loop.mp4",
+            title = "Love",
+            artist = "Someone",
+            album = null,
+            source = CanvasSource.SPOTIFY,
+        )
+
+        assertThat(
+            canvas.matches(
+                wantTitle = "Love Story",
+                wantArtist = "Someone",
+                wantAlbum = null,
+            ),
+        ).isFalse()
+    }
 }

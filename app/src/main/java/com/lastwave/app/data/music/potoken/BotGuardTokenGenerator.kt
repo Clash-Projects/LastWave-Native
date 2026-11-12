@@ -224,6 +224,26 @@ object BotGuardTokenGenerator {
         }
     }
 
+    /**
+     * Drops the headless WebView engine (tens of MB of in-process Chromium)
+     * when Android reports memory pressure while LastWave sits in the
+     * background. The next mint rebuilds it on demand, exactly like after
+     * expiry. Never touches an engine another call is using: waits for the
+     * mutex.
+     */
+    suspend fun releaseForMemoryPressure() {
+        mutex.withLock {
+            val current = engine ?: return
+            withContext(Dispatchers.Main) { current.close() }
+            engine = null
+            engineSessionId = null
+            cachedSessionToken = null
+            engineReady = false
+            playerTokenCache.evictAll()
+            Log.i(TAG, "BotGuard engine released for memory pressure")
+        }
+    }
+
     private fun isEngineReadyForSession(sessionId: String): Boolean =
         engineReady && engineSessionId == sessionId && cachedSessionToken != null && engine?.isExpired == false
 
@@ -243,7 +263,21 @@ object BotGuardTokenGenerator {
         private val pendingMints = ConcurrentHashMap<String, CompletableDeferred<String>>()
         @Volatile private var expiresAtMs: Long = System.currentTimeMillis() + 50 * 60 * 1000L
 
-        val isExpired: Boolean get() = System.currentTimeMillis() > expiresAtMs
+        /** Expired, closed, or its renderer died: never reuse, rebuild instead. */
+        val isExpired: Boolean get() = closed.get() || System.currentTimeMillis() > expiresAtMs
+
+        /**
+         * The WebView renderer crashed or was reclaimed under memory pressure.
+         * Without handling this, Android kills the whole app process.
+         * Fail anything waiting and drop the dead WebView; the next mint
+         * rebuilds a fresh engine.
+         */
+        @MainThread
+        fun onRendererGone() {
+            Log.w(TAG, "BotGuard WebView renderer gone; engine will be rebuilt on demand")
+            readyDeferred.completeExceptionally(IllegalStateException("BotGuard renderer gone"))
+            close()
+        }
 
         fun startBootstrap() {
             scope.launch {
@@ -252,6 +286,7 @@ object BotGuardTokenGenerator {
                         webView.context.assets.open("po_token.html").bufferedReader().use { it.readText() }
                     }
                     val patched = html.replaceFirst("</script>", "\n$JS_BRIDGE.onPageLoaded()</script>")
+                    if (closed.get()) return@runCatching
                     webView.loadDataWithBaseURL("https://www.youtube.com", patched, "text/html", "utf-8", null)
                 }.onFailure { error ->
                     Log.e(TAG, "BotGuard bootstrap failed", error)
@@ -270,6 +305,7 @@ object BotGuardTokenGenerator {
                     val challengeJson = parseCreateChallenge(response)
 
                     withContext(Dispatchers.Main) {
+                        if (closed.get()) return@withContext
                         webView.evaluateJavascript(
                             """
                             try {
@@ -304,6 +340,7 @@ object BotGuardTokenGenerator {
                     expiresAtMs = System.currentTimeMillis() + (lifetimeSec - 300L) * 1000L
 
                     withContext(Dispatchers.Main) {
+                        if (closed.get()) return@withContext
                         webView.evaluateJavascript(
                             """
                             try {
@@ -336,6 +373,9 @@ object BotGuardTokenGenerator {
         }
 
         suspend fun mint(identifier: String): String = withContext(Dispatchers.Main) {
+            // Another caller may have replaced (closed) this engine meanwhile;
+            // never drive a destroyed WebView.
+            if (closed.get()) throw IllegalStateException("BotGuard engine closed")
             // computeIfAbsent so two concurrent mints for the same identifier
             // share one deferred instead of the second orphaning the first
             // (which used to leave an awaiter hanging until its outer timeout).
@@ -386,9 +426,9 @@ object BotGuardTokenGenerator {
                 }
                 pendingMints.clear()
                 runCatching { scope.cancel() }
-                webView.stopLoading()
-                webView.removeJavascriptInterface(JS_BRIDGE)
-                webView.destroy()
+                runCatching { webView.stopLoading() }
+                runCatching { webView.removeJavascriptInterface(JS_BRIDGE) }
+                runCatching { webView.destroy() }
             }
         }
 
@@ -409,9 +449,20 @@ object BotGuardTokenGenerator {
                 val webView = WebView(context.applicationContext).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    webViewClient = WebViewClient()
                 }
                 val engine = BotGuardEngine(webView, readyDeferred)
+                webView.webViewClient = object : WebViewClient() {
+                    // Returning true keeps the app alive when the headless
+                    // renderer dies (crash or low-memory kill); the default
+                    // (false) makes the framework kill the whole process.
+                    override fun onRenderProcessGone(
+                        view: WebView?,
+                        detail: android.webkit.RenderProcessGoneDetail?,
+                    ): Boolean {
+                        runCatching { engine.onRendererGone() }
+                        return true
+                    }
+                }
                 webView.addJavascriptInterface(engine, JS_BRIDGE)
                 engine.startBootstrap()
                 try {

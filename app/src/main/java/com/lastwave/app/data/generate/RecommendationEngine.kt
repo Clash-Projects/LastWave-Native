@@ -1,9 +1,11 @@
 package com.lastwave.app.data.generate
 
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -523,7 +525,7 @@ class RecommendationEngine(
         blacklist: Set<String>,
         familiarKeys: Set<String> = emptySet(),
         youtubeCandidates: List<GeneratedTrack> = emptyList(),
-    ): List<GeneratedTrack> {
+    ): List<GeneratedTrack> = withContext(Dispatchers.Default) {
         onProgress("Reading your listening mood\u2026")
         val ctx = RecoContext(total, profile, blacklist)
         // YouTube Music-first: personal feed + precomputed radio lead at
@@ -608,6 +610,6 @@ class RecommendationEngine(
         }
 
         Log.d(RTAG, "FINAL: ${final.size}/$total tracks returned")
-        return final
+        final
     }
 }

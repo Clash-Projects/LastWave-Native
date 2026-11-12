@@ -10,6 +10,7 @@
 
 # JNI exports use the Kotlin class and method names verbatim.
 -keep class com.lastwave.app.playback.NativeAudioEngine { *; }
+-keep class com.lastwave.app.data.lossless.NativeSecrets { *; }
 
 # kotlinx.serialization: keep generated serializers and Serializable models
 -keepclassmembers class com.lastwave.app.** {
@@ -84,3 +85,17 @@
 -dontwarn com.metrolist.innertubex.**
 -dontwarn io.ktor.**
 
+# Keep all InnerTube Search, Browse, and Music JSON data models
+-keep @androidx.annotation.Keep class * { *; }
+-keepclassmembers @androidx.annotation.Keep class * { *; }
+-keep class com.lastwave.app.data.music.** { *; }
+-keepclassmembers class com.lastwave.app.data.music.** { *; }
+-keep class com.lastwave.app.data.podcast.** { *; }
+-keepclassmembers class com.lastwave.app.data.podcast.** { *; }
+
+
+# Shrink and optimize, but do not rename classes/members. LastWave is open
+# source, so renaming hides nothing, and the scrambled single-letter names
+# (a.b.c) are what Huorong's static TrojanDropper/Android.Agent heuristic
+# matched: the unobfuscated rawRelease build of the same code scans clean.
+-dontobfuscate

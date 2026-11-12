@@ -83,9 +83,12 @@ import com.lastwave.app.data.genre.GenreResolver
 import com.lastwave.app.data.local.db.DownloadedTrackDao
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.model.RecentTracksEnvelope
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.network.LastFmApiService
+import com.lastwave.app.data.canvas.CanvasRepository
+import com.lastwave.app.data.canvas.displayName
 import com.lastwave.app.data.plugin.ModulePlaybackResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -94,48 +97,21 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.net.URLEncoder
+import com.lastwave.app.data.network.ITunesSearchClient
+import com.lastwave.app.data.network.ITunesSong
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
-
-@Serializable
-private data class ITunesTrackResult(
-    val artistName: String? = null,
-    val collectionName: String? = null,
-    @SerialName("trackName") val trackName: String? = null,
-    val primaryGenreName: String? = null,
-    val releaseDate: String? = null,
-    val trackNumber: Int? = null,
-    val trackCount: Int? = null,
-    val discNumber: Int? = null,
-    val discCount: Int? = null,
-    val trackTimeMillis: Long? = null,
-    val copyright: String? = null,
-    val contentAdvisoryRating: String? = null,
-    @SerialName("isStreamable") val isStreamable: Boolean? = null,
-)
-
-@Serializable
-private data class ITunesSearchResponse(
-    val resultCount: Int = 0,
-    val results: List<ITunesTrackResult> = emptyList(),
-)
 
 data class TrackSpecs(
     val title: String,
@@ -147,6 +123,7 @@ data class TrackSpecs(
     val bitDepthSampleRate: String = "Analyzing...",
     val bitrate: String? = null,
     val provider: String = "Lossless / YouTube",
+    val canvasSource: String? = null,
     val isLossless: Boolean = false,
     val durationText: String = "--:--",
     val downloadedEntity: DownloadedTrackEntity? = null,
@@ -241,17 +218,38 @@ class TrackDetailsViewModel @Inject constructor(
     private val lastFmApi: LastFmApiService,
     private val sessionPreferences: SessionPreferences,
     private val genreResolver: GenreResolver,
-    private val okHttpClient: OkHttpClient,
+    private val iTunesSearchClient: ITunesSearchClient,
+    private val canvasRepository: CanvasRepository,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val _specs = MutableStateFlow<TrackSpecs?>(null)
     val specs: StateFlow<TrackSpecs?> = _specs.asStateFlow()
 
-    fun load(title: String, artist: String, album: String? = null, artworkUrl: String? = null) {
+    fun load(
+        title: String,
+        artist: String,
+        album: String? = null,
+        artworkUrl: String? = null,
+        videoId: String? = null,
+        durationMs: Long? = null,
+    ) {
         viewModelScope.launch {
             val downloaded = downloadedTrackDao.findByTitleAndArtist(title, artist)
             val isDownloading = downloadManager.isDownloading(title, artist)
+
+            val live = player.state.value
+            val isLiveTrack = live.current?.let { cur ->
+                cur.title.equals(title, ignoreCase = true) && cur.artist.equals(artist, ignoreCase = true)
+            } == true
+
+            val cachedCanvas = if (isLiveTrack && live.current != null) {
+                canvasRepository.cached(live.current)
+            } else {
+                canvasRepository.cached(title, artist, videoId)
+            }
+            val initialCanvasSource = cachedCanvas?.source?.displayName()
+                ?: if (canvasRepository.hasResolved(title, artist, videoId)) appContext.getString(R.string.details_canvas_none) else null
 
             _specs.value = TrackSpecs(
                 title = title,
@@ -260,6 +258,7 @@ class TrackDetailsViewModel @Inject constructor(
                 artworkUrl = artworkUrl,
                 downloadedEntity = downloaded,
                 isDownloading = isDownloading,
+                canvasSource = initialCanvasSource,
             )
 
             // Live player state wins for the currently playing track. The
@@ -267,10 +266,6 @@ class TrackDetailsViewModel @Inject constructor(
             // Opus (the provider-module path has no provisioned key), so
             // without this the sheet contradicts the Now Playing pill
             // whenever lossless/Atmos is actually playing.
-            val live = player.state.value
-            val isLiveTrack = live.current?.let { cur ->
-                cur.title.equals(title, ignoreCase = true) && cur.artist.equals(artist, ignoreCase = true)
-            } == true
             if (isLiveTrack) {
                 val liveKbps = live.bitrateKbps?.takeIf { it > 0 }
                     ?: downloaded?.bitrateKbps?.takeIf { it > 0 }
@@ -296,16 +291,28 @@ class TrackDetailsViewModel @Inject constructor(
 
             // Resolve real audio resolution specs + Last.fm Scrobble stats + rich metadata in background
             withContext(Dispatchers.IO) {
-                // 0. Kick off genre + iTunes metadata in parallel
+                // 0. Kick off genre + iTunes + canvas metadata in parallel
                 val genreDeferred = async {
                     runCatching { genreResolver.resolve(title, artist) }.getOrDefault("")
                 }
                 val itunesDeferred = async {
                     runCatching { fetchITunesMetadata(title, artist) }.getOrNull()
                 }
+                val canvasDeferred = async {
+                    if (initialCanvasSource != null) null
+                    else runCatching {
+                        canvasRepository.canvasFor(
+                            title = title,
+                            artist = artist,
+                            album = album,
+                            trackId = videoId,
+                            durationMs = durationMs,
+                        )
+                    }.getOrNull()
+                }
 
                 // 1. Fetch Last.fm Scrobble Stats & History
-                val session = runCatching { sessionPreferences.session.first() }.getOrNull()
+                val session = runCatching { sessionPreferences.awaitLoadedSession() }.getOrNull()
                 var wikiSummary: String? = null
                 if (session != null && session.apiKey.isNotBlank()) {
                     var userPlays = 0L
@@ -534,6 +541,11 @@ class TrackDetailsViewModel @Inject constructor(
                     }
                 }
 
+                val resolvedCanvas = canvasDeferred.await()
+                val finalCanvasSource = resolvedCanvas?.source?.displayName()
+                    ?: _specs.value?.canvasSource
+                    ?: appContext.getString(R.string.details_canvas_none)
+
                 _specs.value = _specs.value?.copy(
                     genre = genre.takeIf { it.isNotBlank() },
                     composer = itunes?.artistName?.takeIf {
@@ -548,6 +560,7 @@ class TrackDetailsViewModel @Inject constructor(
                     discNumber = itunes?.discNumber,
                     discCount = itunes?.discCount,
                     contentRating = contentRating,
+                    canvasSource = finalCanvasSource,
                     isMetadataLoaded = true,
                 )
             }
@@ -575,19 +588,9 @@ class TrackDetailsViewModel @Inject constructor(
         }
     }
 
-    private fun fetchITunesMetadata(title: String, artist: String): ITunesTrackResult? {
-        val term = "$title $artist"
-        val url = "https://itunes.apple.com/search?term=${URLEncoder.encode(term, "UTF-8")}&media=music&entity=song&limit=3"
-        val request = Request.Builder().url(url).build()
-        val response = okHttpClient.newCall(request).execute()
-        if (!response.isSuccessful) return null
-        val body = response.body?.string().orEmpty()
-        val parsed = json.decodeFromString<ITunesSearchResponse>(body)
-        // Best match: prefer exact title+artist match
-        return parsed.results.firstOrNull { result ->
-            result.trackName.equals(title, ignoreCase = true) &&
-                result.artistName?.contains(artist, ignoreCase = true) == true
-        } ?: parsed.results.firstOrNull()
+    private suspend fun fetchITunesMetadata(title: String, artist: String): ITunesSong? {
+        return iTunesSearchClient.searchBestMatch(title, artist)
+            ?: iTunesSearchClient.searchSongs("$title $artist", limit = 3).firstOrNull()
     }
 
     private fun formatReleaseDate(isoDate: String): String? {
@@ -639,8 +642,8 @@ fun TrackDetailsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val specs by viewModel.specs.collectAsStateWithLifecycle()
 
-    LaunchedEffect(title, artist) {
-        viewModel.load(title, artist, album, artworkUrl)
+    LaunchedEffect(title, artist, videoId) {
+        viewModel.load(title, artist, album, artworkUrl, videoId, durationMs)
     }
 
     ModalBottomSheet(
@@ -965,6 +968,10 @@ fun TrackDetailsSheet(
                         DetailRow(label = stringResource(R.string.details_bitrate), value = it)
                     }
                     DetailRow(label = stringResource(R.string.details_provider), value = currentSpecs.provider)
+                    DetailRow(
+                        label = stringResource(R.string.details_canvas_source),
+                        value = currentSpecs.canvasSource ?: stringResource(R.string.details_canvas_none),
+                    )
                     if (currentSpecs.durationText != "--:--") {
                         DetailRow(label = stringResource(R.string.details_duration), value = currentSpecs.durationText)
                     }

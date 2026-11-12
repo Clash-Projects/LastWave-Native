@@ -36,8 +36,10 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
@@ -47,6 +49,7 @@ import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
@@ -72,7 +75,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -91,6 +94,7 @@ import androidx.lifecycle.viewModelScope
 import com.lastwave.app.ui.generate.MixLauncher
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
 import com.lastwave.app.ui.player.LocalMusicPlayer
@@ -109,6 +113,7 @@ import kotlinx.coroutines.launch
 data class TrackMenuCapabilities(
     val showCopyActions: Boolean = true,
     val showDeleteScrobble: Boolean = true,
+    val showRecommendationExclusion: Boolean = false,
 )
 
 sealed interface TrackMenuTarget {
@@ -130,13 +135,36 @@ class ArtistAlbumMenuViewModel @Inject constructor(
     }
 }
 
-/** Thin bridge so TrackContextMenuSheet can reach the MixLauncher singleton
- *  the same way it already reaches GenreRowViewModel — every caller gets
- *  "Start Mix with this Song" working for free, with no per-screen wiring. */
+/** Builds similar songs using YouTube Music + Last.fm and appends them to active queue
+ *  without generating a separate playlist or interrupting current playback. */
 @HiltViewModel
-class StartMixMenuViewModel @Inject constructor(private val mixLauncher: MixLauncher) : ViewModel() {
+class StartMixMenuViewModel @Inject constructor(
+    private val generateRepository: com.lastwave.app.data.generate.GenerateRepository,
+    private val musicPlayer: com.lastwave.app.playback.MusicPlayer,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+) : ViewModel() {
     fun startMix(trackName: String, artistName: String, videoId: String? = null) {
-        mixLauncher.startMix(trackName, artistName, videoId)
+        if (trackName.isBlank() || artistName.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                android.widget.Toast.makeText(appContext, "Finding similar songs for $trackName…", android.widget.Toast.LENGTH_SHORT).show()
+                val similar = generateRepository.fetchSimilarTracks(
+                    track = trackName,
+                    artist = artistName,
+                    limit = 30,
+                    seedVideoId = videoId,
+                )
+                if (similar.isNotEmpty()) {
+                    val playable = similar.map { it.toPlayableTrack() }
+                    musicPlayer.appendTracksToQueue(playable)
+                    android.widget.Toast.makeText(appContext, "Added ${playable.size} mix tracks to queue", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(appContext, "Could not find related tracks", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure { error ->
+                android.util.Log.e("StartMix", "Failed to append mix tracks", error)
+            }
+        }
     }
 }
 
@@ -159,6 +187,10 @@ class DownloadMenuViewModel @Inject constructor(
     val downloadQuality = settingsPreferences.settings
         .map { it.downloadQuality }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), 27)
+
+    val musicVideoEnabled = settingsPreferences.settings
+        .map { it.musicVideoEnabled }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), false)
 
     suspend fun checkStatus(title: String, artist: String): TrackDownloadStatus {
         if (downloadManager.isDownloading(title, artist)) return TrackDownloadStatus.DOWNLOADING
@@ -201,17 +233,6 @@ fun downloadLabelForQuality(context: android.content.Context, quality: Int): Str
     return context.getString(R.string.menu_download_tier, tier)
 }
 
-@HiltViewModel
-class RecommendationExclusionMenuViewModel @Inject constructor(
-    private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
-) : ViewModel() {
-    fun exclude(trackName: String, artistName: String) {
-        viewModelScope.launch {
-            discoverRepository.excludeFromRecommendations(trackName, artistName)
-        }
-    }
-}
-
 /** Same idea, for the Genre row — every caller (Home, Discover, Playlist,
  *  Search) gets "tap the genre to open it in Genres" for free, without
  *  each of them needing to pass onExploreGenre + a NavController down
@@ -220,6 +241,74 @@ class RecommendationExclusionMenuViewModel @Inject constructor(
 class ExploreGenreMenuViewModel @Inject constructor(private val genreExplorer: com.lastwave.app.ui.genres.GenreExplorer) : ViewModel() {
     fun explore(genre: String) {
         genreExplorer.explore(genre)
+    }
+}
+
+internal fun extractYouTubeVideoId(urlOrId: String?): String? {
+    if (urlOrId.isNullOrBlank()) return null
+    val trimmed = urlOrId.trim()
+    if (trimmed.length == 11 && trimmed.matches(Regex("^[a-zA-Z0-9_-]{11}$"))) {
+        return trimmed
+    }
+    return try {
+        val uri = android.net.Uri.parse(trimmed)
+        val host = uri.host?.lowercase().orEmpty()
+        if (host.contains("youtu.be")) {
+            uri.pathSegments.firstOrNull()?.takeIf { it.length == 11 }
+        } else if (host.contains("youtube.com")) {
+            uri.getQueryParameter("v")?.takeIf { it.isNotBlank() }
+                ?: uri.pathSegments.let { segments ->
+                    val idx = segments.indexOf("shorts").takeIf { it != -1 }
+                        ?: segments.indexOf("embed").takeIf { it != -1 }
+                        ?: segments.indexOf("v").takeIf { it != -1 }
+                    if (idx != null && idx >= 0 && idx + 1 < segments.size) segments[idx + 1].takeIf { it.length == 11 } else null
+                }
+        } else null
+    } catch (_: Exception) {
+        null
+    }
+}
+
+@HiltViewModel
+class TrackLinkViewModel @Inject constructor(
+    private val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+) : ViewModel() {
+    fun copyYouTubeLink(
+        title: String,
+        artist: String,
+        existingVideoId: String?,
+        url: String?,
+    ) {
+        val directId = existingVideoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(url)
+        if (directId != null) {
+            copyToClipboard("https://www.youtube.com/watch?v=$directId")
+            return
+        }
+        viewModelScope.launch {
+            val link = runCatching {
+                val match = innerTube.findBestMatchOrNull(title, artist, prefetchStreams = false)
+                if (match != null && match.videoId.isNotBlank()) {
+                    "https://www.youtube.com/watch?v=${match.videoId}"
+                } else {
+                    val query = "$title $artist".trim()
+                    val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+                    "https://www.youtube.com/results?search_query=$encoded"
+                }
+            }.getOrElse {
+                val query = "$title $artist".trim()
+                val encoded = runCatching { java.net.URLEncoder.encode(query, "UTF-8") }.getOrDefault("")
+                "https://www.youtube.com/results?search_query=$encoded"
+            }
+            copyToClipboard(link)
+        }
+    }
+
+    private fun copyToClipboard(link: String) {
+        val clipboard = appContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("YouTube Link", link)
+        clipboard?.setPrimaryClip(clip)
+        android.widget.Toast.makeText(appContext, appContext.getString(R.string.link_copied), android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -294,12 +383,15 @@ fun TrackContextMenuSheet(
     onRefreshArtwork: (() -> Unit)? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     onRemoveFromQueue: (() -> Unit)? = null,
+    onWatchVideo: (() -> Unit)? = null,
+    canWatchVideo: Boolean = true,
     genreResolverViewModel: GenreRowViewModel = hiltViewModel(),
     startMixViewModel: StartMixMenuViewModel = hiltViewModel(),
     exploreGenreViewModel: ExploreGenreMenuViewModel = hiltViewModel(),
     downloadViewModel: DownloadMenuViewModel = hiltViewModel(),
-    exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
+    trackLinkViewModel: TrackLinkViewModel = hiltViewModel(),
+    exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -307,6 +399,9 @@ fun TrackContextMenuSheet(
     val musicPlayer = LocalMusicPlayer.current
     val addToPlaylist = LocalAddToPlaylist.current
     var showDetailsSheet by remember { mutableStateOf(false) }
+    var showJamSheet by remember { mutableStateOf(false) }
+    var showSyncedVideoDialog by remember { mutableStateOf(false) }
+    val musicVideoEnabled by downloadViewModel.musicVideoEnabled.collectAsStateWithLifecycle()
     var showTimerDialog by remember { mutableStateOf(false) }
     var resolvedGenre by remember(target) { mutableStateOf<String?>(null) }
     var resolvingGenre by remember(target) { mutableStateOf(false) }
@@ -323,8 +418,8 @@ fun TrackContextMenuSheet(
         }
     }
 
-    LaunchedEffect(target) {
-        if (target is TrackMenuTarget.Track) {
+    LaunchedEffect(target, playableTrack?.mediaType) {
+        if (target is TrackMenuTarget.Track && playableTrack?.mediaType != com.lastwave.app.playback.MediaType.PODCAST_EPISODE) {
             resolvingGenre = true
             resolvedGenre = runCatching { genreResolverViewModel.resolve(target.name, target.artist) }.getOrNull()
             resolvingGenre = false
@@ -351,6 +446,29 @@ fun TrackContextMenuSheet(
             },
             onPlayTrack = {
                 onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+            },
+        )
+        return
+    }
+
+    if (showSyncedVideoDialog && target is TrackMenuTarget.Track) {
+        val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
+        com.lastwave.app.ui.player.SyncedVideoPlayerDialog(
+            track = playable,
+            musicPlayer = musicPlayer,
+            onDismiss = {
+                showSyncedVideoDialog = false
+                onDismiss()
+            },
+        )
+        return
+    }
+
+    if (showJamSheet) {
+        com.lastwave.app.ui.jam.LastWaveJamSheet(
+            onDismiss = {
+                showJamSheet = false
+                onDismiss()
             },
         )
         return
@@ -462,24 +580,57 @@ fun TrackContextMenuSheet(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (target is TrackMenuTarget.Track) {
-                StartMixCard {
+                val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
+                val isSong = playable.mediaType == com.lastwave.app.playback.MediaType.SONG
+                if (isSong) StartMixCard {
                     if (onStartMix != null) onStartMix(target.name, target.artist)
-                    else startMixViewModel.startMix(target.name, target.artist, playableTrack?.videoId)
+                    else startMixViewModel.startMix(target.name, target.artist, playable.videoId)
                     onDismiss()
                 }
-
-                val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
                 QuickActionsRow(
-                    onPlay = {
-                        onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
-                        onDismiss()
-                    },
+                    onJam = { showJamSheet = true },
                     onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
                     onAddToPlaylist = { addToPlaylist(playable); onDismiss() },
                 )
                 // Local songs: imported files get an explicit row.
                 val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playable.playbackUrl) != null
                 val rows = buildList<@Composable (GroupPosition) -> Unit> {
+                    // 1. Genres at top of menu ONLY if available (completely hide if unknown/unavailable)
+                    val genre = resolvedGenre?.trim()
+                    val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
+                    if (resolvingGenre || hasGenre) {
+                        add { pos ->
+                            MenuInfoRow(
+                                icon = Icons.Filled.Sell,
+                                text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
+                                    R.string.menu_genre_value,
+                                    genre ?: "",
+                                ),
+                                loading = resolvingGenre,
+                                position = pos,
+                                onClick = if (!resolvingGenre && hasGenre) {
+                                    { exploreGenre(genre!!); onDismiss() }
+                                } else null,
+                            )
+                        }
+                    }
+
+                    if (isSong && musicVideoEnabled && canWatchVideo) {
+                        add { pos ->
+                            MenuActionRow(
+                                icon = Icons.Filled.SmartDisplay,
+                                label = stringResource(R.string.menu_watch_video),
+                                position = pos,
+                            ) {
+                                if (onWatchVideo != null) {
+                                    onWatchVideo()
+                                    onDismiss()
+                                } else {
+                                    showSyncedVideoDialog = true
+                                }
+                            }
+                        }
+                    }
                     val t = target
                     if (isLocalFile) {
                         add { pos ->
@@ -493,26 +644,9 @@ fun TrackContextMenuSheet(
                             }
                         }
                     }
-                    if (resolvingGenre || !resolvedGenre.isNullOrBlank()) {
-                        add { pos ->
-                            val genre = resolvedGenre
-                            MenuInfoRow(
-                                icon = Icons.Filled.Sell,
-                                text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
-                                    R.string.menu_genre_value,
-                                    genre?.takeIf { it.isNotBlank() } ?: stringResource(R.string.menu_genre_unknown),
-                                ),
-                                loading = resolvingGenre,
-                                position = pos,
-                                onClick = if (!resolvingGenre && !genre.isNullOrBlank()) {
-                                    { exploreGenre(genre); onDismiss() }
-                                } else null,
-                            )
-                        }
-                    }
                     add { pos -> MenuActionRow(Icons.Filled.Timer, stringResource(R.string.menu_sleep_timer), position = pos) { showTimerDialog = true } }
                     val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(t.artist)
-                    for (art in splitArtists) {
+                    for (art in if (isSong) splitArtists else emptyList()) {
                         add { pos ->
                             MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_go_artist, art), position = pos) {
                                 artistAlbumViewModel.openArtist(art)
@@ -520,13 +654,13 @@ fun TrackContextMenuSheet(
                             }
                         }
                     }
-                    if (!playable.album.isNullOrBlank()) {
+                    if (isSong && !playable.album.isNullOrBlank()) {
                         add { pos ->
-                            val primaryArt = splitArtists.firstOrNull() ?: t.artist
+                            val albumArtist = playable.artist.ifBlank { t.artist }
                             val album = playable.album
                             if (album.isNullOrBlank()) return@add
                             MenuActionRow(Icons.Filled.Album, stringResource(R.string.menu_go_album, album), position = pos) {
-                                artistAlbumViewModel.openAlbum(album, primaryArt)
+                                artistAlbumViewModel.openAlbum(album, albumArtist)
                                 onDismiss()
                             }
                         }
@@ -571,6 +705,16 @@ fun TrackContextMenuSheet(
                             }
                         }
                     }
+                    add { pos ->
+                        MenuActionRow(
+                            icon = Icons.Filled.PlayCircle,
+                            label = stringResource(R.string.menu_quick_play),
+                            position = pos,
+                        ) {
+                            onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+                            onDismiss()
+                        }
+                    }
                     add { pos -> MenuActionRow(Icons.Filled.QueueMusic, stringResource(R.string.menu_add_queue), position = pos) { musicPlayer.addToQueue(playable); onDismiss() } }
                     add { pos ->
                         Card(
@@ -582,7 +726,23 @@ fun TrackContextMenuSheet(
                             PlayerCastMenuRow(musicPlayer)
                         }
                     }
-                    add { pos -> MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm), position = pos) { openUrl(context, buildLastFmUrl(target)); onDismiss() } }
+                    add { pos ->
+                        MenuActionRow(
+                            icon = Icons.Filled.Link,
+                            label = stringResource(R.string.menu_copy_link),
+                            position = pos,
+                        ) {
+                            val directId = playable.videoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(t.url)
+                            if (directId != null) {
+                                val link = "https://www.youtube.com/watch?v=$directId"
+                                clipboard.setText(AnnotatedString(link))
+                                android.widget.Toast.makeText(context, context.getString(R.string.link_copied), android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                trackLinkViewModel.copyYouTubeLink(t.name, t.artist, playable.videoId, t.url)
+                            }
+                            onDismiss()
+                        }
+                    }
                     if (onRefreshArtwork != null) {
                         add { pos -> MenuActionRow(Icons.Filled.Refresh, stringResource(R.string.menu_refresh_artwork), position = pos) { onRefreshArtwork(); onDismiss() } }
                     }
@@ -594,10 +754,13 @@ fun TrackContextMenuSheet(
                             showDetailsSheet = true
                         }
                     }
-                    add { pos ->
-                        MenuActionRow(Icons.Filled.ThumbDown, stringResource(R.string.menu_dont_recommend), danger = true, position = pos) {
-                            exclusionViewModel.exclude(t.name, t.artist)
-                            onDismiss()
+                    if (capabilities.showRecommendationExclusion && !isLocalFile &&
+                        playable.mediaType == com.lastwave.app.playback.MediaType.SONG) {
+                        add { pos ->
+                            MenuActionRow(Icons.Filled.ThumbDown, stringResource(R.string.menu_dont_recommend), position = pos) {
+                                exclusionViewModel.exclude(playable)
+                                onDismiss()
+                            }
                         }
                     }
                     if (onRemoveFromPlaylist != null) {
@@ -697,10 +860,13 @@ private fun StartMixCard(onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .scale(scale),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
     ) {
         Row(
-            Modifier.padding(horizontal = 18.dp, vertical = 12.dp).fillMaxWidth(),
+            Modifier.padding(horizontal = 18.dp, vertical = 10.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -730,7 +896,7 @@ private fun StartMixCard(onClick: () -> Unit) {
  *  sheet's current grouped language instead of the old outlined container. */
 @Composable
 private fun QuickActionsRow(
-    onPlay: () -> Unit,
+    onJam: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
@@ -738,9 +904,96 @@ private fun QuickActionsRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        QuickActionCard(Icons.Filled.PlayCircle, stringResource(R.string.menu_quick_play), Modifier.weight(1f), onPlay)
+        QuickActionCard(Icons.Filled.Group, stringResource(R.string.menu_quick_jam), Modifier.weight(1f), onJam)
         QuickActionCard(Icons.Filled.QueuePlayNext, stringResource(R.string.menu_quick_play_next), Modifier.weight(1f), onPlayNext)
         QuickActionCard(Icons.Filled.PlaylistAdd, stringResource(R.string.menu_quick_add_playlist), Modifier.weight(1f), onAddToPlaylist)
+    }
+}
+
+@Composable
+private fun WatchVideoCard(
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale = rememberGroupPressScale(interactionSource)
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = RoundedCornerShape(22.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SmartDisplay,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(R.string.menu_watch_video),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.video_sync_tag),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.menu_watch_video_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 
@@ -759,10 +1012,13 @@ private fun QuickActionCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = RoundedCornerShape(22.dp),
         interactionSource = interactionSource,
-        modifier = modifier.scale(scale),
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -797,10 +1053,13 @@ private fun MenuActionRow(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = groupShape(position),
         interactionSource = interactionSource,
-        modifier = Modifier.fillMaxWidth().scale(scale),
+        modifier = Modifier.fillMaxWidth().graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -844,7 +1103,7 @@ private fun MenuInfoRow(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

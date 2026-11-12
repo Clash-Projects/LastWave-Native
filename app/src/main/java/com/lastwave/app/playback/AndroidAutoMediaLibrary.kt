@@ -157,16 +157,36 @@ class AndroidAutoMediaLibrary @Inject constructor(
 
         val tracks = searchTracks(cleanQuery)
         if (tracks.isEmpty()) return false
-        player.playQueue(tracks, sourceLabel = "Android Auto Search: $cleanQuery")
+        player.playQueue(tracks, sourceLabel = "Voice search: $cleanQuery")
         return true
+    }
+
+    /**
+     * Voice request without a title ("play music on LastWave"): resume the
+     * loaded queue, else the newest playlist that has tracks, else downloads.
+     */
+    suspend fun playAnything(player: MusicPlayer): Boolean {
+        if (player.state.value.current != null) {
+            player.resume()
+            return true
+        }
+        val playlists = runCatching { getMergedPlaylists() }.getOrDefault(emptyList())
+        for (playlist in playlists.take(5)) {
+            if (runCatching { playPlaylist(playlist.id, 0, player) }.getOrDefault(false)) return true
+        }
+        return runCatching { playDownloads(player) }.getOrDefault(false)
     }
 
     private suspend fun getMergedPlaylists(): List<SavedPlaylist> {
         val local = runCatching { playlistRepository.getAll() }.getOrDefault(emptyList())
         val remote = runCatching { ytMusicLibraryManager.playlists.value }.getOrDefault(emptyList())
-        val localRemoteIds = local.mapNotNull { it.remotePlaylistId?.removePrefix("VL") }.toSet()
-        val filteredRemote = remote.filterNot { it.remotePlaylistId?.removePrefix("VL") in localRemoteIds }
-        return (local + filteredRemote).sortedByDescending { it.createdAtMillis }
+        val filteredRemote = remote.filterNot { r ->
+            local.any { l ->
+                (l.remotePlaylistId != null && l.remotePlaylistId.removePrefix("VL") == r.remotePlaylistId?.removePrefix("VL")) ||
+                l.title.equals(r.title, ignoreCase = true)
+            }
+        }
+        return (local + filteredRemote).distinctBy { it.id }.sortedByDescending { it.createdAtMillis }
     }
 
     private suspend fun resolvePlaylistWithTracks(playlistId: Long): SavedPlaylist? {

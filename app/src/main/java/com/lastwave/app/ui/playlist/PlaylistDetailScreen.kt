@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -101,6 +102,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.RectangleShape
@@ -132,6 +134,11 @@ import com.lastwave.app.data.playlist.isYouTubeOnly
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
+import com.lastwave.app.ui.common.GroupGap
+import com.lastwave.app.ui.common.GroupPosition
+import com.lastwave.app.ui.common.groupPositionFor
+import com.lastwave.app.ui.common.ExpressiveGroupTrackRow
+import com.lastwave.app.ui.common.OverflowMenuButton
 import com.lastwave.app.ui.common.PlaylistCover
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
@@ -154,8 +161,33 @@ enum class PlaylistTrackSort(val labelRes: Int) {
     PLAY_TIME(com.lastwave.app.R.string.pd_sort_playtime),
 }
 
-private fun formatDate(millis: Long): String =
-    SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(millis))
+/**
+ * Remembers each playlist's last track sort (key = playlist id), so leaving
+ * and reopening a playlist keeps e.g. "Date added ↓" instead of resetting to
+ * Custom order. Plain SharedPreferences: tiny, synchronous, read once per open.
+ */
+internal object PlaylistSortMemory {
+    private const val PREFS = "playlist_track_sort"
+    private const val GLOBAL_KEY = "global_last_sort"
+
+    fun load(context: android.content.Context, playlistId: Long): Pair<PlaylistTrackSort, Boolean> {
+        val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        val raw = prefs.getString(playlistId.toString(), null)
+            ?: prefs.getString(GLOBAL_KEY, null)
+            ?: return PlaylistTrackSort.CUSTOM to true
+        val sort = PlaylistTrackSort.entries.firstOrNull { it.name == raw.substringBefore(':') }
+            ?: return PlaylistTrackSort.CUSTOM to true
+        return sort to (raw.substringAfter(':', "asc") != "desc")
+    }
+
+    fun save(context: android.content.Context, playlistId: Long, sort: PlaylistTrackSort, ascending: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit()
+        val serialized = "${sort.name}:${if (ascending) "asc" else "desc"}"
+        prefs.putString(playlistId.toString(), serialized)
+        prefs.putString(GLOBAL_KEY, serialized)
+        prefs.apply()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -169,7 +201,7 @@ fun PlaylistDetailScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
 
     LaunchedEffect(playlistId) {
         viewModel.loadDetail(playlistId)
@@ -193,13 +225,50 @@ fun PlaylistDetailScreen(
     val playlist = currentFound ?: cachedPlaylist
 
     if (playlist == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            ExpressiveLoadingIndicator(message = "Loading playlist...")
+        if (state.isDetailLoading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                ExpressiveLoadingIndicator(message = stringResource(com.lastwave.app.R.string.pd_loading))
+            }
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(
+                        stringResource(com.lastwave.app.R.string.pd_empty),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.material3.Button(onClick = onBack) {
+                        Text(stringResource(com.lastwave.app.R.string.pd_back_cd))
+                    }
+                }
+            }
         }
         return
     }
 
-    val isThisPlaylistPlaying = playbackState.isPlaying && playbackState.sourceLabel == playlist.title
+    if (state.isDetailLoading && playlist.tracks.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ExpressiveLoadingIndicator(message = stringResource(com.lastwave.app.R.string.pd_loading))
+        }
+        return
+    }
+
+    if (playlist.mode == LOCAL_SONGS_MODE) {
+        LocalMusicHub(
+            playlist = playlist,
+            onBack = onBack,
+        )
+        return
+    }
+
+    val currentSourceLabel = playlist.title
+
+    val isThisPlaylistPlaying = playbackState.isPlaying &&
+        playbackState.sourceLabel == playlist.title
+
     var coverEditorOpen by remember { mutableStateOf(false) }
     var coverPickerPending by remember { mutableStateOf(false) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -212,45 +281,29 @@ fun PlaylistDetailScreen(
         coverPickerPending = false
     }
 
-    var menuTarget by remember { mutableStateOf<GeneratedTrack?>(null) }
+    var menuTarget by remember { mutableStateOf<Pair<Int, GeneratedTrack>?>(null) }
     var overflowMenuOpen by remember { mutableStateOf(false) }
     val syncedPlaylistIds by viewModel.syncedPlaylistIds.collectAsStateWithLifecycle()
     var sortMenuOpen by remember { mutableStateOf(false) }
-    var currentSort by remember { mutableStateOf(PlaylistTrackSort.CUSTOM) }
-    var sortAscending by remember { mutableStateOf(true) }
+    val savedSort = remember(playlistId) { PlaylistSortMemory.load(context, playlistId) }
+    var currentSort by remember(playlistId) { mutableStateOf(savedSort.first) }
+    var sortAscending by remember(playlistId) { mutableStateOf(savedSort.second) }
     var isReorderLocked by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
-    val displayTracks = remember(playlist.tracks, currentSort, sortAscending, searchQuery) {
-        val sorted = when (currentSort) {
-            PlaylistTrackSort.CUSTOM -> if (sortAscending) playlist.tracks else playlist.tracks.reversed()
-            PlaylistTrackSort.DATE_ADDED -> if (sortAscending) playlist.tracks else playlist.tracks.reversed()
-            PlaylistTrackSort.NAME -> if (sortAscending) {
-                playlist.tracks.sortedBy { it.name.lowercase() }
-            } else {
-                playlist.tracks.sortedByDescending { it.name.lowercase() }
-            }
-            PlaylistTrackSort.ARTIST -> if (sortAscending) {
-                playlist.tracks.sortedBy { it.artist.lowercase() }
-            } else {
-                playlist.tracks.sortedByDescending { it.artist.lowercase() }
-            }
-            PlaylistTrackSort.PLAY_TIME -> if (sortAscending) {
-                playlist.tracks.sortedBy { it.playcount ?: it.listeners ?: 0L }
-            } else {
-                playlist.tracks.sortedByDescending { it.playcount ?: it.listeners ?: 0L }
-            }
-        }
-        if (searchQuery.isNotBlank()) {
-            val q = searchQuery.lowercase()
-            sorted.filter { it.name.lowercase().contains(q) || it.artist.lowercase().contains(q) }
-        } else {
-            sorted
-        }
+    val displayTrackIndices = remember(playlist.tracks, playlist.remotePlaylistId, currentSort, sortAscending, searchQuery) {
+        playlistTrackDisplayIndices(
+            playlist.tracks, playlist.tracks, currentSort, sortAscending, searchQuery,
+            newestFirst = playlist.remotePlaylistId?.let(com.lastwave.app.data.playlist.PlaylistImportManager::isYtLikedId) == true,
+        )
+    }
+    val displayTracks = remember(playlist.tracks, displayTrackIndices) {
+        displayTrackIndices.map { playlist.tracks[it] }
     }
 
     val listState = rememberLazyListState()
+
     val dragScope = rememberCoroutineScope()
     var draggingIndex by remember(playlistId) { mutableIntStateOf(-1) }
     var dragOffsetY by remember(playlistId) { mutableFloatStateOf(0f) }
@@ -268,7 +321,8 @@ fun PlaylistDetailScreen(
     val reorderEnabled = !isReorderLocked &&
         !playlist.isYouTubeOnly &&
         currentSort == PlaylistTrackSort.CUSTOM &&
-        sortAscending
+        sortAscending &&
+        searchQuery.isBlank()
     // Stable content keys aligned to the DISPLAYED order (not playlist.tracks
     // order) so animateItem() never sees duplicate or shifting keys at the
     // scroll edge. The old code built keys from playlist.tracks but consumed
@@ -289,8 +343,14 @@ fun PlaylistDetailScreen(
             "$base#$n"
         }
     }
-    LaunchedEffect(playlist.tracks.size, displayTracks.size) {
-        if (draggingIndex < 0 || draggingIndex >= displayTracks.size) {
+    // "Play" starts the first displayed row (sort/filter applied): warm the
+    // opening rows while the user looks. Local files are skipped downstream.
+    val openingKeys = displayKeys.take(6)
+    LaunchedEffect(openingKeys) {
+        musicPlayer.warmLikelyPlays(displayTracks.take(6).map(GeneratedTrack::toPlayableTrack))
+    }
+    LaunchedEffect(playlist.tracks.size, displayTracks.size, reorderEnabled) {
+        if (!reorderEnabled || draggingIndex < 0 || draggingIndex >= displayTracks.size) {
             cancelEdgeScroll()
             draggingIndex = -1
             dragOffsetY = 0f
@@ -358,7 +418,7 @@ fun PlaylistDetailScreen(
                 top = 0.dp,
                 bottom = FloatingNavDefaults.contentBottomPadding(),
             ),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(GroupGap),
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp)
@@ -407,7 +467,7 @@ fun PlaylistDetailScreen(
                         // Circular Shuffle Button
                         FilledTonalIconButton(
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 if (isThisPlaylistPlaying) {
                                     musicPlayer.toggleShuffle()
                                 } else if (displayTracks.isNotEmpty()) {
@@ -416,7 +476,7 @@ fun PlaylistDetailScreen(
                                     musicPlayer.playQueue(
                                         playableTracks,
                                         startIndex = randomIndex,
-                                        sourceLabel = playlist.title,
+                                        sourceLabel = currentSourceLabel,
                                         startShuffled = true,
                                     )
                                 }
@@ -449,12 +509,12 @@ fun PlaylistDetailScreen(
 
                         Button(
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (playlist.tracks.isNotEmpty()) {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                if (displayTracks.isNotEmpty()) {
                                     musicPlayer.playQueue(
                                         displayTracks.map(GeneratedTrack::toPlayableTrack),
                                         startIndex = 0,
-                                        sourceLabel = playlist.title,
+                                        sourceLabel = currentSourceLabel,
                                     )
                                 }
                             },
@@ -488,7 +548,7 @@ fun PlaylistDetailScreen(
                         // Locate current song
                         FilledTonalIconButton(
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 val playingTrack = playbackState.current
                                 if (playingTrack != null && isThisPlaylistPlaying) {
                                     val index = displayTracks.indexOfFirst { it.name.equals(playingTrack.title, ignoreCase = true) && it.artist.equals(playingTrack.artist, ignoreCase = true) }
@@ -507,14 +567,9 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    if (playlist.mode == LOCAL_SONGS_MODE) {
-                        Spacer(Modifier.height(14.dp))
-                        LocalSongsPanel(trackCount = playlist.tracks.size)
-                    }
-
                     Spacer(Modifier.height(18.dp))
 
-                    // Sort Filter Pill & Lock Icon Row (Custom order, Date added, Name, Artist, Play time)
+                        // Sort Filter Pill & Lock Icon Row (Custom order, Date added, Name, Artist, Play time)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -525,7 +580,7 @@ fun PlaylistDetailScreen(
                         Box {
                             Surface(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     sortMenuOpen = true
                                 },
                                 shape = RoundedCornerShape(50),
@@ -593,13 +648,14 @@ fun PlaylistDetailScreen(
                                             }
                                         },
                                         onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             if (currentSort == option) {
                                                 sortAscending = !sortAscending
                                             } else {
                                                 currentSort = option
-                                                sortAscending = option != PlaylistTrackSort.PLAY_TIME
+                                                sortAscending = option != PlaylistTrackSort.DATE_ADDED
                                             }
+                                            PlaylistSortMemory.save(context, playlistId, currentSort, sortAscending)
                                             sortMenuOpen = false
                                         },
                                     )
@@ -623,7 +679,7 @@ fun PlaylistDetailScreen(
                             )
                             IconButton(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     isReorderLocked = !isReorderLocked
                                 },
                                 modifier = Modifier.size(36.dp),
@@ -697,7 +753,10 @@ fun PlaylistDetailScreen(
                 if (!isReorderLocked && !reorderEnabled && !playlist.isYouTubeOnly && displayTracks.size > 1) {
                     item(key = "reorder_sort_hint", contentType = "hint") {
                         Text(
-                            stringResource(com.lastwave.app.R.string.pd_reorder_hint),
+                            stringResource(
+                                if (searchQuery.isNotBlank()) com.lastwave.app.R.string.playlist_rearrange_clear_search
+                                else com.lastwave.app.R.string.pd_reorder_hint,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
@@ -716,6 +775,7 @@ fun PlaylistDetailScreen(
                         playbackState.current?.artist.equals(track.artist, ignoreCase = true)
                     val isDragging = reorderEnabled && index == draggingIndex
                     val stableKey = displayKeys.getOrNull(index) ?: "pos_${track.url.ifBlank { "${track.name}_${track.artist}" }}_$index"
+                    val rowPosition = groupPositionFor(index, displayTracks.size)
 
                     Box(
                         modifier = Modifier
@@ -731,11 +791,11 @@ fun PlaylistDetailScreen(
                             },
                     ) {
                         NativeTrackRow(
-                            index = index + 1,
                             track = track,
+                            position = rowPosition,
                             isPlaying = isPlayingThisSong,
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 if (displayTracks.isEmpty()) return@NativeTrackRow
                                 // index is from composition time; the list can
                                 // shrink (remove/move) before the tap lands —
@@ -751,8 +811,8 @@ fun PlaylistDetailScreen(
                                 }
                             },
                             onMenu = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuTarget = track
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                menuTarget = displayTrackIndices[index] to track
                             },
                             dragHandle = if (!reorderEnabled) {
                                 null
@@ -889,7 +949,10 @@ fun PlaylistDetailScreen(
             ) {
                 // Circular back button
                 IconButton(
-                    onClick = onBack,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onBack()
+                    },
                     modifier = Modifier
                         .size(42.dp)
                         .background(
@@ -945,7 +1008,7 @@ fun PlaylistDetailScreen(
                 ) {
                     FilledTonalIconButton(
                         onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             val playingTrack = playbackState.current
                             if (playingTrack != null && isThisPlaylistPlaying) {
                                 val index = displayTracks.indexOfFirst { it.name.equals(playingTrack.title, ignoreCase = true) && it.artist.equals(playingTrack.artist, ignoreCase = true) }
@@ -974,7 +1037,7 @@ fun PlaylistDetailScreen(
                     Row {
                         IconButton(
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 isSearchActive = !isSearchActive
                                 if (!isSearchActive) searchQuery = ""
                             },
@@ -989,7 +1052,7 @@ fun PlaylistDetailScreen(
                         Box {
                             IconButton(
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     overflowMenuOpen = true
                                 },
                                 modifier = Modifier.size(42.dp),
@@ -1009,6 +1072,23 @@ fun PlaylistDetailScreen(
                             tonalElevation = 6.dp,
                             shadowElevation = 12.dp,
                         ) {
+                            if (!playlist.isYouTubeOnly) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(com.lastwave.app.R.string.playlist_rearrange_songs)) },
+                                    leadingIcon = { Icon(Icons.Filled.DragHandle, contentDescription = null) },
+                                    enabled = playlist.tracks.size > 1,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        currentSort = PlaylistTrackSort.CUSTOM
+                                        sortAscending = true
+                                        PlaylistSortMemory.save(context, playlistId, currentSort, sortAscending)
+                                        searchQuery = ""
+                                        isSearchActive = false
+                                        isReorderLocked = false
+                                        overflowMenuOpen = false
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(if (playlist.isPinned) stringResource(com.lastwave.app.R.string.pd_unpin) else stringResource(com.lastwave.app.R.string.pd_pin_top)) },
                                 leadingIcon = { Icon(Icons.Filled.PushPin, contentDescription = null) },
@@ -1017,21 +1097,20 @@ fun PlaylistDetailScreen(
                                     overflowMenuOpen = false
                                 },
                             )
-                            val isLocalSongs = playlist.mode == LOCAL_SONGS_MODE
-                            if (!isLocalSongs) DropdownMenuItem(
+                            DropdownMenuItem(
                                 text = { Text(stringResource(com.lastwave.app.R.string.pl_download_all)) },
                                 leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     viewModel.downloadPlaylist(playlistId)
                                     overflowMenuOpen = false
                                 },
                             )
-                            if (!isLocalSongs) DropdownMenuItem(
+                            DropdownMenuItem(
                                 text = { Text(stringResource(com.lastwave.app.R.string.pd_cancel_downloads)) },
                                 leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     viewModel.cancelPlaylistDownloads(playlistId)
                                     overflowMenuOpen = false
                                 },
@@ -1046,7 +1125,7 @@ fun PlaylistDetailScreen(
                                     },
                                 )
                             } else {
-                                if (playlist.mode != LIKED_SONGS_MODE && !isLocalSongs) {
+                                if (playlist.mode != LIKED_SONGS_MODE) {
                                     DropdownMenuItem(
                                         text = {
                                             Text(
@@ -1063,7 +1142,7 @@ fun PlaylistDetailScreen(
                                         },
                                         enabled = state.regeneratingId == null,
                                         onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             viewModel.regenerate(playlistId) { newId ->
                                                 onOpenPlaylist?.invoke(newId)
                                             }
@@ -1098,7 +1177,7 @@ fun PlaylistDetailScreen(
                                     overflowMenuOpen = false
                                 },
                             )
-                            if (!playlist.isYouTubeOnly && !isLocalSongs) {
+                            if (!playlist.isYouTubeOnly) {
                                 val isSyncedToYt = syncedPlaylistIds == null || playlistId in (syncedPlaylistIds ?: emptySet())
                                 DropdownMenuItem(
                                     text = { Text(if (isSyncedToYt) stringResource(com.lastwave.app.R.string.pd_syncing_yt) else stringResource(com.lastwave.app.R.string.pd_sync_yt)) },
@@ -1110,20 +1189,20 @@ fun PlaylistDetailScreen(
                                         )
                                     },
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.toggleYtSync(playlistId)
                                         overflowMenuOpen = false
                                     },
                                 )
                             }
-                                if (!isLocalSongs) DropdownMenuItem(
-                                    text = { Text(stringResource(com.lastwave.app.R.string.pd_delete_item), color = MaterialTheme.colorScheme.error) },
-                                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                                    onClick = {
-                                        viewModel.requestDelete(playlistId)
-                                        overflowMenuOpen = false
-                                    },
-                                )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(com.lastwave.app.R.string.pd_delete_item), color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    viewModel.requestDelete(playlistId)
+                                    overflowMenuOpen = false
+                                },
+                            )
                         }
                     }
                     }
@@ -1288,7 +1367,7 @@ fun PlaylistDetailScreen(
     }
 
     // Track Context Menu
-    menuTarget?.let { track ->
+    menuTarget?.let { (sourceIndex, track) ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
             capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
@@ -1297,11 +1376,7 @@ fun PlaylistDetailScreen(
             playbackSourceLabel = playlist.title,
             onDismiss = { menuTarget = null },
             onRemoveFromPlaylist = {
-                val realIndex = playlist.tracks.indexOfFirst {
-                    (it.url.isNotBlank() && it.url == track.url) ||
-                        (it.name.equals(track.name, ignoreCase = true) && it.artist.equals(track.artist, ignoreCase = true))
-                }
-                if (realIndex >= 0) {
+                selectedPlaylistTrackIndex(playlist.tracks, sourceIndex, track)?.let { realIndex ->
                     viewModel.removeTrack(playlistId, realIndex)
                 }
             },
@@ -1314,181 +1389,47 @@ fun PlaylistDetailScreen(
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun NativeTrackRow(
-    index: Int,
     track: GeneratedTrack,
+    position: GroupPosition,
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMenu: () -> Unit,
     dragHandle: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val rowScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.98f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "rowPress",
-    )
-    val rowBackground by animateColorAsState(
-        targetValue = if (isPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent,
-        animationSpec = tween(350),
-        label = "rowBg",
-    )
-
-    val rowModifier = if (isPlaying) {
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
-                    ),
-                ),
-            )
-            .graphicsLayer {
-                scaleX = rowScale
-                scaleY = rowScale
-            }
-    } else {
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .graphicsLayer {
-                scaleX = rowScale
-                scaleY = rowScale
-            }
-    }
-
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = Color.Transparent,
-        modifier = rowModifier,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick,
-                    onLongClick = if (dragHandle != null) null else onMenu,
-                )
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Track index or playing animation
-            Box(
-                modifier = Modifier.width(36.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    text = "$index",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Visible,
-                )
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(48.dp).clip(ArtworkShape)) {
+    ExpressiveGroupTrackRow(
+        title = track.name,
+        subtitle = listOfNotNull(track.artist.takeIf(String::isNotBlank), track.album?.takeIf(String::isNotBlank))
+            .joinToString(" \u2022 ")
+            .ifBlank { track.artist },
+        position = position,
+        isPlaying = isPlaying,
+        onClick = onClick,
+        modifier = modifier,
+        leading = {
+            Box(modifier = Modifier.size(52.dp)) {
                 ArtworkImage(
                     name = track.name,
                     artist = track.artist,
                     embeddedUrl = track.artworkUrl,
-                    fallbackIcon = Icons.Filled.MusicNote,
-                    modifier = Modifier.fillMaxSize(),
+                    fallbackIcon = if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
                 )
                 if (isPlaying) {
                     com.lastwave.app.ui.player.PlayingWaveBars(
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp).size(24.dp, 18.dp),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp).size(24.dp, 18.dp),
                     )
                 }
             }
-
-            Spacer(Modifier.width(14.dp))
-
-            // Title & Artist
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = track.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.SemiBold,
-                    color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = track.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            // Now Playing badge if active
-            if (isPlaying) {
-                val transition = rememberInfiniteTransition(label = "nowPlayingAnim")
-                val pulseScale by transition.animateFloat(
-                    initialValue = 1.0f,
-                    targetValue = 1.06f,
-                    animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "pulseScale",
-                )
-                val dotAlpha by transition.animateFloat(
-                    initialValue = 0.45f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(tween(800, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "dotAlpha",
-                )
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    tonalElevation = 4.dp,
-                    shadowElevation = 2.dp,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
-                    },
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .graphicsLayer { alpha = dotAlpha }
-                                .background(MaterialTheme.colorScheme.onPrimary, CircleShape),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Now Playing",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                }
-                Spacer(Modifier.width(4.dp))
-            }
-
-            // Drag handle (only when reorder is enabled by the caller)
-            dragHandle?.invoke()
-            // Options menu button
-            IconButton(
-                onClick = onMenu,
-                modifier = Modifier.size(36.dp),
+        },
+        trailing = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = stringResource(com.lastwave.app.R.string.pd_song_options_cd),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                    modifier = Modifier.size(18.dp),
-                )
+                dragHandle?.invoke()
+                OverflowMenuButton(onClick = onMenu)
             }
-        }
-    }
+        },
+    )
 }

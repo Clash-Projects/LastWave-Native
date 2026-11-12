@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Desktop-style logo bars (black) with true logo proportions for in-app UI. -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M17.19,41.40 A6.91,6.91 0 0 1 31.01,41.40 L31.01,67.66 A6.91,6.91 0 0 1 17.19,67.66 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M37.12,19.93 A6.96,6.96 0 0 1 51.05,19.93 L51.05,87.33 A6.96,6.96 0 0 1 37.12,87.33 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M57.16,28.05 A6.96,6.96 0 0 1 71.09,28.05 L71.09,80.26 A6.96,6.96 0 0 1 57.16,80.26 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M77.10,41.45 A6.96,6.96 0 0 1 91.02,41.45 L91.02,67.61 A6.96,6.96 0 0 1 77.10,67.61 Z" />
+</vector>

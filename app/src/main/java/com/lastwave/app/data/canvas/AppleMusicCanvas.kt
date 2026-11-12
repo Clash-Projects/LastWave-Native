@@ -24,7 +24,7 @@ object AppleMusicCanvas {
 
     private const val TAG = "AppleMusicCanvas"
     private const val AMP = "https://amp-api.music.apple.com/v1/catalog"
-    private const val WEB_PLAYER = "https://music.apple.com/us/browse"
+    private const val WEB_PLAYER = "https://music.apple.com/us/new"
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -82,6 +82,7 @@ object AppleMusicCanvas {
                         url = assets.primary,
                         fallbackUrl = assets.alternate,
                         tallUrl = assets.tall,
+                        wideUrl = assets.wide,
                         title = songName,
                         artist = songArtist,
                         album = albumName,
@@ -134,11 +135,131 @@ object AppleMusicCanvas {
                 url = assets.primary,
                 fallbackUrl = assets.alternate,
                 tallUrl = assets.tall,
+                wideUrl = assets.wide,
                 title = name,
                 artist = attributes["artistName"]?.jsonPrimitive?.contentOrNull,
                 album = name,
                 source = CanvasSource.APPLE,
             )
+        }
+        return null
+    }
+
+    /**
+     * Searches Apple Music catalog for an artist's official editorial motion artwork video.
+     */
+    fun searchArtist(client: OkHttpClient, artist: String): CanvasArtwork? {
+        val bearer = token(client) ?: return null
+        val term = artist.trim()
+        if (term.isBlank()) return null
+
+        val url = "$AMP/$storefront/search".toHttpUrl().newBuilder()
+            .addQueryParameter("term", term)
+            .addQueryParameter("types", "artists")
+            .addQueryParameter("limit", "5")
+            .addQueryParameter("extend", "editorialVideo")
+            .build()
+            .toString()
+
+        val body = get(client, url, bearer) ?: return null
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+        val hits = root["results"]?.jsonObject
+            ?.get("artists")?.jsonObject
+            ?.get("data")?.jsonArray
+            ?: return null
+
+        val wantNorm = artist.normalizeForMatch()
+
+        for (hit in hits) {
+            val artistObj = hit as? JsonObject ?: continue
+            val attributes = artistObj["attributes"]?.jsonObject ?: continue
+            val name = attributes["name"]?.jsonPrimitive?.contentOrNull ?: continue
+            val hitNorm = name.normalizeForMatch()
+            if (hitNorm != wantNorm && !hitNorm.contains(wantNorm) && !wantNorm.contains(hitNorm)) {
+                continue
+            }
+
+            // 1. Direct editorialVideo on artist object in search results
+            attributes["editorialVideo"]?.jsonObject?.let { video ->
+                motionUrls(video)?.let { assets ->
+                    Log.d(TAG, "Motion artwork found for artist '$name'")
+                    return CanvasArtwork(
+                        url = assets.wide ?: assets.tall ?: assets.primary,
+                        fallbackUrl = assets.alternate,
+                        tallUrl = assets.tall,
+                        wideUrl = assets.wide,
+                        title = name,
+                        artist = name,
+                        source = CanvasSource.APPLE,
+                    )
+                }
+            }
+
+            // 2. Query artist detail endpoint if editorialVideo wasn't returned in search summary
+            val artistId = artistObj["id"]?.jsonPrimitive?.contentOrNull ?: continue
+            fetchArtistDetail(client, artistId, bearer, name)?.let { return it }
+        }
+        return null
+    }
+
+    private fun fetchArtistDetail(
+        client: OkHttpClient,
+        artistId: String,
+        bearer: String,
+        artistName: String,
+    ): CanvasArtwork? {
+        val url = "$AMP/$storefront/artists/$artistId".toHttpUrl().newBuilder()
+            .addQueryParameter("include", "albums")
+            .addQueryParameter("extend", "editorialVideo")
+            .build()
+            .toString()
+
+        val body = get(client, url, bearer) ?: return null
+        val artistObj = runCatching {
+            json.parseToJsonElement(body).jsonObject["data"]?.jsonArray?.firstOrNull()?.jsonObject
+        }.getOrNull() ?: return null
+
+        val attributes = artistObj["attributes"]?.jsonObject
+        val video = attributes?.get("editorialVideo")?.jsonObject
+        val directAssets = video?.let(::motionUrls)
+        if (directAssets != null) {
+            Log.d(TAG, "Motion artwork found on artist detail '$artistName' ($artistId)")
+            return CanvasArtwork(
+                url = directAssets.wide ?: directAssets.tall ?: directAssets.primary,
+                fallbackUrl = directAssets.alternate,
+                tallUrl = directAssets.tall,
+                wideUrl = directAssets.wide,
+                title = artistName,
+                artist = artistName,
+                source = CanvasSource.APPLE,
+            )
+        }
+
+        // Check the artist's primary/featured albums if no direct artist video exists
+        val albums = artistObj["relationships"]?.jsonObject
+            ?.get("albums")?.jsonObject
+            ?.get("data")?.jsonArray
+        if (albums != null) {
+            for (hit in albums) {
+                val albumObj = hit as? JsonObject ?: continue
+                val albumAttrs = albumObj["attributes"]?.jsonObject ?: continue
+                val albumName = albumAttrs["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (isCompilation(albumName)) continue
+                val albumVideo = albumAttrs["editorialVideo"]?.jsonObject ?: continue
+                val albumAssets = motionUrls(albumVideo) ?: continue
+
+                Log.d(TAG, "Motion artwork found on album '$albumName' for artist '$artistName'")
+                return CanvasArtwork(
+                    url = albumAssets.wide ?: albumAssets.tall ?: albumAssets.primary,
+                    fallbackUrl = albumAssets.alternate,
+                    tallUrl = albumAssets.tall,
+                    wideUrl = albumAssets.wide,
+                    title = artistName,
+                    artist = artistName,
+                    album = albumName,
+                    source = CanvasSource.APPLE,
+                )
+            }
         }
         return null
     }
@@ -253,6 +374,7 @@ object AppleMusicCanvas {
             url = assets.primary,
             fallbackUrl = assets.alternate,
             tallUrl = assets.tall,
+            wideUrl = assets.wide,
             title = songTitle,
             artist = songArtist ?: attributes["artistName"]?.jsonPrimitive?.contentOrNull,
             album = albumName,
@@ -264,6 +386,7 @@ object AppleMusicCanvas {
         val primary: String,
         val alternate: String?,
         val tall: String?,
+        val wide: String?,
     )
 
     private fun motionUrls(video: JsonObject): MotionUrls? {
@@ -274,12 +397,25 @@ object AppleMusicCanvas {
                 ?: asset["url"]?.jsonPrimitive?.contentOrNull
         }?.takeIf { it.isNotBlank() }
 
-        val square = link("motionDetailSquare") ?: link("motionSquareVideo1x1")
+        val square = link("motionDetailSquare")
+            ?: link("motionSquareVideo1x1")
+            ?: link("motionArtistSquare1x1")
+            ?: link("motionArtistSquare")
         val raw = link("motionDetailRaw")
-        val tall = link("motionDetailTall") ?: link("motionTallVideo3x4")
-        val primary = square ?: raw ?: tall ?: return null
-        val alternate = listOfNotNull(square, raw, tall).firstOrNull { it != primary }
-        return MotionUrls(primary, alternate, tall)
+        val tall = link("motionDetailTall")
+            ?: link("motionTallVideo3x4")
+            ?: link("motionArtistFullscreen16x9")
+            ?: link("motionArtistTall")
+            ?: link("motionArtistFullscreen")
+        val wide = link("motionWideVideo")
+            ?: link("motionWideVideo16x9")
+            ?: link("motionDetailWide")
+            ?: link("motionArtistWide16x9")
+            ?: link("motionArtistWide")
+        val fallback = video.keys.firstNotNullOfOrNull { link(it) }
+        val primary = square ?: raw ?: tall ?: wide ?: fallback ?: return null
+        val alternate = listOfNotNull(square, raw, tall, wide).firstOrNull { it != primary }
+        return MotionUrls(primary, alternate, tall, wide)
     }
 
     @Volatile private var cachedToken: String? = null
@@ -294,8 +430,9 @@ object AppleMusicCanvas {
         if (now < retryTokenAfterMs) return null
 
         val html = canvasGet(client, WEB_PLAYER, mapOf("User-Agent" to CANVAS_UA))
+            ?: canvasGet(client, "https://music.apple.com/us/browse", mapOf("User-Agent" to CANVAS_UA))
         val scripts = html?.let {
-            Regex("""/assets/index(?:-legacy)?[~-][A-Za-z0-9_-]+\.js""")
+            Regex("""/assets/(?:index|app)(?:-legacy)?[~-][A-Za-z0-9_-]+\.js|/assets/index[~-][A-Za-z0-9_-]+\.js""")
                 .findAll(it).map(MatchResult::value).distinct().toList()
         }.orEmpty()
 

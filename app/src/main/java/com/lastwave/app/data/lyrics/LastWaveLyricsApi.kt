@@ -2,6 +2,7 @@ package com.lastwave.app.data.lyrics
 
 import com.lastwave.app.BuildConfig
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
+import com.lastwave.app.data.network.ITunesSearchClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,19 +17,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.abs
-
-@Serializable
-data class LastWaveLyricsSearchItem(
-    val id: String = "",
-    val name: String? = null,
-    val artistName: String? = null,
-    val albumName: String? = null,
-    val durationInMillis: Long? = null,
-    val isrc: String? = null,
-    val hasLyrics: Boolean? = null,
-    val hasTimeSyncedLyrics: Boolean? = null,
-)
 
 @Serializable
 private data class LastWaveLyricsResponse(
@@ -48,6 +36,7 @@ private data class LastWaveLyricsResponse(
 @Singleton
 class LastWaveLyricsApi @Inject constructor(
     private val okHttpClient: OkHttpClient,
+    private val iTunesSearchClient: ITunesSearchClient,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -80,23 +69,17 @@ class LastWaveLyricsApi @Inject constructor(
     ): Pair<String?, LyricsResult.Success>? = withContext(Dispatchers.IO) {
         if (title.isBlank() || token.isBlank() || baseUrl.isBlank()) return@withContext null
 
-        val item = searchBest(title, artist, durationSeconds, isrc)
-            ?: run {
-                val cleanedTitle = LrclibLyricsApi.cleanTrackTitle(title)
-                val cleanedArtist = LrclibLyricsApi.cleanArtistName(artist)
-                if (cleanedTitle != title || cleanedArtist != artist) {
-                    searchBest(cleanedTitle, cleanedArtist, durationSeconds, isrc)
-                } else null
-            } ?: return@withContext null
+        val song = iTunesSearchClient.searchBestMatch(title, artist, durationSeconds)
+            ?: return@withContext null
 
         val result = fetchLyricsForId(
-            id = item.id,
-            isrc = item.isrc ?: isrc,
-            title = title,
-            artist = artist,
+            id = song.trackId.toString(),
+            isrc = isrc,
+            title = song.trackName ?: title,
+            artist = song.artistName ?: artist,
         ) ?: return@withContext null
 
-        Pair(item.isrc, result)
+        Pair(isrc, result)
     }
 
     suspend fun fetchLyricsForId(
@@ -191,113 +174,6 @@ class LastWaveLyricsApi @Inject constructor(
         null
     }
 
-    private suspend fun searchBest(
-        title: String,
-        artist: String,
-        durationSeconds: Int?,
-        isrc: String?,
-    ): LastWaveLyricsSearchItem? {
-        val query = if (artist.isNotBlank()) "$title $artist" else title
-        val items = performSearch(query).ifEmpty {
-            if (artist.isNotBlank()) performSearch(title) else emptyList()
-        }
-        if (items.isEmpty()) return null
-
-        val expectedMs = durationSeconds?.takeIf { it > 0 }?.times(1_000L)
-        val candidates = items
-            .filter { it.id.isNotBlank() }
-            .filter { LrclibLyricsApi.sameVersion(title, it.name.orEmpty()) }
-        if (candidates.isEmpty()) return null
-
-        if (!isrc.isNullOrBlank()) {
-            candidates.firstOrNull { it.isrc.equals(isrc.trim(), ignoreCase = true) }?.let {
-                return it
-            }
-        }
-
-        return candidates.maxWithOrNull(
-            compareBy(
-                { score(it, title, artist, expectedMs) },
-                { -durationDistance(it, expectedMs) },
-            ),
-        )?.takeIf { isVerifiedMatch(it, title, artist, expectedMs) }
-    }
-
-    private suspend fun performSearch(query: String): List<LastWaveLyricsSearchItem> {
-        val url = "$baseUrl/search".toHttpUrlOrNull()?.newBuilder()
-            ?.addQueryParameter("q", query.trim())
-            ?.build() ?: return emptyList()
-
-        val request = Request.Builder()
-            .url(url)
-            .header("X-Lyrics-Token", token)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/json")
-            .get()
-            .build()
-
-        val body = try {
-            okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return emptyList()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            return emptyList()
-        }
-
-        return try {
-            json.decodeFromString<List<LastWaveLyricsSearchItem>>(body)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun durationDistance(song: LastWaveLyricsSearchItem, expectedMs: Long?): Long {
-        val songMs = song.durationInMillis ?: return Long.MAX_VALUE
-        if (expectedMs == null || expectedMs <= 0 || songMs <= 0) return 0L
-        return abs(songMs - expectedMs)
-    }
-
-    private fun isVerifiedMatch(song: LastWaveLyricsSearchItem, title: String, artist: String, expectedMs: Long?): Boolean {
-        if (!LrclibLyricsApi.sameVersion(title, song.name.orEmpty())) return false
-        if (titleScore(song.name.orEmpty(), title) <= 0) return false
-        if (artist.isBlank()) {
-            if (titleScore(song.name.orEmpty(), title) < 3) return false
-            return score(song, title, artist, expectedMs) >= MIN_MATCH_SCORE - 2
-        }
-        if (artistScore(song.artistName.orEmpty(), artist) <= 0) return false
-        return score(song, title, artist, expectedMs) >= MIN_MATCH_SCORE
-    }
-
-    private fun titleScore(songTitle: String, title: String): Int {
-        val cleanSong = LrclibLyricsApi.cleanTrackTitle(songTitle)
-        val cleanReq = LrclibLyricsApi.cleanTrackTitle(title)
-        if (cleanSong.equals(cleanReq, ignoreCase = true)) return 3
-        if (LrclibLyricsApi.titlesMatch(cleanSong, cleanReq)) return 1
-        return 0
-    }
-
-    private fun artistScore(songArtist: String, artist: String): Int {
-        if (artist.isBlank() || songArtist.isBlank()) return 0
-        val cleanSong = LrclibLyricsApi.cleanArtistName(songArtist)
-        val cleanReq = LrclibLyricsApi.cleanArtistName(artist)
-        return if (LrclibLyricsApi.artistMatches(cleanSong, cleanReq)) 2 else 0
-    }
-
-    private fun score(song: LastWaveLyricsSearchItem, title: String, artist: String, expectedMs: Long?): Int {
-        var score = titleScore(song.name.orEmpty(), title) + artistScore(song.artistName.orEmpty(), artist)
-        val songMs = song.durationInMillis
-        if (expectedMs != null && expectedMs > 0 && songMs != null && songMs > 0) {
-            score += when (abs(songMs - expectedMs)) {
-                in 0..3_000L -> 3
-                in 3_001L..DURATION_TOLERANCE_MS -> 1
-                else -> 0
-            }
-        }
-        return score
-    }
-
     private fun extractTtml(raw: String): String? {
         if (!raw.startsWith("{") && !raw.startsWith("[")) return raw
         return try {
@@ -324,7 +200,5 @@ class LastWaveLyricsApi @Inject constructor(
 
     companion object {
         private const val USER_AGENT = "LastWave-Android/1.0"
-        private const val DURATION_TOLERANCE_MS = 6_000L
-        private const val MIN_MATCH_SCORE = 3
     }
 }

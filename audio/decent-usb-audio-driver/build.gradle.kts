@@ -8,7 +8,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        minSdk = 24
+        minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
+        (project.findProperty("targetAbis") as? String)?.let { prop ->
+            ndk {
+                abiFilters.addAll(prop.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+            }
+        }
         externalNativeBuild { cmake { cppFlags("-fno-fast-math") } }
     }
 
@@ -30,7 +35,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlin { jvmToolchain(17) }
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
 }
 
 dependencies {

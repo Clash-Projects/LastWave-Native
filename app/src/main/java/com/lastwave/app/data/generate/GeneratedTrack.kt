@@ -34,6 +34,11 @@ data class GeneratedTrack(
     val playcount: Long? = null,
     val match: Double? = null,
     val album: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val albumArtist: String? = null,
+    val durationMs: Long? = null,
+    val lrcUri: String? = null,
 ) {
     /**
      * Normalized identity: trimmed, inner whitespace collapsed, lowercased.
@@ -45,10 +50,39 @@ data class GeneratedTrack(
     val key: String get() = "${name.normalizeTrackText()}|${artist.normalizeTrackText()}".lowercase()
 }
 
-/** Trims and collapses inner whitespace so equivalent titles compare equal. */
-fun String.normalizeTrackText(): String = trim().replace(WHITESPACE_RUN, " ")
+/**
+ * Trims and collapses inner whitespace so equivalent titles compare equal.
+ * Same result as `trim().replace(Regex("\\s+"), " ")`, without a regex
+ * matcher per call: this runs for every row of every playlist comparison.
+ */
+fun String.normalizeTrackText(): String {
+    val trimmed = trim()
+    var needsWork = false
+    for (i in trimmed.indices) {
+        val c = trimmed[i]
+        if (c.isRegexWhitespace() && (c != ' ' || (i + 1 < trimmed.length && trimmed[i + 1].isRegexWhitespace()))) {
+            needsWork = true
+            break
+        }
+    }
+    if (!needsWork) return trimmed
+    val out = StringBuilder(trimmed.length)
+    var inRun = false
+    for (c in trimmed) {
+        if (c.isRegexWhitespace()) {
+            if (!inRun) out.append(' ')
+            inRun = true
+        } else {
+            out.append(c)
+            inRun = false
+        }
+    }
+    return out.toString()
+}
 
-private val WHITESPACE_RUN = Regex("\\s+")
+/** The characters Java regex `\s` matches: space, tab, LF, VT, FF, CR. */
+private fun Char.isRegexWhitespace(): Boolean =
+    this == ' ' || this == '\t' || this == '\n' || this == '\u000B' || this == '\u000C' || this == '\r'
 
 /**
  * Strong song identity: same YouTube videoId wins outright (covers equal
@@ -66,14 +100,48 @@ fun GeneratedTrack.sameSongAs(other: GeneratedTrack): Boolean {
         artist.trim().equals(other.artist.trim(), ignoreCase = true)
 }
 
-/** Keeps the first occurrence of each song, dropping later duplicates. */
+/**
+ * Keeps the first occurrence of each song, dropping later duplicates.
+ *
+ * A track is dropped when it is [sameSongAs] any track already kept. That
+ * relation is three exact-match tests (videoId, normalized key, trimmed
+ * case-insensitive name+artist), so each is a hash lookup here: O(n)
+ * instead of comparing every pair, which took seconds on a few thousand
+ * liked songs.
+ */
 fun List<GeneratedTrack>.distinctSongs(): List<GeneratedTrack> {
     if (size < 2) return this
     val out = ArrayList<GeneratedTrack>(size)
+    val videoIds = HashSet<String>(size * 2)
+    val keys = HashSet<String>(size * 2)
+    val namePairs = HashSet<Pair<String, String>>(size * 2)
     for (track in this) {
-        if (out.none { it.sameSongAs(track) }) out.add(track)
+        val videoId = track.youtubeVideoIdOrNull()
+        if (videoId != null && videoId in videoIds) continue
+        // sameSongAs never matches two blank-named tracks past the videoId test.
+        val named = track.name.isNotBlank()
+        val namePair = track.name.trim().foldCase() to track.artist.trim().foldCase()
+        val key = track.key // read once: key normalizes both fields on every access
+        if (named && (key in keys || namePair in namePairs)) continue
+        out.add(track)
+        videoId?.let(videoIds::add)
+        if (named) {
+            keys.add(key)
+            namePairs.add(namePair)
+        }
     }
     return out
+}
+
+/**
+ * Two strings fold to the same value exactly when `equals(ignoreCase = true)`
+ * holds: it compares per character after toUpperCase, then toLowerCase of
+ * that. Plain lowercase() differs for e.g. Turkish dotted I and Greek sigma.
+ */
+private fun String.foldCase(): String {
+    val out = CharArray(length)
+    for (i in indices) out[i] = Character.toLowerCase(Character.toUpperCase(this[i]))
+    return String(out)
 }
 
 /**
@@ -164,10 +232,38 @@ data class StoredTrack(
     val url: String? = "",
     val image: String? = null,
     val album: String? = null,
+    val trackNumber: Int? = null,
+    val discNumber: Int? = null,
+    val albumArtist: String? = null,
+    val durationMs: Long? = null,
+    val lrcUri: String? = null,
 )
 
-fun GeneratedTrack.toStored() = StoredTrack(name = name, artist = artist, url = url, image = artworkUrl, album = album)
-fun StoredTrack.toGenerated() = GeneratedTrack(name = name.orEmpty(), artist = artist.orEmpty(), artworkUrl = image, url = url.orEmpty(), album = album)
+fun GeneratedTrack.toStored() = StoredTrack(
+    name = name,
+    artist = artist,
+    url = url,
+    image = artworkUrl,
+    album = album,
+    trackNumber = trackNumber,
+    discNumber = discNumber,
+    albumArtist = albumArtist,
+    durationMs = durationMs,
+    lrcUri = lrcUri,
+)
+
+fun StoredTrack.toGenerated() = GeneratedTrack(
+    name = name.orEmpty(),
+    artist = artist.orEmpty(),
+    artworkUrl = image,
+    url = url.orEmpty(),
+    album = album,
+    trackNumber = trackNumber,
+    discNumber = discNumber,
+    albumArtist = albumArtist,
+    durationMs = durationMs,
+    lrcUri = lrcUri,
+)
 
 fun GeneratedTrack.youtubeVideoIdOrNull(): String? {
     val value = url.trim()
@@ -195,20 +291,27 @@ private val YOUTUBE_VIDEO_ID_REGEX = Regex("[A-Za-z0-9_-]{11}")
  */
 fun GeneratedTrack.isLocalFile(): Boolean = isLocalAudioPath(url)
 
-fun isLocalAudioPath(url: String?): Boolean = url != null && url.startsWith("/")
+fun isLocalAudioPath(url: String?): Boolean =
+    url != null && (url.startsWith("/") || url.startsWith("content://") || url.startsWith("file://"))
 
 /**
- * Formats Media3 1.2.1 (+ the bundled FFmpeg audio decoder) can open from a
- * plain file. AIFF, APE, WMA, DSD and WavPack have no extractor in this
- * version, so the importer skips and reports them instead of storing files
- * that would fail at play time.
+ * Formats Media3 1.2.1 (+ bundled FFmpeg audio decoder, custom AIFF/AIFC PCM
+ * extractor, and native C++ DSD64..DSD512 FIR decimator) can open from storage.
+ * Proprietary or unbundled codecs (APE, WMA, WavPack, Musepack, TTA) stay listed
+ * in [UNSUPPORTED_AUDIO] so the scanner skips and reports them clearly.
  */
 object LocalAudioFormats {
     private val MIME_BY_EXTENSION = mapOf(
         "mp3" to "audio/mpeg",
+        "mp2" to "audio/mpeg",
         "flac" to "audio/flac",
         "wav" to "audio/wav",
         "wave" to "audio/wav",
+        "aif" to "audio/aiff",
+        "aiff" to "audio/aiff",
+        "aifc" to "audio/aiff",
+        "dsf" to "audio/x-dsf",
+        "dff" to "audio/x-dff",
         "ogg" to "audio/ogg",
         "oga" to "audio/ogg",
         "opus" to "audio/ogg",
@@ -221,27 +324,38 @@ object LocalAudioFormats {
         "webm" to "audio/webm",
         "amr" to "audio/amr",
         "ac3" to "audio/ac3",
+        "ec3" to "audio/eac3",
+        "eac3" to "audio/eac3",
+        "ac4" to "audio/ac4",
     )
 
     /** Audio-looking extensions we recognise but cannot play (reported as skipped). */
-    val UNSUPPORTED_AUDIO = setOf("aif", "aiff", "aifc", "ape", "wma", "dsf", "dff", "wv", "mpc", "tta", "mid", "midi")
+    val UNSUPPORTED_AUDIO = setOf("ape", "wma", "wv", "mpc", "tta", "mid", "midi")
 
     val supportedExtensions: Set<String> get() = MIME_BY_EXTENSION.keys
 
-    fun extensionOf(name: String): String =
-        name.substringAfterLast('/').substringAfterLast('.', "").lowercase()
+    fun extensionOf(name: String): String {
+        val decoded = runCatching { Uri.decode(name) }.getOrNull() ?: name
+        return decoded.substringAfterLast('/').substringAfterLast('.', "").lowercase()
+    }
 
     fun isSupported(name: String): Boolean = extensionOf(name) in MIME_BY_EXTENSION
 
     fun mimeFor(name: String): String? = MIME_BY_EXTENSION[extensionOf(name)]
 
     /**
-     * Path of a file copied by the Local songs importer, or null. Accepts the
-     * `file://` form too: a queue restored from Media3 carries the file URI.
+     * Path or content URI of a local audio track, or null. Accepts the `file://` form too:
+     * a queue restored from Media3 carries the file URI.
      */
     fun importedPathOrNull(url: String?): String? {
-        val path = url?.removePrefix("file://") ?: return null
-        return path.takeIf { isLocalAudioPath(it) && it.contains("/$IMPORT_DIR/") }
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) return null
+        if (url.contains("tidal_mpd") || url.contains("segdrm_mpd")) return null
+        val clean = url.removePrefix("file://")
+        if (clean.startsWith("/") || clean.startsWith("content://") || url.startsWith("content://")) {
+            return if (url.startsWith("content://")) url else clean
+        }
+        return null
     }
 
     const val IMPORT_DIR = "local_music"

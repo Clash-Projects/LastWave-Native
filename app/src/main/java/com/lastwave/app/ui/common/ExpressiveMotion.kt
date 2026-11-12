@@ -22,7 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 
 /** Shared, restrained Material 3 Expressive motion language for the app. */
 object ExpressiveMotion {
@@ -32,18 +32,18 @@ object ExpressiveMotion {
 
     // Spatial springs: overshoot and bounce for layout and scale transitions
     fun <T> spatialFast() = spring<T>(
-        dampingRatio = 0.5f, // high bounce
-        stiffness = Spring.StiffnessMediumLow,
+        dampingRatio = 0.75f,
+        stiffness = Spring.StiffnessMedium, // 1500f: immediate, tactile button feedback (~180ms)
     )
 
     fun <T> spatialDefault() = spring<T>(
-        dampingRatio = 0.65f, // moderate bounce
-        stiffness = Spring.StiffnessLow,
+        dampingRatio = 0.8f,
+        stiffness = 650f, // Snappy & fluid Material 3 expressive motion (~280ms)
     )
 
     fun <T> spatialSlow() = spring<T>(
-        dampingRatio = 0.7f, // gentle bounce
-        stiffness = Spring.StiffnessVeryLow,
+        dampingRatio = 0.85f,
+        stiffness = Spring.StiffnessMediumLow, // 400f
     )
 
     // Legacy alias
@@ -52,40 +52,43 @@ object ExpressiveMotion {
     // Effects springs: no overshoot (for alpha, color)
     fun <T> effectsFast() = spring<T>(
         dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessMedium,
+        stiffness = Spring.StiffnessMedium, // 1500f
     )
 
     fun <T> effectsDefault() = spring<T>(
         dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessLow,
+        stiffness = 700f, // Clean fade without sluggish trailing (~250ms)
     )
 
     fun <T> effectsSlow() = spring<T>(
         dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessVeryLow,
+        stiffness = Spring.StiffnessMediumLow, // 400f
     )
 
     // Legacy alias
     fun <T> smoothSpring() = effectsDefault<T>()
 
+    // Screen transitions in the same language as the player open/close
+    // morph: the incoming screen grows into place from slightly smaller while
+    // the one it covers recedes a touch; going back reverses it. A short
+    // horizontal drift keeps the forward/back direction readable.
     fun forwardEnter(): EnterTransition =
         fadeIn(effectsDefault()) +
-            slideInHorizontally(spatialDefault()) { it / 10 } +
-            scaleIn(spatialFast(), initialScale = 0.96f)
+            scaleIn(spatialDefault(), initialScale = 0.92f) +
+            slideInHorizontally(spatialDefault()) { it / 24 }
 
     fun forwardExit(): ExitTransition =
-        fadeOut(effectsFast()) +
-            scaleOut(effectsDefault(), targetScale = 0.985f)
+        fadeOut(effectsDefault()) +
+            scaleOut(effectsDefault(), targetScale = 0.95f)
 
     fun backEnter(): EnterTransition =
         fadeIn(effectsDefault()) +
-            slideInHorizontally(spatialDefault()) { -it / 12 } +
-            scaleIn(spatialFast(), initialScale = 0.96f)
+            scaleIn(spatialDefault(), initialScale = 0.95f)
 
     fun backExit(): ExitTransition =
         fadeOut(effectsFast()) +
-            slideOutHorizontally(spatialDefault()) { it / 12 } +
-            scaleOut(effectsDefault(), targetScale = 0.985f)
+            scaleOut(effectsDefault(), targetScale = 0.92f) +
+            slideOutHorizontally(spatialDefault()) { it / 24 }
 }
 
 /**
@@ -103,7 +106,10 @@ fun Modifier.expressivePressScale(
         animationSpec = ExpressiveMotion.spatialFast(),
         label = "expressivePressScale",
     )
-    return this.scale(scale)
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
 }
 
 /**

@@ -41,7 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +76,7 @@ data class TrackMiniTrayData(
     val videoId: String? = null,
     val sourceLabel: String = "LastWave",
     val onPlay: (() -> Unit)? = null,
+    val durationMs: Long? = null,
 ) {
     fun toPlayable(): PlayableTrack = PlayableTrack(
         title = title,
@@ -83,6 +84,7 @@ data class TrackMiniTrayData(
         album = album,
         artworkUrl = artworkUrl,
         videoId = videoId?.takeIf(String::isNotBlank),
+        durationMs = durationMs,
     )
 }
 
@@ -171,7 +173,7 @@ fun TrackMiniTraySheet(
                     val sub = listOfNotNull(
                         ArtistHelper.primaryArtist(data.artist).takeIf(String::isNotBlank),
                         data.album?.takeIf(String::isNotBlank),
-                    ).joinToString(" · ")
+                    ).joinToString(" \u2022 ")
                     if (sub.isNotBlank()) {
                         Text(
                             sub,
@@ -232,7 +234,10 @@ fun TrackMiniTraySheet(
                         }
                         else -> {
                             MiniTrayRow(Icons.Filled.Download, downloadLabel, position = pos) {
-                                downloadViewModel.download(data.title, data.artist, data.album, data.artworkUrl)
+                                downloadViewModel.download(
+                                    playable.title, playable.artist, playable.album, playable.artworkUrl,
+                                    videoId = playable.videoId, durationMs = playable.durationMs,
+                                )
                                 onDismiss()
                             }
                         }
@@ -250,7 +255,7 @@ fun TrackMiniTraySheet(
                     add { pos ->
                         val album = data.album
                         MiniTrayRow(Icons.Filled.Album, "Go to album", position = pos) {
-                            artistAlbumViewModel.openAlbum(album, splitArtists.firstOrNull() ?: data.artist)
+                            artistAlbumViewModel.openAlbum(album, data.artist)
                             onDismiss()
                         }
                     }
@@ -285,10 +290,13 @@ private fun MiniTrayRow(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = groupShape(position),
         interactionSource = interactionSource,
-        modifier = Modifier.fillMaxWidth().scale(scale),
+        modifier = Modifier.fillMaxWidth().graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             androidx.compose.foundation.layout.Box(

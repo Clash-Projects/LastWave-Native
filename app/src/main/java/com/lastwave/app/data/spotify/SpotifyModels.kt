@@ -1,0 +1,283 @@
+package com.lastwave.app.data.spotify
+
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.protobuf.ProtoNumber
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class CanvasRequest(
+    @ProtoNumber(1) val tracks: List<TrackRequest> = emptyList(),
+) {
+    @Serializable
+    data class TrackRequest(
+        @ProtoNumber(1) val trackUri: String, // "spotify:track:<trackId>"
+    )
+}
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class CanvasResponse(
+    @ProtoNumber(1) val canvases: List<CanvasItem> = emptyList(),
+    @ProtoNumber(2) val ttlInSeconds: Long? = null,
+) {
+    @Serializable
+    data class CanvasItem(
+        @ProtoNumber(1) val id: String? = null,
+        @ProtoNumber(2) val canvasUrl: String? = null,
+        @ProtoNumber(5) val trackUri: String? = null,
+        @ProtoNumber(6) val artist: ArtistItem? = null,
+        @ProtoNumber(9) val otherId: String? = null,
+        @ProtoNumber(11) val canvasUri: String? = null,
+        @ProtoNumber(13) val thumbsOfCanva: List<ThumbOfCanva>? = null,
+    ) {
+        @Serializable
+        data class ArtistItem(
+            @ProtoNumber(1) val artistUri: String? = null,
+            @ProtoNumber(2) val artistName: String? = null,
+            @ProtoNumber(3) val artistImgUrl: String? = null,
+        )
+
+        @Serializable
+        data class ThumbOfCanva(
+            @ProtoNumber(1) val height: Int? = null,
+            @ProtoNumber(2) val width: Int? = null,
+            @ProtoNumber(3) val url: String? = null,
+        )
+    }
+}
+
+@Serializable
+data class ClientTokenRequest(
+    val client_data: ClientData = ClientData(),
+) {
+    /**
+     * The client profile the client-token endpoint is asked about.
+     *
+     * Every field here describes one browser, and the endpoint compares the set against
+     * itself: a profile with an unknown brand and no device type is not a browser anyone
+     * has, so it is the one profile that answers least often. The device id is filled in
+     * per install rather than shared, so two installs do not present as one device.
+     */
+    @Serializable
+    data class ClientData(
+        val client_version: String = "1.2.62.476.g2ad6e7f3",
+        val client_id: String = "d8a5ed958d274c2e8ee717e6a4b0971d",
+        val js_sdk_data: JsSdkData = JsSdkData(),
+    )
+
+    @Serializable
+    data class JsSdkData(
+        val device_brand: String = "Apple",
+        val device_model: String = "unknown",
+        val os: String = "macos",
+        val os_version: String = "10.15.7",
+        val device_id: String = "",
+        val device_type: String = "computer",
+    )
+}
+
+@Serializable
+data class SpotifyWebSearchResponse(
+    val tracks: TracksContainer? = null,
+) {
+    @Serializable
+    data class TracksContainer(
+        val items: List<TrackItem> = emptyList(),
+    ) {
+        @Serializable
+        data class TrackItem(
+            val id: String? = null,
+            val uri: String? = null,
+            val name: String? = null,
+            val duration_ms: Long? = null,
+            val durationMs: Long? = null,
+            val artists: List<ArtistItem> = emptyList(),
+        ) {
+            @Serializable
+            data class ArtistItem(val name: String? = null)
+        }
+    }
+}
+
+/** `GET /v1/recommendations` — only the track fields the seed resolver needs. */
+@Serializable
+data class SpotifyRecommendationsResponse(
+    val tracks: List<SpotifyWebSearchResponse.TracksContainer.TrackItem> = emptyList(),
+    val items: List<SpotifyWebSearchResponse.TracksContainer.TrackItem> = emptyList(),
+) {
+    val allTracks: List<SpotifyWebSearchResponse.TracksContainer.TrackItem>
+        get() = tracks.ifEmpty { items }
+}
+
+@Serializable
+data class ClientTokenResponse(
+    val response_type: String? = null,
+    val granted_token: GrantedToken? = null,
+) {
+    @Serializable
+    data class GrantedToken(
+        val token: String? = null,
+        val expires_after_seconds: Long? = null,
+        val refresh_after_seconds: Long? = null,
+    )
+}
+
+@Serializable
+data class SpotifyServerTimeResponse(
+    val serverTime: Long? = null,
+)
+
+@Serializable
+data class SpotifyPersonalTokenResponse(
+    val accessToken: String? = null,
+    val accessTokenExpirationTimestampMs: Long? = null,
+    val isAnonymous: Boolean? = null,
+    val clientId: String? = null,
+)
+
+@Serializable
+data class SpotifySearchResponse(
+    val data: Data? = null,
+) {
+    @Serializable
+    data class Data(
+        val searchV2: Search? = null,
+    ) {
+        @Serializable
+        data class Search(
+            val query: String? = null,
+            val tracksV2: TracksV2? = null,
+        ) {
+            @Serializable
+            data class TracksV2(
+                val items: List<Items>? = null,
+                val pagingInfo: PagingInfo? = null,
+                val totalCount: Int? = null,
+            ) {
+                @Serializable
+                data class PagingInfo(
+                    val limit: Int? = null,
+                    val nextOffset: Int? = null,
+                )
+
+                @Serializable
+                data class Items(
+                    val item: Item? = null,
+                ) {
+                    @Serializable
+                    data class Item(
+                        val data: TrackData? = null,
+                    ) {
+                        @Serializable
+                        data class TrackData(
+                            val id: String? = null,
+                            val uri: String? = null,
+                            val name: String? = null,
+                            val artists: Artists? = null,
+                            val duration: Duration? = null,
+                        ) {
+                            val resolvedId: String?
+                                get() = id?.takeIf { it.isNotBlank() }
+                                    ?: uri?.removePrefix("spotify:track:")?.takeIf { it.isNotBlank() }
+
+                            @Serializable
+                            data class Duration(
+                                val totalMilliseconds: Int? = null,
+                            )
+
+                            @Serializable
+                            data class Artists(
+                                val items: List<ArtistItem>? = null,
+                            ) {
+                                @Serializable
+                                data class ArtistItem(
+                                    val profile: Profile? = null,
+                                    val uri: String? = null,
+                                ) {
+                                    @Serializable
+                                    data class Profile(
+                                        val name: String? = null,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Serializable
+data class SpotifyColorLyricsResponse(
+    val lyrics: LyricsData? = null,
+    val colors: ColorData? = null,
+) {
+    @Serializable
+    data class LyricsData(
+        val syncType: String? = null,
+        val lines: List<LineData> = emptyList(),
+        val provider: String? = null,
+        val providerDisplayName: String? = null,
+        val syncLyrics: Boolean? = null,
+        val language: String? = null,
+    ) {
+        @Serializable
+        data class LineData(
+            val startTimeMs: String? = null,
+            val words: String? = null,
+            val endTimeMs: String? = null,
+        )
+    }
+
+    @Serializable
+    data class ColorData(
+        val background: Int? = null,
+        val text: Int? = null,
+        val highlightText: Int? = null,
+    )
+}
+
+@Serializable
+data class SpotifyLikedTracksResponse(
+    val items: List<Item> = emptyList(),
+    val total: Int = 0,
+    val next: String? = null,
+) {
+    @Serializable
+    data class Item(
+        val added_at: String? = null,
+        val track: Track? = null,
+    ) {
+        @Serializable
+        data class Track(
+            val id: String? = null,
+            val name: String? = null,
+            val artists: List<Artist> = emptyList(),
+            val album: Album? = null,
+            val duration_ms: Long? = null,
+            val uri: String? = null,
+        ) {
+            @Serializable
+            data class Artist(
+                val id: String? = null,
+                val name: String? = null,
+            )
+
+            @Serializable
+            data class Album(
+                val id: String? = null,
+                val name: String? = null,
+                val images: List<Image> = emptyList(),
+            ) {
+                @Serializable
+                data class Image(
+                    val url: String? = null,
+                    val height: Int? = null,
+                    val width: Int? = null,
+                )
+            }
+        }
+    }
+}

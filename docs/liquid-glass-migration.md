@@ -94,3 +94,15 @@ Completely stripped the experimental in-house engine (`:trueglass` module, custo
 - **Optical Depth Hierarchy**: Distinct presets for `BottomNavigation`, `MiniPlayer`, `PlayerControls`, `FloatingControls`, `ModalSheet`, `ContextMenu`, `Overlay`, and `Card`.
 - **Zero Fake Outlines**: Replaced cartoon border strokes and specular white rings with genuine optical refraction, subtle theme-aware surface substrate, and soft elevation shadows.
 
+## Frosted glass recipe pass (2026-10-21)
+
+Raised the frost level of the shared liquid-glass recipe so every surface reads as frosted rather than vibrant glass.
+
+- Diffused further: blur base 8→12dp, bright 16→20dp, dark 2→6dp.
+- Pulled colour back: saturation 1.5→1.1 and `vibrancy()` removed, so the material trends neutral and milky instead of candy-coloured.
+- Weaker magnification: lens refraction `minDimension/4` → `minDimension/6`.
+- Milky veil: scrim range 0.12–0.50 → 0.18–0.56.
+- Constants moved into a single file-private `GlassRecipe` object, so the two `liquidGlass` overloads and `drawInteractiveGlass` cannot drift apart.
+
+All liquid-glass surfaces (navigation, dock, FAB, mini-player, player controls, pills, icon buttons) share this recipe through `drawInteractiveGlass`. Call-site signatures, backdrop capture ownership, capability gates, the non-glass fallback path and the home-screen widget's separate `RemoteViews` renderer are unchanged. Source-reviewed only; no Gradle invocation, build or on-device verification was performed, so the resulting appearance still needs device confirmation.
+

@@ -1,0 +1,168 @@
+{
+  "header": {
+    "musicCarouselShelfBasicHeaderRenderer": {
+      "title": {
+        "runs": [
+          {
+            "text": "Your daily discover"
+          }
+        ]
+      },
+      "moreContentButton": {
+        "buttonRenderer": {
+          "text": {
+            "runs": [
+              {
+                "text": "Play all"
+              }
+            ]
+          },
+          "navigationEndpoint": {
+            "watchEndpoint": {
+              "videoId": "dUsKamvRToc",
+              "params": "KgtkVXNLYW12UlRvYyoLTjJnSmxvcl81aGcqC0NMYnJldDZ6OGw4KgszQURLWUJDZWo4cyoLSS1EdE1DMG15QmsqC1VfbkFGcjl0TFlnKgtucDRfNzc1T014VSoLX09IT0F0eEltRjgqC2xJQW84SEZubHEw8gECeAE%3D"
+            }
+          }
+        }
+      }
+    }
+  },
+  "contents": [
+    {
+      "musicTwoRowItemRenderer": {
+        "thumbnailRenderer": {
+          "musicThumbnailRenderer": {
+            "thumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.googleusercontent.com/1PwoEcICfwvZSuGnJcRl9PsIePeH6naUm4Zmuzx8Qeox6JaTtCe0z6kEwaE5XnMp2trnbWPHmMwXWu9-9A=w226-h226-l90-rj",
+                  "width": 226,
+                  "height": 226
+                },
+                {
+                  "url": "https://yt3.googleusercontent.com/1PwoEcICfwvZSuGnJcRl9PsIePeH6naUm4Zmuzx8Qeox6JaTtCe0z6kEwaE5XnMp2trnbWPHmMwXWu9-9A=w544-h544-l90-rj",
+                  "width": 544,
+                  "height": 544
+                }
+              ]
+            }
+          }
+        },
+        "aspectRatio": "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE",
+        "title": {
+          "runs": [
+            {
+              "text": "no more regrets"
+            }
+          ]
+        },
+        "subtitle": {
+          "runs": [
+            {
+              "text": "almost monday",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "UCn5ErQ1909_LjCdhJhc5-8w",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "text": " • "
+            },
+            {
+              "text": "2.8M plays"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "dUsKamvRToc",
+            "playlistId": "RDAMVMdUsKamvRToc",
+            "params": "wAEB"
+          }
+        }
+      }
+    },
+    {
+      "musicTwoRowItemRenderer": {
+        "thumbnailRenderer": {
+          "musicThumbnailRenderer": {
+            "thumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.googleusercontent.com/ODAlIGBQbF7jfHhWgbOOUUD-74hXnJsNWB97evZxsn1v_7TKe7BG89Un-yEwBGEwzgSY316xw4xPZlQ=w226-h226-l90-rj",
+                  "width": 226,
+                  "height": 226
+                },
+                {
+                  "url": "https://yt3.googleusercontent.com/ODAlIGBQbF7jfHhWgbOOUUD-74hXnJsNWB97evZxsn1v_7TKe7BG89Un-yEwBGEwzgSY316xw4xPZlQ=w544-h544-l90-rj",
+                  "width": 544,
+                  "height": 544
+                }
+              ]
+            }
+          }
+        },
+        "aspectRatio": "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE",
+        "title": {
+          "runs": [
+            {
+              "text": "Yoon Shabnami"
+            }
+          ]
+        },
+        "subtitle": {
+          "runs": [
+            {
+              "text": "Monty Sharma",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "UCSi8XdMZ0sfbzUXIiJ4OabQ",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "text": " & "
+            },
+            {
+              "text": "Parthiv Gohil",
+              "navigationEndpoint": {
+                "browseEndpoint": {
+                  "browseId": "UC3bZq4BdJscnjm8ZSGiIQGw",
+                  "browseEndpointContextSupportedConfigs": {
+                    "browseEndpointContextMusicConfig": {
+                      "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "text": " • "
+            },
+            {
+              "text": "49M plays"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "N2gJlor_5hg",
+            "playlistId": "RDAMVMN2gJlor_5hg",
+            "params": "wAEB"
+          }
+        }
+      }
+    }
+  ]
+}

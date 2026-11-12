@@ -209,7 +209,7 @@ fun SelectLyricsScreen(
                                     totalLines = snapshot.lines.size,
                                     maxLines = 5,
                                     onCapReached = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        haptics.performHapticFeedback(HapticFeedbackType.Reject)
                                         Toast.makeText(context, maxLinesCapMessage, Toast.LENGTH_SHORT).show()
                                     },
                                 )

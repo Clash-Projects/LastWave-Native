@@ -1,5 +1,7 @@
 package com.lastwave.app.ui.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,29 +19,50 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -47,113 +70,337 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import com.lastwave.app.data.local.HomeSection
+import com.lastwave.app.R
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.safeDrawingBottomPadding
 import com.lastwave.app.ui.common.safeHorizontalContentPadding
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private fun HomeSection.icon(): ImageVector = when (this) {
-    HomeSection.HERO -> Icons.Filled.Home
-    HomeSection.QUICK_TILES -> Icons.Filled.Dashboard
-    HomeSection.TASTE_STRIP -> Icons.Filled.Sell
-    HomeSection.QUICK_PICKS -> Icons.Filled.Bolt
-    HomeSection.BECAUSE_YOU_LISTEN_TO -> Icons.Filled.History
-    HomeSection.FRESH_FINDS -> Icons.Filled.Whatshot
-    HomeSection.JUMP_BACK_IN -> Icons.Filled.Replay
-    HomeSection.MIXES -> Icons.Filled.Shuffle
-    HomeSection.SPOTLIGHT -> Icons.Filled.Star
-    HomeSection.TOP_ARTISTS -> Icons.Filled.People
-    HomeSection.HEAVY_ROTATION -> Icons.Filled.Favorite
-    HomeSection.ALBUMS -> Icons.Filled.Album
-    HomeSection.CHARTS -> Icons.Filled.TrendingUp
-    HomeSection.NEW_RELEASES -> Icons.Filled.NewReleases
-    HomeSection.FRIENDS -> Icons.Filled.Group
-}
+val DEFAULT_YT_MUSIC_SECTIONS = listOf(
+    "Fresh finds, old favorites",
+    "Listen again",
+    "Forgotten favorites",
+    "Listen together",
+    "Mixes to explore",
+    "Favourite to revisit",
+    "Album for you",
+    "Cover and remixes",
+    "Recaps",
+    "Albums for you",
+    "From the community",
+    "Heard in shorts",
+    "From your library",
+    "Your daily discover",
+    "Featured playlist for you",
+    "Live performances",
+    "Similar to",
+    "Recommended music videos",
+    "COMMUNITY PLAYLISTS",
+    "Energy boosters",
+    "Feel good",
+    "Workout",
+    "Relax",
+    "Focus",
+    "Commute",
+    "Party",
+    "Romance",
+    "Sleep",
+)
+
+data class UniversalSectionItem(
+    val id: String,
+    val titleRes: Int? = null,
+    val rawTitle: String? = null,
+    val subtitleRes: Int? = null,
+    val rawSubtitle: String? = null,
+    val isYouTube: Boolean = false,
+    val icon: ImageVector,
+)
+
+val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
+    UniversalSectionItem("taste_strip", titleRes = R.string.home_section_taste_strip_title, subtitleRes = R.string.home_section_taste_strip_sub, isYouTube = false, icon = Icons.Filled.Sell),
+    UniversalSectionItem("discover_new_music", rawTitle = "Discover new music", rawSubtitle = "Rotates fresh songs on refresh", isYouTube = false, icon = Icons.Filled.Explore),
+    UniversalSectionItem("quick_picks", titleRes = R.string.home_section_quick_picks_title, subtitleRes = R.string.home_section_quick_picks_sub, isYouTube = false, icon = Icons.Filled.Bolt),
+    UniversalSectionItem("because_you_listen_to", titleRes = R.string.home_section_because_title, subtitleRes = R.string.home_section_because_sub, isYouTube = false, icon = Icons.Filled.History),
+    UniversalSectionItem("fresh_finds", titleRes = R.string.home_section_fresh_title, subtitleRes = R.string.home_section_fresh_sub, isYouTube = false, icon = Icons.Filled.Whatshot),
+    UniversalSectionItem("yt:Fresh finds, old favorites", rawTitle = "Fresh finds, old & favorites", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Whatshot),
+    UniversalSectionItem("yt:Listen again", rawTitle = "Listen again", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Replay),
+    UniversalSectionItem("jump_back_in", titleRes = R.string.home_section_jump_title, subtitleRes = R.string.home_section_jump_sub, isYouTube = false, icon = Icons.Filled.Replay),
+    UniversalSectionItem("yt:Forgotten favorites", rawTitle = "Forgotten favorites", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("yt:Listen together", rawTitle = "Listen together", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Group),
+    UniversalSectionItem("yt:Mixes to explore", rawTitle = "Mixes to explore", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Shuffle),
+    UniversalSectionItem("spotlight_hero", titleRes = R.string.home_section_spotlight_title, subtitleRes = R.string.home_section_spotlight_sub, isYouTube = false, icon = Icons.Filled.Star),
+    UniversalSectionItem("top_artists", titleRes = R.string.home_section_artists_title, subtitleRes = R.string.home_section_artists_sub, isYouTube = false, icon = Icons.Filled.People),
+    UniversalSectionItem("yt:Favourite to revisit", rawTitle = "Favourite to revisit", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("heavy_rotation", titleRes = R.string.home_section_heavy_title, subtitleRes = R.string.home_section_heavy_sub, isYouTube = false, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("albums_in_rotation", titleRes = R.string.home_section_albums_title, subtitleRes = R.string.home_section_albums_sub, isYouTube = false, icon = Icons.Filled.Album),
+    UniversalSectionItem("yt:Album for you", rawTitle = "Album for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Album),
+    UniversalSectionItem("new_releases", titleRes = R.string.home_section_releases_title, subtitleRes = R.string.home_section_releases_sub, isYouTube = false, icon = Icons.Filled.NewReleases),
+    UniversalSectionItem("yt:Cover and remixes", rawTitle = "Cover and remixes", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.GraphicEq),
+    UniversalSectionItem("yt:Recaps", rawTitle = "Recaps", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.BarChart),
+    UniversalSectionItem("yt:Albums for you", rawTitle = "Albums for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Album),
+    UniversalSectionItem("trending_charts", titleRes = R.string.home_section_charts_title, subtitleRes = R.string.home_section_charts_sub, isYouTube = false, icon = Icons.Filled.TrendingUp),
+    UniversalSectionItem("yt:From the community", rawTitle = "From the community", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Group),
+    UniversalSectionItem("yt:Heard in shorts", rawTitle = "Heard in shorts", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),
+    UniversalSectionItem("yt:From your library", rawTitle = "From your library", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.LibraryMusic),
+    UniversalSectionItem("mixed_for_you", titleRes = R.string.home_section_mixes_title, subtitleRes = R.string.home_section_mixes_sub, isYouTube = false, icon = Icons.Filled.Shuffle),
+    UniversalSectionItem("yt:Your daily discover", rawTitle = "Your daily discover", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.AutoAwesome),
+    UniversalSectionItem("yt:Featured playlist for you", rawTitle = "Featured playlist for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.QueueMusic),
+    UniversalSectionItem("yt:Live performances", rawTitle = "Live performances", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Headphones),
+    UniversalSectionItem("friends_activity", titleRes = R.string.home_section_friends_title, subtitleRes = R.string.home_section_friends_sub, isYouTube = false, icon = Icons.Filled.Group),
+    UniversalSectionItem("podcast_shelf", rawTitle = "Podcasts", rawSubtitle = "Popular podcast shows", isYouTube = false, icon = Icons.Filled.Mic),
+    UniversalSectionItem("moods_and_genres", titleRes = R.string.moods_title, rawSubtitle = "Browse by mood and genre", isYouTube = false, icon = Icons.Filled.Category),
+    // Extra default YTM sections
+    UniversalSectionItem("yt:Similar to", rawTitle = "Similar to", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Subscriptions),
+    UniversalSectionItem("yt:Music video for you", rawTitle = "Music video for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),
+    UniversalSectionItem("yt:Trending songs for you", rawTitle = "Trending songs for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.TrendingUp),
+    UniversalSectionItem("yt:Recommended music videos", rawTitle = "Recommended music videos", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),
+    UniversalSectionItem("yt:Energy boosters", rawTitle = "Energy boosters", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Bolt),
+    UniversalSectionItem("yt:Feel good", rawTitle = "Feel good", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("yt:Workout", rawTitle = "Workout", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Whatshot),
+    UniversalSectionItem("yt:Relax", rawTitle = "Relax", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Headphones),
+    UniversalSectionItem("yt:Focus", rawTitle = "Focus", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.GraphicEq),
+    UniversalSectionItem("yt:Commute", rawTitle = "Commute", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Radio),
+    UniversalSectionItem("yt:Party", rawTitle = "Party", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.AutoAwesome),
+    UniversalSectionItem("yt:Romance", rawTitle = "Romance", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Favorite),
+    UniversalSectionItem("yt:Sleep", rawTitle = "Sleep", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Headphones),
+)
 
 @HiltViewModel
 class HomeSectionsViewModel @Inject constructor(
     private val settingsPreferences: SettingsPreferences,
 ) : ViewModel() {
-    val hiddenSections: StateFlow<Set<String>> = settingsPreferences.settings
-        .map { it.hiddenHomeSections }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+    data class UiState(
+        val sections: List<UniversalSectionItem> = ALL_DEFAULT_UNIVERSAL_SECTIONS,
+        val hiddenSections: Set<String> = emptySet(),
+        val pinnedSections: Set<String> = emptySet(),
+        val isLoaded: Boolean = false,
+    )
 
-    fun setSectionVisible(section: HomeSection, visible: Boolean) {
+    private val _uiState = MutableStateFlow(UiState())
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    init {
         viewModelScope.launch {
-            settingsPreferences.setHomeSectionVisible(section.id, visible)
+            val settings = settingsPreferences.settings.first()
+            val hiddenInApp = settings.hiddenHomeSections
+            val ytHidden = settings.ytMusicHiddenSections
+            val storedOrder = settings.homeSectionsOrder
+            val pinned = settings.pinnedHomeSections
+            val allHidden = hiddenInApp + ytHidden.map { "yt:$it" }.toSet()
+
+            val defaultList = ALL_DEFAULT_UNIVERSAL_SECTIONS
+            val orderedList = if (storedOrder.isEmpty()) {
+                defaultList
+            } else {
+                val itemMap = defaultList.associateBy { it.id }
+                val list = storedOrder
+                    .filter { it != "hero_greeting" && it != "infinite_radio" && it != "quick_tiles" }
+                    .mapNotNull { itemMap[it] }
+                    .toMutableList()
+                for (defaultItem in defaultList) {
+                    if (list.none { it.id == defaultItem.id }) {
+                        list.add(defaultItem)
+                    }
+                }
+                list
+            }
+
+            _uiState.value = UiState(
+                sections = orderedList,
+                hiddenSections = allHidden,
+                pinnedSections = pinned,
+                isLoaded = true,
+            )
         }
     }
 
+    fun moveSection(fromIndex: Int, toIndex: Int) {
+        val current = _uiState.value
+        if (!current.isLoaded) return
+        val list = current.sections.toMutableList()
+        if (fromIndex !in list.indices || toIndex !in list.indices) return
+        val item = list.removeAt(fromIndex)
+        list.add(toIndex, item)
+        _uiState.update { it.copy(sections = list) }
+        saveState(list, current.hiddenSections, current.pinnedSections)
+    }
+
+    fun moveSectionLive(fromIndex: Int, toIndex: Int) {
+        val current = _uiState.value
+        if (!current.isLoaded) return
+        val list = current.sections.toMutableList()
+        if (fromIndex !in list.indices || toIndex !in list.indices) return
+        val item = list.removeAt(fromIndex)
+        list.add(toIndex, item)
+        _uiState.update { it.copy(sections = list) }
+    }
+
+    fun commitOrder() {
+        val current = _uiState.value
+        if (!current.isLoaded) return
+        saveState(current.sections, current.hiddenSections, current.pinnedSections)
+    }
+
+    fun toggleVisibility(id: String, visible: Boolean) {
+        val current = _uiState.value
+        if (!current.isLoaded) return
+        val newHidden = if (visible) current.hiddenSections - id else current.hiddenSections + id
+        _uiState.update { it.copy(hiddenSections = newHidden) }
+        saveState(current.sections, newHidden, current.pinnedSections)
+    }
+
+    fun togglePin(id: String) {
+        val current = _uiState.value
+        if (!current.isLoaded) return
+        val isCurrentlyPinned = id in current.pinnedSections
+        val newPinned = if (isCurrentlyPinned) current.pinnedSections - id else current.pinnedSections + id
+        val list = current.sections.toMutableList()
+        if (!isCurrentlyPinned) {
+            val idx = list.indexOfFirst { it.id == id }
+            if (idx > 0) {
+                val item = list.removeAt(idx)
+                list.add(0, item)
+            }
+        }
+        _uiState.update { it.copy(sections = list, pinnedSections = newPinned) }
+        saveState(list, current.hiddenSections, newPinned)
+    }
+
     fun showAll() {
+        val current = _uiState.value
+        if (!current.isLoaded) return
+        _uiState.update { it.copy(hiddenSections = emptySet()) }
+        saveState(current.sections, emptySet(), current.pinnedSections)
+    }
+
+    fun resetAll() {
+        if (!_uiState.value.isLoaded) return
+        val defaultList = ALL_DEFAULT_UNIVERSAL_SECTIONS
+        _uiState.value = UiState(
+            sections = defaultList,
+            hiddenSections = emptySet(),
+            pinnedSections = emptySet(),
+            isLoaded = true,
+        )
         viewModelScope.launch {
-            settingsPreferences.showAllHomeSections()
+            settingsPreferences.resetUniversalHomeSections()
+        }
+    }
+
+    private fun saveState(sections: List<UniversalSectionItem>, hidden: Set<String>, pinned: Set<String>) {
+        viewModelScope.launch {
+            settingsPreferences.saveUniversalHomeSections(
+                order = sections.map { it.id },
+                hidden = hidden,
+                pinned = pinned,
+            )
         }
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun HomeSectionsScreen(
     onBack: () -> Unit,
     viewModel: HomeSectionsViewModel = hiltViewModel(),
 ) {
-    val hidden by viewModel.hiddenSections.collectAsStateWithLifecycle()
-    val visibleCount = HomeSection.entries.size - hidden.size
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val visibleCount = uiState.sections.size - uiState.hiddenSections.size
 
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
-                title = stringResource(com.lastwave.app.R.string.settings_home_sections),
-                subtitle = stringResource(
-                    com.lastwave.app.R.string.home_sections_visible,
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
+                title = stringResource(R.string.settings_home_sections),
+                subtitle = if (uiState.isLoaded) stringResource(
+                    R.string.home_sections_visible,
                     visibleCount,
-                    HomeSection.entries.size,
-                ),
+                    uiState.sections.size,
+                ) else null,
                 onBack = onBack,
                 actions = {
-                    TextButton(onClick = viewModel::showAll, enabled = hidden.isNotEmpty()) {
+                    TextButton(onClick = {
+                        viewModel.showAll()
+                    }, enabled = uiState.isLoaded && uiState.hiddenSections.isNotEmpty()) {
+                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Show all")
+                    }
+                    TextButton(onClick = {
+                        viewModel.resetAll()
+                    }, enabled = uiState.isLoaded) {
                         Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text(stringResource(com.lastwave.app.R.string.home_sections_show_all))
+                        Text("Reset")
                     }
                 },
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize().padding(top = headerInset)) {
+
+            if (!uiState.isLoaded) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                return@Column
+            }
 
             Text(
-                stringResource(com.lastwave.app.R.string.home_sections_desc),
+                text = "Drag the handle to reorder sections, pin favorites to top, and toggle visibility for both LastWave and YouTube Music shelves.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
             )
 
+            val listState = rememberLazyListState()
+            val haptics = LocalHapticFeedback.current
+            var draggingIndex by remember { mutableIntStateOf(-1) }
+            var dragOffsetY by remember { mutableFloatStateOf(0f) }
+
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
@@ -163,57 +410,183 @@ fun HomeSectionsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
             ) {
-                items(HomeSection.entries, key = { it.id }) { section ->
-                    val visible = section.id !in hidden
+                itemsIndexed(uiState.sections, key = { _, item -> item.id }) { index, item ->
+                    val isVisible = item.id !in uiState.hiddenSections
+                    val isItemPinned = item.id in uiState.pinnedSections
+                    val isDragging = draggingIndex == index
+
                     Card(
-                        onClick = { viewModel.setSectionVisible(section, !visible) },
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            containerColor = if (isItemPinned) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                            } else if (isDragging) {
+                                MaterialTheme.colorScheme.surfaceContainerHighest
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
                         ),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(if (isDragging) 10f else 1f)
+                            .graphicsLayer {
+                                translationY = if (isDragging) dragOffsetY else 0f
+                            }
+                            .animateItem(),
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            // Drag Handle (Queue Style Reorder Button)
+                            Icon(
+                                imageVector = Icons.Filled.DragHandle,
+                                contentDescription = "Reorder",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isDragging) 1f else 0.7f),
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                        else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                                    )
+                                    .padding(6.dp)
+                                    .pointerInput(item.id) {
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                draggingIndex = index
+                                                dragOffsetY = 0f
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            },
+                                            onDragEnd = {
+                                                draggingIndex = -1
+                                                dragOffsetY = 0f
+                                                viewModel.commitOrder()
+                                            },
+                                            onDragCancel = {
+                                                draggingIndex = -1
+                                                dragOffsetY = 0f
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                val source = draggingIndex
+                                                if (source < 0) return@detectDragGestures
+                                                dragOffsetY += dragAmount.y
+                                                val layoutInfo = listState.layoutInfo
+                                                val draggedInfo = layoutInfo.visibleItemsInfo
+                                                    .firstOrNull { it.index == source }
+                                                    ?: return@detectDragGestures
+                                                val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + dragOffsetY.toInt()
+                                                val target = layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                                                    info.index != source &&
+                                                        info.index in uiState.sections.indices &&
+                                                        draggedCenter in info.offset..(info.offset + info.size)
+                                                }?.index
+                                                if (target != null && target != source) {
+                                                    viewModel.moveSectionLive(source, target)
+                                                    val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
+                                                    if (targetInfo != null) {
+                                                        dragOffsetY += (draggedInfo.offset - targetInfo.offset).toFloat()
+                                                    }
+                                                    draggingIndex = target
+                                                    haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                                                }
+                                            }
+                                        )
+                                    },
+                            )
+
+                            // Section Icon
                             Surface(
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.size(42.dp),
+                                color = if (item.isYouTube) {
+                                    MaterialTheme.colorScheme.tertiaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                },
+                                modifier = Modifier.size(36.dp),
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        section.icon(),
+                                        imageVector = item.icon,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(22.dp),
+                                        tint = if (item.isYouTube) {
+                                            MaterialTheme.colorScheme.onTertiaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSecondaryContainer
+                                        },
+                                        modifier = Modifier.size(18.dp),
                                     )
                                 }
                             }
-                            Spacer(Modifier.width(14.dp))
+
+                            Spacer(Modifier.width(10.dp))
+
+                            // Title & Subtitle
                             Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = item.titleRes?.let { stringResource(it) } ?: item.rawTitle.orEmpty(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isItemPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (item.isYouTube) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.16f),
+                                            modifier = Modifier.padding(vertical = 1.dp),
+                                        ) {
+                                            Text(
+                                                text = "YT",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.tertiary,
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
-                                    stringResource(section.titleRes),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Text(
-                                    stringResource(section.subtitleRes),
+                                    text = item.subtitleRes?.let { stringResource(it) } ?: item.rawSubtitle.orEmpty(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+
+                            // Pin Button
+                            IconButton(
+                                onClick = {
+                                    viewModel.togglePin(item.id)
+                                },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    imageVector = if (isItemPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                    contentDescription = if (isItemPinned) "Unpin" else "Pin to top",
+                                    tint = if (isItemPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+
+                            Spacer(Modifier.width(4.dp))
+
+                            // Visibility Switch
                             Switch(
-                                checked = visible,
-                                onCheckedChange = { viewModel.setSectionVisible(section, it) },
+                                checked = isVisible,
+                                onCheckedChange = { checked ->
+                                    viewModel.toggleVisibility(item.id, checked)
+                                },
                             )
                         }
                     }
                 }
             }
+        }
         }
     }
 }

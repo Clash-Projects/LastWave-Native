@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Beranda</string>
     <string name="nav_stats">Statistik</string>
-    <string name="nav_playlists">Playlist</string>
+    <string name="nav_playlists">Perpustakaan</string>
     <string name="nav_create_playlist">Buat / Hasilkan playlist</string>
     <string name="update_available">Pembaruan tersedia</string>
     <string name="update">Perbarui</string>
@@ -139,7 +139,7 @@
     <string name="home_section_fresh_title">Temuan segar</string>
     <string name="home_section_fresh_sub">Lagu baru di luar rotasimu</string>
     <string name="home_section_jump_title">Lanjutkan mendengarkan</string>
-    <string name="home_section_jump_sub">Baru diputar · dengarkan lagi</string>
+    <string name="home_section_jump_sub">Baru diputar • dengarkan lagi</string>
     <string name="home_section_mixes_title">Mix untuk dijelajahi</string>
     <string name="home_section_mixes_sub">Mix radio artis tanpa akhir</string>
     <string name="home_section_spotlight_title">Sorotan</string>
@@ -342,7 +342,7 @@
     <string name="local_scanning">Mencari… %1$d file ditemukan</string>
     <string name="local_copying">Menyalin %1$d/%2$d — %3$s</string>
     <string name="local_report_space">Ruang kosong tidak cukup untuk menyalin lagu-lagu ini.</string>
-    <string name="local_report_summary">%1$d ditambahkan · %2$d diperbarui · %3$d tidak berubah</string>
+    <string name="local_report_summary">%1$d ditambahkan • %2$d diperbarui • %3$d tidak berubah</string>
     <string name="local_report_failed">%1$d file tidak dapat disalin</string>
     <string name="local_report_unreachable">%1$d folder tidak lagi dapat dijangkau — pilih lagi</string>
     <string name="local_storage_used">Space yang digunakan oleh lagu lokal: %1$s</string>
@@ -499,11 +499,10 @@
     <string name="pl_export_title">Ekspor Daftar Putar</string>
     <string name="pl_choose_image">Pilih gambar</string>
     <string name="pl_change_image">Ubah gambar</string>
-    <string name="pl_title">Daftar putar</string>
+    <string name="pl_title">Perpustakaan</string>
     <string name="pl_selected_count">%1$d dipilih</string>
     <string name="pl_select_more_hint">Tekan lama untuk memilih lebih banyak</string>
-    <string name="pl_count_only">%1$d Daftar Putar</string>
-    <string name="pl_count_tracks">%1$d Daftar Putar · %2$d Lagu</string>
+    <string name="pl_count_tracks">%1$d Daftar Putar • %2$d Lagu</string>
     <string name="pl_delete_selected_cd">Hapus yang dipilih</string>
     <string name="pl_clear_selection_cd">Hapus pilihan</string>
     <string name="pl_create_cd">Buat daftar putar khusus</string>
@@ -513,7 +512,7 @@
     <string name="pl_pinned_cd">Disematkan</string>
     <string name="pl_yt_tracks">%1$d trek</string>
     <string name="pl_yt_connected">Akun terhubung</string>
-    <string name="pl_subtitle_local">%1$d trek · %2$s</string>
+    <string name="pl_subtitle_local">%1$d trek • %2$s</string>
     <string name="pl_play_cd">Putar daftar putar</string>
     <string name="pl_options_cd">Opsi daftar putar</string>
     <string name="pl_pin">Sematkan</string>
@@ -593,13 +592,13 @@
     <string name="feed_albums">Album untuk Anda</string>
     <string name="feed_albums_sub">Album asli sesuai selera Anda — Last.fm atasan + pilihan Musik YT</string>
     <string name="feed_trending">Sedang tren sekarang</string>
-    <string name="feed_trending_sub">Paling populer saat ini · ketuk peringkat untuk bermain</string>
+    <string name="feed_trending_sub">Paling populer saat ini • ketuk peringkat untuk bermain</string>
     <string name="feed_releases">Rilis baru</string>
     <string name="feed_releases_sub">Tetesan baru dan album baru</string>
     <string name="feed_friends">Temanmu</string>
     <string name="feed_friends_sub">Orang-orang di lingkaran pendengaran Anda</string>
     <string name="feed_footer_default">Dibuat untuk Anda sesuai selera Anda</string>
-    <string name="feed_footer_updated">Diperbarui %1$s · Dibuat sesuai selera Anda</string>
+    <string name="feed_footer_updated">Diperbarui %1$s • Dibuat sesuai selera Anda</string>
     <string name="feed_ago_min">%1$dm yang lalu</string>
     <string name="feed_ago_hour">%1$djam yang lalu</string>
     <string name="feed_ago_day">%1$d hari yang lalu</string>
@@ -687,7 +686,7 @@
     <string name="fpd_opening">Membuka daftar putar…</string>
     <string name="fpd_retry">Coba lagi</string>
     <string name="fpd_loading_more">Memuat trek yang tersisa…</string>
-    <string name="fpd_incomplete">Daftar putar tidak lengkap · Coba lagi</string>
+    <string name="fpd_incomplete">Daftar putar tidak lengkap • Coba lagi</string>
     <string name="fpd_track_options_cd">Opsi trek</string>
     <string name="add_dup_single_title">Lagu sudah ada di playlist</string>
     <string name="add_dup_single_text">%1$s oleh %2$s sudah ada di %3$s. Anda dapat membiarkan daftar putar tidak berubah atau menambahkan salinan lain.</string>
@@ -866,6 +865,8 @@
     <string name="set_cat_appear_sub">Tema, Warna, Karya Seni, Lirik</string>
     <string name="set_cat_yt">YouTube &amp; Sinkronisasi</string>
     <string name="set_cat_yt_sub">Koneksi akun, sinkronisasi Perpustakaan 24/7, Saluran, Riwayat</string>
+    <string name="set_cat_spotify">Spotify</string>
+    <string name="set_cat_spotify_sub">Koneksi akun, Canvas, impor playlist, dan sink lagu favorit</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Koneksi akun, sinkronisasi Scrobbling &amp; kredensial API</string>
     <string name="set_cat_lib">Perpustakaan &amp; Konten</string>
@@ -1071,4 +1072,17 @@
     <string name="lyshare_color_brand">LastWave Lime</string>
     <string name="lyshare_accessibility_line_selected">Dipilih, baris %1$d dari %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Baris %1$d dari %2$d</string>
+
+    <!-- Recommendations -->
+    <string name="settings_section_recommendations">Rekomendasi</string>
+    <string name="settings_recommendations_title">Penyedia rekomendasi</string>
+    <string name="settings_recommendations_sub_disconnected">YouTube Music • Hubungkan Spotify untuk menggunakan rekomendasi dari Spotify</string>
+    <string name="settings_recommendations_dialog_desc">Memilih trek untuk Beranda, radio, Jelajahi, dan mix. Pemutaran tetap di YouTube Music dalam kedua pilihan.</string>
+    <string name="settings_recommendations_connect_first">Hubungkan Spotify terlebih dahulu</string>
+    <string name="recommendation_source_yt_music">YouTube Music</string>
+    <string name="recommendation_source_yt_music_sub">Rekomendasi dari YouTube Music</string>
+    <string name="recommendation_source_spotify">Spotify</string>
+    <string name="recommendation_source_spotify_sub">Rekomendasi dari Spotify, diputar dari YouTube Music</string>
+    <string name="toast_spotify_connect_first">Hubungkan Spotify terlebih dahulu</string>
+    <string name="toast_spotify_disconnected">Akun Spotify terputus</string>
 </resources>

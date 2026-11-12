@@ -1,5 +1,12 @@
 package com.lastwave.app.ui.search
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -26,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -40,6 +48,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
@@ -59,6 +68,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,10 +76,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import com.lastwave.app.R
 import androidx.compose.ui.text.AnnotatedString
@@ -83,9 +97,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.lastwave.app.data.search.SearchResultItem
 import com.lastwave.app.data.search.SearchTab
 import com.lastwave.app.ui.common.ArtworkImage
+import com.lastwave.app.ui.common.ArtworkViewModel
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
@@ -131,13 +147,35 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val artworkViewModel: ArtworkViewModel = hiltViewModel()
     val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
-    val playbackState by musicPlayer.chromeState.collectAsStateWithLifecycle()
+    val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     var menuTarget by remember { mutableStateOf<TrackMenuTarget?>(null) }
+    var menuPlayableTrack by remember { mutableStateOf<com.lastwave.app.playback.PlayableTrack?>(null) }
     // Long-press (deep press) on a TRACKS row opens the mini tray;
     // the overflow button keeps the full sheet.
     var miniTrayItem by remember { mutableStateOf<SearchResultItem?>(null) }
     val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    val voiceSearchLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenQuery = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spokenQuery.isNullOrBlank()) {
+                viewModel.executeSearch(spokenQuery)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -199,7 +237,8 @@ fun SearchScreen(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(46.dp),
+                            .height(46.dp)
+                            .focusRequester(focusRequester),
                         decorationBox = { innerTextField ->
                             Row(
                                 modifier = Modifier
@@ -231,8 +270,11 @@ fun SearchScreen(
                                 ) {
                                     if (state.query.isEmpty()) {
                                         Text(
-                                            text = if (state.tab == SearchTab.USERS) stringResource(R.string.search_hint_users)
-                                            else stringResource(R.string.search_hint_yt),
+                                            text = when (state.tab) {
+                                                SearchTab.USERS -> stringResource(R.string.search_hint_users)
+                                                SearchTab.LOCAL -> stringResource(R.string.search_hint_local)
+                                                else -> stringResource(R.string.search_hint_yt)
+                                            },
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.74f),
                                             maxLines = 1,
@@ -257,6 +299,40 @@ fun SearchScreen(
                             }
                         },
                     )
+
+                    IconButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(
+                                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                )
+                                putExtra(
+                                    RecognizerIntent.EXTRA_PROMPT,
+                                    context.getString(R.string.search_voice_prompt),
+                                )
+                                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                            }
+                            try {
+                                voiceSearchLauncher.launch(intent)
+                            } catch (_: ActivityNotFoundException) {
+                                Toast.makeText(
+                                    context,
+                                    R.string.search_voice_unavailable,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = stringResource(R.string.search_voice_cd),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(10.dp))
@@ -272,11 +348,14 @@ fun SearchScreen(
         Box(Modifier.fillMaxSize().safeHorizontalContentPadding()) {
             when {
                 // 1. Live Auto-Complete Suggestions (while actively typing)
-                state.isShowingSuggestions && state.suggestions.isNotEmpty() -> {
+                state.isShowingSuggestions && (state.songSuggestions.isNotEmpty() || state.suggestions.isNotEmpty()) -> {
                     val matchingRecent = remember(state.query, state.recentSearches) {
                         val q = state.query.trim().lowercase()
                         if (q.isEmpty()) emptyList()
                         else state.recentSearches.filter { it.lowercase().contains(q) }.take(3)
+                    }
+                    val nonRecentSuggestions = remember(state.suggestions, matchingRecent) {
+                        state.suggestions.filter { !matchingRecent.contains(it) }.distinct()
                     }
 
                     LazyColumn(
@@ -286,6 +365,20 @@ fun SearchScreen(
                         ),
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        itemsIndexed(state.songSuggestions, key = { index, song -> "song_sugg_${song.videoId}_$index" }) { _, song ->
+                            SuggestionRow(
+                                fullText = song.name,
+                                query = state.query,
+                                isHistory = false,
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    viewModel.executeSearch(song.name)
+                                },
+                                onInsert = { viewModel.setQuery(song.name) },
+                                song = song,
+                            )
+                        }
+
                         item(key = "explicit_direct_search") {
                             Row(
                                 modifier = Modifier
@@ -316,7 +409,7 @@ fun SearchScreen(
                         }
 
                         if (matchingRecent.isNotEmpty()) {
-                            items(matchingRecent, key = { "recent_match_$it" }) { recentText ->
+                            itemsIndexed(matchingRecent.distinct(), key = { idx, recentText -> "recent_match_${recentText}_$idx" }) { _, recentText ->
                                 SuggestionRow(
                                     fullText = recentText,
                                     query = state.query,
@@ -330,7 +423,7 @@ fun SearchScreen(
                             }
                         }
 
-                        items(state.suggestions.filter { !matchingRecent.contains(it) }, key = { "sugg_$it" }) { suggestion ->
+                        itemsIndexed(nonRecentSuggestions, key = { idx, suggestion -> "sugg_${suggestion}_$idx" }) { _, suggestion ->
                             SuggestionRow(
                                 fullText = suggestion,
                                 query = state.query,
@@ -374,7 +467,7 @@ fun SearchScreen(
                                     }
                                 }
                             }
-                            items(state.recentSearches, key = { "hist_$it" }) { recentQuery ->
+                            itemsIndexed(state.recentSearches.distinct(), key = { idx, recentQuery -> "hist_${recentQuery}_$idx" }) { _, recentQuery ->
                                 RecentSearchRow(
                                     text = recentQuery,
                                     onClick = {
@@ -473,7 +566,7 @@ fun SearchScreen(
                                     ),
                                 ) {
                                     if (topResult != null && state.tab != SearchTab.USERS) {
-                                        val isTopPlaying = state.tab == SearchTab.TRACKS && playbackState.isPlaying &&
+                                        val isTopPlaying = (state.tab == SearchTab.TRACKS || state.tab == SearchTab.LOCAL || state.tab == SearchTab.PODCASTS) && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(topResult.name, ignoreCase = true) &&
                                             (topResult.artist.isNullOrBlank() || playbackState.current?.artist.equals(topResult.artist, ignoreCase = true))
 
@@ -491,14 +584,10 @@ fun SearchScreen(
                                                     }
                                                 },
                                                 onLongClick = {
-                                                    if (state.tab == SearchTab.TRACKS) miniTrayItem = topResult
-                                                },
-                                                onMenu = {
-                                                    menuTarget = when (state.tab) {
-                                                        SearchTab.TRACKS -> TrackMenuTarget.Track(topResult.name, topResult.artist.orEmpty(), topResult.url)
-                                                        SearchTab.ARTISTS -> TrackMenuTarget.Artist(topResult.name, topResult.url)
-                                                        SearchTab.ALBUMS -> TrackMenuTarget.Album(topResult.name, topResult.artist.orEmpty(), topResult.url)
-                                                        SearchTab.PLAYLISTS, SearchTab.USERS -> null
+                                                    if (state.tab == SearchTab.TRACKS ||
+                                                        (state.tab == SearchTab.LOCAL && topResult.entityId?.startsWith("offline_playlist:") != true)
+                                                    ) {
+                                                        miniTrayItem = topResult
                                                     }
                                                 },
                                             )
@@ -506,12 +595,13 @@ fun SearchScreen(
                                         }
                                     }
 
-                                    items(
-                                        if (state.tab == SearchTab.USERS) state.results else otherResults,
-                                        key = { it.entityId ?: it.url.ifBlank { it.name + it.artist.orEmpty() } },
-                                        contentType = { "search_result" },
-                                    ) { item ->
-                                        val isItemPlaying = state.tab == SearchTab.TRACKS && playbackState.isPlaying &&
+                                    val displayResults = if (state.tab == SearchTab.USERS) state.results else otherResults
+                                    itemsIndexed(
+                                        displayResults,
+                                        key = { index, item -> "${item.entityId ?: item.url.ifBlank { "${item.name}_${item.artist.orEmpty()}" }}_$index" },
+                                        contentType = { _, _ -> "search_result" },
+                                    ) { _, item ->
+                                        val isItemPlaying = (state.tab == SearchTab.TRACKS || state.tab == SearchTab.LOCAL || state.tab == SearchTab.PODCASTS) && playbackState.isPlaying &&
                                             playbackState.current?.title.equals(item.name, ignoreCase = true) &&
                                             (item.artist.isNullOrBlank() || playbackState.current?.artist.equals(item.artist, ignoreCase = true))
 
@@ -528,13 +618,18 @@ fun SearchScreen(
                                                 }
                                             },
                                             onLongClick = {
-                                                if (state.tab == SearchTab.TRACKS) {
+                                                if (state.tab == SearchTab.TRACKS ||
+                                                    (state.tab == SearchTab.LOCAL && item.entityId?.startsWith("offline_playlist:") != true)
+                                                ) {
                                                     miniTrayItem = item
                                                 }
                                             },
                                             onMenu = {
+                                                menuPlayableTrack = if (state.tab == SearchTab.TRACKS || state.tab == SearchTab.LOCAL || state.tab == SearchTab.PODCASTS) {
+                                                    item.toPlayableTrack(podcast = state.tab == SearchTab.PODCASTS)
+                                                } else null
                                                 menuTarget = when (state.tab) {
-                                                    SearchTab.TRACKS -> TrackMenuTarget.Track(item.name, item.artist.orEmpty(), item.url)
+                                                    SearchTab.TRACKS, SearchTab.LOCAL, SearchTab.PODCASTS -> TrackMenuTarget.Track(item.name, item.artist.orEmpty(), item.url)
                                                     SearchTab.ARTISTS -> TrackMenuTarget.Artist(item.name, item.url)
                                                     SearchTab.ALBUMS -> TrackMenuTarget.Album(item.name, item.artist.orEmpty(), item.url)
                                                     SearchTab.PLAYLISTS, SearchTab.USERS -> null
@@ -555,8 +650,12 @@ fun SearchScreen(
     menuTarget?.let { target ->
         TrackContextMenuSheet(
             target = target,
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
+            playableTrack = menuPlayableTrack,
+            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = state.tab != SearchTab.PODCASTS),
             playbackSourceLabel = "Search",
+            onRefreshArtwork = (target as? TrackMenuTarget.Track)?.let { trackTarget ->
+                { artworkViewModel.refresh(trackTarget.name, trackTarget.artist) }
+            },
             onDismiss = { menuTarget = null },
         )
     }
@@ -569,6 +668,7 @@ fun SearchScreen(
                 album = item.subtitle,
                 artworkUrl = item.artworkUrl,
                 videoId = item.videoId,
+                durationMs = item.durationMs,
                 sourceLabel = "Search",
                 onPlay = { viewModel.playResult(item) },
             ),
@@ -585,7 +685,6 @@ private fun TopResultCard(
     tab: SearchTab,
     isPlaying: Boolean = false,
     onPlay: () -> Unit,
-    onMenu: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(20.dp)
@@ -625,6 +724,12 @@ private fun TopResultCard(
         ) {
             val fallback = when (tab) {
                 SearchTab.TRACKS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote
+                SearchTab.LOCAL -> when {
+                    isPlaying -> Icons.Filled.GraphicEq
+                    item.entityId?.startsWith("offline_playlist:") == true -> Icons.AutoMirrored.Filled.QueueMusic
+                    else -> Icons.Filled.MusicNote
+                }
+                SearchTab.PODCASTS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.Mic
                 SearchTab.ARTISTS -> Icons.Filled.Person
                 SearchTab.ALBUMS -> Icons.Filled.Album
                 SearchTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
@@ -658,6 +763,8 @@ private fun TopResultCard(
                     Text(
                         when (tab) {
                             SearchTab.TRACKS -> "TOP SONG"
+                            SearchTab.LOCAL -> "LOCAL MATCH"
+                            SearchTab.PODCASTS -> "TOP PODCAST"
                             SearchTab.ARTISTS -> "TOP ARTIST"
                             SearchTab.ALBUMS -> "TOP ALBUM"
                             SearchTab.PLAYLISTS -> "TOP PLAYLIST"
@@ -678,6 +785,8 @@ private fun TopResultCard(
                 )
                 val subtitle = when (tab) {
                     SearchTab.TRACKS -> item.artist.orEmpty()
+                    SearchTab.LOCAL -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" • ")
+                    SearchTab.PODCASTS -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" • ")
                     SearchTab.ALBUMS -> item.artist.orEmpty()
                     SearchTab.PLAYLISTS -> item.subtitle.orEmpty()
                     SearchTab.ARTISTS -> item.subtitle.orEmpty().ifBlank { "Artist" }
@@ -721,6 +830,7 @@ private fun SuggestionRow(
     isHistory: Boolean,
     onClick: () -> Unit,
     onInsert: () -> Unit,
+    song: SearchResultItem? = null,
 ) {
     val baseColor = MaterialTheme.colorScheme.onSurface
     val highlightColor = MaterialTheme.colorScheme.primary
@@ -735,12 +845,36 @@ private fun SuggestionRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            if (isHistory) Icons.Filled.History else Icons.Filled.Search,
-            contentDescription = null,
-            tint = if (isHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp),
-        )
+        if (song != null) {
+            val thumbnailUrl = remember(song.artworkUrl) { suggestionThumbnailUrl(song.artworkUrl) }
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.MusicNote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                AsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else {
+            Icon(
+                if (isHistory) Icons.Filled.History else Icons.Filled.Search,
+                contentDescription = null,
+                tint = if (isHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
         Text(
             text = annotated,
             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
@@ -763,6 +897,17 @@ private fun SuggestionRow(
                     .graphicsLayer { rotationZ = 135f },
             )
         }
+    }
+}
+
+private fun suggestionThumbnailUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    return when {
+        url.contains("googleusercontent.com") || url.contains("ggpht.com") ->
+            url.substringBeforeLast('=') + "=w120-h120-l90-rj"
+        url.contains("ytimg.com") || url.contains("img.youtube.com/vi/") ->
+            url.substringBeforeLast('/') + if (url.contains("/vi_webp/")) "/default.webp" else "/default.jpg"
+        else -> url
     }
 }
 
@@ -867,13 +1012,19 @@ private fun SearchResultRow(
             .combinedClickable(
                 enabled = tab != SearchTab.USERS,
                 onClick = onClick,
-                onLongClick = if (tab == SearchTab.TRACKS) onLongClick else onMenu,
+                onLongClick = if (tab == SearchTab.TRACKS || tab == SearchTab.LOCAL) onLongClick else onMenu,
             )
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val fallback = when (tab) {
             SearchTab.TRACKS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.MusicNote
+            SearchTab.LOCAL -> when {
+                isPlaying -> Icons.Filled.GraphicEq
+                item.entityId?.startsWith("offline_playlist:") == true -> Icons.AutoMirrored.Filled.QueueMusic
+                else -> Icons.Filled.MusicNote
+            }
+            SearchTab.PODCASTS -> if (isPlaying) Icons.Filled.GraphicEq else Icons.Filled.Mic
             SearchTab.ARTISTS -> Icons.Filled.Person
             SearchTab.ALBUMS -> Icons.Filled.Album
             SearchTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
@@ -903,11 +1054,13 @@ private fun SearchResultRow(
                 overflow = TextOverflow.Ellipsis,
             )
             val subtitle = when (tab) {
-                SearchTab.TRACKS -> listOfNotNull(item.artist, item.subtitle).joinToString(" \u00b7 ")
+                SearchTab.TRACKS -> listOfNotNull(item.artist, item.subtitle).joinToString(" \u2022 ")
+                SearchTab.LOCAL -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" \u2022 ")
+                SearchTab.PODCASTS -> listOfNotNull(item.artist, item.subtitle).distinct().joinToString(" \u2022 ")
                 SearchTab.ALBUMS -> item.subtitle ?: item.artist.orEmpty()
                 SearchTab.PLAYLISTS -> item.subtitle.orEmpty()
                 SearchTab.ARTISTS -> item.subtitle.orEmpty()
-                SearchTab.USERS -> listOfNotNull(item.artist, item.listeners?.let { "$it scrobbles" }).joinToString(" \u00b7 ")
+                SearchTab.USERS -> listOfNotNull(item.artist, item.listeners?.let { "$it scrobbles" }).joinToString(" \u2022 ")
             }
             if (subtitle.isNotBlank()) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -920,7 +1073,7 @@ private fun SearchResultRow(
             IconButton(onClick = { openLastFm("/+removefriend") }) {
                 Icon(Icons.Filled.PersonRemove, contentDescription = stringResource(R.string.search_unfollow_cd, item.name))
             }
-        } else if (tab != SearchTab.PLAYLISTS) {
+        } else if (tab != SearchTab.PLAYLISTS && item.entityId?.startsWith("offline_playlist:") != true) {
             com.lastwave.app.ui.common.OverflowMenuButton(onClick = onMenu)
         }
     }
@@ -934,6 +1087,8 @@ private fun SearchFilterPills(
 ) {
     val tabs = listOf(
         SearchTab.TRACKS to R.string.search_tab_tracks,
+        SearchTab.LOCAL to R.string.search_tab_local,
+        SearchTab.PODCASTS to R.string.search_tab_podcasts,
         SearchTab.ARTISTS to R.string.search_tab_artists,
         SearchTab.ALBUMS to R.string.search_tab_albums,
         SearchTab.PLAYLISTS to R.string.search_tab_playlists,
@@ -983,4 +1138,3 @@ private fun SearchFilterPills(
         }
     }
 }
-

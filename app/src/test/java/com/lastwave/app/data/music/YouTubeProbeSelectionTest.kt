@@ -18,7 +18,7 @@ class YouTubeProbeSelectionTest {
                 "Referer" to "https://www.youtube.com/watch?v=abc",
             ),
         )
-        assertNull(request.header("Range"))
+        assertEquals("bytes=0-1048575", request.header("Range"))
         assertEquals("audio/*,*/*;q=0.8", request.header("Accept"))
         assertEquals("identity", request.header("Accept-Encoding"))
         assertEquals("LastWave", request.header("User-Agent"))

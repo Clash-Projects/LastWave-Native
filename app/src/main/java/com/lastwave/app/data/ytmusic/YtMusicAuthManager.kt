@@ -5,13 +5,13 @@ import android.webkit.CookieManager
 import android.webkit.WebStorage
 import java.security.MessageDigest
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -32,20 +32,28 @@ class YtMusicAuthManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val connectionLoaded = CompletableDeferred<Unit>()
     private val _connection = MutableStateFlow(YtConnection.DISCONNECTED)
     val connection: StateFlow<YtConnection> = _connection.asStateFlow()
 
     init {
         scope.launch {
-            runCatching { preferences.connection.collect { _connection.value = it } }
-                .onFailure { Log.w(TAG, "Failed to observe YT connection", it) }
+            runCatching {
+                preferences.connection.collect {
+                    _connection.value = it
+                    connectionLoaded.complete(Unit)
+                }
+            }.onFailure {
+                connectionLoaded.complete(Unit)
+                Log.w(TAG, "Failed to observe YT connection", it)
+            }
         }
     }
 
-    /** SAPISID token, extracted in priority order exactly like music.youtube.com. */
+    /** SAPISID token, extracted with SAPISID falling back to __Secure-3PAPISID if absent. */
     fun sapisid(account: YtConnection = connection.value): String? =
-        account.cookies[COOKIE_SAPISID_PRIMARY]
-            ?: account.cookies["SAPISID"]
+        account.cookies["SAPISID"]
+            ?: account.cookies[COOKIE_SAPISID_PRIMARY]
             ?: account.cookies["APISID"]
 
     fun cookieHeaderValue(account: YtConnection = connection.value): String? {
@@ -55,8 +63,10 @@ class YtMusicAuthManager @Inject constructor(
     }
 
     suspend fun awaitLoadedConnection(): YtConnection {
-        val persisted = preferences.connection.first()
-        return connection.first { it == persisted }
+        // Waiting for a captured preference value can hang forever if an
+        // optimistic login/signout has already moved past that value.
+        connectionLoaded.await()
+        return connection.value
     }
 
     /**
@@ -139,18 +149,20 @@ class YtMusicAuthManager @Inject constructor(
 
         return try {
             val cm = CookieManager.getInstance()
-            val musicCookies = cm.getCookie("https://music.youtube.com").orEmpty()
-            val ytCookies = cm.getCookie("https://www.youtube.com").orEmpty()
-            val combined = when {
-                musicCookies.isBlank() -> ytCookies
-                ytCookies.isBlank() -> musicCookies
-                else -> "$musicCookies; $ytCookies"
-            }
+            cm.flush()
+            val domains = listOf(
+                "https://music.youtube.com",
+                "https://www.youtube.com",
+                "https://accounts.google.com",
+                "https://youtube.com",
+            )
+            val combined = domains.mapNotNull { cm.getCookie(it)?.takeIf(String::isNotBlank) }
+                .joinToString("; ")
             if (combined.isBlank()) return false
             val cookies = parseCookieHeader(combined)
-            val hasSapisid = listOf(COOKIE_SAPISID_PRIMARY, "SAPISID", "APISID").any { cookies.containsKey(it) }
-            val hasLogin = cookies.containsKey("LOGIN_INFO")
-            if (!hasSapisid || !hasLogin) return false
+            val hasSapisid = cookies.containsKey("SAPISID") || cookies.containsKey(COOKIE_SAPISID_PRIMARY) || cookies.containsKey("APISID")
+            val hasSid = cookies.containsKey("SID") || cookies.containsKey("__Secure-3PSID")
+            if (!hasSapisid || !hasSid) return false
 
             if (current.cookies == cookies) return false
 

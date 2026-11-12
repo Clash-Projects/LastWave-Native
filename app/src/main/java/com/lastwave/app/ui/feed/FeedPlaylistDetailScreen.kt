@@ -50,6 +50,7 @@ import com.lastwave.app.data.music.YouTubePlaylistResult
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveGroupTrackRow
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
 import com.lastwave.app.ui.common.GroupGap
 import com.lastwave.app.ui.common.groupPositionFor
@@ -81,18 +82,22 @@ fun FeedPlaylistDetailScreen(
             .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        val playlist = (state as? FeedPlaylistDetailUiState.Success)?.playlist
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 860.dp),
-        ) {
-        val playlist = (state as? FeedPlaylistDetailUiState.Success)?.playlist
+            header = { headerModifier, headerBackdrop ->
         ExpressiveHeader(
+            modifier = headerModifier,
+            backdrop = headerBackdrop,
             title = playlist?.title?.takeIf(String::isNotBlank) ?: "Playlist",
             subtitle = playlist?.author ?: "YouTube Music",
             onBack = onBack,
         )
-
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
         when (val current = state) {
             FeedPlaylistDetailUiState.Loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -129,12 +134,14 @@ fun FeedPlaylistDetailScreen(
             }
 
             is FeedPlaylistDetailUiState.Success -> {
+                // Status rows sit above the list, so they need the inset themselves.
+                if (current.isLoadingMore || current.loadError != null) Spacer(Modifier.height(headerInset))
                 if (current.isLoadingMore) {
                     Text(stringResource(R.string.fpd_loading_more), modifier = Modifier.padding(horizontal = 16.dp))
                 }
                 if (current.loadError != null) {
                     FilledTonalButton(onClick = { viewModel.load(playlistId, force = true) }) {
-                        Text(stringResource(R.string.fpd_incomplete))
+                        Text(stringResource(if (current.playlist.isComplete) R.string.fpd_retry else R.string.fpd_incomplete))
                     }
                 }
                 PlaylistContent(
@@ -145,8 +152,10 @@ fun FeedPlaylistDetailScreen(
                     isSaving = current.isSaving,
                     savedToLibrary = current.savedToLibrary,
                     saveError = current.saveError,
+                    topInset = if (current.isLoadingMore || current.loadError != null) 0.dp else headerInset,
                 )
             }
+        }
         }
         }
     }
@@ -161,6 +170,7 @@ private fun PlaylistContent(
     isSaving: Boolean,
     savedToLibrary: Boolean,
     saveError: String?,
+    topInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     var menuTrack by remember { mutableStateOf<YouTubeMusicTrack?>(null) }
     // Long-press (deep press) opens the mini tray; 3-dot keeps the full sheet.
@@ -168,7 +178,7 @@ private fun PlaylistContent(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            top = 20.dp,
+            top = 20.dp + topInset,
             bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
         ),
         verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -202,7 +212,7 @@ private fun PlaylistContent(
                     text = listOfNotNull(
                         playlist.author?.takeIf(String::isNotBlank),
                         "${playlist.tracks.size} tracks",
-                    ).joinToString(" · "),
+                    ).joinToString(" \u2022 "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -343,7 +353,7 @@ private fun PlaylistContent(
 
 private fun YouTubeMusicTrack.artistAndAlbum(): String =
     listOfNotNull(artist.takeIf(String::isNotBlank), album?.takeIf(String::isNotBlank))
-        .joinToString(" · ")
+        .joinToString(" \u2022 ")
         .ifBlank { "YouTube Music" }
 
 private fun Int.toDurationLabel(): String = "%d:%02d".format(this / 60, this % 60)

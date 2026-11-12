@@ -3,10 +3,13 @@ package com.lastwave.app.ui.search
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lastwave.app.data.generate.LocalAudioFormats
+import com.lastwave.app.data.generate.isLocalAudioPath
 import com.lastwave.app.data.search.SearchHistoryRepository
 import com.lastwave.app.data.search.SearchRepository
 import com.lastwave.app.data.search.SearchResultItem
 import com.lastwave.app.data.search.SearchTab
+import com.lastwave.app.playback.MediaType
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +32,7 @@ data class SearchUiState(
     val status: SearchStatus = SearchStatus.IDLE,
     val results: List<SearchResultItem> = emptyList(),
     val suggestions: List<String> = emptyList(),
+    val songSuggestions: List<SearchResultItem> = emptyList(),
     val recentSearches: List<String> = emptyList(),
     val isShowingSuggestions: Boolean = false,
 )
@@ -62,11 +66,14 @@ class SearchViewModel @Inject constructor(
     }
 
     fun setQuery(query: String) {
-        _uiState.update { it.copy(query = query, isShowingSuggestions = query.isNotBlank()) }
+        _uiState.update {
+            it.copy(query = query, songSuggestions = emptyList(), isShowingSuggestions = query.isNotBlank())
+        }
         debounceJob?.cancel()
         suggestionsJob?.cancel()
 
         if (query.isBlank()) {
+            musicPlayer.cancelSearchResultWarm()
             searchJob?.cancel()
             _uiState.update {
                 it.copy(
@@ -100,6 +107,7 @@ class SearchViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 tab = tab,
+                songSuggestions = emptyList(),
                 isShowingSuggestions = false,
                 results = emptyList(),
                 status = if (it.query.isBlank()) SearchStatus.IDLE else SearchStatus.LOADING,
@@ -158,15 +166,47 @@ class SearchViewModel @Inject constructor(
         val tab = _uiState.value.tab
         when (tab) {
             SearchTab.TRACKS -> {
-                val selected = PlayableTrack(
-                    title = item.name,
-                    artist = item.artist.orEmpty(),
-                    album = item.subtitle,
-                    artworkUrl = item.artworkUrl,
-                    videoId = item.videoId,
-                )
+                val selected = item.toPlayableTrack()
                 // Start immediately. Similar song radio queue loads and extends infinitely.
                 musicPlayer.play(selected, sourceLabel = "Search", startRadio = true)
+            }
+            SearchTab.LOCAL -> {
+                val id = item.entityId
+                if (id != null && id.startsWith("offline_playlist:")) {
+                    val plId = id.removePrefix("offline_playlist:")
+                    viewModelScope.launch {
+                        val tracks = repository.localTracksForOfflinePlaylist(plId)
+                        if (tracks.isNotEmpty()) {
+                            musicPlayer.playQueue(
+                                tracks = tracks.map { t ->
+                                    PlayableTrack(
+                                        title = t.name,
+                                        artist = t.artist,
+                                        album = t.album,
+                                        artworkUrl = t.artworkUrl,
+                                        playbackUrl = t.url,
+                                        playbackMimeType = LocalAudioFormats.mimeFor(t.url),
+                                        durationMs = t.durationMs,
+                                        trackNumber = t.trackNumber,
+                                    )
+                                },
+                                startIndex = 0,
+                                sourceLabel = item.name,
+                                enableRadioContinuation = false,
+                            )
+                        }
+                    }
+                } else {
+                    val localItems = _uiState.value.results.filter { isLocalAudioPath(it.url) }
+                    val targetIdx = localItems.indexOfFirst { it.url == item.url }.coerceAtLeast(0)
+                    val queue = if (localItems.isNotEmpty()) localItems else listOf(item)
+                    musicPlayer.playQueue(
+                        tracks = queue.map { it.toPlayableTrack() },
+                        startIndex = targetIdx,
+                        sourceLabel = "Local Search",
+                        enableRadioContinuation = false,
+                    )
+                }
             }
             SearchTab.ARTISTS, SearchTab.ALBUMS -> viewModelScope.launch {
                 val tracks = runCatching { repository.songsFor(item) }.getOrDefault(emptyList())
@@ -182,6 +222,10 @@ class SearchViewModel @Inject constructor(
                         )
                     }, sourceLabel = "Search")
                 }
+            }
+            SearchTab.PODCASTS -> {
+                val selected = item.toPlayableTrack(podcast = true)
+                musicPlayer.playPodcastQueue(listOf(selected), startIndex = 0, sourceLabel = "Search")
             }
             SearchTab.PLAYLISTS, SearchTab.USERS -> Unit
         }
@@ -203,7 +247,11 @@ class SearchViewModel @Inject constructor(
                 it.copy(
                     status = if (results.isEmpty()) SearchStatus.EMPTY else SearchStatus.RESULTS,
                     results = results,
+                    songSuggestions = if (tab == SearchTab.TRACKS) results.take(5) else emptyList(),
                 )
+            }
+            if (tab == SearchTab.TRACKS) {
+                musicPlayer.warmLikelyPlays(results.map { it.toPlayableTrack() })
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -213,6 +261,7 @@ class SearchViewModel @Inject constructor(
     }
 
     fun clearQuery() {
+        musicPlayer.cancelSearchResultWarm()
         debounceJob?.cancel()
         suggestionsJob?.cancel()
         searchJob?.cancel()
@@ -222,8 +271,27 @@ class SearchViewModel @Inject constructor(
                 status = SearchStatus.IDLE,
                 results = emptyList(),
                 suggestions = emptyList(),
+                songSuggestions = emptyList(),
                 isShowingSuggestions = false,
             )
         }
     }
+}
+
+/** Taps, menus and warm-ups keep the same recording rather than resolving its title again. */
+internal fun SearchResultItem.toPlayableTrack(podcast: Boolean = false): PlayableTrack {
+    val isLocal = isLocalAudioPath(url)
+    return PlayableTrack(
+        title = name,
+        artist = artist.orEmpty().ifBlank { if (podcast) "Podcast" else "" },
+        album = if (podcast) null else subtitle,
+        artworkUrl = artworkUrl,
+        videoId = videoId,
+        playbackUrl = if (isLocal) url else null,
+        playbackMimeType = if (isLocal) LocalAudioFormats.mimeFor(url) else null,
+        durationMs = durationMs,
+        trackNumber = trackNumber,
+        mediaType = if (podcast) MediaType.PODCAST_EPISODE else MediaType.SONG,
+        showId = if (podcast) showId else null,
+    )
 }
