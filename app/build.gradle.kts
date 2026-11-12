@@ -460,6 +460,7 @@ dependencies {
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
     // Android 13+ navigation optics; Kyant remains for existing surfaces and older devices.
+    implementation(libs.fletchmckee.liquid)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)

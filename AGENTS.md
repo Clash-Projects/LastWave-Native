@@ -24,8 +24,8 @@ Automix transitions, lossless addons, and Bit-Perfect USB DAC output).
 
 ### Tech stack
 
-- **UI:** Jetpack Compose + Material 3, Liquid Glass (`kyant-backdrop`, `kyant-shapes`),
-  Navigation Compose, Coil Compose,
+- **UI:** Jetpack Compose + Material 3, Liquid Glass (`kyant-backdrop`,
+  `kyant-shapes`, `fletchmckee-liquid`), Navigation Compose, Coil Compose,
   Glance (`glance-appwidget` / `glance-material3`).
 - **DI, async & storage:** Hilt + KSP, Kotlin Coroutines,
   `kotlinx.serialization` (JSON & Protobuf), Retrofit + OkHttp, Jsoup, Room
