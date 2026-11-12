@@ -340,8 +340,9 @@ internal fun QueuePanel(
     val listState = rememberLazyListState()
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    var draggingIndex by remember { mutableIntStateOf(-1) }
+    var draggingKey by remember { mutableStateOf<String?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var dragStartOffsetY by remember { mutableFloatStateOf(0f) }
     var menuIndex by remember { mutableStateOf<Int?>(null) }
     var edgeScrollJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     fun cancelEdgeScroll() {
@@ -366,12 +367,28 @@ internal fun QueuePanel(
     }
     val currentQueue by rememberUpdatedState(state.queue)
     val currentQueueKeys by rememberUpdatedState(queueKeys)
+    fun moveDraggedItem() {
+        val key = draggingKey ?: return
+        val source = currentQueueKeys.indexOf(key)
+        val visible = listState.layoutInfo.visibleItemsInfo
+        val draggedInfo = visible.firstOrNull { it.key == key } ?: return
+        if (source !in currentQueue.indices || draggedInfo.index != source) return
+        val center = dragStartOffsetY + dragOffsetY + draggedInfo.size / 2f
+        val target = visible.firstOrNull { info ->
+            info.index != source && info.index in currentQueue.indices &&
+                center >= info.offset && center <= info.offset + info.size &&
+                (if (info.index > source) center > info.offset + info.size / 2f
+                else center < info.offset + info.size / 2f)
+        } ?: return
+        player.moveQueueItem(source, target.index)
+        runCatching { haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick) }
+    }
     // Abort a stale drag if the queue itself changes underneath us
     // (track ended, clear-upcoming, fresh playQueue, …).
-    LaunchedEffect(state.queue.size) {
-        if (draggingIndex >= state.queue.size) {
+    LaunchedEffect(queueKeys) {
+        if (draggingKey != null && draggingKey !in queueKeys) {
             cancelEdgeScroll()
-            draggingIndex = -1
+            draggingKey = null
             dragOffsetY = 0f
         }
     }
@@ -383,7 +400,7 @@ internal fun QueuePanel(
         if (listState.isScrollInProgress) userScrollHoldUntil = System.currentTimeMillis() + 3_000L
     }
     LaunchedEffect(state.currentIndex, state.queue.size) {
-        if (draggingIndex != -1 || state.queue.isEmpty()) return@LaunchedEffect
+        if (draggingKey != null || state.queue.isEmpty()) return@LaunchedEffect
         if (System.currentTimeMillis() < userScrollHoldUntil) return@LaunchedEffect
         val target = state.currentIndex.coerceIn(0, state.queue.size - 1)
         runCatching { listState.animateScrollToItem(target) }
@@ -573,8 +590,17 @@ internal fun QueuePanel(
             ) { index, item ->
                 val currentIndex by rememberUpdatedState(index)
                 val isCurrent = index == state.currentIndex
-                val isDragging = index == draggingIndex
                 val stableKey = queueKeys.getOrNull(index) ?: index.toString()
+                val isDragging = stableKey == draggingKey
+                val rowOffsetY by animateFloatAsState(
+                    targetValue = if (isDragging) {
+                        // Reordering changes the layout origin; the row must stay under the finger.
+                        dragStartOffsetY + dragOffsetY - (listState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.key == stableKey }?.offset ?: dragStartOffsetY.toInt())
+                    } else 0f,
+                    animationSpec = if (isDragging) snap() else ExpressiveMotion.spatialDefault(),
+                    label = "queueDragOffset",
+                )
                 val position = groupPositionFor(index, state.queue.size)
                 val itemShape = groupShape(position)
 
@@ -609,13 +635,10 @@ internal fun QueuePanel(
                         .animateItem(
                             fadeInSpec = null,
                             fadeOutSpec = null,
-                            placementSpec = if (isDragging) null else spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                            ),
+                            placementSpec = if (isDragging) null else ExpressiveMotion.spatialDefault(),
                         )
                         .graphicsLayer {
-                            translationY = if (isDragging) dragOffsetY else 0f
+                            translationY = rowOffsetY
                             shadowElevation = if (isDragging) 18f else 0f
                             val s = if (isDragging) 1.025f else 1f
                             scaleX = s
@@ -626,7 +649,7 @@ internal fun QueuePanel(
                     androidx.compose.material3.SwipeToDismissBox(
                         state = dismissState,
                         enableDismissFromStartToEnd = false,
-                        enableDismissFromEndToStart = !isQueueLocked && draggingIndex == -1,
+                        enableDismissFromEndToStart = !isQueueLocked && draggingKey == null,
                         modifier = Modifier.fillMaxWidth(),
                         backgroundContent = {
                             if (dismissState.dismissDirection == androidx.compose.material3.SwipeToDismissBoxValue.EndToStart) {
@@ -720,50 +743,33 @@ internal fun QueuePanel(
                                                 .pointerInput(stableKey) {
                                                     detectDragGestures(
                                                         onDragStart = {
-                                                            val actualIndex = currentQueueKeys.indexOf(stableKey).takeIf { it >= 0 } ?: currentIndex
-                                                            draggingIndex = actualIndex
+                                                            val info = listState.layoutInfo.visibleItemsInfo
+                                                                .firstOrNull { it.key == stableKey } ?: return@detectDragGestures
+                                                            draggingKey = stableKey
+                                                            dragStartOffsetY = info.offset.toFloat()
                                                             dragOffsetY = 0f
                                                             cancelEdgeScroll()
                                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                                         },
                                                         onDragEnd = {
                                                             cancelEdgeScroll()
-                                                            draggingIndex = -1
+                                                            draggingKey = null
                                                             dragOffsetY = 0f
                                                         },
                                                         onDragCancel = {
                                                             cancelEdgeScroll()
-                                                            draggingIndex = -1
+                                                            draggingKey = null
                                                             dragOffsetY = 0f
                                                         },
                                                         onDrag = { change, dragAmount ->
                                                             change.consume()
-                                                            val source = draggingIndex
-                                                            if (source < 0 || source !in currentQueue.indices) {
-                                                                cancelEdgeScroll()
-                                                                return@detectDragGestures
-                                                            }
+                                                            if (draggingKey != stableKey) return@detectDragGestures
                                                             dragOffsetY += dragAmount.y
-                                                            val layoutInfo = runCatching { listState.layoutInfo }.getOrNull() ?: return@detectDragGestures
-                                                            val visible = runCatching { layoutInfo.visibleItemsInfo }.getOrNull() ?: return@detectDragGestures
-                                                            if (visible.isEmpty()) return@detectDragGestures
-
-                                                            val draggedInfo = visible.firstOrNull { it.index == source } ?: return@detectDragGestures
-                                                            val draggedCenter = draggedInfo.offset + draggedInfo.size / 2 + dragOffsetY.toInt()
-
-                                                            val targetInfo = visible.firstOrNull { info ->
-                                                                info.index != source &&
-                                                                    info.index in currentQueue.indices &&
-                                                                    draggedCenter in info.offset..(info.offset + info.size)
-                                                            }
-
-                                                            if (targetInfo != null && targetInfo.index != source && targetInfo.index in currentQueue.indices) {
-                                                                val target = targetInfo.index
-                                                                player.moveQueueItem(source, target)
-                                                                dragOffsetY += (draggedInfo.offset - targetInfo.offset).toFloat()
-                                                                draggingIndex = target
-                                                                runCatching { haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick) }
-                                                            }
+                                                            moveDraggedItem()
+                                                            val layoutInfo = listState.layoutInfo
+                                                            val draggedInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == stableKey }
+                                                                ?: return@detectDragGestures
+                                                            val draggedCenter = dragStartOffsetY + dragOffsetY + draggedInfo.size / 2f
 
                                                             val viewportStart = runCatching { layoutInfo.viewportStartOffset }.getOrDefault(0)
                                                             val viewportEnd = runCatching { layoutInfo.viewportEndOffset }.getOrDefault(0)
@@ -781,7 +787,12 @@ internal fun QueuePanel(
                                                                 cancelEdgeScroll()
                                                             } else if (edgeScrollJob?.isActive != true) {
                                                                 edgeScrollJob = scope.launch {
-                                                                    runCatching { listState.scrollBy(direction * 28f) }
+                                                                    while (isActive) {
+                                                                        androidx.compose.runtime.withFrameNanos { }
+                                                                        val scrolled = listState.scrollBy(direction * 10f)
+                                                                        moveDraggedItem()
+                                                                        if (scrolled == 0f) break
+                                                                    }
                                                                 }
                                                             }
                                                         },
