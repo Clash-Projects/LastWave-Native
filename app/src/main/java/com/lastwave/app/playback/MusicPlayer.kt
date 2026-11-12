@@ -4335,9 +4335,14 @@ class MusicPlayer @Inject constructor(
                 if (prefixJob == null) warmUpcomingSearches(nextIndex)
                 expectedMediaId = publishedId
                 prefixJob?.cancel()
+                val publishedUri = player.getMediaItemAt(nextIndex).localConfiguration?.uri
                 prefixJob = preloadScope.launch {
                     delay(NEXT_TRACK_PREFETCH_DELAY_MS)
-                    warmStreamPrefix(stream, generation)
+                    if (stream.mimeType == MimeTypes.APPLICATION_MPD) {
+                        publishedUri?.let { warmDashPrefix(it, generation) }
+                    } else {
+                        warmStreamPrefix(stream, generation)
+                    }
                 }
             }
 
@@ -4355,7 +4360,13 @@ class MusicPlayer @Inject constructor(
                     }.onFailure { if (it is CancellationException) throw it }.getOrNull()
                 }
                 val probeTimeoutMs = if (direct) STARTUP_PROVIDER_RESOLVE_MS else STARTUP_PROVIDER_PROBE_MS
-                if (candidate != null && isProviderReadyForStartup(candidate, probeTimeoutMs)) publish(candidate)
+                // A DASH manifest cannot be byte-probed: the probe refused every
+                // one, so the next track always started on Opus.
+                val manifest = candidate != null &&
+                    (candidate.segmentedDrm != null || !candidate.mimeType.startsWith("audio/"))
+                if (candidate != null && (if (manifest) direct else isProviderReadyForStartup(candidate, probeTimeoutMs))) {
+                    publish(candidate)
+                }
             } else null
             launch {
                 val youtube = resolvePreloadYoutube(nextTrack, quality)
@@ -4468,6 +4479,34 @@ class MusicPlayer @Inject constructor(
             // A speculative prefix may fail while the stream remains usable.
         } finally {
             runCatching { source.close() }
+        }
+    }
+
+    /** Caches the opening DASH segments under the keys the player's chunk source reads. */
+    private suspend fun warmDashPrefix(manifestUri: Uri, generation: Long) {
+        if (!canWarmPlayback(generation)) return
+        try {
+            val manifest = androidx.media3.exoplayer.upstream.ParsingLoadable.load(
+                cacheDataSourceFactory.createDataSource(),
+                com.lastwave.app.data.plugin.AlacDashManifestParser(),
+                manifestUri,
+                C.DATA_TYPE_MANIFEST,
+            )
+            // shortcut: first representation only, fine while manifests carry one; pick by track selection if that changes.
+            val representation = manifest.getPeriod(0).adaptationSets.firstOrNull()?.representations?.firstOrNull() ?: return
+            val index = representation.index ?: return
+            val baseUrl = representation.baseUrls.firstOrNull()?.url ?: return
+            val available = index.getSegmentCount(manifest.getPeriodDurationUs(0)).takeIf { it > 0 } ?: NEXT_TRACK_PREFETCH_SEGMENTS
+            val first = index.firstSegmentNum
+            val segments = listOfNotNull(representation.initializationUri) +
+                (first until first + minOf(available, NEXT_TRACK_PREFETCH_SEGMENTS)).map(index::getSegmentUrl)
+            for (segment in segments) {
+                if (!canWarmPlayback(generation)) return
+                cacheSingleChunk(androidx.media3.exoplayer.dash.DashUtil.buildDataSpec(representation, baseUrl, segment, 0))
+            }
+            android.util.Log.i("MusicPlayer", "[PRELOAD] warmed ${segments.size} DASH segments")
+        } catch (_: java.io.IOException) {
+            // A speculative prefix may fail while the stream remains usable.
         }
     }
 
@@ -8983,6 +9022,7 @@ class MusicPlayer @Inject constructor(
         const val PLAYBACK_RETRY_BASE_DELAY_MS = 350L
         const val PLAYBACK_RETRY_JITTER_MS = 250L
         const val NEXT_TRACK_PREFETCH_BYTES = 128L * 1024
+        const val NEXT_TRACK_PREFETCH_SEGMENTS = 3L
         const val NEXT_TRACK_PREFETCH_DELAY_MS = 500L
         /** Delayed start keeps current-track caching off the startup path. */
         const val CURRENT_TRACK_CACHE_START_DELAY_MS = 6_000L
