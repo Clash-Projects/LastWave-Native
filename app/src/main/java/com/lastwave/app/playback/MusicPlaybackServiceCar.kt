@@ -84,9 +84,8 @@ import android.app.Service
 
 internal fun MusicPlaybackService.setCurrentTrackLiked(liked: Boolean) {
         val track = musicPlayer.state.value.current ?: return
-        if (trackLikeController.isLiked(track) == liked) return
         scope.launch {
-            runCatching { trackLikeController.toggle(track) }
+            runCatching { trackLikeController.setLiked(track, liked) }
                 .onFailure { error -> android.util.Log.w("MusicPlaybackService", "Music card like failed", error) }
         }
     }

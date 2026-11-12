@@ -3,14 +3,12 @@ package com.lastwave.app.data.playlist
 import com.lastwave.app.data.generate.LocalAudioFormats
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.localmusic.LocalOfflineRepository
-import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.isLocalTrack
 import com.lastwave.app.playback.toGeneratedTrack
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,16 +22,17 @@ import kotlinx.coroutines.flow.stateIn
  *   isolated from online Liked Songs, Spotify, Last.fm, and YouTube sync.
  * - Online/streaming tracks persist into the local Liked Songs playlist via
  *   [LikedSongsManager].
- * - YouTube Music has its own separate control handled explicitly by the UI.
+ * - Both player controls use this same desired state; account sync follows it.
  */
 @Singleton
 class TrackLikeController @Inject constructor(
     private val likedSongsManager: LikedSongsManager,
     private val localOfflineRepository: LocalOfflineRepository,
-    private val innerTube: InnerTubeMusicApi,
     private val ytAuth: YtMusicAuthManager,
     applicationScope: CoroutineScope,
 ) {
+    val youTubeConnection = ytAuth.connection
+
     val likedTrackKeys: StateFlow<Set<String>> = combine(
         likedSongsManager.likedTrackKeys,
         localOfflineRepository.likedUrls,
@@ -74,26 +73,18 @@ class TrackLikeController @Inject constructor(
         return likedSongsManager.like(track.toGeneratedTrack())
     }
 
-    /** Whether the YouTube Music button applies: an account is connected and the song has a YouTube id. */
+    /** Idempotent media rating / explicit like command. */
+    suspend fun setLiked(track: PlayableTrack, liked: Boolean): Boolean {
+        val localUrl = deviceLocalUrl(track)
+        if (localUrl != null) {
+            localOfflineRepository.setLiked(localUrl, liked)
+            return liked
+        }
+        return likedSongsManager.setLiked(track.toGeneratedTrack(), liked)
+    }
+
     fun canUseYouTubeLike(track: PlayableTrack?): Boolean =
         track != null && ytAuth.connection.value.isConnected && youTubeIdOf(track) != null
-
-    /** The account's like state for [track] on YouTube Music; null when unknown. */
-    suspend fun youTubeLikeStatus(track: PlayableTrack): Boolean? {
-        val videoId = youTubeIdOf(track) ?: return null
-        return guard { innerTube.getYouTubeLikeStatus(videoId) }
-    }
-
-    /**
-     * Adds the YouTube Music like when [currentlyLiked] is false, removes it
-     * otherwise. Returns whether YouTube accepted the change.
-     */
-    suspend fun setYouTubeLike(track: PlayableTrack, currentlyLiked: Boolean): Boolean {
-        val videoId = youTubeIdOf(track) ?: return false
-        return guard {
-            if (currentlyLiked) innerTube.removeVideoLike(videoId) else innerTube.likeVideo(videoId)
-        } == true
-    }
 
     private fun isDeviceLocalTrack(track: PlayableTrack): Boolean = deviceLocalUrl(track) != null
 
@@ -105,12 +96,4 @@ class TrackLikeController @Inject constructor(
     private fun youTubeIdOf(track: PlayableTrack): String? =
         track.videoId?.takeIf { it.isNotBlank() } ?: track.toGeneratedTrack().youtubeVideoIdOrNull()
 
-    private suspend fun <T> guard(block: suspend () -> T): T? = try {
-        block()
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (error: Exception) {
-        android.util.Log.w("TrackLikeController", "YouTube like request failed", error)
-        null
-    }
 }
