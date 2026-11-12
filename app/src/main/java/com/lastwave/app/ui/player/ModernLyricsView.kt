@@ -464,10 +464,11 @@ fun ModernLyricsPanel(
                             // variable font. App font off: the system font,
                             // whose Bold is a real weight.
                             val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != androidx.compose.ui.text.font.FontFamily.Default
-                            val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont) {
+                            val boldFont = com.lastwave.app.ui.theme.LocalUseBoldFont.current
+                            val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont, boldFont) {
                                 val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * effectiveFontScale
                                 currentTextStyle.copy(
-                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.LyricsLeadFontFamily else androidx.compose.ui.text.font.FontFamily.Default,
+                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.lyricsLeadFontFamily(boldFont) else androidx.compose.ui.text.font.FontFamily.Default,
                                     fontSize = baseSize.sp,
                                     lineHeight = (baseSize * 1.20f).sp,
                                     fontWeight = FontWeight.Bold,
@@ -475,11 +476,11 @@ fun ModernLyricsPanel(
                                     textMotion = TextMotion.Animated,
                                 )
                             }
-                            val karaokeAccompanimentStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont) {
+                            val karaokeAccompanimentStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont, boldFont) {
                                 // Backing vocals: 0.65x of the lead row.
                                 val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * 0.65f * effectiveFontScale
                                 currentTextStyle.copy(
-                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.LyricsBackingFontFamily else androidx.compose.ui.text.font.FontFamily.Default,
+                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.lyricsBackingFontFamily(boldFont) else androidx.compose.ui.text.font.FontFamily.Default,
                                     fontSize = baseSize.sp,
                                     lineHeight = (baseSize * 1.22f).sp,
                                     fontWeight = FontWeight.Bold,
@@ -489,9 +490,9 @@ fun ModernLyricsPanel(
                             }
                             // Sub-lines (translation / romanization) draw
                             // smaller and lighter than the lyric they follow.
-                            val subLineStyle = remember(currentTextStyle, effectiveFontScale, useAppFont) {
+                            val subLineStyle = remember(currentTextStyle, effectiveFontScale, useAppFont, boldFont) {
                                 currentTextStyle.copy(
-                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.LyricsSubLineFontFamily else androidx.compose.ui.text.font.FontFamily.Default,
+                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.lyricsSubLineFontFamily(boldFont) else androidx.compose.ui.text.font.FontFamily.Default,
                                     fontSize = (16f * effectiveFontScale).sp,
                                     lineHeight = (22f * effectiveFontScale).sp,
                                     fontWeight = FontWeight.Medium,

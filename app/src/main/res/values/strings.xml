@@ -125,6 +125,8 @@
     <string name="settings_dynamic_now_playing_sub">Match player artwork</string>
     <string name="settings_app_font">Use Application Font</string>
     <string name="settings_app_font_sub">A custom look across the whole app</string>
+    <string name="settings_bold_font">Use Bold Font</string>
+    <string name="settings_bold_font_sub">Makes all text thicker, lyrics included</string>
     <string name="settings_section_accent">Accent</string>
 
     <string name="settings_section_experimental">Experimental</string>
