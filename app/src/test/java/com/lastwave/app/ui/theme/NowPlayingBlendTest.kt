@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,10 +17,13 @@ class NowPlayingBlendTest {
 
     private fun dist(a: Color, b: Color) = abs(a.red - b.red) + abs(a.green - b.green) + abs(a.blue - b.blue)
 
+    private fun hue(c: Color) = FloatArray(3).also { androidx.core.graphics.ColorUtils.colorToHSL(c.toArgb(), it) }[0].toInt()
+
     @Test
     fun baseThemeStaysInTheLead() {
         val blended = Md3SchemeBuilder.blendNowPlaying(base, art)
-        assertThat(dist(blended.primary, base.primary)).isLessThan(dist(blended.primary, art.primary))
+        // Hue, not RGB distance: muting darkens the accent away from both inputs.
+        assertThat(hueDelta(hue(blended.primary), hue(base.primary))).isLessThan(hueDelta(hue(blended.primary), hue(art.primary)))
         assertThat(dist(blended.background, base.background)).isLessThan(dist(blended.background, art.background))
     }
 

@@ -348,8 +348,8 @@ object Md3SchemeBuilder {
     private const val ART_ACCENT_WEIGHT = 0.4f
     /** Backgrounds/surfaces only take a faint artwork tint. */
     private const val ART_NEUTRAL_WEIGHT = 0.12f
-    private const val MUTE_SATURATION = 0.8f
-    private const val MUTE_DARKEN = 0.04f
+    private const val MUTE_SATURATION = 0.65f
+    private const val MUTE_DARKEN = 0.07f
     private const val MIN_CONTRAST = 4.5
 
     /**
