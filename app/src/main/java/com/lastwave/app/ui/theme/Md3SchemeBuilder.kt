@@ -4,7 +4,6 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -47,12 +46,37 @@ object Md3SchemeBuilder {
         return (h * 360f).roundToInt().let { ((it % 360) + 360) % 360 }
     }
 
+    /** HSL saturation (0-1) of a hex colour; 0 for anything unparseable. */
+    private fun saturationOf(hex: String): Float {
+        val rgb = hex.removePrefix("#").take(6).toIntOrNull(16) ?: return 0f
+        val r = ((rgb ushr 16) and 0xFF) / 255f
+        val g = ((rgb ushr 8) and 0xFF) / 255f
+        val b = (rgb and 0xFF) / 255f
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val span = 1f - abs(max + min - 1f)
+        return if (span <= 0f) 0f else (max - min) / span
+    }
+
     /** True for grey/black/white seeds: their hue is meaningless ([hueOf] gives 0, red). */
-    fun isAchromatic(hex: String): Boolean {
-        val rgb = hex.removePrefix("#").take(6).toIntOrNull(16) ?: return true
-        val hsl = FloatArray(3)
-        androidx.core.graphics.ColorUtils.colorToHSL(rgb or 0xFF000000.toInt(), hsl)
-        return hsl[1] < 0.1f
+    fun isAchromatic(hex: String): Boolean = saturationOf(hex) < 0.1f
+
+    /** Extra chroma a fully saturated cover adds on top of the fixed levels. */
+    private const val MAX_ARTWORK_CHROMA_BOOST = 20
+
+    /**
+     * (dark, light) schemes for now-playing artwork. Fixed chroma and a
+     * hue+60 tertiary made every cover the same pastel: the cover's own
+     * saturation now sets how vivid the accents are, and its second colour,
+     * when it has one, is the tertiary. Grey covers get the monochrome scheme.
+     */
+    fun buildArtworkSchemes(seed: String, second: String?, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
+        if (isAchromatic(seed)) return buildMonochromeDarkScheme(amoled) to buildMonochromeLightScheme()
+        val h = hueOf(seed)
+        val hT = second?.let(::hueOf) ?: ((h + 60) % 360)
+        val boost = ((saturationOf(seed) * 100).roundToInt() - CHROMA_PRIMARY).coerceIn(0, MAX_ARTWORK_CHROMA_BOOST)
+        // Light primaries sit at 40% lightness under white text: half the boost keeps that readable.
+        return build(h, h, hT, h, amoled, chromaBoost = boost) to buildLight(h, h, hT, h, chromaBoost = boost / 2)
     }
 
     /** Full dynamic dark scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
@@ -226,10 +250,11 @@ object Md3SchemeBuilder {
         neutralHue: Int,
         amoled: Boolean,
         monochrome: Boolean = false,
+        chromaBoost: Int = 0,
     ): ColorScheme {
-        val cP = if (monochrome) 0 else CHROMA_PRIMARY
-        val cS = if (monochrome) 0 else CHROMA_SECONDARY
-        val cT = if (monochrome) 0 else CHROMA_TERTIARY
+        val cP = if (monochrome) 0 else CHROMA_PRIMARY + chromaBoost
+        val cS = if (monochrome) 0 else CHROMA_SECONDARY + chromaBoost / 2
+        val cT = if (monochrome) 0 else CHROMA_TERTIARY + chromaBoost / 2
         val cN = if (monochrome) 0 else CHROMA_NEUTRAL
         val cNV = if (monochrome) 0 else CHROMA_NEUTRAL_VARIANT
 
@@ -294,10 +319,11 @@ object Md3SchemeBuilder {
         tertiaryHue: Int,
         neutralHue: Int,
         monochrome: Boolean = false,
+        chromaBoost: Int = 0,
     ): ColorScheme {
-        val cP = if (monochrome) 0 else CHROMA_PRIMARY + 15
-        val cS = if (monochrome) 0 else CHROMA_SECONDARY + 8
-        val cT = if (monochrome) 0 else CHROMA_TERTIARY + 12
+        val cP = if (monochrome) 0 else CHROMA_PRIMARY + 15 + chromaBoost
+        val cS = if (monochrome) 0 else CHROMA_SECONDARY + 8 + chromaBoost / 2
+        val cT = if (monochrome) 0 else CHROMA_TERTIARY + 12 + chromaBoost / 2
         val cN = if (monochrome) 0 else 4
         val cNV = if (monochrome) 0 else 6
 
@@ -342,61 +368,6 @@ object Md3SchemeBuilder {
             inversePrimary = hsl(primaryHue, cP, 80),
             scrim = Color.Black,
         )
-    }
-
-    /** How far now-playing artwork pulls accents away from the base theme. */
-    private const val ART_ACCENT_WEIGHT = 0.4f
-    /** Backgrounds/surfaces only take a faint artwork tint. */
-    private const val ART_NEUTRAL_WEIGHT = 0.12f
-    private const val MUTE_SATURATION = 0.65f
-    private const val MUTE_DARKEN = 0.07f
-    private const val MIN_CONTRAST = 4.5
-
-    /**
-     * Blends now-playing [art] into [base] (the wallpaper/accent theme).
-     * Artwork used to replace the whole scheme with bright, saturated
-     * tones; now the base stays in the lead, accents take [ART_ACCENT_WEIGHT]
-     * of the artwork and are softened (less saturated, slightly darker),
-     * and surfaces only take a faint tint. "On" colors keep the base's
-     * contrast; a muted accent that would drop below [MIN_CONTRAST] against
-     * its on-color falls back to the plain blend. Pure black (AMOLED)
-     * surfaces are never tinted.
-     */
-    fun blendNowPlaying(base: ColorScheme, art: ColorScheme): ColorScheme {
-        fun mix(b: Color, a: Color, w: Float) = androidx.compose.ui.graphics.lerp(b, a, w)
-        fun accent(b: Color, a: Color, on: Color): Color {
-            val blended = mix(b, a, ART_ACCENT_WEIGHT)
-            val muted = mute(blended)
-            return if (contrast(muted, on) >= MIN_CONTRAST || contrast(muted, on) >= contrast(blended, on)) muted else blended
-        }
-        fun neutral(b: Color, a: Color) = if (b == Color.Black) b else mix(b, a, ART_NEUTRAL_WEIGHT)
-        return base.copy(
-            primary = accent(base.primary, art.primary, base.onPrimary),
-            primaryContainer = accent(base.primaryContainer, art.primaryContainer, base.onPrimaryContainer),
-            secondary = accent(base.secondary, art.secondary, base.onSecondary),
-            secondaryContainer = accent(base.secondaryContainer, art.secondaryContainer, base.onSecondaryContainer),
-            tertiary = accent(base.tertiary, art.tertiary, base.onTertiary),
-            tertiaryContainer = accent(base.tertiaryContainer, art.tertiaryContainer, base.onTertiaryContainer),
-            inversePrimary = mute(mix(base.inversePrimary, art.inversePrimary, ART_ACCENT_WEIGHT)),
-            surfaceTint = accent(base.primary, art.primary, base.onPrimary),
-            background = neutral(base.background, art.background),
-            surface = neutral(base.surface, art.surface),
-            surfaceContainerLowest = neutral(base.surfaceContainerLowest, art.surfaceContainerLowest),
-            surfaceContainerLow = neutral(base.surfaceContainerLow, art.surfaceContainerLow),
-            surfaceContainer = neutral(base.surfaceContainer, art.surfaceContainer),
-            surfaceContainerHigh = neutral(base.surfaceContainerHigh, art.surfaceContainerHigh),
-            surfaceContainerHighest = neutral(base.surfaceContainerHighest, art.surfaceContainerHighest),
-            surfaceVariant = neutral(base.surfaceVariant, art.surfaceVariant),
-        )
-    }
-
-    /** Less saturated and a touch darker: the "premium", non-neon look. */
-    private fun mute(color: Color): Color {
-        val hsl = FloatArray(3)
-        androidx.core.graphics.ColorUtils.colorToHSL(color.toArgb(), hsl)
-        hsl[1] *= MUTE_SATURATION
-        hsl[2] = (hsl[2] - MUTE_DARKEN).coerceIn(0f, 1f)
-        return Color(androidx.core.graphics.ColorUtils.HSLToColor(hsl)).copy(alpha = color.alpha)
     }
 
     internal fun contrast(a: Color, b: Color): Double {

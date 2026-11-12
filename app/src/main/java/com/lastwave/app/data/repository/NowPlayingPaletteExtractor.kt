@@ -12,6 +12,9 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Theme seed picked from a cover, plus its next most prominent colour of a different hue. */
+data class ArtworkAccent(val seed: String, val second: String? = null)
+
 /**
  * Extracts a representative accent color from a track's artwork for the
  * "Dynamic Now Playing Theme" setting (Settings → Appearance). Reuses the
@@ -29,7 +32,7 @@ import javax.inject.Singleton
 class NowPlayingPaletteExtractor @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    suspend fun extractAccentHex(artworkUrl: String): String? = withContext(Dispatchers.IO) {
+    suspend fun extractAccent(artworkUrl: String): ArtworkAccent? = withContext(Dispatchers.IO) {
         try {
             val request = ImageRequest.Builder(context)
                 .data(artworkUrl)
@@ -57,6 +60,8 @@ private const val MAX_LIGHTNESS = 0.88f
 private const val MIN_CHROMATIC_SHARE = 0.1f
 /** Swatches smaller than this are logos, text or compression noise. */
 private const val MIN_SWATCH_SHARE = 0.03f
+/** A second colour closer in hue than this is just a shade of the seed. */
+private const val MIN_SECOND_HUE_DELTA = 30
 
 /**
  * Picks the theme seed from (rgb, population) swatches. Used to take
@@ -67,7 +72,7 @@ private const val MIN_SWATCH_SHARE = 0.03f
  * [com.lastwave.app.ui.theme.Md3SchemeBuilder.isAchromatic] turns into the
  * monochrome scheme.
  */
-internal fun pickArtworkAccent(swatches: List<Pair<Int, Int>>): String? {
+internal fun pickArtworkAccent(swatches: List<Pair<Int, Int>>): ArtworkAccent? {
     val total = swatches.sumOf { it.second }.toFloat()
     if (total <= 0f) return null
     val hsl = FloatArray(3)
@@ -76,12 +81,17 @@ internal fun pickArtworkAccent(swatches: List<Pair<Int, Int>>): String? {
         hslOf(rgb).let { it[1] >= MIN_SATURATION && it[2] in MIN_LIGHTNESS..MAX_LIGHTNESS }
     }
     val dominant = swatches.maxBy { it.second }.first
-    if (chromatic.sumOf { it.second } / total < MIN_CHROMATIC_SHARE) return hexOf(grey(dominant, hsl))
-    val best = chromatic
+    if (chromatic.sumOf { it.second } / total < MIN_CHROMATIC_SHARE) return ArtworkAccent(hexOf(grey(dominant, hsl)))
+    val ranked = chromatic
         .filter { it.second / total >= MIN_SWATCH_SHARE }
-        .maxByOrNull { (rgb, population) -> population * (0.5f + hslOf(rgb)[1]) }
-        ?: return hexOf(grey(dominant, hsl))
-    return hexOf(best.first)
+        .sortedByDescending { (rgb, population) -> population * (0.5f + hslOf(rgb)[1]) }
+        .map { it.first }
+    val best = ranked.firstOrNull() ?: return ArtworkAccent(hexOf(grey(dominant, hsl)))
+    val bestHue = hslOf(best)[0].toInt()
+    val second = ranked.firstOrNull {
+        com.lastwave.app.ui.theme.hueDelta(hslOf(it)[0].toInt(), bestHue) >= MIN_SECOND_HUE_DELTA
+    }
+    return ArtworkAccent(hexOf(best), second?.let(::hexOf))
 }
 
 private fun grey(rgb: Int, hsl: FloatArray): Int {

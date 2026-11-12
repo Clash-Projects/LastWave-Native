@@ -101,7 +101,7 @@ internal object WidgetTheme {
         // Same coverage-based pick as the app theme (no filters: greys must count).
         val palette = Palette.from(small).clearFilters().maximumColorCount(16).generate()
         small.recycle()
-        val seed = pickArtworkAccent(palette.swatches.map { it.rgb to it.population }) ?: return null
+        val seed = pickArtworkAccent(palette.swatches.map { it.rgb to it.population })?.seed ?: return null
 
         // Monochromatic: every role is a tone of the cover's one hue. A deep
         // card, light buttons with dark icons, light tinted text. Saturation

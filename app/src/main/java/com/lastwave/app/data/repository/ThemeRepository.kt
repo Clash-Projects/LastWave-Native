@@ -85,15 +85,20 @@ class ThemeRepository @Inject constructor(
 
     /** Cache key (ArtworkNormalizer.cacheKey(name, artist)) of the currently-
      *  scrobbling track, or null when nothing is playing. This is what
-     *  actually drives now-playing theming — see the init block below for
-     *  why a raw artwork URL isn't tracked directly. */
+     *  identifies the track; its cover is [nowPlayingArtworkUrl] when the
+     *  player supplied one, else the ArtworkRepository lookup for this key. */
     private val nowPlayingTrackKey = MutableStateFlow<String?>(null)
 
-    /** Hex extracted from the currently-scrobbling track's artwork, when
+    /** The player's own cover for the current track. Looking the cover up
+     *  again by title/artist could land on a different release, so the
+     *  theme did not match the artwork on screen. */
+    private val nowPlayingArtworkUrl = MutableStateFlow<String?>(null)
+
+    /** Colours extracted from the current track's artwork, when
      *  "Dynamic Now Playing Theme" is on. Null whenever nothing is playing,
      *  no artwork could be resolved from any provider, or extraction
      *  failed — see the init block below. */
-    private val nowPlayingHex = MutableStateFlow<String?>(null)
+    private val nowPlayingAccent = MutableStateFlow<ArtworkAccent?>(null)
 
     private val deferredArtwork = DeferredArtworkLookup(
         scope = applicationScope,
@@ -127,14 +132,14 @@ class ThemeRepository @Inject constructor(
         // disk cache), so this recomputes automatically the moment a
         // result lands, rather than needing a one-shot synchronous URL.
         applicationScope.launch {
-            combine(nowPlayingTrackKey, artworkRepository.resolved) { key, resolvedMap ->
-                key?.let { resolvedMap[it] }
+            combine(nowPlayingTrackKey, nowPlayingArtworkUrl, artworkRepository.resolved) { key, direct, resolvedMap ->
+                key?.let { direct ?: resolvedMap[it] }
             }.distinctUntilChanged().collect { url ->
-                nowPlayingHex.value = if (url.isNullOrBlank()) {
+                nowPlayingAccent.value = if (url.isNullOrBlank()) {
                     null
                 } else {
                     try {
-                        paletteExtractor.extractAccentHex(url)
+                        paletteExtractor.extractAccent(url)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (error: Exception) {
@@ -236,9 +241,9 @@ class ThemeRepository @Inject constructor(
     val uiState: StateFlow<ThemeUiState> = combine(
         themePreferences.prefs,
         dynamicHex,
-        nowPlayingHex,
+        nowPlayingAccent,
         settingsPreferences.settings,
-    ) { prefs: ThemePrefs, dynamic: String?, nowPlaying: String?, misc: MiscSettings ->
+    ) { prefs: ThemePrefs, dynamic: String?, nowPlaying: ArtworkAccent?, misc: MiscSettings ->
         val isAmoled = prefs.amoled
         val isGlass = prefs.liquidGlass
         val isLastWave = prefs.lastWaveTheme
@@ -275,13 +280,10 @@ class ThemeRepository @Inject constructor(
                 dark to light
             }
         }
-        // Artwork complements the wallpaper/accent theme instead of replacing it.
+        // The cover owns the palette while there is one: blended 40% into the
+        // wallpaper theme and muted, every song ended up the same generic tint.
         val (darkScheme, lightScheme) = if (nowPlayingActive) {
-            // Black-and-white covers blend in grey, not a made-up hue.
-            val mono = Md3SchemeBuilder.isAchromatic(nowPlaying!!)
-            val artDark = if (mono) Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass) else Md3SchemeBuilder.buildDarkScheme(nowPlaying, isAmoled, isGlass)
-            val artLight = if (mono) Md3SchemeBuilder.buildMonochromeLightScheme(isGlass) else Md3SchemeBuilder.buildLightScheme(nowPlaying, isGlass)
-            Md3SchemeBuilder.blendNowPlaying(baseDark, artDark) to Md3SchemeBuilder.blendNowPlaying(baseLight, artLight)
+            Md3SchemeBuilder.buildArtworkSchemes(nowPlaying!!.seed, nowPlaying.second, isAmoled)
         } else {
             baseDark to baseLight
         }
@@ -398,16 +400,20 @@ class ThemeRepository @Inject constructor(
      * artwork-showing screen uses — so this benefits from whatever's
      * already cached for that track and won't hammer either provider.
      */
-    fun updateNowPlayingArtwork(trackName: String?, artistName: String?) {
+    fun updateNowPlayingArtwork(trackName: String?, artistName: String?, artworkUrl: String? = null) {
         if (trackName.isNullOrBlank() || artistName.isNullOrBlank()) {
             nowPlayingTrackKey.value = null
+            nowPlayingArtworkUrl.value = null
             deferredArtwork.cancel()
             return
         }
         val key = ArtworkNormalizer.cacheKey(trackName, artistName)
-        if (key == nowPlayingTrackKey.value) return
+        val direct = artworkUrl?.takeIf { it.isNotBlank() }
+        // A caller without a cover (Home's Last.fm poll) must not drop the player's own.
+        if (key == nowPlayingTrackKey.value && (direct == null || direct == nowPlayingArtworkUrl.value)) return
+        nowPlayingArtworkUrl.value = direct
         nowPlayingTrackKey.value = key
-        deferredArtwork.request(trackName, artistName)
+        if (direct == null) deferredArtwork.request(trackName, artistName) else deferredArtwork.cancel()
     }
 
     private fun Color.toHex(): String = "#%02X%02X%02X".format(

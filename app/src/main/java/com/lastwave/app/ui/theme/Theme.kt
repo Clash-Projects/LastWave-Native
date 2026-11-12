@@ -90,9 +90,9 @@ fun LastWaveTheme(
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
-    // ThemeRepository resolves the scheme (wallpaper Monet on S+, with
-    // now-playing artwork blended in), so the UI, widgets and notification
-    // agree. Animated so the theme glides between songs instead of jumping.
+    // ThemeRepository resolves the scheme (now-playing artwork, else wallpaper
+    // Monet on S+), so the UI, widgets and notification agree. Animated so
+    // the theme glides between songs instead of jumping.
     val activeColorScheme = animateColorScheme(
         if (isDark) themeState.darkColorScheme else themeState.lightColorScheme,
     )

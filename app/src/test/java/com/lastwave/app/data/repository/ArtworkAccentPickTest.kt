@@ -21,7 +21,7 @@ class ArtworkAccentPickTest {
                 rgb(0x777777) to 1500, // grey
                 rgb(0xE02020) to 60,   // small red logo
             ),
-        )!!
+        )!!.seed
         assertThat(Md3SchemeBuilder.isAchromatic(seed)).isTrue()
     }
 
@@ -33,7 +33,7 @@ class ArtworkAccentPickTest {
                 rgb(0x0A0A0A) to 2000,
                 rgb(0x22DD22) to 40,   // green artefact
             ),
-        )!!
+        )!!.seed
         assertThat(seed).isEqualTo("#1E3A8A")
     }
 
@@ -44,8 +44,21 @@ class ArtworkAccentPickTest {
                 rgb(0x8A5A3C) to 5000, // muted brown, most of the cover
                 rgb(0xFF3060) to 800,  // vivid pink accent
             ),
-        )!!
+        )!!.seed
         assertThat(seed).isEqualTo("#8A5A3C")
+    }
+
+    @Test
+    fun secondColourIsADifferentHueNotAShadeOfTheSeed() {
+        val accent = pickArtworkAccent(
+            listOf(
+                rgb(0x1E3A8A) to 5000, // blue
+                rgb(0x2A4FB0) to 2500, // lighter blue: same hue
+                rgb(0xD08020) to 1500, // orange
+            ),
+        )!!
+        assertThat(accent.seed).isEqualTo("#1E3A8A")
+        assertThat(accent.second).isEqualTo("#D08020")
     }
 
     @Test
