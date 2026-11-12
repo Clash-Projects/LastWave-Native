@@ -672,6 +672,7 @@ fun PlayerHost(
                                     viewModel.openArtist(artist)
                                 },
                                 onDragStatusChange = { isPlayerDragging = it },
+                                isOpen = expanded,
                             )
                         }
                     }
@@ -730,6 +731,7 @@ internal fun ExpandedPlayer(
     onCollapse: () -> Unit,
     onOpenArtist: (String) -> Unit,
     onDragStatusChange: (Boolean) -> Unit = {},
+    isOpen: Boolean = true,
 ) {
     val state by viewModel.fullPlayerState.collectAsStateWithLifecycle()
     val lyricsState by viewModel.lyricsState.collectAsStateWithLifecycle()
@@ -783,6 +785,7 @@ internal fun ExpandedPlayer(
         youTubeLiked = youTubeLiked,
         onToggleYouTubeLike = { currentTrack?.let(viewModel::toggleYouTubeLike) },
         onDragStatusChange = onDragStatusChange,
+        isOpen = isOpen,
         onSelectLyricsProvider = viewModel::selectLyricsProvider,
         onTryAnotherLyricsSource = viewModel::tryAnotherLyricsSource,
     )

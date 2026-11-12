@@ -371,6 +371,7 @@ internal fun FullPlayer(
     youTubeLiked: Boolean? = null,
     onToggleYouTubeLike: () -> Unit = {},
     onDragStatusChange: (Boolean) -> Unit = {},
+    isOpen: Boolean = true,
     lyricsProviderStatuses: Map<com.lastwave.app.data.local.LyricsProvider, LyricsSyncType> = emptyMap(),
     onProbeLyricsProviders: (() -> Unit)? = null,
     onSelectLyricsProvider: ((com.lastwave.app.data.local.LyricsProvider) -> Unit)? = null,
@@ -489,7 +490,6 @@ internal fun FullPlayer(
     var artworkDragX by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var dismissDragY by remember(track.videoId, track.title) { mutableFloatStateOf(0f) }
     var isDismissDragging by remember { mutableStateOf(false) }
-    LaunchedEffect(isDismissDragging) { onDragStatusChange(isDismissDragging) }
     var seekOverlayDirection by remember(track.videoId, track.title) { mutableStateOf<SeekDirection?>(null) }
     var seekOverlaySeconds by remember(track.videoId, track.title) { mutableIntStateOf(0) }
     var lastTapTimestamp by remember(track.videoId, track.title) { mutableLongStateOf(0L) }
@@ -507,6 +507,13 @@ internal fun FullPlayer(
         animationSpec = if (isDismissDragging) snap() else ExpressiveMotion.spatialSpring(),
         label = "fullPlayerDismissY",
     )
+    // The host stops drawing the shell while the player covers it. After the finger
+    // lifts the sheet is still offset while it springs back, so report until it lands.
+    val sheetMoving by remember { derivedStateOf { isDismissDragging || shownDismissY > 0.5f } }
+    LaunchedEffect(sheetMoving) { onDragStatusChange(sheetMoving) }
+    // A swipe-close keeps its offset for the close morph; reopening before that
+    // morph ends kept it too and left the player parked at the bottom.
+    LaunchedEffect(isOpen) { if (isOpen) dismissDragY = 0f }
     val swipeThreshold = with(LocalDensity.current) { 88.dp.toPx() }
 
     // Dominant cover-art color for the ambient background glow. Extracted
