@@ -771,14 +771,8 @@ internal fun ExpandedPlayer(
         onCollapse = onCollapse,
         onOpenArtist = onOpenArtist,
         isLiked = isLiked,
-        // One heart: always toggles local Liked Songs, and also toggles YouTube
-        // Music's like when the account is connected (toggleYouTubeLike is a no-op otherwise).
-        onToggleLiked = {
-            currentTrack?.let {
-                viewModel.toggleLiked(it)
-                viewModel.toggleYouTubeLike(it)
-            }
-        },
+        // One saved state drives the heart and YouTube sync.
+        onToggleLiked = { currentTrack?.let(viewModel::toggleLiked) },
         onDoubleTapLike = { currentTrack?.let(viewModel::like) },
         youTubeLiked = youTubeLiked,
         onToggleYouTubeLike = { currentTrack?.let(viewModel::toggleYouTubeLike) },
