@@ -698,7 +698,6 @@
     <string name="pl_title">Library</string>
     <string name="pl_selected_count">%1$d selected</string>
     <string name="pl_select_more_hint">Long press to select more</string>
-    <string name="pl_count_only">%1$d Playlists</string>
     <string name="pl_count_tracks">%1$d Playlists • %2$d Tracks</string>
     <string name="pl_delete_selected_cd">Delete selected</string>
     <string name="pl_clear_selection_cd">Clear selection</string>

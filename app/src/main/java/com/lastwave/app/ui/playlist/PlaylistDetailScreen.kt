@@ -292,8 +292,11 @@ fun PlaylistDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
-    val displayTrackIndices = remember(playlist.tracks, currentSort, sortAscending, searchQuery) {
-        playlistTrackDisplayIndices(playlist.tracks, playlist.tracks, currentSort, sortAscending, searchQuery)
+    val displayTrackIndices = remember(playlist.tracks, playlist.remotePlaylistId, currentSort, sortAscending, searchQuery) {
+        playlistTrackDisplayIndices(
+            playlist.tracks, playlist.tracks, currentSort, sortAscending, searchQuery,
+            newestFirst = playlist.remotePlaylistId?.let(com.lastwave.app.data.playlist.PlaylistImportManager::isYtLikedId) == true,
+        )
     }
     val displayTracks = remember(playlist.tracks, displayTrackIndices) {
         displayTrackIndices.map { playlist.tracks[it] }
@@ -650,7 +653,7 @@ fun PlaylistDetailScreen(
                                                 sortAscending = !sortAscending
                                             } else {
                                                 currentSort = option
-                                                sortAscending = option != PlaylistTrackSort.PLAY_TIME
+                                                sortAscending = option != PlaylistTrackSort.DATE_ADDED
                                             }
                                             PlaylistSortMemory.save(context, playlistId, currentSort, sortAscending)
                                             sortMenuOpen = false

@@ -506,7 +506,6 @@
     <string name="pl_title">लाइब्रेरी</string>
     <string name="pl_selected_count">%1$d चयनित</string>
     <string name="pl_select_more_hint">अधिक चुनने के लिए देर तक दबाएँ</string>
-    <string name="pl_count_only">%1$d प्लेलिस्ट</string>
     <string name="pl_count_tracks">%1$d प्लेलिस्ट • %2$d ट्रैक</string>
     <string name="pl_delete_selected_cd">चयनित हटाएँ</string>
     <string name="pl_clear_selection_cd">स्पष्ट चयन</string>

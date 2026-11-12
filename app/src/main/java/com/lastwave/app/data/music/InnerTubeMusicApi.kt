@@ -448,9 +448,10 @@ class InnerTubeMusicApi @Inject constructor(
      * be shown at once instead of being read again.
      */
     private fun trackCountFromHeader(header: JsonObject?): Int? {
+        // Runs read "215 views • 56 tracks • 55 minutes": take the track run, never the first number.
         val text = header?.obj("secondSubtitle")?.array("runs")
             ?.mapNotNull { it.asObject()?.string("text") }
-            ?.joinToString(" ")
+            ?.firstOrNull { "song" in it.lowercase() || "track" in it.lowercase() }
             ?: return null
         return Regex("""([\d][\d.,]*)""").find(text)
             ?.groupValues

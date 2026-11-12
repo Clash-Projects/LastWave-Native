@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.playlist
 
 import com.lastwave.app.data.generate.GeneratedTrack
+import java.text.Collator
 
 // Keep source indices through sorting/filtering: a song may occur more than once.
 internal fun playlistTrackDisplayIndices(
@@ -9,17 +10,24 @@ internal fun playlistTrackDisplayIndices(
     sort: PlaylistTrackSort,
     ascending: Boolean,
     query: String,
+    // YouTube's Liked Music arrives newest-first; every other playlist appends new songs.
+    newestFirst: Boolean = false,
 ): List<Int> {
     val visible = folderTracks.toHashSet()
     val indices = tracks.indices.filter { tracks[it] in visible }
+    // Locale collation so "Émile" sorts with "E", like YouTube Music; unknowns always last.
+    val collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
+    fun by(text: (GeneratedTrack) -> String): Comparator<Int> =
+        Comparator { a, b -> collator.compare(text(tracks[a]), text(tracks[b])) }
     val sorted = when (sort) {
-        PlaylistTrackSort.CUSTOM, PlaylistTrackSort.DATE_ADDED -> if (ascending) indices else indices.reversed()
-        PlaylistTrackSort.NAME -> if (ascending) indices.sortedBy { tracks[it].name.lowercase() }
-            else indices.sortedByDescending { tracks[it].name.lowercase() }
-        PlaylistTrackSort.ARTIST -> if (ascending) indices.sortedBy { tracks[it].artist.lowercase() }
-            else indices.sortedByDescending { tracks[it].artist.lowercase() }
-        PlaylistTrackSort.PLAY_TIME -> if (ascending) indices.sortedBy { tracks[it].playcount ?: tracks[it].listeners ?: 0L }
-            else indices.sortedByDescending { tracks[it].playcount ?: tracks[it].listeners ?: 0L }
+        PlaylistTrackSort.CUSTOM -> if (ascending) indices else indices.reversed()
+        PlaylistTrackSort.DATE_ADDED -> if (ascending != newestFirst) indices else indices.reversed()
+        PlaylistTrackSort.NAME -> indices.sortedWith(by { it.name }.let { if (ascending) it else it.reversed() })
+        PlaylistTrackSort.ARTIST -> indices.sortedWith(by { it.artist }.let { if (ascending) it else it.reversed() })
+        PlaylistTrackSort.PLAY_TIME -> indices.sortedWith(
+            compareBy<Int> { tracks[it].durationMs == null }
+                .then(compareBy<Int> { tracks[it].durationMs }.let { if (ascending) it else it.reversed() }),
+        )
     }
     if (query.isBlank()) return sorted
     val clean = query.lowercase()

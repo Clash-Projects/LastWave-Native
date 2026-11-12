@@ -502,7 +502,6 @@
     <string name="pl_title">라이브러리</string>
     <string name="pl_selected_count">%1$d 선택됨</string>
     <string name="pl_select_more_hint">더 선택하려면 길게 누르세요.</string>
-    <string name="pl_count_only">%1$d 재생목록</string>
     <string name="pl_count_tracks">%1$d 재생 목록 • %2$d 트랙</string>
     <string name="pl_delete_selected_cd">선택 항목 삭제</string>
     <string name="pl_clear_selection_cd">선택 취소</string>

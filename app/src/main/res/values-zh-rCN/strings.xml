@@ -505,7 +505,6 @@
     <string name="pl_title">资料库</string>
     <string name="pl_selected_count">已选择 %1$d</string>
     <string name="pl_select_more_hint">长按选择更多</string>
-    <string name="pl_count_only">%1$d 播放列表</string>
     <string name="pl_count_tracks">%1$d 播放列表 • %2$d 曲目</string>
     <string name="pl_delete_selected_cd">删除所选内容</string>
     <string name="pl_clear_selection_cd">清除选择</string>

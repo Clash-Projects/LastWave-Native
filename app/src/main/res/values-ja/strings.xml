@@ -502,7 +502,6 @@
     <string name="pl_title">ライブラリ</string>
     <string name="pl_selected_count">%1$d が選択されました</string>
     <string name="pl_select_more_hint">長押ししてさらに選択します</string>
-    <string name="pl_count_only">%1$d プレイリスト</string>
     <string name="pl_count_tracks">%1$d プレイリスト • %2$d トラック</string>
     <string name="pl_delete_selected_cd">選択したものを削除</string>
     <string name="pl_clear_selection_cd">選択をクリア</string>
