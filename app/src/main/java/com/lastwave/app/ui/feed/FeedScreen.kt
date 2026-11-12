@@ -746,13 +746,9 @@ fun FeedScreen(
                         // A generic Shape here promoted the whole scrolling viewport to an
                         // offscreen layer: frames re-recorded and re-uploaded its sections
                         // instead of drawing straight to the window. Mask the rounded top
-                        // corners at draw time instead, and only when the list actually
-                        // scrolls under glass.
+                        // corners at draw time instead, with or without glass (top = 0
+                        // when the list starts below the header).
                         .drawWithContent {
-                            if (!useFeedGlass) {
-                                drawContent()
-                                return@drawWithContent
-                            }
                             drawContent()
                             val left = feedCornerInsetPx
                             val right = size.width - feedCornerInsetPx
