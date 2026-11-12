@@ -46,12 +46,37 @@ object Md3SchemeBuilder {
         return (h * 360f).roundToInt().let { ((it % 360) + 360) % 360 }
     }
 
+    /** HSL saturation (0-1) of a hex colour; 0 for anything unparseable. */
+    private fun saturationOf(hex: String): Float {
+        val rgb = hex.removePrefix("#").take(6).toIntOrNull(16) ?: return 0f
+        val r = ((rgb ushr 16) and 0xFF) / 255f
+        val g = ((rgb ushr 8) and 0xFF) / 255f
+        val b = (rgb and 0xFF) / 255f
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val span = 1f - abs(max + min - 1f)
+        return if (span <= 0f) 0f else (max - min) / span
+    }
+
     /** True for grey/black/white seeds: their hue is meaningless ([hueOf] gives 0, red). */
-    fun isAchromatic(hex: String): Boolean {
-        val rgb = hex.removePrefix("#").take(6).toIntOrNull(16) ?: return true
-        val hsl = FloatArray(3)
-        androidx.core.graphics.ColorUtils.colorToHSL(rgb or 0xFF000000.toInt(), hsl)
-        return hsl[1] < 0.1f
+    fun isAchromatic(hex: String): Boolean = saturationOf(hex) < 0.1f
+
+    /** Extra chroma a fully saturated cover adds on top of the fixed levels. */
+    private const val MAX_ARTWORK_CHROMA_BOOST = 20
+
+    /**
+     * (dark, light) schemes for now-playing artwork. Fixed chroma and a
+     * hue+60 tertiary made every cover the same pastel: the cover's own
+     * saturation now sets how vivid the accents are, and its second colour,
+     * when it has one, is the tertiary. Grey covers get the monochrome scheme.
+     */
+    fun buildArtworkSchemes(seed: String, second: String?, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
+        if (isAchromatic(seed)) return buildMonochromeDarkScheme(amoled) to buildMonochromeLightScheme()
+        val h = hueOf(seed)
+        val hT = second?.let(::hueOf) ?: ((h + 60) % 360)
+        val boost = ((saturationOf(seed) * 100).roundToInt() - CHROMA_PRIMARY).coerceIn(0, MAX_ARTWORK_CHROMA_BOOST)
+        // Light primaries sit at 40% lightness under white text: half the boost keeps that readable.
+        return build(h, h, hT, h, amoled, chromaBoost = boost) to buildLight(h, h, hT, h, chromaBoost = boost / 2)
     }
 
     /** Full dynamic dark scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
@@ -225,13 +250,13 @@ object Md3SchemeBuilder {
         neutralHue: Int,
         amoled: Boolean,
         monochrome: Boolean = false,
-        chromaScale: Float = 1f,
+        chromaBoost: Int = 0,
     ): ColorScheme {
-        val cP = if (monochrome) 0 else (CHROMA_PRIMARY * chromaScale).roundToInt()
-        val cS = if (monochrome) 0 else (CHROMA_SECONDARY * chromaScale).roundToInt()
-        val cT = if (monochrome) 0 else (CHROMA_TERTIARY * chromaScale).roundToInt()
-        val cN = if (monochrome) 0 else (CHROMA_NEUTRAL * chromaScale).roundToInt()
-        val cNV = if (monochrome) 0 else (CHROMA_NEUTRAL_VARIANT * chromaScale).roundToInt()
+        val cP = if (monochrome) 0 else CHROMA_PRIMARY + chromaBoost
+        val cS = if (monochrome) 0 else CHROMA_SECONDARY + chromaBoost / 2
+        val cT = if (monochrome) 0 else CHROMA_TERTIARY + chromaBoost / 2
+        val cN = if (monochrome) 0 else CHROMA_NEUTRAL
+        val cNV = if (monochrome) 0 else CHROMA_NEUTRAL_VARIANT
 
         val bgL = if (amoled) 0 else 6
         val sc1L = if (amoled) 4 else 11
@@ -294,13 +319,13 @@ object Md3SchemeBuilder {
         tertiaryHue: Int,
         neutralHue: Int,
         monochrome: Boolean = false,
-        chromaScale: Float = 1f,
+        chromaBoost: Int = 0,
     ): ColorScheme {
-        val cP = if (monochrome) 0 else ((CHROMA_PRIMARY + 15) * chromaScale).roundToInt()
-        val cS = if (monochrome) 0 else ((CHROMA_SECONDARY + 8) * chromaScale).roundToInt()
-        val cT = if (monochrome) 0 else ((CHROMA_TERTIARY + 12) * chromaScale).roundToInt()
-        val cN = if (monochrome) 0 else (4 * chromaScale).roundToInt()
-        val cNV = if (monochrome) 0 else (6 * chromaScale).roundToInt()
+        val cP = if (monochrome) 0 else CHROMA_PRIMARY + 15 + chromaBoost
+        val cS = if (monochrome) 0 else CHROMA_SECONDARY + 8 + chromaBoost / 2
+        val cT = if (monochrome) 0 else CHROMA_TERTIARY + 12 + chromaBoost / 2
+        val cN = if (monochrome) 0 else 4
+        val cNV = if (monochrome) 0 else 6
 
         return androidx.compose.material3.lightColorScheme(
             primary = hsl(primaryHue, cP, 40),
@@ -343,22 +368,6 @@ object Md3SchemeBuilder {
             inversePrimary = hsl(primaryHue, cP, 80),
             scrim = Color.Black,
         )
-    }
-
-    /** Artwork uses its observed hue and chroma, with the existing dark/light tonal roles. */
-    fun buildArtworkScheme(hex: String, amoled: Boolean, dark: Boolean): ColorScheme {
-        val rgb = hex.removePrefix("#").take(6).toIntOrNull(16) ?: 0
-        val hsl = FloatArray(3)
-        androidx.core.graphics.ColorUtils.colorToHSL(rgb or 0xFF000000.toInt(), hsl)
-        val hue = hueOf(hex)
-        val monochrome = isAchromatic(hex)
-        val maxChroma = if (dark) CHROMA_PRIMARY else CHROMA_PRIMARY + 15
-        val chromaScale = (hsl[1] * 100f / maxChroma).coerceIn(0f, 1f)
-        return if (dark) {
-            build(hue, hue, hue, hue, amoled, monochrome, chromaScale)
-        } else {
-            buildLight(hue, hue, hue, hue, monochrome, chromaScale)
-        }
     }
 
     internal fun contrast(a: Color, b: Color): Double {

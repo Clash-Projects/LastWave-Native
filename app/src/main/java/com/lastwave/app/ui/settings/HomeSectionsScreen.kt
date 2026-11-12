@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.People
@@ -179,6 +180,7 @@ val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
     UniversalSectionItem("yt:Live performances", rawTitle = "Live performances", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Headphones),
     UniversalSectionItem("friends_activity", titleRes = R.string.home_section_friends_title, subtitleRes = R.string.home_section_friends_sub, isYouTube = false, icon = Icons.Filled.Group),
     UniversalSectionItem("podcast_shelf", rawTitle = "Podcasts", rawSubtitle = "Popular podcast shows", isYouTube = false, icon = Icons.Filled.Mic),
+    UniversalSectionItem("moods_and_genres", titleRes = R.string.moods_title, rawSubtitle = "Browse by mood and genre", isYouTube = false, icon = Icons.Filled.Category),
     // Extra default YTM sections
     UniversalSectionItem("yt:Similar to", rawTitle = "Similar to", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.Subscriptions),
     UniversalSectionItem("yt:Music video for you", rawTitle = "Music video for you", rawSubtitle = "YouTube Music Section", isYouTube = true, icon = Icons.Filled.SmartDisplay),

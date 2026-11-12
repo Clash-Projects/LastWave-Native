@@ -502,7 +502,6 @@
     <string name="pl_title">Perpustakaan</string>
     <string name="pl_selected_count">%1$d dipilih</string>
     <string name="pl_select_more_hint">Tekan lama untuk memilih lebih banyak</string>
-    <string name="pl_count_only">%1$d Daftar Putar</string>
     <string name="pl_count_tracks">%1$d Daftar Putar • %2$d Lagu</string>
     <string name="pl_delete_selected_cd">Hapus yang dipilih</string>
     <string name="pl_clear_selection_cd">Hapus pilihan</string>

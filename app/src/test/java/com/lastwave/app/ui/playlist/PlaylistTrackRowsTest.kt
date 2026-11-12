@@ -37,4 +37,22 @@ class PlaylistTrackRowsTest {
     fun missingSelectedTrackDoesNotDeleteSameTitleAlternative() {
         assertThat(selectedPlaylistTrackIndex(listOf(first), 0, second)).isNull()
     }
+
+    @Test
+    fun dateAddedDescendingShowsNewestFirstForBothSourceOrders() {
+        val tracks = listOf(first, other, second)
+        assertThat(playlistTrackDisplayIndices(tracks, tracks, PlaylistTrackSort.DATE_ADDED, false, ""))
+            .containsExactly(2, 1, 0).inOrder()
+        assertThat(playlistTrackDisplayIndices(tracks, tracks, PlaylistTrackSort.DATE_ADDED, false, "", newestFirst = true))
+            .containsExactly(0, 1, 2).inOrder()
+    }
+
+    @Test
+    fun playTimeSortsByDurationWithUnknownLast() {
+        val tracks = listOf(first.copy(durationMs = 300), other, second.copy(durationMs = 100))
+        assertThat(playlistTrackDisplayIndices(tracks, tracks, PlaylistTrackSort.PLAY_TIME, true, ""))
+            .containsExactly(2, 0, 1).inOrder()
+        assertThat(playlistTrackDisplayIndices(tracks, tracks, PlaylistTrackSort.PLAY_TIME, false, ""))
+            .containsExactly(0, 2, 1).inOrder()
+    }
 }

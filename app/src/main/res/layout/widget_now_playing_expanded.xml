@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Expanded now-playing widget (4x2 and larger): art beside title, artist, play pill + next.
-     No vertical padding: the wrap_content groups are centred, so the space above and below is always equal. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Expanded now-playing widget (4x2 and larger): large art beside title, artist, play pill + next.
+     The card wraps its content and floats centred in the cell, so the gap above and below is always equal. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+<!-- paddingVertical = 10dp card padding + the background's 6dp inset. -->
+<LinearLayout
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="center_vertical"
     android:background="@drawable/widget_ref_background"
-    android:gravity="center_vertical"
     android:orientation="vertical"
-    android:paddingHorizontal="16dp">
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="16dp">
 
     <!-- Empty state -->
     <LinearLayout
@@ -17,6 +23,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
+        android:paddingHorizontal="6dp"
         android:visibility="gone">
 
         <ImageView
@@ -72,8 +79,8 @@
 
         <ImageView
             android:id="@+id/widget_art"
-            android:layout_width="84dp"
-            android:layout_height="84dp"
+            android:layout_width="108dp"
+            android:layout_height="108dp"
             android:contentDescription="@null"
             android:scaleType="centerCrop"
             android:src="@drawable/widget_art_placeholder" />
@@ -82,6 +89,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
+            android:layout_marginEnd="6dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -89,19 +97,19 @@
             <TextView
                 android:id="@+id/widget_title"
                 android:layout_width="match_parent"
-                android:layout_height="24dp"
-                android:autoSizeMaxTextSize="18sp"
+                android:layout_height="26dp"
+                android:autoSizeMaxTextSize="20sp"
                 android:autoSizeMinTextSize="10sp"
                 android:autoSizeStepGranularity="0.5sp"
                 android:autoSizeTextType="uniform"
                 android:fontFamily="@font/google_sans_flex"
-                android:fontVariationSettings="'wght' 650, 'opsz' 18"
+                android:fontVariationSettings="'wght' 650, 'opsz' 20"
                 android:gravity="center_vertical"
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="Unknown track"
                 android:textColor="@color/widget_on_surface"
-                android:textSize="18sp" />
+                android:textSize="20sp" />
 
             <TextView
                 android:id="@+id/widget_subtitle"
@@ -161,3 +169,4 @@
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
+</FrameLayout>

@@ -1,6 +1,11 @@
 package com.lastwave.app.ui.theme
 
 import android.app.Activity
+import android.content.res.Configuration
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -28,6 +33,8 @@ import com.lastwave.app.data.local.ThemeMode
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
 /** Shared composition local indicating whether bottom navigation tabs are hidden. */
 val LocalHideNavTabs = staticCompositionLocalOf { false }
+/** Settings "Use Bold Font": every text, lyrics included, drawn heavier. */
+val LocalUseBoldFont = staticCompositionLocalOf { false }
 
 /** Swallows every haptic request; provided app-wide when Settings > Haptic Feedback is off. */
 private object SilentHapticFeedback : HapticFeedback {
@@ -88,9 +95,9 @@ fun LastWaveTheme(
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
-    // ThemeRepository resolves the scheme (wallpaper Monet on S+, with
-    // now-playing artwork blended in), so the UI, widgets and notification
-    // agree. Animated so the theme glides between songs instead of jumping.
+    // ThemeRepository resolves the scheme (now-playing artwork, else wallpaper
+    // Monet on S+), so the UI, widgets and notification agree. Animated so
+    // the theme glides between songs instead of jumping.
     val activeColorScheme = animateColorScheme(
         if (isDark) themeState.darkColorScheme else themeState.lightColorScheme,
     )
@@ -114,7 +121,11 @@ fun LastWaveTheme(
 
     MaterialTheme(
         colorScheme = activeColorScheme,
-        typography = if (themeState.useCustomFont) LastWaveTypography else SystemTypography,
+        typography = when {
+            !themeState.useCustomFont -> SystemTypography
+            themeState.useBoldFont -> LastWaveBoldTypography
+            else -> LastWaveTypography
+        },
         shapes = LastWaveShapes,
     ) {
         Surface(
@@ -128,11 +139,32 @@ fun LastWaveTheme(
             val appHaptics = remember(systemHaptics, themeState.uiHaptics) {
                 if (themeState.uiHaptics) systemHaptics else SilentHapticFeedback
             }
+            // The system font has real weights, so Android's own "Bold text"
+            // adjustment thickens it everywhere, even text with an explicit
+            // fontWeight. Not used for the app font: its stroke is set by the
+            // wght axis above, and adjusting the requested weight would only
+            // fake-bold it on top.
+            val context = LocalContext.current
+            val defaultFontResolver = LocalFontFamilyResolver.current
+            val fontResolver = remember(context, themeState.useBoldFont, themeState.useCustomFont, defaultFontResolver) {
+                if (themeState.useBoldFont && !themeState.useCustomFont &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ) {
+                    val config = Configuration(context.resources.configuration).apply {
+                        fontWeightAdjustment = BOLD_FONT_BOOST.toInt()
+                    }
+                    createFontFamilyResolver(context.createConfigurationContext(config))
+                } else {
+                    defaultFontResolver
+                }
+            }
             CompositionLocalProvider(
+                LocalFontFamilyResolver provides fontResolver,
                 LocalHapticFeedback provides appHaptics,
                 LocalLiquidGlass provides themeState.liquidGlass,
                 LocalMd3NavBar provides themeState.md3NavBar,
                 LocalHideNavTabs provides themeState.hideNavTabs,
+                LocalUseBoldFont provides themeState.useBoldFont,
                 LocalIsDarkTheme provides isDark,
             ) {
                 content()

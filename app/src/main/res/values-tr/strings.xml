@@ -514,7 +514,6 @@
     <string name="pl_title">Kitaplık</string>
     <string name="pl_selected_count">%1$d seçildi</string>
     <string name="pl_select_more_hint">Daha fazla seçmek için uzun basın</string>
-    <string name="pl_count_only">%1$d Liste</string>
     <string name="pl_count_tracks">%1$d Liste • %2$d Parça</string>
     <string name="pl_delete_selected_cd">Seçilenleri sil</string>
     <string name="pl_clear_selection_cd">Seçimi temizle</string>

@@ -4353,13 +4353,19 @@ class MusicPlayer @Inject constructor(
                 if (prefixJob == null) warmUpcomingSearches(nextIndex)
                 expectedMediaId = publishedId
                 prefixJob?.cancel()
+                val publishedUri = player.getMediaItemAt(nextIndex).localConfiguration?.uri
                 prefixJob = preloadScope.launch {
                     delay(NEXT_TRACK_PREFETCH_DELAY_MS)
-                    warmStreamPrefix(stream, generation)
+                    if (stream.mimeType == MimeTypes.APPLICATION_MPD) {
+                        publishedUri?.let { warmDashPrefix(it, generation) }
+                    } else {
+                        warmStreamPrefix(stream, generation)
+                    }
                 }
             }
 
-            if (wantProvider) launch {
+            val direct = misc.hiResStart == HiResStart.DIRECT
+            val providerJob = if (wantProvider) launch {
                 val candidate = withTimeoutOrNull(LOSSLESS_BACKGROUND_BUDGET_MS) {
                     runCatching {
                         resolveLosslessTrackAudioStream(
@@ -4371,10 +4377,21 @@ class MusicPlayer @Inject constructor(
                         )
                     }.onFailure { if (it is CancellationException) throw it }.getOrNull()
                 }
-                if (candidate != null && isProviderReadyForStartup(candidate)) publish(candidate)
-            }
+                val probeTimeoutMs = if (direct) STARTUP_PROVIDER_RESOLVE_MS else STARTUP_PROVIDER_PROBE_MS
+                // A DASH manifest cannot be byte-probed: the probe refused every
+                // one, so the next track always started on Opus.
+                val manifest = candidate != null &&
+                    (candidate.segmentedDrm != null || !candidate.mimeType.startsWith("audio/"))
+                if (candidate != null && (if (manifest) direct else isProviderReadyForStartup(candidate, probeTimeoutMs))) {
+                    publish(candidate)
+                }
+            } else null
             launch {
-                resolvePreloadYoutube(nextTrack, quality)?.let { publish(it) }
+                val youtube = resolvePreloadYoutube(nextTrack, quality)
+                // "Best quality first": Opus published early was buffered and
+                // played when the song changed before the provider answered.
+                if (direct) providerJob?.join()
+                youtube?.let { publish(it) }
             }
         }
     }
@@ -4480,6 +4497,34 @@ class MusicPlayer @Inject constructor(
             // A speculative prefix may fail while the stream remains usable.
         } finally {
             runCatching { source.close() }
+        }
+    }
+
+    /** Caches the opening DASH segments under the keys the player's chunk source reads. */
+    private suspend fun warmDashPrefix(manifestUri: Uri, generation: Long) {
+        if (!canWarmPlayback(generation)) return
+        try {
+            val manifest = androidx.media3.exoplayer.upstream.ParsingLoadable.load(
+                cacheDataSourceFactory.createDataSource(),
+                com.lastwave.app.data.plugin.AlacDashManifestParser(),
+                manifestUri,
+                C.DATA_TYPE_MANIFEST,
+            )
+            // shortcut: first representation only, fine while manifests carry one; pick by track selection if that changes.
+            val representation = manifest.getPeriod(0).adaptationSets.firstOrNull()?.representations?.firstOrNull() ?: return
+            val index = representation.index ?: return
+            val baseUrl = representation.baseUrls.firstOrNull()?.url ?: return
+            val available = index.getSegmentCount(manifest.getPeriodDurationUs(0)).takeIf { it > 0 } ?: NEXT_TRACK_PREFETCH_SEGMENTS
+            val first = index.firstSegmentNum
+            val segments = listOfNotNull(representation.initializationUri) +
+                (first until first + minOf(available, NEXT_TRACK_PREFETCH_SEGMENTS)).map(index::getSegmentUrl)
+            for (segment in segments) {
+                if (!canWarmPlayback(generation)) return
+                cacheSingleChunk(androidx.media3.exoplayer.dash.DashUtil.buildDataSpec(representation, baseUrl, segment, 0))
+            }
+            android.util.Log.i("MusicPlayer", "[PRELOAD] warmed ${segments.size} DASH segments")
+        } catch (_: java.io.IOException) {
+            // A speculative prefix may fail while the stream remains usable.
         }
     }
 
@@ -6146,7 +6191,10 @@ class MusicPlayer @Inject constructor(
      * instead of failing inside ExoPlayer. The ranged read is drained so the
      * pooled connection can be reused by the player's own open.
      */
-    private suspend fun isProviderReadyForStartup(stream: ResolvedStream): Boolean {
+    private suspend fun isProviderReadyForStartup(
+        stream: ResolvedStream,
+        timeoutMs: Long = STARTUP_PROVIDER_PROBE_MS,
+    ): Boolean {
         if (stream.segmentedDrm != null || !stream.mimeType.startsWith("audio/")) return false
         if (stream.isExpired()) return false
         if (mediaCache.isCached(stream.cacheKey, 0L, STARTUP_PROBE_BYTES)) return true
@@ -6159,7 +6207,7 @@ class MusicPlayer @Inject constructor(
                 .build()
         }.getOrNull() ?: return false
         val startedAt = SystemClock.elapsedRealtime()
-        return withTimeoutOrNull(STARTUP_PROVIDER_PROBE_MS) {
+        return withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { continuation ->
                 val call = mediaHttpClient.newCall(request)
                 continuation.invokeOnCancellation { call.cancel() }
@@ -6190,7 +6238,7 @@ class MusicPlayer @Inject constructor(
                 })
             }
         } ?: false.also {
-            android.util.Log.i("MusicPlayer", "[STARTUP SOURCE] provider probe timed out after ${STARTUP_PROVIDER_PROBE_MS}ms")
+            android.util.Log.i("MusicPlayer", "[STARTUP SOURCE] provider probe timed out after ${timeoutMs}ms")
         }
     }
 
@@ -6253,7 +6301,12 @@ class MusicPlayer @Inject constructor(
             }
         } else null
 
-        val providerDeadline = SystemClock.elapsedRealtime() + STARTUP_PROVIDER_RESOLVE_MS
+        // "Best quality first" plays Opus only when the provider has nothing:
+        // the short race deadlines sent slow-but-available lossless to Opus.
+        val startDirect = miscSnapshot.hiResStart == HiResStart.DIRECT
+        val providerDeadline = SystemClock.elapsedRealtime() +
+            if (startDirect) LOSSLESS_BACKGROUND_BUDGET_MS else STARTUP_PROVIDER_RESOLVE_MS
+        val probeTimeoutMs = if (startDirect) STARTUP_PROVIDER_RESOLVE_MS else STARTUP_PROVIDER_PROBE_MS
         suspend fun awaitProvider(): ResolvedStream? = try {
             val remaining = (providerDeadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)
             withTimeoutOrNull(remaining) { provider?.await() }
@@ -6300,13 +6353,11 @@ class MusicPlayer @Inject constructor(
         fun isManifest(stream: ResolvedStream) = !stream.mimeType.startsWith("audio/") || stream.segmentedDrm != null
         suspend fun playableProvider(acceptManifest: Boolean): ResolvedStream? = awaitProvider()?.takeIf {
             isStreamAllowedForQuality(it, requestedQuality, miscSnapshot) &&
-                (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it))
+                (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it, probeTimeoutMs))
         }
         // Whichever source is playable first starts. Waiting on the provider
         // first cost 5 s per song whenever it answered slowly or with an error;
         // the upgrade job promotes to the chosen tier once that is playable.
-        // "Start in Hi-Res" opts into that wait, still bounded by the provider deadline.
-        val startDirect = claimPlayback && miscSnapshot.hiResStart == HiResStart.DIRECT
         try {
             ((if (startDirect) {
                 racePlaybackCandidates(
@@ -8989,6 +9040,7 @@ class MusicPlayer @Inject constructor(
         const val PLAYBACK_RETRY_BASE_DELAY_MS = 350L
         const val PLAYBACK_RETRY_JITTER_MS = 250L
         const val NEXT_TRACK_PREFETCH_BYTES = 128L * 1024
+        const val NEXT_TRACK_PREFETCH_SEGMENTS = 3L
         const val NEXT_TRACK_PREFETCH_DELAY_MS = 500L
         /** Delayed start keeps current-track caching off the startup path. */
         const val CURRENT_TRACK_CACHE_START_DELAY_MS = 6_000L

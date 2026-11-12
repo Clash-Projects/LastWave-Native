@@ -196,7 +196,7 @@ internal fun ModernPlainLyricsView(
                 text = plainLyrics,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontFamily = if (MaterialTheme.typography.bodyLarge.fontFamily != androidx.compose.ui.text.font.FontFamily.Default) {
-                        com.lastwave.app.ui.theme.LyricsBackingFontFamily
+                        com.lastwave.app.ui.theme.lyricsBackingFontFamily(com.lastwave.app.ui.theme.LocalUseBoldFont.current)
                     } else {
                         androidx.compose.ui.text.font.FontFamily.Default
                     },

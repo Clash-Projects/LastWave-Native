@@ -103,7 +103,7 @@ enum class RecommendationSource(val id: String, val titleRes: Int, val subtitleR
 /** How a track reaches the selected streaming quality. Downgrades are always seamless. */
 enum class HiResStart(val id: String, val title: String, val subtitle: String) {
     FAST("fast", "Fast start", "Start on Opus, then switch to your quality when ready"),
-    DIRECT("direct", "Best quality first", "Wait for your quality; Opus only if it's slow"),
+    DIRECT("direct", "Best quality first", "Wait for your quality; Opus only if it's unavailable"),
     NEVER("never", "Never upgrade", "Keep the stream a song starts with");
 
     companion object {
@@ -126,6 +126,8 @@ data class MiscSettings(
      *  font (see ui/theme/Type.kt); off: the device's own system font.
      *  Defaults on so the app ships with its own identity out of the box. */
     val useCustomFont: Boolean = true,
+    /** "Use Bold Font": on draws every piece of text, lyrics included, in a heavier weight. */
+    val useBoldFont: Boolean = false,
     /** Last.fm usernames pinned to the top of Home's friend-switcher sheet
      *  (long-press a friend row to toggle). Order among pinned friends
      *  follows whatever order user.getfriends itself returns them in —
@@ -310,6 +312,7 @@ val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "yt:Live performances",
     "friends_activity",
     "podcast_shelf",
+    "moods_and_genres",
     "yt:Similar to",
     "yt:Music video for you",
     "yt:Trending songs for you",
@@ -404,6 +407,7 @@ class SettingsPreferences @Inject constructor(
     private object Keys {
         val DYNAMIC_NOW_PLAYING = booleanPreferencesKey("lw_dynamic_now_playing")
         val USE_CUSTOM_FONT = booleanPreferencesKey("lw_use_custom_font")
+        val USE_BOLD_FONT = booleanPreferencesKey("lw_use_bold_font")
         val PINNED_FRIENDS = stringSetPreferencesKey("lw_pinned_friends")
         val PREFER_LOSSLESS_STREAMING = booleanPreferencesKey("lw_prefer_lossless_streaming")
         /** Legacy on/off toggle; read once to seed [HI_RES_START]. */
@@ -511,6 +515,7 @@ class SettingsPreferences @Inject constructor(
             MiscSettings(
                 dynamicNowPlayingEnabled = p.readSafely(Keys.DYNAMIC_NOW_PLAYING) ?: false,
                 useCustomFont = p.readSafely(Keys.USE_CUSTOM_FONT) ?: true,
+                useBoldFont = p.readSafely(Keys.USE_BOLD_FONT) ?: false,
                 pinnedFriends = p.readSafely(Keys.PINNED_FRIENDS) ?: emptySet(),
                 preferLosslessStreaming = p.readSafely(Keys.PREFER_LOSSLESS_STREAMING) ?: true,
                 hiResStart = HiResStart.fromId(p.readSafely(Keys.HI_RES_START), p.readSafely(Keys.AUTO_UPGRADE_HI_RES)),
@@ -767,6 +772,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setUseCustomFont(enabled: Boolean) {
         dataStore.edit { it[Keys.USE_CUSTOM_FONT] = enabled }
+    }
+
+    suspend fun setUseBoldFont(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_BOLD_FONT] = enabled }
     }
 
     suspend fun setPodcastsEnabled(enabled: Boolean) {

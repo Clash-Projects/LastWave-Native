@@ -502,7 +502,6 @@
     <string name="pl_title">Библиотека</string>
     <string name="pl_selected_count">%1$d выбрано</string>
     <string name="pl_select_more_hint">Длительное нажатие, чтобы выбрать больше</string>
-    <string name="pl_count_only">%1$d Плейлисты</string>
     <string name="pl_count_tracks">%1$d Плейлисты • %2$d Треки</string>
     <string name="pl_delete_selected_cd">Удалить выбранное</string>
     <string name="pl_clear_selection_cd">Очистить выбор</string>

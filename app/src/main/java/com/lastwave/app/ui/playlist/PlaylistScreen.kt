@@ -182,15 +182,10 @@ fun PlaylistScreen(
                     stringResource(R.string.pl_select_more_hint)
                 } else {
                     val totalPlaylistsCount = state.playlists.size + (if (state.isSpotifySyncEnabled) state.spotifyPlaylists.size else 0)
-                    val hasUnknownSpotifyTracks = state.isSpotifySyncEnabled &&
-                        state.spotifyPlaylists.any { it.id != "liked" && it.trackCount == null }
-                    if (state.playlists.any { it.isYouTubeOnly && it.remoteTrackCount == null } || hasUnknownSpotifyTracks) {
-                        stringResource(R.string.pl_count_only, totalPlaylistsCount)
-                    } else {
-                        val totalTracks = state.playlists.sumOf { it.remoteTrackCount ?: it.tracks.size } +
-                            (if (state.isSpotifySyncEnabled) state.spotifyPlaylists.sumOf { it.trackCount ?: 0 } else 0)
-                        stringResource(R.string.pl_count_tracks, totalPlaylistsCount, totalTracks)
-                    }
+                    // A playlist whose remote count is still unknown adds 0 rather than hiding the whole total.
+                    val totalTracks = state.playlists.sumOf { it.remoteTrackCount ?: it.tracks.size } +
+                        (if (state.isSpotifySyncEnabled) state.spotifyPlaylists.sumOf { it.trackCount ?: 0 } else 0)
+                    stringResource(R.string.pl_count_tracks, totalPlaylistsCount, totalTracks)
                 },
                 actions = {
                     if (selectedPlaylists.isNotEmpty()) {

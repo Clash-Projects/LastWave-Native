@@ -366,7 +366,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     publishWaveWidget(state)
                     publishCarBrowseState(state)
                     detectTransition(state)
-                    themeRepository.updateNowPlayingArtwork(state.current?.title, state.current?.artist)
+                    themeRepository.updateNowPlayingArtwork(state.current?.title, state.current?.artist, state.current?.artworkUrl)
                 }
         }
         scope.launch {

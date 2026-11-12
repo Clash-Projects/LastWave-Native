@@ -509,7 +509,6 @@
     <string name="pl_title">Bibliothèque</string>
     <string name="pl_selected_count">%1$d sélectionné</string>
     <string name="pl_select_more_hint">Appuyez longuement pour en sélectionner plus</string>
-    <string name="pl_count_only">%1$d Listes de lecture</string>
     <string name="pl_count_tracks">%1$d Listes de lecture • %2$d Pistes</string>
     <string name="pl_delete_selected_cd">Supprimer la sélection</string>
     <string name="pl_clear_selection_cd">Effacer la sélection</string>

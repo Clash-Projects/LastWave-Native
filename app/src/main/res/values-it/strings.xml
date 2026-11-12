@@ -535,7 +535,6 @@
     <string name="pl_title">Libreria</string>
     <string name="pl_selected_count">%1$d selezionati</string>
     <string name="pl_select_more_hint">Tieni premuto per selezionarne altri</string>
-    <string name="pl_count_only">%1$d playlist</string>
     <string name="pl_count_tracks">%1$d playlist • %2$d brani</string>
     <string name="pl_delete_selected_cd">Elimina selezionati</string>
     <string name="pl_clear_selection_cd">Annulla selezione</string>

@@ -654,7 +654,6 @@
     <string name="pl_title">Thư viện</string>
     <string name="pl_selected_count">Đã chọn %1$d</string>
     <string name="pl_select_more_hint">Nhấn giữ để chọn thêm</string>
-    <string name="pl_count_only">%1$d danh sách phát</string>
     <string name="pl_count_tracks">%1$d danh sách phát • %2$d bài hát</string>
     <string name="pl_delete_selected_cd">Xóa mục đã chọn</string>
     <string name="pl_clear_selection_cd">Bỏ chọn</string>

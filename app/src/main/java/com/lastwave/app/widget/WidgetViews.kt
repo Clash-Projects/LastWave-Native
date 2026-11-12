@@ -18,8 +18,9 @@ import com.lastwave.app.R
  * Provides dedicated layout archetypes for every slot ratio:
  * - Compact (<220dp width, 1 row, e.g. 2x1): art + title/artist + play.
  * - Standard (>=220dp width, <115dp height, e.g. 3x1, 4x1, 5x1): art + title/artist + play + next.
- * - Square / tall (<250dp width, >=115dp height, e.g. 2x2, 3x2): art + title/artist/EQ row over play pill + next.
- * - Expanded (>=250dp width, >=115dp height, e.g. 4x2, 5x2, 4x3): art beside title, artist, play pill + next.
+ * - Square / tall (>=115dp height, e.g. 2x2, 3x2): art + title/artist/EQ row over play pill + next.
+ * - Expanded (>=250dp width, >=140dp height, e.g. 4x2, 5x2, 4x3): large art beside title, artist, play pill + next.
+ *   140dp is the height of its wrap-content card; shorter cells take the square layout.
  *
  * On Android 12+ (API 31+), responsive size-mapping delivers fluid resizing.
  * On Android 10/11, options-based selection picks the best matching layout.
@@ -75,7 +76,7 @@ internal object WidgetViews {
                 SizeF(120f, 50f) to buildLayout(context, R.layout.widget_now_playing_compact, resolved, appWidgetId, eqFrame, themed),
                 SizeF(220f, 50f) to buildLayout(context, R.layout.widget_now_playing, resolved, appWidgetId, eqFrame, themed),
                 SizeF(120f, 115f) to buildLayout(context, R.layout.widget_now_playing_square, resolved, appWidgetId, eqFrame, themed),
-                SizeF(250f, 115f) to buildLayout(context, R.layout.widget_now_playing_expanded, resolved, appWidgetId, eqFrame, themed),
+                SizeF(250f, 140f) to buildLayout(context, R.layout.widget_now_playing_expanded, resolved, appWidgetId, eqFrame, themed),
             )
             return RemoteViews(sizeMap)
         }
@@ -84,8 +85,8 @@ internal object WidgetViews {
         val width = minWidthDp(context, appWidgetId)
         val height = minHeightDp(context, appWidgetId)
         val layoutId = when {
-            height >= 115 && width < 250 -> R.layout.widget_now_playing_square
-            height >= 115 && width >= 250 -> R.layout.widget_now_playing_expanded
+            height >= 140 && width >= 250 -> R.layout.widget_now_playing_expanded
+            height >= 115 -> R.layout.widget_now_playing_square
             width in 1 until 220 -> R.layout.widget_now_playing_compact
             else -> R.layout.widget_now_playing
         }

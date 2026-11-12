@@ -41,7 +41,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -64,7 +63,6 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -118,7 +116,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -624,6 +621,7 @@ fun FeedScreen(
                         key == "new_releases" -> showSynthetic && combinedNewReleases.isNotEmpty()
                         key == "friends_activity" || key == "friends" -> state.feedData.friends.isNotEmpty()
                         key == "podcast_shelf" || key == "podcasts" -> showSynthetic && podcastsEnabled && state.feedData.podcastShows.isNotEmpty()
+                        key == "moods_and_genres" -> true
                         key.startsWith("yt:") -> resolveNativeShelf(key) != null
                         else -> false
                     }
@@ -938,8 +936,6 @@ fun FeedScreen(
                                             FeedSectionHeader(
                                                 title = stringResource(R.string.feed_discover),
                                                 subtitle = stringResource(R.string.feed_discover_sub),
-                                                actionText = stringResource(R.string.feed_see_all),
-                                                actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                                 onActionClick = onOpenDiscover,
                                                 onLongClick = { sectionMenuTarget = "discover_new_music" to "Discover New Music" },
                                             )
@@ -1330,8 +1326,6 @@ fun FeedScreen(
                                             FeedSectionHeader(
                                                 title = stringResource(R.string.feed_releases),
                                                 subtitle = stringResource(R.string.feed_releases_sub),
-                                                actionText = stringResource(R.string.feed_see_all),
-                                                actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                                 onActionClick = onOpenNewReleases,
                                                 onLongClick = { sectionMenuTarget = "new_releases" to "New Releases" },
                                             )
@@ -1370,8 +1364,6 @@ fun FeedScreen(
                                             FeedSectionHeader(
                                                 title = stringResource(R.string.feed_friends),
                                                 subtitle = stringResource(R.string.feed_friends_sub),
-                                                actionText = stringResource(R.string.feed_see_all),
-                                                actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                                 onActionClick = onOpenFriends,
                                                 onLongClick = { sectionMenuTarget = "friends_activity" to "Friends Activity" },
                                             )
@@ -1405,8 +1397,6 @@ fun FeedScreen(
                                                 title = state.feedData.podcastShelfTitle
                                                     ?.takeIf { it.isNotBlank() }
                                                     ?: stringResource(R.string.podcasts_title),
-                                                actionText = stringResource(R.string.podcasts_see_all),
-                                                actionIcon = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                                 onActionClick = {
                                                     val chip = state.homeChips.firstOrNull { it.title.equals("Podcasts", ignoreCase = true) }
                                                         ?: HomeChip(title = "Podcasts", params = "ggMPOg1mZWVkX3BvZGNhc3Rz")
@@ -1438,6 +1428,16 @@ fun FeedScreen(
                                         }
                                     }
                                 }
+                                sectionKey == "moods_and_genres" -> {
+                                    item(key = "moods_and_genres", contentType = "moods_and_genres") {
+                                        HomeContainerSection(shape = getContainerShape("moods_and_genres")) {
+                                            val moodsTitle = stringResource(R.string.moods_title)
+                                            com.lastwave.app.ui.moods.HomeMoodsSection(
+                                                onLongClick = { sectionMenuTarget = "moods_and_genres" to moodsTitle },
+                                            )
+                                        }
+                                    }
+                                }
                                 sectionKey.startsWith("yt:") -> {
                                     val shelf = ytShelfBySectionKey[sectionKey]
                                     if (shelf != null && shelf.items.isNotEmpty()) {
@@ -1463,21 +1463,6 @@ fun FeedScreen(
                                             }
                                         }
                                     }
-                                }
-                            }
-                            if (sectionKey == orderedFeedSections.firstOrNull { it == "podcast_shelf" || it == "podcasts" }) {
-                                item(key = "moods_and_genres", contentType = "moods_and_genres") {
-                                    HomeContainerSection {
-                                        com.lastwave.app.ui.moods.HomeMoodsSection()
-                                    }
-                                }
-                            }
-                        }
-
-                        if (orderedFeedSections.none { it == "podcast_shelf" || it == "podcasts" }) {
-                            item(key = "moods_and_genres", contentType = "moods_and_genres") {
-                                HomeContainerSection {
-                                    com.lastwave.app.ui.moods.HomeMoodsSection()
                                 }
                             }
                         }
