@@ -78,13 +78,13 @@
                 android:orientation="horizontal">
 
                 <ImageButton
-                    android:id="@+id/notification_shuffle"
+                    android:id="@+id/notification_like"
                     android:layout_width="40dp"
                     android:layout_height="40dp"
                     android:background="@android:color/transparent"
-                    android:contentDescription="@string/desc_shuffle"
+                    android:contentDescription="@string/wave_widget_like"
                     android:padding="9dp"
-                    android:src="@drawable/ic_widget_shuffle" />
+                    android:src="@drawable/ic_wave_widget_favorite" />
 
                 <ImageButton
                     android:id="@+id/notification_previous"
@@ -128,13 +128,13 @@
                     android:src="@drawable/ic_widget_skip_next" />
 
                 <ImageButton
-                    android:id="@+id/notification_repeat"
+                    android:id="@+id/notification_shuffle"
                     android:layout_width="40dp"
                     android:layout_height="40dp"
                     android:background="@android:color/transparent"
-                    android:contentDescription="@string/desc_repeat"
+                    android:contentDescription="@string/desc_shuffle"
                     android:padding="9dp"
-                    android:src="@drawable/ic_widget_repeat" />
+                    android:src="@drawable/ic_widget_shuffle" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

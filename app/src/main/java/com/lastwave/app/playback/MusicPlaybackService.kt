@@ -96,6 +96,7 @@ internal const val NOTIFICATION_ID = 4102
 internal const val ACTION_PREVIOUS = "com.lastwave.app.playback.PREVIOUS"
 internal const val ACTION_TOGGLE = "com.lastwave.app.playback.TOGGLE"
 internal const val ACTION_NEXT = "com.lastwave.app.playback.NEXT"
+internal const val ACTION_LIKE = "com.lastwave.app.playback.LIKE"
 internal const val ACTION_SHUFFLE = "com.lastwave.app.playback.SHUFFLE"
 internal const val ACTION_REPEAT = "com.lastwave.app.playback.REPEAT"
 internal const val ACTION_STOP = "com.lastwave.app.playback.STOP"
@@ -278,8 +279,11 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                         if (rating?.ratingStyle == RatingCompat.RATING_HEART) setCurrentTrackLiked(rating.hasHeart())
                     }
                     override fun onCustomAction(action: String?, extras: Bundle?) {
-                        if (action == OriginOsMusicCard.ACTION_PLAY_MODE) {
-                            setOriginOsLoopMode(extras?.getInt(OriginOsMusicCard.KEY_LOOP_MODE) ?: 0)
+                        when (action) {
+                            ACTION_LIKE -> toggleNotificationLike()
+                            ACTION_SHUFFLE -> musicPlayer.toggleShuffle()
+                            OriginOsMusicCard.ACTION_PLAY_MODE ->
+                                setOriginOsLoopMode(extras?.getInt(OriginOsMusicCard.KEY_LOOP_MODE) ?: 0)
                         }
                     }
                     override fun onPlayFromSearch(query: String?, extras: Bundle?) {
@@ -395,6 +399,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             // The heart of the metadata follows a like made anywhere in the app.
             trackLikeController.likedTrackKeys.drop(1).collect {
                 publishSystemState(musicPlayer.state.value)
+                publishNotification(musicPlayer.state.value, force = true)
                 publishWaveWidget(musicPlayer.state.value, force = true)
             }
         }
@@ -666,6 +671,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             ACTION_PREVIOUS -> musicPlayer.previous()
             ACTION_TOGGLE -> musicPlayer.togglePlayPause()
             ACTION_NEXT -> musicPlayer.next()
+            ACTION_LIKE -> toggleNotificationLike()
             ACTION_SHUFFLE -> musicPlayer.toggleShuffle()
             ACTION_REPEAT -> musicPlayer.cycleRepeatMode()
             ACTION_STOP -> musicPlayer.stopAndClear()
@@ -751,6 +757,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         const val ACTION_PREVIOUS = "com.lastwave.app.playback.PREVIOUS"
         const val ACTION_TOGGLE = "com.lastwave.app.playback.TOGGLE"
         const val ACTION_NEXT = "com.lastwave.app.playback.NEXT"
+        const val ACTION_LIKE = "com.lastwave.app.playback.LIKE"
         const val ACTION_SHUFFLE = "com.lastwave.app.playback.SHUFFLE"
         const val ACTION_REPEAT = "com.lastwave.app.playback.REPEAT"
         const val ACTION_STOP = "com.lastwave.app.playback.STOP"
