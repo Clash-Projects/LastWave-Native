@@ -237,7 +237,6 @@ fun MainShell(
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenDiscover: () -> Unit,
-    onOpenGenres: () -> Unit,
     onOpenFriends: () -> Unit,
     onOpenFriendProfile: (username: String, displayName: String?, avatarUrl: String?) -> Unit = { _, _, _ -> },
     onOpenFeedPlaylist: (String) -> Unit,
@@ -435,9 +434,6 @@ fun MainShell(
                         MainTab.STATS -> HomeScreen(
                             onOpenSettings = onOpenSettings,
                             onOpenSearch = onOpenSearch,
-                            onOpenDiscover = onOpenDiscover,
-                            onOpenGenres = onOpenGenres,
-                            onOpenFriends = onOpenFriends,
                             onOpenDownloads = onOpenDownloads,
                         )
                         MainTab.PLAYLISTS -> PlaylistScreen(

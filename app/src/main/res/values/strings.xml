@@ -1447,4 +1447,28 @@
     <string name="spotify_playlists_section_title">Spotify</string>
     <string name="spotify_liked_songs_title">Liked Songs</string>
     <string name="spotify_liked_songs_sub">Your Spotify likes</string>
+
+    <!-- Listening Insights -->
+    <string name="listening_insights_subtitle">Your music, your story</string>
+    <string name="listening_insights_loading">Crunching your listening stats…</string>
+    <string name="listening_insights_hero_overline">YOUR LISTENING</string>
+    <string name="listening_insights_hero_caption">Total listening time</string>
+    <string name="listening_insights_total_plays">Total Plays</string>
+    <string name="listening_insights_unique_tracks">Unique Tracks</string>
+    <string name="listening_insights_unique_artists">Unique Artists</string>
+    <string name="listening_insights_skip_rate">Skip Rate</string>
+    <string name="listening_insights_skip_summary">You skip approximately %1$d%% of your listening sessions.</string>
+    <string name="listening_insights_skip_insufficient">Keep listening — skip insights become meaningful after a few more sessions.</string>
+    <string name="listening_insights_top_artists">Top Artists</string>
+    <string name="listening_insights_top_tracks">Top Tracks</string>
+    <string name="listening_insights_empty_title">Start listening</string>
+    <string name="listening_insights_empty_body">Your personal listening insights will appear here as you enjoy music in LastWave.</string>
+    <plurals name="listening_insights_tracks_count">
+        <item quantity="one">%1$d track</item>
+        <item quantity="other">%1$d tracks</item>
+    </plurals>
+    <plurals name="listening_insights_plays_count">
+        <item quantity="one">%1$d play</item>
+        <item quantity="other">%1$d plays</item>
+    </plurals>
 </resources>
