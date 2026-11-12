@@ -53,6 +53,9 @@
     <string name="settings_lyrics_animation">歌词动画</string>
     <string name="settings_equalizer">均衡器</string>
     <string name="settings_equalizer_sub">15 段频率塑造声音</string>
+    <string name="settings_wavy_seekbar">波浪进度条</string>
+    <string name="settings_wavy_seekbar_on">多层流体波浪进度条</string>
+    <string name="settings_wavy_seekbar_off">经典标准进度条</string>
     <string name="settings_studio_clarity">母带级清晰度</string>
     <string name="settings_studio_clarity_on">晶透开阔的声音 • 空灵细节 • 深邃干净的分离度</string>
     <string name="settings_studio_clarity_off">原始未加工输出</string>

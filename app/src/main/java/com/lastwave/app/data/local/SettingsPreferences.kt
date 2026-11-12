@@ -182,6 +182,8 @@ data class MiscSettings(
     val autoplaySimilarEnabled: Boolean = true,
     /** Crossfade length in seconds; kept within the native settings slider range. */
     val crossfadeSeconds: Int = 5,
+    /** Animated wavy seekbar in the player; off by default (classic slider). */
+    val wavySeekbarEnabled: Boolean = false,
     val rotatingBackgroundEnabled: Boolean = true,
     /** When true, animates fluid rotating artwork in the lyrics background.
      *  When false (default), uses static blurred artwork background in the lyrics view. */
@@ -427,6 +429,7 @@ class SettingsPreferences @Inject constructor(
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val AUTOPLAY_SIMILAR_ENABLED = booleanPreferencesKey("lw_autoplay_similar_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
+        val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val LYRICS_ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_lyrics_rotating_background_enabled")
         val KEEP_LYRICS_SCREEN_AWAKE = booleanPreferencesKey("lw_keep_lyrics_screen_awake")
@@ -538,6 +541,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 autoplaySimilarEnabled = p.readSafely(Keys.AUTOPLAY_SIMILAR_ENABLED) ?: true,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
+                wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: false,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: false,
                 keepLyricsScreenAwake = p.readSafely(Keys.KEEP_LYRICS_SCREEN_AWAKE) ?: false,
@@ -946,6 +950,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setCrossfadeSeconds(seconds: Int) {
         dataStore.edit { it[Keys.CROSSFADE_SECONDS] = seconds.coerceIn(1, 12) }
+    }
+
+    suspend fun setWavySeekbarEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.WAVY_SEEKBAR_ENABLED] = enabled }
     }
 
     suspend fun setRotatingBackgroundEnabled(enabled: Boolean) {

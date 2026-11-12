@@ -164,6 +164,7 @@ fun ModernLyricsPanel(
     player: MusicPlayer,
     lyricsState: LyricsUiState,
     progressState: StateFlow<PlaybackProgressState>? = null,
+    wavySeekbarEnabled: Boolean = false,
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     onRetry: () -> Unit = {},
@@ -181,6 +182,7 @@ fun ModernLyricsPanel(
     /** Language the translate button targets; blank = follow the app language. */
     translationLanguage: String = "",
     primaryColor: Color = MaterialTheme.colorScheme.primary,
+    secondaryColor: Color = MaterialTheme.colorScheme.secondary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     lyricsProviderStatuses: Map<LyricsProvider, com.lastwave.app.data.lyrics.LyricsSyncType> = emptyMap(),
     onProbeLyricsProviders: (() -> Unit)? = null,
@@ -587,6 +589,7 @@ fun ModernLyricsPanel(
             progressFlow = progressFlow,
             progressInitial = progressInitial,
             player = player,
+            wavySeekbarEnabled = wavySeekbarEnabled,
             onToggleFullscreen = onToggleFullscreen,
             isFullscreen = isFullscreen,
             lyricsOffsetMs = lyricsOffsetMs,
@@ -612,6 +615,7 @@ fun ModernLyricsPanel(
                 effectiveFontScale = previewScale
             },
             primaryColor = primaryColor,
+            secondaryColor = secondaryColor,
             tertiaryColor = tertiaryColor,
             canShareLyrics = canShareLyrics,
             onShareLyrics = { showShareDialog = true },

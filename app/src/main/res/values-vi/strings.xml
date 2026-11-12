@@ -156,6 +156,9 @@
     <string name="settings_lyrics_provider_desc">Được thử đầu tiên cho mọi bài hát. Nếu không có kết quả, ứng dụng sẽ tự động chuyển sang các nguồn khác.</string>
     <string name="settings_equalizer">Bộ cân bằng âm</string>
     <string name="settings_equalizer_sub">Tinh chỉnh âm thanh trên 15 dải tần</string>
+    <string name="settings_wavy_seekbar">Thanh tua dạng sóng</string>
+    <string name="settings_wavy_seekbar_on">Thanh tiến trình dạng sóng nhiều lớp mượt mà</string>
+    <string name="settings_wavy_seekbar_off">Thanh tiến trình tiêu chuẩn cổ điển</string>
     <string name="settings_rotating_background">Nền xoay</string>
     <string name="settings_rotating_background_on">Hiệu ứng ảnh bìa xoay mượt trong trình phát và màn hình lời bài hát</string>
     <string name="settings_rotating_background_off">Nền mờ tĩnh (khuyến nghị cho Android 11 trở xuống)</string>

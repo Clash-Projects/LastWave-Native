@@ -51,6 +51,9 @@
     <string name="settings_lyrics_animation">Animación de letras</string>
     <string name="settings_equalizer">Ecualizador</string>
     <string name="settings_equalizer_sub">Moldea el sonido en 15 bandas</string>
+    <string name="settings_wavy_seekbar">Barra ondulada</string>
+    <string name="settings_wavy_seekbar_on">Deslizador ondulado fluido multicapa</string>
+    <string name="settings_wavy_seekbar_off">Deslizador clásico estándar</string>
     <string name="settings_studio_clarity">Claridad Master de estudio</string>
     <string name="settings_studio_clarity_on">Sonido abierto cristalino • detalle aéreo • separación profunda y limpia</string>
     <string name="settings_studio_clarity_off">Salida original sin procesar</string>

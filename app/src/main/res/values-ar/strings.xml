@@ -51,6 +51,9 @@
     <string name="settings_lyrics_animation">حركة الكلمات</string>
     <string name="settings_equalizer">المعادل</string>
     <string name="settings_equalizer_sub">شكّل الصوت عبر 15 نطاقًا</string>
+    <string name="settings_wavy_seekbar">شريط التمرير المتموج</string>
+    <string name="settings_wavy_seekbar_on">منزلق متموج سائل متعدد الطبقات</string>
+    <string name="settings_wavy_seekbar_off">منزلق قياسي كلاسيكي</string>
     <string name="settings_studio_clarity">وضوح الاستوديو الرئيسي</string>
     <string name="settings_studio_clarity_on">صوت مفتوح صافٍ • تفاصيل رحبة • فصل عميق ونظيف</string>
     <string name="settings_studio_clarity_off">خرج أصلي دون معالجة</string>

@@ -156,6 +156,9 @@
     <string name="settings_lyrics_provider_desc">Tried first for every song. If it returns nothing, the app automatically falls through to the other providers.</string>
     <string name="settings_equalizer">Equalizer</string>
     <string name="settings_equalizer_sub">Shape your sound across 15 frequencies</string>
+    <string name="settings_wavy_seekbar">Wavy Seekbar</string>
+    <string name="settings_wavy_seekbar_on">Multi-layer fluid wavy progress slider</string>
+    <string name="settings_wavy_seekbar_off">Classic standard progress slider</string>
     <string name="settings_rotating_background">Rotating Background</string>
     <string name="settings_rotating_background_on">Animate fluid rotating artwork in player and lyrics view</string>
     <string name="settings_rotating_background_off">Static blurred background (recommended for Android 11 and below)</string>
