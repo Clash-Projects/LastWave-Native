@@ -81,6 +81,10 @@ class NativeProcessingAudioSink(
     // from bitPerfectActuallyActive: the flag only takes effect when the sink
     // next configures (next track). A mid-track toggle leaves stale config.
     @Volatile private var bitPerfectAtConfigure = false
+    // Only a granted BIT_PERFECT mixer ignores AudioTrack volume. Elsewhere
+    // software gain lands behind the whole AudioTrack buffer (4.6 s on a
+    // shared mixer), so a fade or mute was heard seconds late.
+    @Volatile private var mixerIgnoresVolume = false
     @Volatile private var hasConfigured = false
     @Volatile private var exclusiveWanted = false
     @Volatile private var usbExclusive = false
@@ -283,7 +287,7 @@ class NativeProcessingAudioSink(
             directEq.configure(format.sampleRate, format.channelCount, format.pcmEncoding)
         }
 
-        if (exclusiveWanted && internalDirect?.hasOpenStream() == true) {
+        if (exclusiveWanted && internalWanted && internalDirect?.hasOpenStream() == true) {
             // A direct AudioTrack left open on the DAC by the previous item
             // keeps snd-usb-audio busy and would make the usbdevfs claim fail.
             internalActive = false
@@ -301,7 +305,7 @@ class NativeProcessingAudioSink(
             return
         }
         // Not engaging this time: never keep the exclusive endpoint reserved.
-        if (internalDirect?.hasOpenStream() == true) runCatching { internalDirect?.reset() }
+        if (internalWanted && internalDirect?.hasOpenStream() == true) runCatching { internalDirect?.reset() }
 
         if (bitPerfectRequested) {
             Log.i(
@@ -364,6 +368,7 @@ class NativeProcessingAudioSink(
                 // AudioTrack opens — setting it after configure() leaves the
                 // first track on the shared mixer (192k -> 48k hijack).
                 configureUsbOutput(format, format.pcmEncoding, outputChannels)
+                mixerIgnoresVolume = usbOutput?.isConfigured() == true
                 enhancedDelegate.configure(format, specifiedBufferSize, outputChannels)
                 if (activeDelegate !== enhancedDelegate) safeFlush(fallbackDelegate)
                 activeDelegate = enhancedDelegate
@@ -379,6 +384,7 @@ class NativeProcessingAudioSink(
                 // LastWave resampler runs at any depth.
                 safeResetProcessor()
                 configureUsbOutput(format, format.pcmEncoding, outputChannels)
+                mixerIgnoresVolume = usbOutput?.isConfigured() == true
                 fallbackDelegate.configure(format, specifiedBufferSize, outputChannels)
                 if (activeDelegate !== fallbackDelegate) safeFlush(enhancedDelegate)
                 activeDelegate = fallbackDelegate
@@ -714,7 +720,7 @@ class NativeProcessingAudioSink(
         encodedAccessUnitCount: Int,
     ): Boolean {
         val gain = lastVolume
-        val needsGain = bitPerfectRequested && bitPerfectAtConfigure && hasConfigured &&
+        val needsGain = bitPerfectRequested && bitPerfectAtConfigure && mixerIgnoresVolume && hasConfigured &&
             gain < 1f - 1e-6f && gain >= 0f && buffer.hasRemaining()
         if (!needsGain) {
             lastGainBuffer = null
@@ -1050,6 +1056,9 @@ class NativeProcessingAudioSink(
             internalStartFailed = false
         } else if (!wanted && internalActive) {
             leaveInternalDirect(configureAndroid = hasConfigured && configuredFormat != null)
+        } else if (!wanted && wasWanted && internalDirect?.hasOpenStream() == true) {
+            // Kept open between items for reuse; the deck that now plays may need it.
+            runCatching { internalDirect?.reset() }
         }
     }
 
@@ -1577,7 +1586,7 @@ class NativeProcessingAudioSink(
         // ignores AudioTrack volume, so the direct path pins platform gain
         // at unity and scales in software only when exclusive is off.
         val forwarded = if (usbExclusive || internalActive ||
-            (bitPerfectRequested && bitPerfectAtConfigure && !processingActive)
+            (bitPerfectRequested && bitPerfectAtConfigure && mixerIgnoresVolume && !processingActive)
         ) 1f else volume
         enhancedDelegate.setVolume(forwarded)
         fallbackDelegate.setVolume(forwarded)
@@ -1594,7 +1603,7 @@ class NativeProcessingAudioSink(
      */
     private fun syncDelegateVolume() {
         val forwarded = if (usbExclusive || internalActive ||
-            (bitPerfectRequested && bitPerfectAtConfigure && !processingActive)
+            (bitPerfectRequested && bitPerfectAtConfigure && mixerIgnoresVolume && !processingActive)
         ) 1f else lastVolume
         runCatching { enhancedDelegate.setVolume(forwarded) }
         runCatching { fallbackDelegate.setVolume(forwarded) }
