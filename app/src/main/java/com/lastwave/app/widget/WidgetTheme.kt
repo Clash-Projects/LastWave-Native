@@ -103,9 +103,9 @@ internal object WidgetTheme {
         small.recycle()
         val seed = pickArtworkAccent(palette.swatches.map { it.rgb to it.population }) ?: return null
 
-        // One hue, three tones: a dark muted card, a warm mid-tone for the
-        // buttons, near-white text. Saturation is capped, never raised, so a
-        // vivid cover gives olive/mustard rather than neon and a grey cover
+        // One hue, all dark and muted: a near-black tinted card, slightly
+        // lighter buttons, near-white text and icons. Saturation is capped,
+        // never raised, so a vivid cover never turns neon and a grey cover
         // stays grey.
         val hsl = FloatArray(3)
         ColorUtils.colorToHSL(Color.parseColor(seed), hsl)
@@ -113,11 +113,11 @@ internal object WidgetTheme {
         val saturation = hsl[1]
         fun tone(maxSaturation: Float, lightness: Float) =
             ColorUtils.HSLToColor(floatArrayOf(hue, saturation.coerceAtMost(maxSaturation), lightness))
-        val text = tone(0.25f, 0.93f)
+        val text = tone(0.14f, 0.93f)
         return Colors(
-            surface = tone(0.36f, 0.17f),
-            primary = tone(0.55f, 0.64f),
-            onPrimary = tone(0.40f, 0.12f),
+            surface = tone(0.24f, 0.12f),
+            primary = tone(0.26f, 0.29f),
+            onPrimary = text,
             text = text,
             subText = ColorUtils.setAlphaComponent(text, 0xB8),
             track = ColorUtils.setAlphaComponent(text, 0x33),

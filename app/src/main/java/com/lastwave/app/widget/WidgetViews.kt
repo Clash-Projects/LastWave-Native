@@ -8,7 +8,6 @@ import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import com.lastwave.app.R
 
 /**
@@ -17,10 +16,10 @@ import com.lastwave.app.R
  * onUpdate always pushes valid content.
  *
  * Provides dedicated layout archetypes for every slot ratio:
- * - Compact horizontal (<220dp width, e.g. 2x1): art + title/artist + play FAB.
- * - Standard horizontal (>=220dp width, <115dp height, e.g. 3x1, 4x1, 5x1): art + track + EQ + controls.
- * - Square / tall (<250dp width, >=115dp height, e.g. 2x2, 3x2, 3x3): centered large art + info + centered controls.
- * - Expanded (>=250dp width, >=115dp height, e.g. 4x2, 5x2, 4x3): full-height square art + title + artist + play pill + next.
+ * - Compact (<220dp width, 1 row, e.g. 2x1): art + title/artist + play.
+ * - Standard (>=220dp width, <115dp height, e.g. 3x1, 4x1, 5x1): art + title/artist + play + next.
+ * - Square / tall (<250dp width, >=115dp height, e.g. 2x2, 3x2): art + title/artist/EQ row over play pill + next.
+ * - Expanded (>=250dp width, >=115dp height, e.g. 4x2, 5x2, 4x3): art beside title, artist, play pill + next.
  *
  * On Android 12+ (API 31+), responsive size-mapping delivers fluid resizing.
  * On Android 10/11, options-based selection picks the best matching layout.
@@ -109,12 +108,6 @@ internal object WidgetViews {
             appWidgetId = appWidgetId,
             eqFrame = eqFrame,
             themed = themed,
-            isCompact = (layoutId == R.layout.widget_now_playing_compact),
-            artPlaceholder = if (layoutId == R.layout.widget_now_playing_expanded) {
-                R.drawable.widget_art_placeholder_large
-            } else {
-                R.drawable.widget_art_placeholder
-            },
         )
         return views
     }
@@ -126,8 +119,6 @@ internal object WidgetViews {
         appWidgetId: Int,
         eqFrame: Int?,
         themed: WidgetTheme.Themed,
-        isCompact: Boolean,
-        artPlaceholder: Int,
     ) {
         val snapshot = resolved.snapshot
         if (!resolved.usableSession) {
@@ -149,16 +140,6 @@ internal object WidgetViews {
         views.setViewVisibility(R.id.widget_empty_group, View.GONE)
         views.setViewVisibility(R.id.widget_content_group, View.VISIBLE)
 
-        if (isCompact) {
-            views.setViewVisibility(R.id.widget_prev, View.GONE)
-            views.setViewVisibility(R.id.widget_next, View.GONE)
-            views.setViewVisibility(R.id.widget_eq_group, View.GONE)
-        } else {
-            views.setViewVisibility(R.id.widget_prev, View.VISIBLE)
-            views.setViewVisibility(R.id.widget_next, View.VISIBLE)
-            views.setViewVisibility(R.id.widget_eq_group, View.VISIBLE)
-        }
-
         views.setTextViewText(
             R.id.widget_title,
             snapshot.title.ifBlank { "Unknown track" },
@@ -168,10 +149,6 @@ internal object WidgetViews {
             snapshot.artist.ifBlank { "Unknown artist" },
         )
         val playing = snapshot.isPlaying
-        views.setTextViewText(
-            R.id.widget_state,
-            if (playing) "Pause" else "Play",
-        )
         views.setImageViewResource(
             R.id.widget_play_pause,
             if (playing) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
@@ -184,18 +161,11 @@ internal object WidgetViews {
             views.setImageViewResource(R.id.widget_eq_icon, frame)
         }
 
-        // Prev/next vectors: tint to widget_icon_tint for crisp contrast on glass surfaces
-        runCatching {
-            val tint = ContextCompat.getColor(context, R.color.widget_icon_tint)
-            views.setInt(R.id.widget_prev, "setColorFilter", tint)
-            views.setInt(R.id.widget_next, "setColorFilter", tint)
-        }
-
         WidgetTheme.apply(views, themed.colors)
         if (themed.art != null) {
             views.setImageViewBitmap(R.id.widget_art, themed.art)
         } else {
-            views.setImageViewResource(R.id.widget_art, artPlaceholder)
+            views.setImageViewResource(R.id.widget_art, R.drawable.widget_art_placeholder)
         }
 
         views.setOnClickPendingIntent(R.id.widget_root, WidgetActions.openAppPending(context))
@@ -206,14 +176,6 @@ internal object WidgetViews {
         views.setOnClickPendingIntent(
             R.id.widget_play_pause_container,
             WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_state,
-            WidgetActions.togglePending(context, NowPlayingWidgetReceiver::class.java),
-        )
-        views.setOnClickPendingIntent(
-            R.id.widget_prev,
-            WidgetActions.prevPending(context, NowPlayingWidgetReceiver::class.java),
         )
         views.setOnClickPendingIntent(
             R.id.widget_next,

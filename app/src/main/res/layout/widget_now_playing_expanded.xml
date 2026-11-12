@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Expanded now-playing widget (4x2 and larger): square art filling the height, title, artist, play pill + next. -->
+<!-- Expanded now-playing widget (4x2 and larger): art beside title, artist, play pill + next.
+     No vertical padding: the wrap_content groups are centred, so the space above and below is always equal. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -7,7 +8,7 @@
     android:background="@drawable/widget_ref_background"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:paddingHorizontal="16dp">
 
     <!-- Empty state -->
     <LinearLayout
@@ -16,7 +17,6 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="4dp"
         android:visibility="gone">
 
         <ImageView
@@ -39,7 +39,8 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:fontFamily="@font/google_sans_flex"
-                android:fontVariationSettings="'wght' 650"
+                android:fontVariationSettings="'wght' 650, 'opsz' 17"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="@string/widget_name"
                 android:textColor="@color/widget_on_surface"
@@ -49,9 +50,11 @@
                 android:id="@+id/widget_empty_sub"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="4dp"
                 android:ellipsize="end"
                 android:fontFamily="@font/google_sans_flex"
+                android:fontVariationSettings="'wght' 450, 'opsz' 13"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="@string/widget_description"
                 android:textColor="@color/widget_on_surface"
@@ -63,43 +66,38 @@
     <LinearLayout
         android:id="@+id/widget_content_group"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Square art: height fills the card, width follows the (square) bitmap.
-             maxWidth keeps room for the controls on tall, narrow slots. -->
         <ImageView
             android:id="@+id/widget_art"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:adjustViewBounds="true"
+            android:layout_width="84dp"
+            android:layout_height="84dp"
             android:contentDescription="@null"
-            android:maxWidth="128dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/widget_art_placeholder_large" />
+            android:scaleType="centerCrop"
+            android:src="@drawable/widget_art_placeholder" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
-            android:layout_marginEnd="4dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <!-- Fixed height so the title can auto-size to the width on one line. -->
+            <!-- Fixed height so autosize shrinks long titles to fit one line instead of ellipsizing. -->
             <TextView
                 android:id="@+id/widget_title"
                 android:layout_width="match_parent"
-                android:layout_height="30dp"
-                android:autoSizeMaxTextSize="22sp"
-                android:autoSizeMinTextSize="12sp"
-                android:autoSizeStepGranularity="1sp"
+                android:layout_height="24dp"
+                android:autoSizeMaxTextSize="18sp"
+                android:autoSizeMinTextSize="10sp"
+                android:autoSizeStepGranularity="0.5sp"
                 android:autoSizeTextType="uniform"
-                android:ellipsize="end"
                 android:fontFamily="@font/google_sans_flex"
-                android:fontVariationSettings="'wght' 700"
+                android:fontVariationSettings="'wght' 650, 'opsz' 18"
                 android:gravity="center_vertical"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="Unknown track"
                 android:textColor="@color/widget_on_surface"
@@ -109,31 +107,30 @@
                 android:id="@+id/widget_subtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:fontFamily="@font/google_sans_flex"
-                android:fontVariationSettings="'wght' 450"
+                android:fontVariationSettings="'wght' 450, 'opsz' 13"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="Unknown artist"
                 android:textColor="@color/widget_on_surface"
                 android:textSize="13.5sp" />
 
             <LinearLayout
-                android:id="@+id/widget_controls_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <!-- Play/Pause pill takes the spare width, so it never clips. -->
                 <LinearLayout
                     android:id="@+id/widget_play_pause_container"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
                     android:background="@drawable/widget_ref_pill"
-                    android:gravity="center"
-                    android:orientation="horizontal">
+                    android:gravity="center">
 
                     <ImageView
                         android:id="@+id/widget_play_pause"
@@ -150,8 +147,7 @@
                     android:layout_height="36dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/widget_ref_circle"
-                    android:gravity="center"
-                    android:orientation="horizontal">
+                    android:gravity="center">
 
                     <ImageView
                         android:id="@+id/widget_next"
