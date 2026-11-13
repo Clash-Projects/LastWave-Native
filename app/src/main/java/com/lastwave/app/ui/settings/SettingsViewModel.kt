@@ -12,6 +12,7 @@ import com.lastwave.app.data.local.AppIcon
 import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.EqualizerSettings
 import com.lastwave.app.data.local.MiscSettings
+import com.lastwave.app.data.local.SeekbarStyle
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
 import com.lastwave.app.playback.haptics.MusicHapticsIntensity
@@ -758,6 +759,9 @@ class SettingsViewModel @Inject constructor(
     }
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
+    }
+    fun setSeekbarStyle(style: SeekbarStyle) = launchSettingsAction("update seekbar style") {
+        settingsPreferences.setSeekbarStyle(style)
     }
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
