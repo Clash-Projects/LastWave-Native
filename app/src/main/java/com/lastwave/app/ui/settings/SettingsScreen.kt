@@ -1225,7 +1225,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 12) { index, position ->
+                    SettingsGroup(rowCount = 13) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1353,6 +1353,17 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUiHaptics,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.ui_haptics"),
+                            )
+                            12 -> SettingsToggleCard(
+                                icon = Icons.Filled.Apps,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_collapsing_nav_bar),
+                                subtitle = stringResource(R.string.settings_collapsing_nav_bar_sub),
+                                checked = misc.collapsingNavBar,
+                                onCheckedChange = viewModel::setCollapsingNavBar,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.collapsing_nav_bar"),
                             )
                         }
                     }

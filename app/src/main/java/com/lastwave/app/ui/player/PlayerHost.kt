@@ -510,7 +510,8 @@ fun PlayerHost(
     val morphCardColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
     val bottomNavSlot = remember { mutableStateOf<BottomNavigationContent>({ _ -> }) }
-    val chromeCollapse = rememberChromeCollapseState(enabled = hasBottomNavigation)
+    // Off: progress stays at 0, which is the classic full bar + full mini player layout.
+    val chromeCollapse = rememberChromeCollapseState(enabled = hasBottomNavigation && settings.collapsingNavBar)
     // While docking, the card slides down over the fading bar, not under it.
     val chromeDocking by remember { derivedStateOf { chromeCollapse.progress() > 0f } }
     LaunchedEffect(viewModel) {
