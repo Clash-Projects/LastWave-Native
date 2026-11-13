@@ -511,6 +511,8 @@ fun PlayerHost(
 
     val bottomNavSlot = remember { mutableStateOf<BottomNavigationContent>({ _ -> }) }
     val chromeCollapse = rememberChromeCollapseState(enabled = hasBottomNavigation)
+    // While docking, the card slides down over the fading bar, not under it.
+    val chromeDocking by remember { derivedStateOf { chromeCollapse.progress() > 0f } }
     LaunchedEffect(viewModel) {
         viewModel.toastMessage.collect { msg ->
             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
@@ -584,7 +586,7 @@ fun PlayerHost(
                     compactProgress = chromeCollapse.progress,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .zIndex(if (miniOnTop) 1f else 0f)
+                        .zIndex(if (miniOnTop || chromeDocking) 1f else 0f)
                         .graphicsLayer {
                             val p = playerExpansion.value.coerceIn(0f, 1f)
                             alpha = (1f - p * 2.2f).coerceIn(0f, 1f)
