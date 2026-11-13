@@ -125,6 +125,9 @@ class DirectPcmEq {
         if (length <= 0) return false
         return runCatching {
             when {
+                // Never write through a read-only view: the memory behind it can be
+                // write-protected (decoder output), and writing there is a SIGSEGV.
+                buffer.isReadOnly -> false
                 buffer.isDirect -> ParametricEqNative.nativeProcessDirect(handle, buffer, start, length, enc)
                 buffer.hasArray() && !buffer.isReadOnly -> ParametricEqNative.nativeProcessArray(
                     handle,

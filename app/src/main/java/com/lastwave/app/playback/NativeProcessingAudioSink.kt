@@ -151,6 +151,14 @@ class NativeProcessingAudioSink(
     private val directEq = com.lastwave.app.playback.eq.DirectPcmEq()
     /** Buffer already equalised: Media3 retries the same object until consumed. */
     private var directEqBuffer: ByteBuffer? = null
+    /**
+     * Decoder output buffers are read-only, and on some devices the memory is
+     * write-protected too: equalising one in place crashed with SIGSEGV. Such a
+     * buffer is copied into [eqCopy] (owned here, reused) and the copy is what
+     * gets equalised and routed; [eqCopySource] is the decoder buffer it mirrors.
+     */
+    private var eqCopySource: ByteBuffer? = null
+    private var eqCopy: ByteBuffer? = null
 
     /**
      * Music-haptics analyser. Fed here, before any routing, because this is the
@@ -283,6 +291,7 @@ class NativeProcessingAudioSink(
             onConfiguredFormat?.invoke(format.sampleRate, format.pcmEncoding, format.channelCount)
         }
         directEqBuffer = null
+        eqCopySource = null
         if (format.sampleMimeType == MimeTypes.AUDIO_RAW && format.sampleRate > 0) {
             directEq.configure(format.sampleRate, format.channelCount, format.pcmEncoding)
         }
@@ -614,19 +623,51 @@ class NativeProcessingAudioSink(
                 )
             }
         }
-        if (directEqBuffer !== buffer && isDirectEqRoute()) {
-            directEq.process(buffer)
-            directEqBuffer = buffer
+        // A copy in flight stays the routed buffer until consumed, even if the
+        // route or the EQ changes meanwhile: the delegate requires the same
+        // object on every retry.
+        val routed = when {
+            eqCopySource === buffer -> eqCopy ?: buffer
+            !isDirectEqRoute() -> buffer
+            buffer.isReadOnly -> if (com.lastwave.app.playback.eq.ParametricEqNative.isEngaged()) {
+                copyForEq(buffer).also {
+                    directEq.process(it)
+                    eqCopySource = buffer
+                }
+            } else {
+                buffer
+            }
+            else -> {
+                if (directEqBuffer !== buffer) {
+                    directEq.process(buffer)
+                    directEqBuffer = buffer
+                }
+                buffer
+            }
         }
-        val consumed = handleRoutedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        val consumed = handleRoutedBuffer(routed, presentationTimeUs, encodedAccessUnitCount)
+        // The copy holds buffer[position, limit): mirror how far it got.
+        if (routed !== buffer) buffer.position(buffer.limit() - routed.remaining())
         // Decoder buffers are recycled objects: once consumed, the next
         // payload in the same object must be equalised again.
         if (consumed) {
             directEqBuffer = null
+            eqCopySource = null
             hapticsBuffer = null
             skipCheckedBuffer = null
         }
         return consumed
+    }
+
+    private fun copyForEq(source: ByteBuffer): ByteBuffer {
+        val needed = source.remaining()
+        val target = eqCopy?.takeIf { it.capacity() >= needed }
+            ?: ByteBuffer.allocateDirect(needed).also { eqCopy = it }
+        target.clear()
+        target.order(source.order())
+        target.put(source.duplicate())
+        target.flip()
+        return target
     }
 
     /** True when this buffer bypasses the native DSP (where the EQ otherwise runs). */
@@ -1629,6 +1670,7 @@ class NativeProcessingAudioSink(
     override fun flush() {
         directEq.reset()
         directEqBuffer = null
+        eqCopySource = null
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.flush() }
         clearPending()
@@ -1671,6 +1713,8 @@ class NativeProcessingAudioSink(
     override fun reset() {
         directEq.reset()
         directEqBuffer = null
+        eqCopySource = null
+        eqCopy = null
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.reset() }
         usbOutput?.setFormat(null)
