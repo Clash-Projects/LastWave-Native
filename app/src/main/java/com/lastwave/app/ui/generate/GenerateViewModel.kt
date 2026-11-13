@@ -10,6 +10,7 @@ import com.lastwave.app.data.generate.RECOMMENDATION_TRACK_COUNT
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.naming.PlaylistNamer
 import com.lastwave.app.data.playlist.PlaylistRepository
+import com.lastwave.app.playback.toPlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -84,7 +85,11 @@ class GenerateViewModel @Inject constructor(
     private val artworkRepository: com.lastwave.app.data.artwork.ArtworkRepository,
     private val generationStatus: GenerationStatus,
     private val mixLauncher: MixLauncher,
+    private val musicPlayer: com.lastwave.app.playback.MusicPlayer,
 ) : ViewModel() {
+
+    /** Set by a "Start Mix" launch: the generated mix also becomes the queue. */
+    private var queueNextResult = false
 
     private val _uiState = MutableStateFlow(GenerateUiState())
     val uiState: StateFlow<GenerateUiState> = _uiState.asStateFlow()
@@ -114,6 +119,7 @@ class GenerateViewModel @Inject constructor(
                             error = null,
                         )
                     }
+                    queueNextResult = true
                     generate()
                 }
             }
@@ -211,6 +217,10 @@ class GenerateViewModel @Inject constructor(
     fun dismissError() = _uiState.update { it.copy(error = null) }
 
     fun generate() {
+        // Taken first, so a launch that fails validation or is refused here
+        // can never make a later manual generate re-queue.
+        val queueMix = queueNextResult
+        queueNextResult = false
         val state = _uiState.value
         if (state.isGenerating) return
         val mode = state.selectedMode ?: return
@@ -317,6 +327,8 @@ class GenerateViewModel @Inject constructor(
                 )
                 val saved = playlistRepository.save(title, subtitle, mode.storageValue, finalTracks)
                 lastSavedPlaylistId.value = saved.id
+                // Start Mix: the playing song stays, the mix takes over the queue after it.
+                if (queueMix) musicPlayer.replaceUpcoming(finalTracks.map { it.toPlayableTrack() })
 
                 // Playlist is persisted — done from the user's point of view.
                 // Cover-art enrichment keeps running in the background and

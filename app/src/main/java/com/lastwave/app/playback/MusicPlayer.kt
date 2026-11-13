@@ -3095,6 +3095,21 @@ class MusicPlayer @Inject constructor(
         }
     }
 
+    /**
+     * "Start Mix": the playing song carries on untouched and everything after
+     * it becomes [tracks]. One main-thread step, so nothing can be queued
+     * between the clear and the append; clearing also stops radio/discover
+     * from refilling the queue around the mix. With nothing playing, the
+     * append starts the mix itself.
+     */
+    fun replaceUpcoming(tracks: List<PlayableTrack>) {
+        if (tracks.isEmpty()) return
+        onMain {
+            clearUpcoming()
+            appendTracksToQueue(tracks)
+        }
+    }
+
     /** Adds the varied continuation loaded for a search-started track.
      * A stale response can never modify a newer playback queue. */
     fun appendSearchRecommendations(seed: PlayableTrack, tracks: List<PlayableTrack>) {

@@ -30,7 +30,14 @@ class GenerateSeedSearchTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        viewModel = GenerateViewModel(repository, mockk<PlaylistRepository>(), mockk<ArtworkRepository>(), GenerationStatus(), MixLauncher())
+        viewModel = GenerateViewModel(
+            repository,
+            mockk<PlaylistRepository>(),
+            mockk<ArtworkRepository>(),
+            GenerationStatus(),
+            MixLauncher(),
+            mockk<com.lastwave.app.playback.MusicPlayer>(relaxed = true),
+        )
     }
 
     @After

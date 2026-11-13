@@ -135,8 +135,8 @@ class ArtistAlbumMenuViewModel @Inject constructor(
     }
 }
 
-/** Builds similar songs using YouTube Music + Last.fm and appends them to active queue
- *  without generating a separate playlist or interrupting current playback. */
+/** Builds similar songs using YouTube Music + Last.fm and switches the queue to
+ *  them: the playing song keeps playing and the mix replaces what came after it. */
 @HiltViewModel
 class StartMixMenuViewModel @Inject constructor(
     private val generateRepository: com.lastwave.app.data.generate.GenerateRepository,
@@ -156,8 +156,8 @@ class StartMixMenuViewModel @Inject constructor(
                 )
                 if (similar.isNotEmpty()) {
                     val playable = similar.map { it.toPlayableTrack() }
-                    musicPlayer.appendTracksToQueue(playable)
-                    android.widget.Toast.makeText(appContext, "Added ${playable.size} mix tracks to queue", android.widget.Toast.LENGTH_SHORT).show()
+                    musicPlayer.replaceUpcoming(playable)
+                    android.widget.Toast.makeText(appContext, "Queue switched to a mix of ${playable.size} songs", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     android.widget.Toast.makeText(appContext, "Could not find related tracks", android.widget.Toast.LENGTH_SHORT).show()
                 }
