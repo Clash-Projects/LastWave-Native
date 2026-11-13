@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.layout.layout
@@ -170,6 +171,13 @@ internal fun Modifier.collapsedNavPill(progress: () -> Float): Modifier = this
         }
     }
     .size(CompactPillSize)
+
+/** Draw-phase scale towards [compact]; the control keeps its laid-out touch target. */
+internal fun Modifier.collapseScale(compact: Float, progress: () -> Float): Modifier =
+    graphicsLayer {
+        scaleX = lerp(1f, compact, progress())
+        scaleY = scaleX
+    }
 
 /** Square box whose side follows [progress]; measured in the layout phase only. */
 internal fun Modifier.collapseSquare(expanded: Dp, compact: Dp, progress: () -> Float): Modifier =
