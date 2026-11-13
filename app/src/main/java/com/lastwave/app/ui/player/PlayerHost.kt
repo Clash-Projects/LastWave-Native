@@ -510,6 +510,7 @@ fun PlayerHost(
     val morphCardColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
     val bottomNavSlot = remember { mutableStateOf<BottomNavigationContent>({ _ -> }) }
+    val chromeCollapse = rememberChromeCollapseState(enabled = hasBottomNavigation)
     LaunchedEffect(viewModel) {
         viewModel.toastMessage.collect { msg ->
             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
@@ -530,6 +531,7 @@ fun PlayerHost(
             0.dp
         },
         LocalBottomNavSlot provides bottomNavSlot,
+        LocalChromeCollapse provides chromeCollapse,
         LocalLiquidGlassBackdrop provides (if (miniGlass) miniBackdrop else null),
     ) {
         Box(
@@ -558,6 +560,11 @@ fun PlayerHost(
                 }
             }
             if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer && showMiniPlayer) {
+                val miniBottomPadding = if (hasBottomNavigation) {
+                    if (material3NavigationEnabled) 84.dp else 80.dp
+                } else {
+                    14.dp
+                }
                 MiniPlayer(
                     state = state,
                     progressState = viewModel.miniProgressState,
@@ -566,11 +573,7 @@ fun PlayerHost(
                     onPrevious = viewModel.player::previous,
                     onNext = viewModel.player::next,
                     onClose = viewModel.player::stopAndClear,
-                    bottomPadding = if (hasBottomNavigation) {
-                        if (material3NavigationEnabled) 84.dp else 80.dp
-                    } else {
-                        14.dp
-                    },
+                    bottomPadding = miniBottomPadding,
                     edgeToEdge = !hasBottomNavigation,
                     backdrop = if (miniGlass) miniBackdrop else null,
                     onCardBounds = { rootBounds ->
@@ -578,6 +581,7 @@ fun PlayerHost(
                             miniCardBounds = rootBounds.translate(-hostOrigin)
                         }
                     },
+                    compactProgress = chromeCollapse.progress,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .zIndex(if (miniOnTop) 1f else 0f)
@@ -586,7 +590,8 @@ fun PlayerHost(
                             alpha = (1f - p * 2.2f).coerceIn(0f, 1f)
                             // Follow the morphing card's top edge as it rises.
                             translationY = -(miniCardBounds?.top ?: 0f) * p
-                        },
+                        }
+                        .dockBesidePill(miniBottomPadding, chromeCollapse.progress),
                 )
             }
 

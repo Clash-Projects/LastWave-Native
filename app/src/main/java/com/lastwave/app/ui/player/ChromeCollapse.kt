@@ -172,6 +172,24 @@ internal fun Modifier.collapsedNavPill(progress: () -> Float): Modifier = this
     }
     .size(CompactPillSize)
 
+/**
+ * Moves the mini player into the collapsed nav row, beside the pill. [lift] is its expanded
+ * gap above the bottom inset. Done in layout, not as a draw translation, so the card's touch
+ * bounds and the bounds the full player morphs from follow it.
+ */
+internal fun Modifier.dockBesidePill(lift: Dp, progress: () -> Float): Modifier =
+    layout { measurable, constraints ->
+        val p = progress()
+        val shiftX = ((CompactPillSize + CompactRowGap).toPx() * p).roundToInt()
+        val shiftY = ((lift - CompactRowBottomMargin).toPx() * p).roundToInt()
+        val placeable = measurable.measure(constraints.offset(horizontal = -shiftX))
+        // Reporting less height than measured drops the card by shiftY; only the empty
+        // bottom padding hangs below the screen edge.
+        layout(placeable.width + shiftX, (placeable.height - shiftY).coerceAtLeast(0)) {
+            placeable.placeRelative(shiftX, 0)
+        }
+    }
+
 /** Draw-phase scale towards [compact]; the control keeps its laid-out touch target. */
 internal fun Modifier.collapseScale(compact: Float, progress: () -> Float): Modifier =
     graphicsLayer {
