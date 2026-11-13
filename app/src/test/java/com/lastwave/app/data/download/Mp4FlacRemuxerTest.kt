@@ -120,6 +120,22 @@ class Mp4FlacRemuxerTest {
     }
 
     @Test
+    fun detectsAtmosContainerAndNeverAsFlac() {
+        val atmos = tempFolder.newFile("atmos.m4a")
+        atmos.writeBytes(
+            box("ftyp", "M4A ".toByteArray(Charsets.US_ASCII)) +
+                box("moov", box("trak", box("stbl", box("stsd", box("ec-3", box("dec3", byteArrayOf(0))))))) +
+                box("mdat", frameBytes(0x0A.toByte())),
+        )
+        assertThat(Mp4FlacRemuxer.isMp4Spatial(atmos)).isTrue()
+        assertThat(Mp4FlacRemuxer.isMp4Flac(atmos)).isFalse()
+
+        val flac = tempFolder.newFile("stereo.m4a")
+        flac.writeBytes(buildContainer(withFlac = true, frames = frameBytes(0x0A.toByte())))
+        assertThat(Mp4FlacRemuxer.isMp4Spatial(flac)).isFalse()
+    }
+
+    @Test
     fun refusesTruncatedContainer() {
         val input = tempFolder.newFile("truncated.m4a")
         val full = buildContainer(withFlac = true, frames = frameBytes(0x0A.toByte()))

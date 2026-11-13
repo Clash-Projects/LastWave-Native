@@ -1588,6 +1588,14 @@ class TrackDownloadManager @Inject constructor(
                     // rather than losing a completed download.
                     // Addon streams can also be progressive FLAC-in-MP4 (served
                     // as audio/mp4), so check the file and not only the manifest.
+                    // The bytes decide Atmos: the addon can omit its atmos flag
+                    // (codec defaults to "flac") and the loopback always answers
+                    // audio/mp4, which used to relabel E-AC-3 as FLAC or "M4A AAC".
+                    if (extension == "m4a" && Mp4FlacRemuxer.isMp4Spatial(currentAudioFile)) {
+                        formatBadge = "DOLBY ATMOS"
+                        flacInMp4Badge = null
+                        dashIsFlacInMp4 = false
+                    }
                     val progressiveFlacInMp4 = !dashIsFlacInMp4 && extension == "m4a" &&
                         flacInMp4Badge != null && Mp4FlacRemuxer.isMp4Flac(currentAudioFile)
                     if (progressiveFlacInMp4) {
