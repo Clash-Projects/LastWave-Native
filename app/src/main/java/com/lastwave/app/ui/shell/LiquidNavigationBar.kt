@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -18,12 +19,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -144,7 +147,7 @@ private fun LiquidNavigationBarContent(
     val neutralInk = ink.copy(alpha = 0.92f)
     val pageColor = MaterialTheme.colorScheme.background
     val surfaceColor = MaterialTheme.colorScheme.surface
-    val railTint = if (isDark) Color(0xFF111319).copy(alpha = 0.32f) else Color.White.copy(alpha = 0.30f)
+    val railTint = railTint(isDark)
     val railState = rememberLiquidState()
     val railHeight = if (compact) 60.dp else 64.dp
     val pressedScale = railHeight.value / (railHeight.value - 8f)
@@ -172,9 +175,7 @@ private fun LiquidNavigationBarContent(
             Modifier.widthIn(max = railMaxWidth)
                 .fillMaxWidth().height(railHeight)
                 .testTag("liquid_navigation_bar")
-                .shadow(8.dp, CircleShape, clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.10f),
-                    spotColor = Color.Black.copy(alpha = 0.14f)),
+                .railShadow(),
         ) {
             val tabWidth = (maxWidth - 8.dp) / count
             val lensWidth = tabWidth
@@ -309,6 +310,41 @@ private fun LiquidNavigationBarContent(
         }
     }
 }
+
+/** The collapsed bar: the same glass rail as a circle holding only the active tab's icon. */
+@Composable
+internal fun LiquidNavigationPill(
+    liquidState: LiquidState,
+    item: LiquidNavigationItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = LocalIsDarkTheme.current
+    Box(
+        modifier.railShadow()
+            .background(MaterialTheme.colorScheme.surface, CircleShape)
+            .navigationRail(liquidState, railTint(isDark))
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            item.icon,
+            contentDescription = item.label,
+            tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+private fun railTint(isDark: Boolean): Color =
+    if (isDark) Color(0xFF111319).copy(alpha = 0.32f) else Color.White.copy(alpha = 0.30f)
+
+private fun Modifier.railShadow(): Modifier = shadow(
+    8.dp, CircleShape, clip = false,
+    ambientColor = Color.Black.copy(alpha = 0.10f),
+    spotColor = Color.Black.copy(alpha = 0.14f),
+)
 
 /** Sample headroom without changing hit areas or painting over adjacent overlays. */
 private fun Modifier.captureHeadroom(padding: Dp): Modifier = layout { measurable, constraints ->

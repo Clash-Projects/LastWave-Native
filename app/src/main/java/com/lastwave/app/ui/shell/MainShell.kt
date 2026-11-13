@@ -135,6 +135,8 @@ import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.feed.FeedScreen
 import com.lastwave.app.ui.home.HomeScreen
 import com.lastwave.app.ui.player.LocalChromeCollapse
+import com.lastwave.app.ui.player.collapsedNavPill
+import com.lastwave.app.ui.player.collapsingNavBar
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.ui.playlist.PlaylistScreen
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -547,25 +549,32 @@ fun MainShell(
             if (!hideNavTabs) {
                 bottomNavSlot.value = { material3NavigationEnabled ->
                     Box(Modifier.fillMaxSize()) {
+                        val collapse = LocalChromeCollapse.current
+                        val collapseProgress = collapse?.progress ?: { 0f }
+                        val barModifier = Modifier.align(Alignment.BottomCenter).collapsingNavBar(collapseProgress)
+                        val pillModifier = Modifier.align(Alignment.BottomStart).collapsedNavPill(collapseProgress)
+                        val expand = { collapse?.expand(); Unit }
                         if (navigationLiquidState != null) {
+                            val items = tabs.map { tab ->
+                                LiquidNavigationItem(
+                                    label = androidx.compose.ui.res.stringResource(tab.labelRes),
+                                    icon = tab.icon(),
+                                )
+                            }
                             LiquidNavigationBar(
                                 liquidState = navigationLiquidState,
-                                items = tabs.map { tab ->
-                                    LiquidNavigationItem(
-                                        label = androidx.compose.ui.res.stringResource(tab.labelRes),
-                                        icon = tab.icon(),
-                                    )
-                                },
+                                items = items,
                                 selectedIndex = currentSelectedIndex,
                                 onSelect = currentOnLiquidSelect,
                                 onScrubSelect = currentOnScrubSelect,
-                                modifier = Modifier.align(Alignment.BottomCenter),
+                                modifier = barModifier,
                                 style = if (material3NavigationEnabled) {
                                     LiquidNavigationStyle.Material3
                                 } else {
                                     LiquidNavigationStyle.Tabs
                                 },
                             )
+                            LiquidNavigationPill(navigationLiquidState, items[currentSelectedIndex], expand, pillModifier)
                         } else {
                             FloatingNavBar(
                                 backdrop = navigationBackdrop,
@@ -573,8 +582,9 @@ fun MainShell(
                                 selectedIndex = currentSelectedIndex,
                                 onSelect = currentOnSelect,
                                 onOpenGenerator = currentOnOpenGenerator,
-                                modifier = Modifier.align(Alignment.BottomCenter),
+                                modifier = barModifier,
                             )
+                            FloatingNavPill(navigationBackdrop, tabs[currentSelectedIndex], expand, pillModifier)
                         }
                     }
                 }
@@ -856,6 +866,38 @@ private fun FloatingNavBar(
                     }
                 }
             }
+        }
+    }
+}
+
+/** The collapsed dock: one glass circle holding only the active tab's icon. */
+@Composable
+private fun FloatingNavPill(
+    backdrop: LayerBackdrop?,
+    tab: MainTab,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val liquidGlass = LocalLiquidGlass.current
+    Surface(
+        onClick = onClick,
+        shape = PillShape,
+        color = liquidGlassContainerColor(
+            MaterialTheme.colorScheme.surfaceContainerHigh,
+            enabled = liquidGlass,
+            backdrop = backdrop,
+        ),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = if (liquidGlass) 0.dp else 6.dp,
+        shadowElevation = if (liquidGlass) 0.dp else 12.dp,
+        modifier = modifier.liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = tab.icon(),
+                contentDescription = androidx.compose.ui.res.stringResource(tab.labelRes),
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
 }

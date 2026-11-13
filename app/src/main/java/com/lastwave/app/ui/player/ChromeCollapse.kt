@@ -12,14 +12,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.util.lerp
@@ -113,6 +122,54 @@ internal fun rememberChromeCollapseState(enabled: Boolean): ChromeCollapseState 
     }
     return state
 }
+
+// Compact row geometry, shared by the nav pill and the mini player that docks beside it.
+internal val CompactPillSize = 56.dp
+internal val CompactRowStartMargin = 14.dp
+internal val CompactRowBottomMargin = 12.dp
+internal val CompactRowGap = 8.dp
+
+private fun navBarFade(progress: Float) = (progress / 0.5f).coerceIn(0f, 1f)
+
+/**
+ * The full bar shrinks towards its start edge and fades out over the first half.
+ * Once invisible it is left unplaced, so the compact player row under it takes the touches.
+ */
+internal fun Modifier.collapsingNavBar(progress: () -> Float): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val pivotX = if (layoutDirection == LayoutDirection.Ltr) 0f else 1f
+        layout(placeable.width, placeable.height) {
+            if (navBarFade(progress()) < 1f) {
+                placeable.placeWithLayer(0, 0) {
+                    val t = navBarFade(progress())
+                    alpha = 1f - t
+                    scaleX = lerp(1f, 0.7f, t)
+                    scaleY = scaleX
+                    transformOrigin = TransformOrigin(pivotX, 1f)
+                }
+            }
+        }
+    }
+
+/** Positions and sizes the compact nav pill; it grows in as the bar fades and is unplaced while expanded. */
+internal fun Modifier.collapsedNavPill(progress: () -> Float): Modifier = this
+    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+    .padding(start = CompactRowStartMargin, bottom = CompactRowBottomMargin)
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) {
+            if (progress() > 0f) {
+                placeable.placeWithLayer(0, 0) {
+                    val t = ((progress() - 0.3f) / 0.5f).coerceIn(0f, 1f)
+                    alpha = t
+                    scaleX = lerp(0.6f, 1f, t)
+                    scaleY = scaleX
+                }
+            }
+        }
+    }
+    .size(CompactPillSize)
 
 /** Square box whose side follows [progress]; measured in the layout phase only. */
 internal fun Modifier.collapseSquare(expanded: Dp, compact: Dp, progress: () -> Float): Modifier =
