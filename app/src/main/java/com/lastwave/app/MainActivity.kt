@@ -220,6 +220,8 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
                         ) {
                             LastWaveNavHost(navController)
                         }
+                        // Desktop-style in-app update dialog, shared by every screen.
+                        com.lastwave.app.ui.update.AppUpdateDialogHost()
                     }
                 }
             }
