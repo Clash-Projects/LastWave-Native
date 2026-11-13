@@ -15,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.intrinsics.startCoroutineUninterceptedOrReturn
+import com.lastwave.app.data.music.potoken.BotGuardTokenGenerator
 import kotlin.coroutines.resume
 import kotlin.jvm.functions.Function1
 import kotlinx.serialization.DeserializationStrategy
@@ -293,12 +295,85 @@ class InnerTubeXStreamExtractor @Inject constructor(
             arrayOf(httpClient, innerTube, configStore),
             defaultMask = 24,
         )
-        val extractor = constructWithDefaults(
+        // Public constructor: (configParser, cipherService, innerTube,
+        // fallbackStrategy, tokenProvider, clientHealthMonitor, logger).
+        // With the token provider: strategy, health monitor and logger take
+        // their defaults (bits 3, 5, 6). Without one, the token too (bit 4).
+        val tokens = runCatching { poTokenProvider() }
+            .onFailure { Log.w(TAG, "BotGuard token provider unavailable; token-free clients only", it) }
+            .getOrNull()
+        val extractor = tokens?.let {
+            runCatching {
+                constructWithDefaults(
+                    "com.metrolist.innertubex.extraction.InnerTubeExtractor",
+                    arrayOf(parser, cipher, innerTube, null, it),
+                    defaultMask = 104,
+                )
+            }.onFailure { error -> Log.w(TAG, "InnerTubeX rejected the token provider; token-free clients only", error) }
+                .getOrNull()
+        } ?: constructWithDefaults(
             "com.metrolist.innertubex.extraction.InnerTubeExtractor",
             arrayOf(parser, cipher, innerTube),
             defaultMask = 120,
         )
         return RuntimeStack(innerTube, extractor, parser, cipher)
+    }
+
+    /**
+     * InnerTubeX's TokenProvider, backed by the app's own BotGuard minter
+     * ([BotGuardTokenGenerator], the WebView engine the legacy resolver already
+     * uses). Without one InnerTubeX rules out every client that needs a
+     * proof-of-origin token — the web clients — and falls back to token-free
+     * ones, some of which YouTube cuts off a minute into the song.
+     *
+     * The token work runs as the body of the suspend call itself
+     * (startCoroutineUninterceptedOrReturn on the caller's continuation), so
+     * InnerTubeX's own token timeout and cancellation reach the minter.
+     */
+    private fun poTokenProvider(): Any {
+        val type = Class.forName("com.metrolist.innertubex.extraction.TokenProvider")
+        val webBotGuard = enumValue("com.metrolist.innertubex.extraction.strategy.PoTokenProviderKind", "WEB_BOTGUARD")
+        val capabilities = Class.forName("com.metrolist.innertubex.extraction.TokenProviderCapabilities")
+            .getConstructor(Set::class.java, Boolean::class.javaPrimitiveType)
+            .newInstance(setOf(webBotGuard), true)
+        val newResult = Class.forName("com.metrolist.innertubex.extraction.PoTokenResult")
+            .getConstructor(String::class.java, String::class.java, String::class.java)
+        return java.lang.reflect.Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { proxy, method, args ->
+            when (method.name) {
+                "getCapabilities" -> capabilities
+                "getPoToken" -> {
+                    val call = requireNotNull(args)
+                    val videoId = call[0] as String
+                    val visitorData = call[1] as String
+                    @Suppress("UNCHECKED_CAST")
+                    val caller = call.last() as Continuation<Any?>
+                    val mint: suspend () -> Any? = {
+                        if (visitorData.isBlank()) {
+                            null
+                        } else {
+                            BotGuardTokenGenerator.mintToken(videoId, visitorData)?.let { minted ->
+                                // InnerTubeX binds playerRequestToken to the visitor and
+                                // streamingDataToken to the video (PoTokenBinding).
+                                newResult.newInstance(minted.sessionToken, minted.playerToken, visitorData)
+                            }
+                        }
+                    }
+                    mint.startCoroutineUninterceptedOrReturn(caller)
+                }
+                "invalidateAttestation" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val caller = requireNotNull(args).last() as Continuation<Unit>
+                    val release: suspend () -> Unit = { BotGuardTokenGenerator.releaseForMemoryPressure() }
+                    release.startCoroutineUninterceptedOrReturn(caller)
+                }
+                // The resolver already pre-warms the engine with the real visitor.
+                "prewarm", "close" -> Unit
+                "equals" -> proxy === args?.firstOrNull()
+                "hashCode" -> System.identityHashCode(proxy)
+                "toString" -> "LastWaveBotGuardTokenProvider"
+                else -> null
+            }
+        }
     }
 
     /**
