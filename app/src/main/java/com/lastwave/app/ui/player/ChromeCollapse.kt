@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.util.lerp
@@ -154,6 +155,7 @@ internal fun Modifier.collapsingNavBar(progress: () -> Float): Modifier =
     }
 
 /** Positions and sizes the compact nav pill; it grows in as the bar fades and is unplaced while expanded. */
+@Composable
 internal fun Modifier.collapsedNavPill(progress: () -> Float): Modifier = this
     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
     .padding(start = CompactRowStartMargin, bottom = CompactRowBottomMargin)
