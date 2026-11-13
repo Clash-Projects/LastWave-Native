@@ -262,7 +262,7 @@ data class MiscSettings(
     /** Display name used in LastWave Jam sessions. */
     val jamDisplayName: String = "",
     /** Custom Jam WebSocket server URL. */
-    val jamServerUrl: String = "wss://jam.clashprojects.qd.je/ws",
+    val jamServerUrl: String = "wss://jam.clashgram.org/ws",
     /** Jam Room Mode default: "collaborative" or "host_only". */
     val jamRoomMode: String = "collaborative",
     /** Apple Music-style tactile rhythm synchronization. */
@@ -586,7 +586,12 @@ class SettingsPreferences @Inject constructor(
                 suppressYouTubeLoginPrompt = p.readSafely(Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT) ?: false,
                 hasDismissedJoinSupportPrompt = p.readSafely(Keys.HAS_DISMISSED_JOIN_SUPPORT_PROMPT) ?: false,
                 jamDisplayName = p.readSafely(Keys.JAM_DISPLAY_NAME)?.trim().orEmpty(),
-                jamServerUrl = p.readSafely(Keys.JAM_SERVER_URL)?.trim().takeIf { !it.isNullOrBlank() } ?: "wss://jam.clashprojects.qd.je/ws",
+                jamServerUrl = p.readSafely(Keys.JAM_SERVER_URL)?.trim().let { raw ->
+                    when {
+                        raw.isNullOrBlank() || raw == "wss://jam.clashprojects.qd.je/ws" -> "wss://jam.clashgram.org/ws"
+                        else -> raw
+                    }
+                },
                 jamRoomMode = p.readSafely(Keys.JAM_ROOM_MODE)?.trim().takeIf { it == "host_only" || it == "collaborative" } ?: "collaborative",
                 musicHapticsEnabled = p.readSafely(Keys.MUSIC_HAPTICS_ENABLED) ?: false,
                 musicHapticsMode = MusicHapticsMode.fromName(p.readSafely(Keys.MUSIC_HAPTICS_MODE)),
@@ -1174,7 +1179,7 @@ class SettingsPreferences @Inject constructor(
     }
 
     suspend fun setJamServerUrl(url: String) {
-        val trimmed = url.trim().ifEmpty { "wss://jam.clashprojects.qd.je/ws" }
+        val trimmed = url.trim().ifEmpty { "wss://jam.clashgram.org/ws" }
         dataStore.edit { it[Keys.JAM_SERVER_URL] = trimmed }
     }
 

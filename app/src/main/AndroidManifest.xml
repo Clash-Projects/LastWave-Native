@@ -118,13 +118,14 @@
                 <data android:scheme="lastwave" android:host="sync" />
             </intent-filter>
 
-            <!-- LastWave Jam web invite deep links (https://jam.clashprojects.qd.je/?code=...) -->
+            <!-- LastWave Jam web invite deep links (https://jam.clashgram.org/?code=...) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
+                <data android:host="jam.clashgram.org" />
                 <data android:host="jam.clashprojects.qd.je" />
             </intent-filter>
 

@@ -86,8 +86,8 @@ class JamRepository @Inject constructor(
     companion object {
         private const val TAG = "LastWaveJam"
         // Default production sync daemon address
-        const val DEFAULT_JAM_SERVER_WS = "wss://jam.clashprojects.qd.je/ws"
-        const val DEFAULT_JAM_SERVER_HTTP = "https://jam.clashprojects.qd.je"
+        const val DEFAULT_JAM_SERVER_WS = "wss://jam.clashgram.org/ws"
+        const val DEFAULT_JAM_SERVER_HTTP = "https://jam.clashgram.org"
     }
 
     private val json = Json {
