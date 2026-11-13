@@ -25,6 +25,20 @@ class YouTubeProbeSelectionTest {
     }
 
     @Test
+    fun playbackProbeReadsPastTheFirstMebibyteWhenTheFileReachesIt() {
+        val long = playbackProbeRequest("https://example.test/videoplayback?itag=140&clen=3000000", emptyMap())
+        assertEquals("bytes=1048576-2097151", long.header("Range"))
+
+        // Window clipped to the last byte of the file.
+        val medium = playbackProbeRequest("https://example.test/videoplayback?itag=140&clen=1500000", emptyMap())
+        assertEquals("bytes=1048576-1499999", medium.header("Range"))
+
+        // Too short to have a boundary to test: the opening, clipped to the file.
+        val short = playbackProbeRequest("https://example.test/videoplayback?itag=140&clen=500000", emptyMap())
+        assertEquals("bytes=0-499999", short.header("Range"))
+    }
+
+    @Test
     fun http403IsNotPlayable() {
         assertFalse(acceptsPlaybackProbe(403, "audio/mp4"))
         assertFalse(acceptsPlaybackProbe(410, "audio/mp4"))

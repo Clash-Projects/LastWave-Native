@@ -490,17 +490,37 @@ class YouTubeStreamExtractor @Inject constructor(
 
 internal const val YOUTUBE_ORIGIN = "https://www.youtube.com"
 
-/** Match the player's first 1 MiB chunk; two-byte probes can hide media HTTP 403 failures. */
-internal fun playbackProbeRequest(url: String, headers: Map<String, String>): okhttp3.Request =
-    okhttp3.Request.Builder()
+/** Where googlevideo stops authorising some clients' URLs: the first MiB plays, the rest is 403. */
+internal const val PROBE_AUTH_BOUNDARY_BYTES = 1L * 1024 * 1024
+internal const val PROBE_WINDOW_BYTES = 1L * 1024 * 1024
+/** How much of the probe's answer must arrive, so a body that stalls after its headers fails. */
+internal const val PROBE_READ_BYTES = 16L * 1024
+
+/**
+ * A full 1 MiB window (two-byte probes hide media HTTP 403s), taken just past
+ * [PROBE_AUTH_BOUNDARY_BYTES] when the URL's `clen` says the file reaches it.
+ * A probe of the opening passed for URLs that serve only the first MiB, and
+ * the song then stopped about a minute in; reading where that cut-off bites
+ * rejects them before playback instead.
+ */
+internal fun playbackProbeRequest(url: String, headers: Map<String, String>): okhttp3.Request {
+    val length = url.toHttpUrlOrNull()?.queryParameter("clen")?.toLongOrNull()?.takeIf { it > 0L }
+    val start = if (length != null && length > PROBE_AUTH_BOUNDARY_BYTES + PROBE_READ_BYTES) {
+        PROBE_AUTH_BOUNDARY_BYTES
+    } else {
+        0L
+    }
+    val end = (start + PROBE_WINDOW_BYTES - 1).let { if (length != null) minOf(it, length - 1) else it }
+    return okhttp3.Request.Builder()
         .url(url)
         .header("Accept", "audio/*,*/*;q=0.8")
         .header("Accept-Encoding", "identity")
-        .header("Range", "bytes=0-1048575")
+        .header("Range", "bytes=$start-$end")
         .apply {
             headers.forEach { (name, value) -> header(name, value) }
         }
         .build()
+}
 
 /** HTTP 403 and 410 are not playable. A tiny 206 is only accepted when the open itself succeeded. */
 internal fun acceptsPlaybackProbe(code: Int, contentType: String): Boolean {

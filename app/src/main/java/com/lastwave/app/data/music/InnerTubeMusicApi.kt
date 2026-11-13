@@ -184,8 +184,14 @@ class InnerTubeMusicApi @Inject constructor(
                 innerTubeXExtractor.reportPlaybackFailure(videoId, stream.authScope, stream.clientProfile)
             }
         }
+        // Every cached URL that client minted for this video, not only the exact
+        // rejected one: its other itags came from the same refused session, and
+        // leaving them let the retry cache-hit straight back onto that client.
         streamCache.keys.removeIf { key ->
-            key.videoId == videoId && (stream == null || key.matches(stream))
+            key.videoId == videoId && (
+                stream == null ||
+                    (key.clientProfile == stream.clientProfile && key.authScope == stream.authScope)
+                )
         }
         lastResolvedStreams.entries.removeIf { it.value.videoId == videoId }
         activeStreamRequests.entries.removeIf { (key, request) ->

@@ -22,6 +22,7 @@ import kotlin.jvm.functions.Function1
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
@@ -217,7 +218,37 @@ class InnerTubeXStreamExtractor @Inject constructor(
             ?: return
         failedProfilesUntil["$videoId|$authScope|$profile"] =
             System.currentTimeMillis() + CLIENT_FAILURE_COOLDOWN_MS
+        refreshCipherAfterRejection()
     }
+
+    /**
+     * A rejected URL can mean the signature/n tables went stale: the cipher
+     * produced a well-formed but wrong value, so nothing threw. Ask InnerTubeX
+     * to re-fetch its player config (it rate-limits this itself). When the
+     * table really changed, the clients cooled down on the old one deserve
+     * another try, so their exclusions are lifted.
+     */
+    private fun refreshCipherAfterRejection() {
+        val stack = runtime ?: return
+        cipherRefreshScope.launch {
+            try {
+                val refresh = stack.cipher.javaClass.methods.firstOrNull {
+                    it.name == "refreshAfterStreamRejection" && it.parameterCount == 1
+                } ?: return@launch
+                if (invokeSuspend(stack.cipher, refresh, emptyArray()) == true) {
+                    failedProfilesUntil.clear()
+                    Log.i(TAG, "player config changed after a stream rejection; client exclusions lifted")
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "cipher refresh after rejection failed (${error.javaClass.simpleName})")
+            }
+        }
+    }
+
+    private val cipherRefreshScope =
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     private fun Any.toAudioStream(videoId: String, authScope: String): YouTubeAudioStream? {
         val url = readString(this, "getAudioUrl").orEmpty()

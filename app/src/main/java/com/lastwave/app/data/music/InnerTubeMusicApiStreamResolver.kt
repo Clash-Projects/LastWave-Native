@@ -938,8 +938,12 @@ internal suspend fun InnerTubeMusicApi.probeStream(
                 val validType = !contentType.contains("text/html") &&
                     !contentType.contains("application/json") &&
                     !contentType.contains("text/plain")
+                // PROBE_READ_BYTES (or the range's end) must actually arrive: a body
+                // that stalls after its headers throws on the call timeout instead.
+                val source = response.body?.source()
                 val valid = (response.code == 200 || response.code == 206) &&
-                    validType && response.body?.source()?.request(1L) == true
+                    validType && source != null && source.request(1L) &&
+                    run { source.request(PROBE_READ_BYTES); true }
                 Triple(response.code, contentType, valid)
             }
             logStreamEvent(
