@@ -48,11 +48,9 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.derivedStateOf
@@ -380,6 +378,8 @@ internal fun QueuePanel(
                 (if (info.index > source) center > info.offset + info.size / 2f
                 else center < info.offset + info.size / 2f)
         } ?: return
+        // Keep the viewport fixed when the first visible song changes index.
+        listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
         player.moveQueueItem(source, target.index)
         runCatching { haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick) }
     }
@@ -592,15 +592,25 @@ internal fun QueuePanel(
                 val isCurrent = index == state.currentIndex
                 val stableKey = queueKeys.getOrNull(index) ?: index.toString()
                 val isDragging = stableKey == draggingKey
-                val rowOffsetY by animateFloatAsState(
-                    targetValue = if (isDragging) {
-                        // Reordering changes the layout origin; the row must stay under the finger.
-                        dragStartOffsetY + dragOffsetY - (listState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.key == stableKey }?.offset ?: dragStartOffsetY.toInt())
-                    } else 0f,
-                    animationSpec = if (isDragging) snap() else ExpressiveMotion.spatialDefault(),
-                    label = "queueDragOffset",
-                )
+                val dragTranslationY by remember(stableKey) {
+                    derivedStateOf {
+                        if (stableKey == draggingKey) {
+                            dragStartOffsetY + dragOffsetY - (listState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.key == stableKey }?.offset ?: dragStartOffsetY.toInt())
+                        } else 0f
+                    }
+                }
+                val rowOffsetY = remember(stableKey) { Animatable(0f) }
+                fun finishDrag() {
+                    cancelEdgeScroll()
+                    val offset = dragTranslationY
+                    scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                        rowOffsetY.snapTo(offset)
+                        draggingKey = null
+                        dragOffsetY = 0f
+                        rowOffsetY.animateTo(0f, ExpressiveMotion.effectsDefault())
+                    }
+                }
                 val position = groupPositionFor(index, state.queue.size)
                 val itemShape = groupShape(position)
 
@@ -631,18 +641,16 @@ internal fun QueuePanel(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .zIndex(if (isDragging) 10f else 0f)
+                        .zIndex(if (isDragging || rowOffsetY.value != 0f) 10f else 0f)
                         .animateItem(
                             fadeInSpec = null,
                             fadeOutSpec = null,
-                            placementSpec = if (isDragging) null else ExpressiveMotion.spatialDefault(),
+                            placementSpec = if (isDragging) null else ExpressiveMotion.effectsDefault(),
                         )
                         .graphicsLayer {
-                            translationY = rowOffsetY
+                            // Compensate the new layout origin immediately, without an animation frame of lag.
+                            translationY = if (isDragging) dragTranslationY else rowOffsetY.value
                             shadowElevation = if (isDragging) 18f else 0f
-                            val s = if (isDragging) 1.025f else 1f
-                            scaleX = s
-                            scaleY = s
                             alpha = if (isDragging) 0.96f else 1f
                         },
                 ) {
@@ -746,21 +754,13 @@ internal fun QueuePanel(
                                                             val info = listState.layoutInfo.visibleItemsInfo
                                                                 .firstOrNull { it.key == stableKey } ?: return@detectDragGestures
                                                             draggingKey = stableKey
-                                                            dragStartOffsetY = info.offset.toFloat()
+                                                            dragStartOffsetY = info.offset + rowOffsetY.value
                                                             dragOffsetY = 0f
                                                             cancelEdgeScroll()
                                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                                         },
-                                                        onDragEnd = {
-                                                            cancelEdgeScroll()
-                                                            draggingKey = null
-                                                            dragOffsetY = 0f
-                                                        },
-                                                        onDragCancel = {
-                                                            cancelEdgeScroll()
-                                                            draggingKey = null
-                                                            dragOffsetY = 0f
-                                                        },
+                                                        onDragEnd = { finishDrag() },
+                                                        onDragCancel = { finishDrag() },
                                                         onDrag = { change, dragAmount ->
                                                             change.consume()
                                                             if (draggingKey != stableKey) return@detectDragGestures
