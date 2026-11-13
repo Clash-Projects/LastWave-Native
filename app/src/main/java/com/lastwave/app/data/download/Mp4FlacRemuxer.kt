@@ -69,6 +69,7 @@ internal object Mp4FlacRemuxer {
             val layout = RandomAccessFile(input, "r").use { raf -> readLayout(raf, length) }
             val metadataBlocks = layout.moov?.let(::findMetadataBlocks) ?: return false
             if (layout.mdatRanges.isEmpty()) return false
+            fillTotalSamples(metadataBlocks, input)
             output.parentFile?.let { parent ->
                 if (!parent.exists() && !parent.mkdirs()) return false
             }
@@ -92,6 +93,23 @@ internal object Mp4FlacRemuxer {
             runCatching { output.delete() }
             false
         }
+    }
+
+    /**
+     * fMP4 muxers write STREAMINFO total_samples = 0 (length unknown at init
+     * time). With no SEEKTABLE, ExoPlayer then marks the .flac unseekable, so
+     * fill it from the fragment durations. [blocks] starts with the 4-byte
+     * STREAMINFO block header.
+     */
+    private fun fillTotalSamples(blocks: ByteArray, input: File) {
+        if (blocks.size < 4 + STREAMINFO_LENGTH) return
+        fun b(i: Int) = blocks[4 + i].toLong() and 0xFF
+        val current = ((b(13) and 0x0F) shl 32) or (b(14) shl 24) or (b(15) shl 16) or (b(16) shl 8) or b(17)
+        if (current != 0L) return
+        val sampleRate = (b(10) shl 12) or (b(11) shl 4) or (b(12) shr 4)
+        val total = Fmp4IndexBuilder.totalSamples(input, sampleRate).takeIf { it in 1 until (1L shl 36) } ?: return
+        blocks[4 + 13] = ((b(13) and 0xF0) or (total shr 32)).toByte()
+        for (i in 0..3) blocks[4 + 14 + i] = (total shr (24 - 8 * i)).toByte()
     }
 
     private class Layout(

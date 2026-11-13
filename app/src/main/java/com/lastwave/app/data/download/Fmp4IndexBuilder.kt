@@ -120,7 +120,34 @@ object Fmp4IndexBuilder {
      */
     fun finalizeFmp4(file: File, knownDurationMs: Long = 0L): Boolean = runCatching {
         if (!file.isFile || file.length() < 32) return false
+        finalizeScanned(file, knownDurationMs, scan(file))
+    }.getOrElse { error ->
+        Log.w(TAG, "Failed to finalize fMP4 for ${file.name}: ${error.message}", error)
+        false
+    }
 
+    /**
+     * Summed fragment duration converted to [sampleRate] ticks, or 0 when unknown.
+     * Fills FLAC STREAMINFO total_samples, which fMP4 muxers leave at 0.
+     */
+    fun totalSamples(file: File, sampleRate: Long): Long = runCatching {
+        if (!file.isFile || sampleRate <= 0L) return 0L
+        val scanned = scan(file)
+        val start = scanned.fragments.firstOrNull()?.time ?: 0L
+        val ticks = (scanned.lastFragEnd - start).takeIf { it > 0L } ?: scanned.moovInfo.mediaDuration
+        val timescale = scanned.moovInfo.mediaTimescale
+        if (ticks <= 0L || timescale <= 0L) 0L else ticks * sampleRate / timescale
+    }.getOrDefault(0L)
+
+    private data class Scan(
+        val moovInfo: MoovInfo,
+        val fragments: List<FragmentInfo>,
+        val firstMoofOffset: Long,
+        val hasSidx: Boolean,
+        val lastFragEnd: Long,
+    )
+
+    private fun scan(file: File): Scan {
         val moovInfo = MoovInfo()
         val fragments = mutableListOf<FragmentInfo>()
         var firstMoofOffset = -1L
@@ -200,7 +227,11 @@ object Fmp4IndexBuilder {
                 pos += boxSize
             }
         }
+        return Scan(moovInfo, fragments, firstMoofOffset, hasSidx, lastFragEnd)
+    }
 
+    private fun finalizeScanned(file: File, knownDurationMs: Long, scanned: Scan): Boolean {
+        val (moovInfo, fragments, firstMoofOffset, hasSidx, lastFragEnd) = scanned
         if (firstMoofOffset < 0L || fragments.isEmpty()) {
             // Progressive MP4: patch duration if zero and known
             if (knownDurationMs > 0L) {
@@ -283,10 +314,7 @@ object Fmp4IndexBuilder {
             }
         }
 
-        true
-    }.getOrElse { error ->
-        Log.w(TAG, "Failed to finalize fMP4 for ${file.name}: ${error.message}", error)
-        false
+        return true
     }
 
     private fun parseMoovBox(
