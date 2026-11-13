@@ -880,6 +880,9 @@ internal suspend fun InnerTubeMusicApi.resolveDirectClientStream(
                 // bitrate, so bitrate alone kept picking the quiet variant.
                 compareBy<YouTubeAudioStream> { it.isDrc }
                     .thenBy { it.isAdaptive }
+                    // Opus (webm) before AAC: at YouTube's ~130-160 kbps it is the
+                    // better codec, and listed bitrates differ by only a few kbps.
+                    .thenByDescending { it.mimeType?.contains("webm", ignoreCase = true) == true }
                     .thenByDescending { it.bitrate },
             )
         noteAttempt("client=${client.name} compatibleCandidates=${candidates.size} cipherAllowed=$allowCipherFormats")
