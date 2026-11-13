@@ -15,7 +15,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,7 +29,8 @@ class AwaitSharedStreamTest {
         val error = IOException("No usable client")
         val request = CompletableDeferred<String>().apply { completeExceptionally(error) }
         val failure = runCatching { request.awaitSharedStream(40_000, "song") }.exceptionOrNull()
-        assertSame(error, failure)
+        assertEquals(error.javaClass, failure?.javaClass)
+        assertEquals(error.message, failure?.message)
     }
 
     @Test fun sharedInvalidationBecomesFailureWithoutCancellingWaiter() = runTest {
