@@ -2,6 +2,7 @@
 
 package com.lastwave.app.ui.player
 
+import com.lastwave.app.data.local.SeekbarStyle
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import com.lastwave.app.data.playlist.isLikedIn
@@ -344,7 +345,8 @@ internal fun FullPlayer(
     progressState: StateFlow<PlaybackProgressState>,
     player: MusicPlayer,
     lyricsState: LyricsUiState,
-    wavySeekbarEnabled: Boolean = false,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
     lyricsOffsetMs: Long = 0L,
@@ -1206,6 +1208,7 @@ internal fun FullPlayer(
                                     lyricsProviderStatuses = lyricsProviderStatuses,
                                     onProbeLyricsProviders = onProbeLyricsProviders,
                                     progressState = progressState,
+                                    seekbarStyle = seekbarStyle,
                                     wavySeekbarEnabled = wavySeekbarEnabled,
                                     lyricsOffsetMs = lyricsOffsetMs,
                                     lyricsFontScale = lyricsFontScale,
@@ -1263,6 +1266,7 @@ internal fun FullPlayer(
                                     state = state,
                                     player = player,
                                     progressState = progressState,
+                                    seekbarStyle = seekbarStyle,
                                     wavySeekbarEnabled = wavySeekbarEnabled,
                                     showSleeveCanvas = showSleeveCanvas,
                                     canvas = activeCanvas ?: canvas,
@@ -1738,6 +1742,7 @@ internal fun FullPlayer(
                                         progressState = progressState,
                                         isPlaying = state.isPlaying,
                                         trackKey = track.videoId ?: "${track.artist}|${track.title}",
+                                        seekbarStyle = seekbarStyle,
                                         wavyEnabled = wavySeekbarEnabled,
                                         onSeek = player::seekTo,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
