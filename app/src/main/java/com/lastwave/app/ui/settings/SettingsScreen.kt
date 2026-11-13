@@ -437,7 +437,6 @@ fun SettingsScreen(
     var showLyricsAutoHideDialog by remember { mutableStateOf(false) }
     var showTranslationLanguageDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
-    var showClarityPresetDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
     var showYtChannelSheet by remember { mutableStateOf(false) }
@@ -1042,13 +1041,12 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel("Output & Loudness")
-                    val clarityPreset = remember(misc.clarityPreset) { ClarityPresets.fromIndex(misc.clarityPreset) }
                     val loudnessSubtitle = when (loudness.mode) {
                         LoudnessMode.TRACK -> "Track \u2022 Match every track to -14 LUFS"
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 11) { index, position ->
+                    SettingsGroup(rowCount = 9) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
@@ -1166,35 +1164,6 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.studio_clarity"),
                             )
                             7 -> SettingsActionCard(
-                                icon = Icons.Filled.Tune,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.set_clarity_title),
-                                subtitle = stringResource(
-                                    R.string.set_clarity_row,
-                                    clarityPresetName(clarityPreset),
-                                    clarityPresetDescription(clarityPreset),
-                                ),
-                                onClick = { showClarityPresetDialog = true },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "audio.clarity_preset"),
-                            )
-                            8 -> SettingsToggleCard(
-                                icon = Icons.Filled.GraphicEq,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.set_clarity_bypass),
-                                subtitle = if (misc.clarityAtmosBypass) {
-                                    "Clarity bypasses on multichannel/spatial sources"
-                                } else {
-                                    "Off \u2022 Clarity processes every source"
-                                },
-                                checked = misc.clarityAtmosBypass,
-                                onCheckedChange = viewModel::setClarityAtmosBypass,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "audio.clarity_spatial_bypass"),
-                            )
-                            9 -> SettingsActionCard(
                                 icon = Icons.Filled.Headphones,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1204,7 +1173,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.autoeq"),
                             )
-                            10 -> SettingsToggleCard(
+                            8 -> SettingsToggleCard(
                                 icon = Icons.Filled.Tune,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -2793,17 +2762,6 @@ fun SettingsScreen(
                 showLoudnessDialog = false
             },
             onDismiss = { showLoudnessDialog = false },
-        )
-    }
-
-    if (showClarityPresetDialog) {
-        ClarityPresetDialog(
-            currentIndex = misc.clarityPreset,
-            onSelect = {
-                viewModel.setClarityPreset(it)
-                showClarityPresetDialog = false
-            },
-            onDismiss = { showClarityPresetDialog = false },
         )
     }
 

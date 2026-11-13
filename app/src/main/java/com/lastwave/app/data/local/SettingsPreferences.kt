@@ -538,8 +538,9 @@ class SettingsPreferences @Inject constructor(
                 musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: true,
                 showAutoEqInVolumePanel = p.readSafely(Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL) ?: true,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
-                clarityPreset = p.readSafely(Keys.CLARITY_PRESET)?.takeIf { it in 0..3 } ?: 0,
-                clarityAtmosBypass = p.readSafely(Keys.CLARITY_ATMOS_BYPASS) ?: false,
+                // Clarity is a single on/off again: always the Reference curve, never bypassed on spatial.
+                clarityPreset = 0,
+                clarityAtmosBypass = false,
                 isBitPerfectEnabled = p.readSafely(Keys.BIT_PERFECT_ENABLED) ?: false,
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),

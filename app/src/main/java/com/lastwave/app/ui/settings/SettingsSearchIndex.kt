@@ -440,40 +440,6 @@ object SettingsSearchIndex {
                     type = EntryType.TOGGLE,
                 )
             )
-            add(
-                SettingsEntry(
-                    id = "audio.clarity_preset",
-                    title = "Clarity Output Preset",
-                    subtitle = "Select clarity sound signature: Audiophile, Warm, Bright, or Vocal",
-                    keywords = listOf(
-                        "clarity preset", "preset", "sound signature", "warm", "bright", "audiophile",
-                        "tuning", "vocal preset"
-                    ),
-                    icon = Icons.Filled.Tune,
-                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
-                    parentTab = SettingsTab.AUDIO,
-                    section = "Output & Loudness",
-                    type = EntryType.ACTION,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "audio.clarity_spatial_bypass",
-                    title = "Clarity Spatial Bypass",
-                    subtitle = "Automatically bypass clarity processing on multichannel and spatial audio sources",
-                    keywords = listOf(
-                        "clarity bypass", "spatial bypass", "atmos bypass", "multichannel bypass",
-                        "dsp bypass", "disable clarity on spatial"
-                    ),
-                    icon = Icons.Filled.GraphicEq,
-                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.AUDIO,
-                    section = "Output & Loudness",
-                    type = EntryType.TOGGLE,
-                )
-            )
 
             // ==========================================
             // TAB: APPEARANCE & VISUALS
