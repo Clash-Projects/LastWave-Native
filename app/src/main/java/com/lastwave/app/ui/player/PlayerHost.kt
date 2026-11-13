@@ -373,11 +373,14 @@ fun PlayerHost(
     val playbackState by viewModel.player.stateWithoutProgress.collectAsStateWithLifecycle()
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
     var expanded by rememberSaveable { mutableStateOf(false) }
-    DisposableEffect(expanded) {
-        com.lastwave.app.playback.PlaybackUiDemand.needsHighFrequency = expanded
+    var currentTab by rememberSaveable { mutableStateOf(FullPlayerTab.NOW_PLAYING) }
+    // Only line-synced lyrics need the 60 ms playhead; on Now Playing each
+    // tick redrew the whole full player to move the seek bar under a pixel.
+    val lyricsOpen = expanded && currentTab == FullPlayerTab.LYRICS
+    DisposableEffect(lyricsOpen) {
+        com.lastwave.app.playback.PlaybackUiDemand.needsHighFrequency = lyricsOpen
         onDispose { com.lastwave.app.playback.PlaybackUiDemand.needsHighFrequency = false }
     }
-    var currentTab by rememberSaveable { mutableStateOf(FullPlayerTab.NOW_PLAYING) }
     var playlistTrack by remember { mutableStateOf<PlayableTrack?>(null) }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val keepLyricsAwake = expanded && currentTab == FullPlayerTab.LYRICS && settings.keepLyricsScreenAwake
