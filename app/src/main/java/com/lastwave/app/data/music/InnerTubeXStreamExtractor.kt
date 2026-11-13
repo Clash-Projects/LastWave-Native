@@ -74,6 +74,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
             val excludedProfiles = failedProfilesUntil
                 .filter { (key, expiry) -> key.startsWith("$videoId|$authScope|") && expiry > now }
                 .mapTo(mutableSetOf()) { it.key.substringAfterLast('|') }
+                .apply { addAll(APPLE_CLIENTS) }
             val extractMethod = stack.extractor.javaClass.methods.firstOrNull {
                 it.name == "extract" && it.parameterCount == 6
             } ?: return@withContext null
@@ -235,9 +236,10 @@ class InnerTubeXStreamExtractor @Inject constructor(
             .orEmpty()
         val clientName = readString(this, "getClientName").orEmpty()
         val profileId = readString(this, "getProfileId").orEmpty()
-        // iOS-family direct URLs need an iOS-attested GVS token we cannot
-        // supply: they stop with 403 about a minute in. Never accept one.
-        if (clientName.startsWith("IOS", ignoreCase = true) || clientName.startsWith("IPADOS", ignoreCase = true)) return null
+        // Apple-family direct URLs (iOS, iPadOS, visionOS) need an Apple-attested
+        // GVS token we cannot supply: they stop with 403 about a minute in.
+        // Excluded up front in [resolve]; never accept one that slips through.
+        if (APPLE_CLIENT_PREFIXES.any { clientName.startsWith(it, ignoreCase = true) }) return null
         val headers = rawHeaders.toMutableMap().apply {
             if (keys.none { it.equals("User-Agent", ignoreCase = true) }) {
                 diagnosticUserAgent(readValue(this@toAudioStream, "getStreamDiagnostics"), clientName, profileId)
@@ -535,7 +537,15 @@ class InnerTubeXStreamExtractor @Inject constructor(
     private companion object {
         const val TAG = "InnerTubeXStreamExtractor"
         const val UNKNOWN_STREAM_EXPIRY_TTL_MS = 5 * 60 * 1_000L
-        const val CLIENT_FAILURE_COOLDOWN_MS = 60_000L
+        /** Long enough to outlast the song it failed on: at 60 s a client that
+         *  died a minute in was allowed straight back for the retry. */
+        const val CLIENT_FAILURE_COOLDOWN_MS = 5 * 60_000L
+        /** InnerTubeX catalogue ids/client names of the Apple family; it matches either. */
+        val APPLE_CLIENTS = setOf(
+            "VISIONOS", "VISIONOS_0_1", "VISIONOS_SABR",
+            "IOS", "IOS_SABR", "IOS_MUSIC", "IPADOS",
+        )
+        val APPLE_CLIENT_PREFIXES = listOf("IOS", "IPADOS", "VISIONOS")
         const val PLAYER_CONFIG_PREFS = "innertubex_player_config"
         const val PLAYER_CONFIG_URL =
             "https://raw.githubusercontent.com/MetrolistGroup/faraday/master/registry/player_configs.json"
