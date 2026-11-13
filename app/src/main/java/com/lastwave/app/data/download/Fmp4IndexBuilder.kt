@@ -340,15 +340,15 @@ object Fmp4IndexBuilder {
             when (type) {
                 "mvhd" -> {
                     val version = moovBytes[payloadStart].toInt() and 0xFF
-                    if (version == 1 && payloadSize >= 28) {
-                        moovInfo.movieTimescale = be32(moovBytes, payloadStart + 16).toLong() and 0xFFFF_FFFFL
-                        moovInfo.movieDuration = be64(moovBytes, payloadStart + 20)
-                        moovInfo.movieDurationOffset = moovStart + payloadStart + 20
+                    if (version == 1 && payloadSize >= 32) {
+                        moovInfo.movieTimescale = be32(moovBytes, payloadStart + 20).toLong() and 0xFFFF_FFFFL
+                        moovInfo.movieDuration = be64(moovBytes, payloadStart + 24)
+                        moovInfo.movieDurationOffset = moovStart + payloadStart + 24
                         moovInfo.movieDurationIs64 = true
                     } else if (version == 0 && payloadSize >= 20) {
-                        moovInfo.movieTimescale = be32(moovBytes, payloadStart + 8).toLong() and 0xFFFF_FFFFL
-                        moovInfo.movieDuration = be32(moovBytes, payloadStart + 12).toLong() and 0xFFFF_FFFFL
-                        moovInfo.movieDurationOffset = moovStart + payloadStart + 12
+                        moovInfo.movieTimescale = be32(moovBytes, payloadStart + 12).toLong() and 0xFFFF_FFFFL
+                        moovInfo.movieDuration = be32(moovBytes, payloadStart + 16).toLong() and 0xFFFF_FFFFL
+                        moovInfo.movieDurationOffset = moovStart + payloadStart + 16
                         moovInfo.movieDurationIs64 = false
                     }
                 }
@@ -382,15 +382,15 @@ object Fmp4IndexBuilder {
             when (type) {
                 "tkhd" -> {
                     val version = bytes[payloadStart].toInt() and 0xFF
-                    if (version == 1 && payloadSize >= 32) {
-                        moovInfo.trackId = be32(bytes, payloadStart + 16).toLong() and 0xFFFF_FFFFL
-                        moovInfo.trackDuration = be64(bytes, payloadStart + 24)
-                        moovInfo.trackDurationOffset = fileMoovStart + payloadStart + 24
+                    if (version == 1 && payloadSize >= 36) {
+                        moovInfo.trackId = be32(bytes, payloadStart + 20).toLong() and 0xFFFF_FFFFL
+                        moovInfo.trackDuration = be64(bytes, payloadStart + 28)
+                        moovInfo.trackDurationOffset = fileMoovStart + payloadStart + 28
                         moovInfo.trackDurationIs64 = true
                     } else if (version == 0 && payloadSize >= 24) {
-                        moovInfo.trackId = be32(bytes, payloadStart + 8).toLong() and 0xFFFF_FFFFL
-                        moovInfo.trackDuration = be32(bytes, payloadStart + 16).toLong() and 0xFFFF_FFFFL
-                        moovInfo.trackDurationOffset = fileMoovStart + payloadStart + 16
+                        moovInfo.trackId = be32(bytes, payloadStart + 12).toLong() and 0xFFFF_FFFFL
+                        moovInfo.trackDuration = be32(bytes, payloadStart + 20).toLong() and 0xFFFF_FFFFL
+                        moovInfo.trackDurationOffset = fileMoovStart + payloadStart + 20
                         moovInfo.trackDurationIs64 = false
                     }
                 }
@@ -423,15 +423,15 @@ object Fmp4IndexBuilder {
 
             if (type == "mdhd") {
                 val version = bytes[payloadStart].toInt() and 0xFF
-                if (version == 1 && payloadSize >= 28) {
-                    moovInfo.mediaTimescale = be32(bytes, payloadStart + 16).toLong() and 0xFFFF_FFFFL
-                    moovInfo.mediaDuration = be64(bytes, payloadStart + 20)
-                    moovInfo.mediaDurationOffset = fileMoovStart + payloadStart + 20
+                if (version == 1 && payloadSize >= 32) {
+                    moovInfo.mediaTimescale = be32(bytes, payloadStart + 20).toLong() and 0xFFFF_FFFFL
+                    moovInfo.mediaDuration = be64(bytes, payloadStart + 24)
+                    moovInfo.mediaDurationOffset = fileMoovStart + payloadStart + 24
                     moovInfo.mediaDurationIs64 = true
                 } else if (version == 0 && payloadSize >= 20) {
-                    moovInfo.mediaTimescale = be32(bytes, payloadStart + 8).toLong() and 0xFFFF_FFFFL
-                    moovInfo.mediaDuration = be32(bytes, payloadStart + 12).toLong() and 0xFFFF_FFFFL
-                    moovInfo.mediaDurationOffset = fileMoovStart + payloadStart + 12
+                    moovInfo.mediaTimescale = be32(bytes, payloadStart + 12).toLong() and 0xFFFF_FFFFL
+                    moovInfo.mediaDuration = be32(bytes, payloadStart + 16).toLong() and 0xFFFF_FFFFL
+                    moovInfo.mediaDurationOffset = fileMoovStart + payloadStart + 16
                     moovInfo.mediaDurationIs64 = false
                 }
             }
