@@ -2,7 +2,6 @@ package com.lastwave.app.ui.feed
 
 import androidx.activity.compose.BackHandler
 import com.lastwave.app.playback.toPlayableTrack
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -1575,7 +1574,6 @@ fun FeedScreen(
                 containerColor = if (isPodcastsActive) Color.Transparent else Color.Unspecified,
                 backdrop = if (useFeedGlass) feedBackdrop else null,
                 actions = {
-                    HeaderActionIcon(Icons.Filled.Download, "Downloads", onOpenDownloads)
                     HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                     IconButton(onClick = onOpenSettings) {
                         com.lastwave.app.ui.home.ProfileAvatar(avatarUrl = state.avatarUrl, modifier = Modifier.size(38.dp))

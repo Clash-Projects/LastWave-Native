@@ -336,6 +336,11 @@ fun PlaylistScreen(
             }
 
             val effectiveSpotify = if (state.isSpotifySyncEnabled) filteredSpotifyPlaylists else emptyList()
+            val downloadedCount by viewModel.downloadedCount.collectAsStateWithLifecycle()
+            // Downloads lives here now (it left the Home/Stats headers): always
+            // shown, except while a search for something else is typed.
+            val showDownloadsCard = searchQuery.isBlank() ||
+                "downloads".contains(searchQuery.trim(), ignoreCase = true)
 
             Box(
                 modifier = Modifier
@@ -344,7 +349,8 @@ fun PlaylistScreen(
             ) {
                 when {
                     state.isLoading && state.playlists.isEmpty() && !state.isGenerating -> LoadingState()
-                    localSongsPlaylist == null && filteredPlaylists.isEmpty() && !state.isGenerating && effectiveSpotify.isEmpty() -> EmptyState()
+                    localSongsPlaylist == null && filteredPlaylists.isEmpty() && !state.isGenerating &&
+                        effectiveSpotify.isEmpty() && (downloadedCount == 0 || !showDownloadsCard) -> EmptyState()
                     else -> LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
                         verticalArrangement = Arrangement.spacedBy(com.lastwave.app.ui.common.GroupGap),
@@ -353,7 +359,8 @@ fun PlaylistScreen(
                             .clip(TopCurvedSectionClipShape(horizontalInset = 16.dp, cornerRadius = 28.dp)),
                     ) {
                         if (localSongsPlaylist != null) {
-                            val hasPlaylistsBelow = state.isGenerating ||
+                            val hasPlaylistsBelow = showDownloadsCard ||
+                                state.isGenerating ||
                                 state.justSavedBannerVisible ||
                                 effectiveSpotify.isNotEmpty() ||
                                 filteredPlaylists.isNotEmpty()
@@ -377,6 +384,25 @@ fun PlaylistScreen(
                                                 enableRadioContinuation = false,
                                             )
                                         },
+                                    )
+                                }
+                            }
+                        }
+
+                        if (showDownloadsCard) {
+                            val hasPlaylistsBelow = state.isGenerating ||
+                                state.justSavedBannerVisible ||
+                                effectiveSpotify.isNotEmpty() ||
+                                filteredPlaylists.isNotEmpty()
+                            item(key = "downloads_hero", contentType = "downloads_hero") {
+                                Box(
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .then(if (hasPlaylistsBelow) Modifier.padding(bottom = 13.dp) else Modifier),
+                                ) {
+                                    DownloadsHeroCard(
+                                        downloadedCount = downloadedCount,
+                                        onClick = viewModel::openDownloads,
                                     )
                                 }
                             }

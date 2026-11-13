@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.catch
 import com.lastwave.app.data.playlist.SpotifyUserPlaylist
 import com.lastwave.app.data.playlist.SpotifyPlaylistImporter
 import com.lastwave.app.data.spotify.SpotifyPreferences
@@ -101,6 +102,17 @@ class PlaylistViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(PlaylistUiState())
     val uiState: StateFlow<PlaylistUiState> = _uiState.asStateFlow()
+
+    /** Songs saved for offline, for Library's Downloads card. */
+    val downloadedCount: StateFlow<Int> = trackDownloadManager.downloadedTrackDao.getAll()
+        .map { it.size }
+        .catch { emit(0) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    fun openDownloads() {
+        routeNavigator.navigateTo(com.lastwave.app.ui.navigation.Screen.Downloads.route)
+    }
+
     private val trackMoveVersions = mutableMapOf<Long, Long>()
     private val pendingTrackMoves = mutableMapOf<Long, Int>()
 
