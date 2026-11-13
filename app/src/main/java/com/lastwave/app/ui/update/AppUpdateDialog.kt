@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,7 +38,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.update.AppUpdateManager
-import com.lastwave.app.data.update.UpdateDownload
 import com.lastwave.app.data.update.UpdateInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
@@ -57,8 +55,8 @@ class AppUpdateDialogViewModel @Inject constructor(
 
 /**
  * The in-app update dialog, as on desktop: opens by itself when a new release
- * is found on launch, and from Settings' "Update Ready". Hosted once at the
- * app root so every screen shares it.
+ * is found on launch, and from Settings' "Update Ready". Update now opens
+ * the APK download in the browser, as before. Hosted once at the app root.
  */
 @Composable
 fun AppUpdateDialogHost(viewModel: AppUpdateDialogViewModel = hiltViewModel()) {
@@ -68,9 +66,10 @@ fun AppUpdateDialogHost(viewModel: AppUpdateDialogViewModel = hiltViewModel()) {
     val manager = viewModel.manager
     AppUpdateDialog(
         info = info,
-        onUpdate = manager::startDownload,
-        onInstall = manager::installDownloaded,
-        onCancelDownload = manager::cancelDownload,
+        onUpdate = {
+            manager.openDownload(context)
+            manager.hideDialog()
+        },
         onOpenGitHub = { manager.openReleasePage(context) },
         onClose = { skipThisVersion ->
             if (skipThisVersion) manager.dismissUpdate(info.latestVersion)
@@ -83,17 +82,12 @@ fun AppUpdateDialogHost(viewModel: AppUpdateDialogViewModel = hiltViewModel()) {
 private fun AppUpdateDialog(
     info: UpdateInfo,
     onUpdate: () -> Unit,
-    onInstall: () -> Unit,
-    onCancelDownload: () -> Unit,
     onOpenGitHub: () -> Unit,
     onClose: (skipThisVersion: Boolean) -> Unit,
 ) {
     var skipThisVersion by rememberSaveable { mutableStateOf(false) }
-    val download = info.download
-    val downloading = download is UpdateDownload.Downloading
     Dialog(
-        // Back/outside never abandon a download half way through by accident.
-        onDismissRequest = { if (!downloading) onClose(skipThisVersion) },
+        onDismissRequest = { onClose(skipThisVersion) },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
@@ -153,44 +147,9 @@ private fun AppUpdateDialog(
                     )
                 }
 
-                when (download) {
-                    is UpdateDownload.Downloading -> {
-                        val fraction = if (download.totalBytes > 0) {
-                            (download.receivedBytes.toFloat() / download.totalBytes).coerceIn(0f, 1f)
-                        } else {
-                            null
-                        }
-                        if (fraction != null) {
-                            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
-                        } else {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        }
-                        Text(
-                            if (download.totalBytes > 0) {
-                                "Downloading ${formatBytes(download.receivedBytes)} of ${formatBytes(download.totalBytes)}"
-                            } else {
-                                "Downloading ${formatBytes(download.receivedBytes)}"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    is UpdateDownload.Failed -> Text(
-                        download.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    is UpdateDownload.Ready -> Text(
-                        info.message ?: "Downloaded. Confirm the install prompt to update.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    UpdateDownload.Idle -> Unit
-                }
-
-                if (!downloading) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = skipThisVersion, onCheckedChange = { skipThisVersion = it })
-                        Text("Don't show again for this version", style = MaterialTheme.typography.bodyMedium)
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = skipThisVersion, onCheckedChange = { skipThisVersion = it })
+                    Text("Don't show again for this version", style = MaterialTheme.typography.bodyMedium)
                 }
 
                 Row(
@@ -199,20 +158,8 @@ private fun AppUpdateDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(onClick = onOpenGitHub) { Text("GitHub") }
-                    if (downloading) {
-                        TextButton(onClick = onCancelDownload) { Text("Cancel download") }
-                    } else {
-                        TextButton(onClick = { onClose(skipThisVersion) }) { Text("Remind me later") }
-                        Button(onClick = if (download is UpdateDownload.Ready) onInstall else onUpdate) {
-                            Text(
-                                when (download) {
-                                    is UpdateDownload.Ready -> "Install"
-                                    is UpdateDownload.Failed -> "Retry"
-                                    else -> "Update now"
-                                },
-                            )
-                        }
-                    }
+                    TextButton(onClick = { onClose(skipThisVersion) }) { Text("Remind me later") }
+                    Button(onClick = onUpdate) { Text("Update now") }
                 }
             }
         }

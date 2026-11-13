@@ -4,13 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import androidx.core.content.FileProvider
 import com.lastwave.app.BuildConfig
-import java.io.File
-import java.io.IOException
-import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.ensureActive
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,17 +38,7 @@ data class UpdateInfo(
     val downloadSizeBytes: Long = 0L,
     /** The in-app update dialog is open (on launch, or from Settings / the banner). */
     val showDialog: Boolean = false,
-    val download: UpdateDownload = UpdateDownload.Idle,
 )
-
-/** The in-app APK download, from the first byte to the system installer. */
-sealed interface UpdateDownload {
-    data object Idle : UpdateDownload
-    data class Downloading(val receivedBytes: Long, val totalBytes: Long) : UpdateDownload
-    /** Downloaded and verified; the installer prompt was (or can be) opened. */
-    data class Ready(val filePath: String) : UpdateDownload
-    data class Failed(val message: String) : UpdateDownload
-}
 
 data class ReleaseAsset(
     val name: String,
@@ -251,140 +235,21 @@ class AppUpdateManager @Inject constructor(
     }
 
     @Volatile private var autoDialogShown = false
-    private var downloadJob: Job? = null
-
     /**
-     * Downloads this build's APK from the release, checks it really is a newer
-     * build of this app, then hands it to the system installer. The installer
-     * itself refuses an APK signed with a different key.
+     * Update now: opens this build's APK download in the browser, as before;
+     * the listener installs it from there, so no install permission is needed.
+     * A release without an APK for this build opens its release page instead.
      */
-    fun startDownload() {
-        val info = _updateInfo.value
-        val url = info.downloadUrl
-        val fileName = info.downloadFileName
-        if (url.isNullOrBlank() || fileName.isNullOrBlank()) {
-            // The release has no APK for this build: the release page is all there is.
-            openReleasePage(context)
-            return
+    fun openDownload(context: Context) {
+        val targetUrl = _updateInfo.value.downloadUrl?.takeIf { it.isNotBlank() }
+            ?: return openReleasePage(context)
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        if (downloadJob?.isActive == true) return
-        downloadJob = scope.launch {
-            val dir = File(context.cacheDir, UPDATE_DIR).apply {
-                mkdirs()
-                listFiles()?.forEach { runCatching { it.delete() } }
-            }
-            val part = File(dir, "$fileName.part")
-            val target = File(dir, fileName)
-            setDownload(UpdateDownload.Downloading(0L, info.downloadSizeBytes))
-            try {
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", "LastWave-Android")
-                    .build()
-                // A ~30 MB file: no overall call deadline, only a stalled-read one.
-                val client = okHttpClient.newBuilder()
-                    .callTimeout(0, TimeUnit.MILLISECONDS)
-                    .readTimeout(60, TimeUnit.SECONDS)
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IOException("Download failed (HTTP ${response.code})")
-                    val body = response.body ?: throw IOException("Download was empty")
-                    val total = body.contentLength().takeIf { it > 0L } ?: info.downloadSizeBytes
-                    body.byteStream().use { input ->
-                        part.outputStream().use { output ->
-                            val buffer = ByteArray(64 * 1024)
-                            var received = 0L
-                            var reported = 0L
-                            while (true) {
-                                ensureActive()
-                                val read = input.read(buffer)
-                                if (read < 0) break
-                                output.write(buffer, 0, read)
-                                received += read
-                                if (received - reported >= PROGRESS_STEP_BYTES) {
-                                    reported = received
-                                    setDownload(UpdateDownload.Downloading(received, total))
-                                }
-                            }
-                            if (total > 0L && received != total) {
-                                throw IOException("Download incomplete ($received of $total bytes)")
-                            }
-                        }
-                    }
-                }
-                verifyDownloadedApk(part)
-                if (!part.renameTo(target)) throw IOException("Could not save the update")
-                setDownload(UpdateDownload.Ready(target.path))
-                installDownloaded()
-            } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                runCatching { part.delete() }
-                setDownload(UpdateDownload.Idle)
-                throw cancellation
-            } catch (error: Exception) {
-                runCatching { part.delete() }
-                setDownload(UpdateDownload.Failed(error.message ?: "Download failed"))
-            }
-        }
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) { }
     }
-
-    fun cancelDownload() {
-        downloadJob?.cancel()
-        downloadJob = null
-    }
-
-    /**
-     * Opens the system installer for the downloaded APK. Without the "install
-     * unknown apps" grant it opens that setting first; tapping Install again
-     * after allowing it continues.
-     */
-    fun installDownloaded() {
-        val ready = _updateInfo.value.download as? UpdateDownload.Ready ?: return
-        val file = File(ready.filePath)
-        if (!file.exists()) {
-            setDownload(UpdateDownload.Failed("The downloaded update is gone; download it again"))
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) {
-            _updateInfo.update { it.copy(message = "Allow LastWave to install apps, then tap Install") }
-            runCatching {
-                context.startActivity(
-                    Intent(
-                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:${context.packageName}"),
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }
-            return
-        }
-        runCatching {
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, "application/vnd.android.package-archive")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }.onFailure { error ->
-            setDownload(UpdateDownload.Failed("Could not open the installer: ${error.message ?: "unknown error"}"))
-        }
-    }
-
-    /** Only ever offer the installer a newer build of this very app. */
-    private fun verifyDownloadedApk(apk: File) {
-        @Suppress("DEPRECATION")
-        val archive = context.packageManager.getPackageArchiveInfo(apk.path, 0)
-            ?: throw IOException("The download is not a valid APK")
-        if (archive.packageName != context.packageName) {
-            throw IOException("The download is a different app (${archive.packageName})")
-        }
-        val version = archive.versionName.orEmpty()
-        if (!isNewerVersion(version, getCurrentVersion())) {
-            throw IOException("The download ($version) is not newer than this version")
-        }
-    }
-
-    private fun setDownload(state: UpdateDownload) = _updateInfo.update { it.copy(download = state) }
 
     fun isNewerVersion(remote: String, local: String): Boolean {
         if (remote.isBlank() || local.isBlank()) return false
@@ -406,10 +271,6 @@ class AppUpdateManager @Inject constructor(
     }
 
     companion object {
-        /** Under the FileProvider's cache-path "shared/", so the installer can read it. */
-        private const val UPDATE_DIR = "shared/updates"
-        private const val PROGRESS_STEP_BYTES = 256L * 1024
-
         fun classifyAsset(name: String): ApkVariant {
             val lower = name.lowercase()
             return when {

@@ -6,8 +6,6 @@
         tools:overrideLibrary="com.decent.usbaudio" />
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- In-app updates: hand the downloaded release APK to the system installer. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
