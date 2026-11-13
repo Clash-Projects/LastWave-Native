@@ -136,6 +136,41 @@ class Mp4FlacRemuxerTest {
     }
 
     @Test
+    fun fillsZeroTotalSamplesFromFragmentDurationsSoTheFlacIsSeekable() {
+        // fMP4 muxers leave total_samples = 0 (bits 108..143 of STREAMINFO).
+        val zeroTotal = streamInfo.copyOf().apply {
+            this[13] = (this[13].toInt() and 0xF0).toByte()
+            for (i in 14..17) this[i] = 0
+        }
+        val dfLa = box("dfLa", byteArrayOf(0, 0, 0, 0, 0x80.toByte(), 0, 0, 0x22) + zeroTotal)
+        // STREAMINFO says 176400 Hz; mdhd timescale matches, so ticks == samples.
+        val mdhd = box("mdhd", ByteArray(8) + byteArrayOf(0x00, 0x02, 0xB1.toByte(), 0x10) + ByteArray(4))
+        val moov = box("moov", box("trak", box("mdia", mdhd + box("minf", box("stbl", box("stsd", box("fLaC", dfLa)))))))
+        // Each fragment: 2 samples x default duration 4096 (tfhd flag 0x08).
+        val tfhd = box("tfhd", byteArrayOf(0, 0, 0, 0x08, 0, 0, 0, 1, 0, 0, 0x10, 0))
+        val trun = box("trun", byteArrayOf(0, 0, 0, 0, 0, 0, 0, 2))
+        val moof = box("moof", box("traf", tfhd + trun))
+        val input = tempFolder.newFile("zero_total.m4a")
+        input.writeBytes(
+            box("ftyp", "M4A ".toByteArray(Charsets.US_ASCII)) + moov +
+                moof + box("mdat", frameBytes(0x0A.toByte())) +
+                moof + box("mdat", frameBytes(0x11.toByte())),
+        )
+
+        val output = File(tempFolder.root, "zero_total.flac")
+        assertThat(Mp4FlacRemuxer.remux(input, output)).isTrue()
+
+        val info = output.readBytes().copyOfRange(8, 42)
+        val total = ((info[13].toLong() and 0x0F) shl 32) or
+            ((info[14].toLong() and 0xFF) shl 24) or ((info[15].toLong() and 0xFF) shl 16) or
+            ((info[16].toLong() and 0xFF) shl 8) or (info[17].toLong() and 0xFF)
+        assertThat(total).isEqualTo(4L * 4096)
+        // Everything else in STREAMINFO stays bit-exact.
+        assertThat(info.copyOfRange(0, 13)).isEqualTo(zeroTotal.copyOfRange(0, 13))
+        assertThat(info.copyOfRange(18, 34)).isEqualTo(zeroTotal.copyOfRange(18, 34))
+    }
+
+    @Test
     fun refusesTruncatedContainer() {
         val input = tempFolder.newFile("truncated.m4a")
         val full = buildContainer(withFlac = true, frames = frameBytes(0x0A.toByte()))
