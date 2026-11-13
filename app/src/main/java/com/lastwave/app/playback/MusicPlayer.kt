@@ -411,6 +411,7 @@ class MusicPlayer @Inject constructor(
     /** Same, for the inaudible-but-rendering branch + its position cursor. */
     private var inaudibleSinceMs = 0L
     private var lastAdvancingPositionMs = -1L
+    private var lastMusicActiveCheckMs = 0L
     /** Recovery attempts per mediaId, so a hopeless window stops at 2 and
      *  the existing error/unavailable machinery owns it from there. */
     private val silentRecoveries = mutableMapOf<String, Int>()
@@ -5228,6 +5229,7 @@ class MusicPlayer @Inject constructor(
         lastRenderPositionMs = -1L
         lastRenderBufferedMs = -1L
         lastAdvancingPositionMs = -1L
+        lastMusicActiveCheckMs = 0L
     }
 
     /**
@@ -5310,7 +5312,11 @@ class MusicPlayer @Inject constructor(
         // Rendering branch: position must be advancing (else the parked
         // branch above owns it) with no active music stream behind it.
         renderStallSinceMs = 0L
-        val directOutputBypass = exclusiveUsbOutput.isActive() || internalDirectOutput.isActive()
+        // isMusicActive is a binder call; at the 60 ms full-player cadence it
+        // was most of the main thread's playback work. 1 s is plenty for a 10 s timeout.
+        if (nowMs - lastMusicActiveCheckMs < MUSIC_ACTIVE_CHECK_INTERVAL_MS) return
+        lastMusicActiveCheckMs = nowMs
+        val directOutputBypass =exclusiveUsbOutput.isActive() || internalDirectOutput.isActive()
         val musicActive = directOutputBypass || runCatching { audioManager?.isMusicActive == true }.getOrDefault(true)
         if (posNow == lastAdvancingPositionMs || musicActive) {
             lastAdvancingPositionMs = posNow
@@ -9089,6 +9095,7 @@ class MusicPlayer @Inject constructor(
          *  second or two). User-muted-to-zero still counts as active, so
          *  this never fires on a deliberately silent phone. */
         const val INAUDIBLE_TIMEOUT_MS = 10_000L
+        const val MUSIC_ACTIVE_CHECK_INTERVAL_MS = 1_000L
         /** Renderer-reset, then re-resolve. Beyond that the error/unavailable
          *  machinery owns the window â€” never loop recovery forever. */
         const val MAX_SILENT_RECOVERIES = 2
