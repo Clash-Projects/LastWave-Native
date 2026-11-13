@@ -2,6 +2,7 @@
 
 package com.lastwave.app.ui.player
 
+import com.lastwave.app.data.local.SeekbarStyle
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import com.lastwave.app.data.playlist.isLikedIn
@@ -346,7 +347,8 @@ internal fun FullPlayerLandscape(
     state: MusicPlayerState,
     player: MusicPlayer,
     progressState: StateFlow<PlaybackProgressState>?,
-    wavySeekbarEnabled: Boolean,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     showSleeveCanvas: Boolean,
     canvas: com.lastwave.app.data.canvas.CanvasArtwork?,
     ambientColor: Color,
@@ -513,6 +515,7 @@ internal fun FullPlayerLandscape(
                 progressState = progressState ?: player.progressState,
                 isPlaying = state.isPlaying,
                 trackKey = track.videoId ?: "${track.artist}|${track.title}",
+                seekbarStyle = seekbarStyle,
                 wavyEnabled = wavySeekbarEnabled,
                 onSeek = player::seekTo,
                 isTranslucent = LocalLiquidGlass.current,
