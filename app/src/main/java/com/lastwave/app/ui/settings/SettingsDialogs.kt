@@ -1,6 +1,19 @@
 package com.lastwave.app.ui.settings
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.input.pointer.pointerInput
+import com.lastwave.app.data.local.SeekbarStyle
+import com.lastwave.app.ui.player.WaveformSlider
+import com.lastwave.app.ui.player.WavyProgressTrack
+import kotlin.math.PI
+import kotlin.math.sin
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -191,6 +204,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -483,4 +497,383 @@ internal fun TranslationLanguageDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
         },
     )
+}
+
+/**
+ * Modal style-selector dialog modeled after Resonix's player slider style chooser.
+ * Allows choosing between Default (Material You), Wavy (fluid multi-layer waves),
+ * and Waveform (Samsung One UI 6 waveform slider).
+ *
+ * Previews are live and interactive: users can scrub and test each slider style
+ * directly in its card before applying their selection.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SeekbarStyleDialog(
+    current: SeekbarStyle,
+    onSelect: (SeekbarStyle) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selectedStyle by remember(current) { mutableStateOf(current) }
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+
+    BasicAlertDialog(
+        onDismissRequest = onDismiss,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_seekbar_style),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(18.dp))
+
+                // Top row: 2 cards side by side (Default and Wavy)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SeekbarStyleLiveCard(
+                        style = SeekbarStyle.DEFAULT,
+                        title = stringResource(R.string.settings_seekbar_style_default),
+                        selected = selectedStyle == SeekbarStyle.DEFAULT,
+                        onSelect = { selectedStyle = SeekbarStyle.DEFAULT },
+                        primaryColor = primaryColor,
+                        secondaryColor = secondaryColor,
+                        tertiaryColor = tertiaryColor,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SeekbarStyleLiveCard(
+                        style = SeekbarStyle.WAVY,
+                        title = stringResource(R.string.settings_seekbar_style_wavy),
+                        selected = selectedStyle == SeekbarStyle.WAVY,
+                        onSelect = { selectedStyle = SeekbarStyle.WAVY },
+                        primaryColor = primaryColor,
+                        secondaryColor = secondaryColor,
+                        tertiaryColor = tertiaryColor,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                // Bottom row: 1 card centered (Waveform)
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SeekbarStyleLiveCard(
+                        style = SeekbarStyle.WAVEFORM,
+                        title = stringResource(R.string.settings_seekbar_style_waveform),
+                        selected = selectedStyle == SeekbarStyle.WAVEFORM,
+                        onSelect = { selectedStyle = SeekbarStyle.WAVEFORM },
+                        primaryColor = primaryColor,
+                        secondaryColor = secondaryColor,
+                        tertiaryColor = tertiaryColor,
+                        modifier = Modifier.fillMaxWidth(0.70f),
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Action buttons: Cancel and Apply
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(
+                            text = stringResource(R.string.common_cancel),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onSelect(selectedStyle)
+                            onDismiss()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.common_apply),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeekbarStyleLiveCard(
+    style: SeekbarStyle,
+    title: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    primaryColor: Color,
+    secondaryColor: Color,
+    tertiaryColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val borderColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    }
+    val borderWidth = if (selected) 2.dp else 1.dp
+    val containerColor = if (selected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.20f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .border(borderWidth, borderColor, RoundedCornerShape(20.dp))
+            .background(containerColor)
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 10.dp, vertical = 12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (style) {
+                SeekbarStyle.DEFAULT -> {
+                    LiveDefaultSeekbarPreview(
+                        onSelect = onSelect,
+                        primaryColor = primaryColor,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                    )
+                }
+                SeekbarStyle.WAVY -> {
+                    LiveWavySeekbarPreview(
+                        onSelect = onSelect,
+                        primaryColor = primaryColor,
+                        secondaryColor = secondaryColor,
+                        tertiaryColor = tertiaryColor,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                    )
+                }
+                SeekbarStyle.WAVEFORM -> {
+                    LiveWaveformSeekbarPreview(
+                        onSelect = onSelect,
+                        primaryColor = primaryColor,
+                        secondaryColor = secondaryColor,
+                        tertiaryColor = tertiaryColor,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun LiveDefaultSeekbarPreview(
+    onSelect: () -> Unit,
+    primaryColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    var fraction by remember { mutableFloatStateOf(0.48f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    Canvas(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    onSelect()
+                    if (size.width > 0) {
+                        fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                    }
+                }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        onSelect()
+                        isDragging = true
+                        if (size.width > 0) {
+                            fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                        }
+                    },
+                    onDragEnd = { isDragging = false },
+                    onDragCancel = { isDragging = false },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (size.width > 0) {
+                            fraction = (fraction + dragAmount / size.width).coerceIn(0f, 1f)
+                        }
+                    }
+                )
+            }
+    ) {
+        val w = size.width
+        val h = size.height
+        if (w <= 0f || h <= 0f) return@Canvas
+        val centerY = h / 2f
+
+        val trackH = 8.dp.toPx()
+        val cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+        val thumbW = 4.dp.toPx()
+        val thumbH = 26.dp.toPx()
+        val thumbClearance = 4.dp.toPx()
+
+        val thumbCenterX = (fraction * w).coerceIn(thumbW / 2f, w - thumbW / 2f)
+        val activeEndX = (thumbCenterX - thumbW / 2f - thumbClearance).coerceAtLeast(0f)
+        val inactiveStartX = (thumbCenterX + thumbW / 2f + thumbClearance).coerceAtMost(w)
+
+        // Inactive track capsule
+        if (inactiveStartX < w) {
+            drawRoundRect(
+                color = primaryColor.copy(alpha = 0.22f),
+                topLeft = Offset(inactiveStartX, centerY - trackH / 2f),
+                size = Size(w - inactiveStartX, trackH),
+                cornerRadius = cornerRadius,
+            )
+        }
+        // Active track capsule
+        if (activeEndX > 0f) {
+            drawRoundRect(
+                color = primaryColor,
+                topLeft = Offset(0f, centerY - trackH / 2f),
+                size = Size(activeEndX, trackH),
+                cornerRadius = cornerRadius,
+            )
+        }
+        // Small endpoint marker
+        val endpointX = w - trackH / 2f
+        if (inactiveStartX < endpointX) {
+            drawCircle(
+                color = primaryColor.copy(alpha = 0.85f),
+                radius = 1.8.dp.toPx(),
+                center = Offset(endpointX, centerY)
+            )
+        }
+        // Tall vertical pill thumb
+        drawRoundRect(
+            color = primaryColor,
+            topLeft = Offset(thumbCenterX - thumbW / 2f, centerY - thumbH / 2f),
+            size = Size(thumbW, thumbH),
+            cornerRadius = CornerRadius(thumbW / 2f, thumbW / 2f),
+        )
+    }
+}
+
+@Composable
+private fun LiveWavySeekbarPreview(
+    onSelect: () -> Unit,
+    primaryColor: Color,
+    secondaryColor: Color,
+    tertiaryColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    var fraction by remember { mutableFloatStateOf(0.52f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    onSelect()
+                    if (size.width > 0) {
+                        fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                    }
+                }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        onSelect()
+                        isDragging = true
+                        if (size.width > 0) {
+                            fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                        }
+                    },
+                    onDragEnd = { isDragging = false },
+                    onDragCancel = { isDragging = false },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (size.width > 0) {
+                            fraction = (fraction + dragAmount / size.width).coerceIn(0f, 1f)
+                        }
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        WavyProgressTrack(
+            fraction = { fraction },
+            isPlaying = true,
+            dragging = isDragging,
+            isTranslucent = false,
+            primaryColor = primaryColor,
+            secondaryColor = secondaryColor,
+            tertiaryColor = tertiaryColor,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+private fun LiveWaveformSeekbarPreview(
+    onSelect: () -> Unit,
+    primaryColor: Color,
+    secondaryColor: Color,
+    tertiaryColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    var fraction by remember { mutableFloatStateOf(0.50f) }
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        WaveformSlider(
+            value = fraction,
+            valueRange = 0f..1f,
+            onValueChange = {
+                onSelect()
+                fraction = it
+            },
+            onValueChangeFinished = {},
+            isPlaying = true,
+            primaryColor = primaryColor,
+            secondaryColor = secondaryColor,
+            tertiaryColor = tertiaryColor,
+            isTranslucent = false,
+            trackHeight = 44.dp,
+            enabled = true,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
 }
