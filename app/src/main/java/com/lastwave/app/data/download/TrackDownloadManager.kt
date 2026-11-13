@@ -141,7 +141,7 @@ class TrackDownloadManager @Inject constructor(
         /** Reconnectable transfer failures tolerated before the attempt is abandoned. */
         internal const val MAX_TRANSFER_RETRIES = 6
         /** Bound on each YouTube stream-resolve step so one candidate can't wedge a slot. */
-        internal const val YT_STREAM_RESOLVE_TIMEOUT_MS = 20_000L
+        internal const val YT_STREAM_RESOLVE_TIMEOUT_MS = InnerTubeMusicApi.STREAM_RESOLVE_TOTAL_TIMEOUT_MS
         /** Resolve + transfer passes before a YouTube download is given up. */
         internal const val YT_DOWNLOAD_ATTEMPTS = 3
         internal const val MIN_PARALLEL_DOWNLOAD_BYTES = 2L * 1024 * 1024
@@ -751,6 +751,10 @@ class TrackDownloadManager @Inject constructor(
                 // advertised a bit depth nothing had measured yet.
                 var formatBadge = "FLAC"
                 var isLossless = false
+                // Capture the caller's duration before the local var below
+                // shadows the parameter: the recording-mismatch veto needs the
+                // real catalog length even when no match was preloaded.
+                val callerDurationMs = durationMs
                 var durationMs = 0L
                 var downloadHeaders = emptyMap<String, String>()
                 var expectedContentLength: Long? = null
@@ -816,7 +820,7 @@ class TrackDownloadManager @Inject constructor(
                         continue
                     }
                     try {
-                        val expectedDurationSec = durationMs?.takeIf { it > 0 }?.let { (it / 1000L).toInt() }
+                        val expectedDurationSec = callerDurationMs?.takeIf { it > 0 }?.let { (it / 1000L).toInt() }
                             ?: preloadedBestMatch?.durationSeconds?.takeIf { it > 0 }
                         // One retry: a transient blip must not kill the tier.
                         var losslessStream: LosslessAudioStream? = null
@@ -1248,6 +1252,7 @@ class TrackDownloadManager @Inject constructor(
                 // cools its client down, so the next pass lands on another one.
                 // It used to skip the song after the first stream failed.
                 var ytAttempt = 0
+                val rejectedYtStreams = mutableSetOf<String>()
                 var failedYtStream: com.lastwave.app.data.music.YouTubeAudioStream? = null
                 while (!downloadSucceeded) {
                     ytAttempt++
@@ -1289,7 +1294,6 @@ class TrackDownloadManager @Inject constructor(
                         }
                         if (candidateTracks.isEmpty()) throw IOException("No YouTube match found for $finalTitle by $finalArtist")
                         var pickedStream: com.lastwave.app.data.music.YouTubeAudioStream? = null
-                        var actualVideoId: String? = null
                         var chosenTrack: YouTubeMusicTrack? = null
                         var lastResolveError: Throwable? = null
                         // Parallel resolves queue on one local cipher until their budgets
@@ -1307,40 +1311,16 @@ class TrackDownloadManager @Inject constructor(
                                         )
                                         break
                                     }
-                                    // 1. Same waterfall playback uses (cache + multi-client direct URLs).
-                                    val playbackStream = try {
-                                        kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
-                                            innerTube.peekCachedStream(candidateId)
-                                                ?: innerTube.resolveAudioStream(candidateId)
+                                    pickedStream = try {
+                                        innerTube.resolveDownloadCandidate(candidateId, rejectedYtStreams) {
+                                            ytResolveBudgetMs - (android.os.SystemClock.elapsedRealtime() - ytFallbackStartMs)
                                         }
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
                                     } catch (error: Exception) {
+                                        currentCoroutineContext().ensureActive()
                                         lastResolveError = error
                                         null
                                     }
-                                    // 2. Opus preference: if playback picked AAC (or failed),
-                                    // ask NewPipe for the WebM/Opus rendition, which is
-                                    // remuxed below into a fully tagged .opus file.
-                                    val opusStream = playbackStream?.takeIf { it.isOpusStream() } ?: try {
-                                        kotlinx.coroutines.withTimeoutOrNull(YT_STREAM_RESOLVE_TIMEOUT_MS) {
-                                            innerTube.resolveDownloadStream(candidateId)
-                                        }
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
-                                    } catch (error: Exception) {
-                                        lastResolveError = error
-                                        null
-                                    }
-                                    // An HLS playlist is not a file: saving it wrote the playlist
-                                    // text as the "song". Only progressive streams can be downloaded.
-                                    pickedStream = listOfNotNull(
-                                        opusStream?.takeIf { it.isOpusStream() },
-                                        playbackStream,
-                                        opusStream,
-                                    ).firstOrNull { !it.isAdaptive }
                                     if (pickedStream != null) {
-                                        actualVideoId = candidateId
                                         resolvedYtVideoId = candidateId
                                         chosenTrack = candidateTrack
                                         break
@@ -1507,42 +1487,34 @@ class TrackDownloadManager @Inject constructor(
                         bytesReadTotal = transfer.bytesDownloaded
                         totalBytesRecorded = transfer.totalBytes
 
-                        val detected = detectValidContainer(rawFile)
-                        if (detected != null) {
-                            // SimpMusic/Metrolist style: accept whatever valid
-                            // audio YouTube served (opus/webm/m4a/mp3) — remux
-                            // below normalizes it. Never fail on mime mismatch.
-                            extension = detected
-                            mimeType = when (detected) {
-                                "m4a" -> "audio/mp4"
-                                "webm" -> "audio/webm"
-                                "opus" -> "audio/ogg"
-                                "mp3" -> "audio/mpeg"
-                                "flac" -> "audio/flac"
-                                else -> mimeType
-                            }
-                        } else if (rawFile.length() < MIN_VALID_AUDIO_BYTES || !hasExpectedContainer(rawFile, extension)) {
-                            // Only reject when the payload is not audio at all
-                            // (HTML error page / truncated). A valid container
-                            // with an unexpected extension is kept.
-                            if (detectValidContainer(rawFile) == null && rawFile.length() < MIN_VALID_AUDIO_BYTES) {
-                                throw IOException("Downloaded payload is not valid audio (${rawFile.length()} bytes)")
-                            }
+                        extension = validateDownloadedAudio(rawFile)
+                        mimeType = when (extension) {
+                            "m4a" -> "audio/mp4"
+                            "webm" -> "audio/webm"
+                            "opus" -> "audio/ogg"
+                            "mp3" -> "audio/mpeg"
+                            "flac" -> "audio/flac"
+                            else -> mimeType
                         }
                         downloadSucceeded = true
                     } catch (cancellation: CancellationException) {
                         throw cancellation
-                    } catch (ytError: Throwable) {
+                    } catch (ytError: Exception) {
                         tempDownloadFile?.let { runCatching { if (it.exists()) it.delete() } }
                         tempDownloadFile = null
                         val rejected = failedYtStream
-                        if (rejected != null && ytAttempt < YT_DOWNLOAD_ATTEMPTS) {
+                        if (ytAttempt < YT_DOWNLOAD_ATTEMPTS) {
                             android.util.Log.w(
                                 "TrackDownloadManager",
-                                "YouTube transfer failed for $title by $artist (attempt $ytAttempt, ${rejected.clientProfile}); re-resolving",
+                                "YouTube download failed for $title by $artist (attempt $ytAttempt); re-resolving",
                                 ytError,
                             )
-                            runCatching { innerTube.reportPlaybackFailure(rejected.videoId, rejected) }
+                            if (rejected != null) {
+                                rejectedYtStreams += rejected.downloadRenditionKey()
+                                runCatching { innerTube.reportPlaybackFailure(rejected.videoId, rejected) }
+                            } else {
+                                awaitNetworkForResolveRetry()
+                            }
                             continue
                         }
                         // Surface the real reason (no match vs no stream vs

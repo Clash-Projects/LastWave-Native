@@ -40,6 +40,31 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x gradlew
 
+      - name: Verify download and playback regressions
+        run: >-
+          ./gradlew :app:testDebugUnitTest
+          --tests 'com.lastwave.app.data.download.YouTubeDownloadResolverTest'
+          --tests 'com.lastwave.app.data.download.TrackDownloadTransferTest'
+          --tests 'com.lastwave.app.data.download.DownloadPayloadValidationTest'
+          --tests 'com.lastwave.app.data.music.AwaitSharedStreamTest'
+          --tests 'com.lastwave.app.data.download.ClearAllDownloadsTest'
+          --tests 'com.lastwave.app.data.download.AudioRestoreScanTest'
+          --tests 'com.lastwave.app.data.download.Mp4FlacRemuxerTest'
+          --tests 'com.lastwave.app.data.download.Fmp4IndexBuilderTest'
+          --tests 'com.lastwave.app.playback.ChunkedRangeDataSourceTest'
+          --tests 'com.lastwave.app.data.music.PlaybackCandidateRaceTest'
+          --stacktrace
+
+      - name: Upload regression test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Download-regression-test-results
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+
       - name: Build Release APK
         env:
           ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}

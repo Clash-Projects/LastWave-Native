@@ -135,9 +135,7 @@ internal suspend fun InnerTubeMusicApi.resolveAudioStreamImpl(
             // Hard cap on one full resolution: without it a bad network could
             // chain every fallback stage into a 60-90s wait before the caller
             // ever got a chance to retry with fresh state.
-            kotlinx.coroutines.withTimeoutOrNull(STREAM_RESOLVE_TOTAL_TIMEOUT_MS) {
-                shared.deferred.await()
-            } ?: throw IOException("Timed out resolving audio stream for $videoId")
+            shared.deferred.awaitSharedStream(STREAM_RESOLVE_TOTAL_TIMEOUT_MS, videoId)
         } finally {
             shared.waiters.decrementAndGet()
             // Do not cancel the shared deferred when the last waiter leaves.
