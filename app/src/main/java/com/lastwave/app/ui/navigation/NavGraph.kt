@@ -295,7 +295,6 @@ fun LastWaveNavHost(
                 },
                 onOpenSearch = { navController.navigate(Screen.Search.route) },
                 onOpenDiscover = { navController.navigate(Screen.Discover.route) },
-                onOpenGenres = { navController.navigate(Screen.Genres.route) },
                 onOpenFriends = { navController.navigate(Screen.Friends.route) },
                 onOpenFriendProfile = { username, displayName, avatarUrl ->
                     navController.navigate(Screen.FriendProfile.createRoute(username, displayName, avatarUrl))
