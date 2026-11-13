@@ -92,6 +92,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -133,6 +134,7 @@ import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.feed.FeedScreen
 import com.lastwave.app.ui.home.HomeScreen
+import com.lastwave.app.ui.player.LocalChromeCollapse
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.ui.playlist.PlaylistScreen
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -385,6 +387,10 @@ fun MainShell(
         }
     } else null
     val navGlass = isLiquidGlassBackdropSupported()
+    val chromeCollapse = LocalChromeCollapse.current
+    // Each tab keeps its own scroll offset: a compact bar carried onto a tab
+    // resting at its top would have nothing to scroll back up to expand it.
+    LaunchedEffect(chromeCollapse, pagerState.settledPage) { chromeCollapse?.expand() }
 
     Box(Modifier.fillMaxSize()) {
         val feedIndex = tabs.indexOf(MainTab.FEED)
@@ -396,7 +402,9 @@ fun MainShell(
             // was rebuilt the same way from the far tab. Only 3 tabs, and
             // off-screen pages are not drawn, so this is cheap.
             beyondViewportPageCount = tabs.size - 1,
-            modifier = Modifier.fillMaxSize().then(
+            modifier = Modifier.fillMaxSize()
+                .then(if (chromeCollapse != null) Modifier.nestedScroll(chromeCollapse.connection) else Modifier)
+                .then(
                 if (navigationLiquidState != null) {
                     Modifier.liquefiable(navigationLiquidState).background(backgroundColor)
                 } else {
