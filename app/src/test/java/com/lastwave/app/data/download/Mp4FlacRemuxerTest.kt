@@ -144,7 +144,7 @@ class Mp4FlacRemuxerTest {
         }
         val dfLa = box("dfLa", byteArrayOf(0, 0, 0, 0, 0x80.toByte(), 0, 0, 0x22) + zeroTotal)
         // STREAMINFO says 176400 Hz; mdhd timescale matches, so ticks == samples.
-        val mdhd = box("mdhd", ByteArray(8) + byteArrayOf(0x00, 0x02, 0xB1.toByte(), 0x10) + ByteArray(4))
+        val mdhd = box("mdhd", ByteArray(12) + byteArrayOf(0x00, 0x02, 0xB1.toByte(), 0x10) + ByteArray(8))
         val moov = box("moov", box("trak", box("mdia", mdhd + box("minf", box("stbl", box("stsd", box("fLaC", dfLa)))))))
         // Each fragment: 2 samples x default duration 4096 (tfhd flag 0x08).
         val tfhd = box("tfhd", byteArrayOf(0, 0, 0, 0x08, 0, 0, 0, 1, 0, 0, 0x10, 0))
