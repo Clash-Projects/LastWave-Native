@@ -355,7 +355,8 @@ private fun Modifier.captureHeadroom(padding: Dp): Modifier = layout { measurabl
     layout(width, height) { placeable.place(-inset, -inset) }
 }
 
-private fun Modifier.navigationRail(state: LiquidState, color: Color, blurRadius: Dp = 8.dp): Modifier = liquid(state) {
+// 12dp matches the mini player's base glass blur so the docked row reads as one frost.
+private fun Modifier.navigationRail(state: LiquidState, color: Color, blurRadius: Dp = 12.dp): Modifier = liquid(state) {
     shape = CircleShape
     frost = blurRadius
     refraction = 0.07f
