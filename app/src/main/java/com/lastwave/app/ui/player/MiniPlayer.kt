@@ -372,6 +372,8 @@ internal fun MiniPlayer(
     backdrop: Backdrop? = LocalLiquidGlassBackdrop.current,
     /** Root bounds of the visible card (after padding), for the open/close morph. */
     onCardBounds: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
+    /** 0 = full card, 1 = slim card docked beside the collapsed nav pill. Read in layout/draw only. */
+    compactProgress: () -> Float = { 0f },
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -479,10 +481,11 @@ internal fun MiniPlayer(
                     },
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                            .collapseVerticalPadding(10.dp, 2.5.dp, compactProgress),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.size(56.dp)) {
+                        Box(Modifier.collapseSquare(56.dp, 40.dp, compactProgress)) {
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -524,7 +527,7 @@ internal fun MiniPlayer(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(48.dp),
+                            modifier = Modifier.size(48.dp).collapseScale(0.85f, compactProgress),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 if (state.isBuffering) {
@@ -544,6 +547,7 @@ internal fun MiniPlayer(
                             modifier = Modifier
                                 .padding(start = 8.dp)
                                 .size(44.dp)
+                                .collapseScale(0.85f, compactProgress)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.secondaryContainer),
                         ) {
@@ -578,7 +582,7 @@ internal fun MiniPlayer(
                 shadowElevation = 6.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp)
+                    .collapseHeight(72.dp, 56.dp, compactProgress)
                     .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
             ) {
                 Row(
@@ -590,7 +594,7 @@ internal fun MiniPlayer(
                     // Concentric Left Geometry: 54.dp artwork nesting inside the 72.dp capsule curve
                     Box(
                         modifier = Modifier
-                            .size(54.dp)
+                            .collapseSquare(54.dp, 40.dp, compactProgress)
                             .clip(RoundedCornerShape(percent = m3ArtworkCornerPercent))
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                         contentAlignment = Alignment.Center,
@@ -637,7 +641,7 @@ internal fun MiniPlayer(
                         shape = RoundedCornerShape(percent = m3PlayPauseCornerPercent),
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(42.dp),
+                        modifier = Modifier.size(42.dp).collapseScale(0.9f, compactProgress),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             if (state.isBuffering) {
@@ -659,6 +663,7 @@ internal fun MiniPlayer(
                         modifier = Modifier
                             .padding(start = 6.dp)
                             .size(40.dp)
+                            .collapseScale(0.9f, compactProgress)
                             .border(
                                 width = 1.2.dp,
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
