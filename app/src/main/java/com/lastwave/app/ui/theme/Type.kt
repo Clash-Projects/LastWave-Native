@@ -78,7 +78,7 @@ fun lyricsLeadFontFamily(bold: Boolean): FontFamily = if (bold) LyricsLeadBoldFo
 fun lyricsBackingFontFamily(bold: Boolean): FontFamily = if (bold) LyricsBackingBoldFontFamily else LyricsBackingFontFamily
 fun lyricsSubLineFontFamily(bold: Boolean): FontFamily = if (bold) LyricsSubLineBoldFontFamily else LyricsSubLineFontFamily
 
-// Regular (boost = 0) is exactly the tag 2.0 type scale; bold mode only adds weight on top.
+// boost = 0 is exactly the tag 2.0 type scale; regular trims it, bold mode adds on top.
 private fun lastWaveTypography(boost: Float) = Typography(
     displayLarge = TextStyle(fontFamily = gsFlex(weight = (760f + boost).coerceAtMost(1000f), width = 122f, round = 42f, opticalSize = 57f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
     displayMedium = TextStyle(fontFamily = gsFlex(weight = (740f + boost).coerceAtMost(1000f), width = 120f, round = 40f, opticalSize = 45f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),
@@ -97,7 +97,9 @@ private fun lastWaveTypography(boost: Float) = Typography(
     labelSmall = TextStyle(fontFamily = gsFlex(weight = (660f + boost).coerceAtMost(1000f), width = 108f, round = 44f, opticalSize = 11f), fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp),
 )
 
-val LastWaveTypography = lastWaveTypography(0f)
+// Regular app font sits a little lighter than the 2.0 values (wght axis); bold mode is unchanged.
+const val REGULAR_FONT_TRIM = -60f
+val LastWaveTypography = lastWaveTypography(REGULAR_FONT_TRIM)
 val LastWaveBoldTypography = lastWaveTypography(BOLD_FONT_BOOST)
 
 /**
