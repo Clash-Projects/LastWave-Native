@@ -408,10 +408,10 @@ internal fun FullPlayer(
         delay(VIDEO_PRELOAD_DELAY_MS)
         syncedVideoVm.preloadVideo(track.title, track.artist, track.videoId, track.durationMs)
     }
-    // Full bleed works wherever the player uses the single-column layout:
-    // phones and tablets in portrait. Only tablet landscape (two columns,
-    // cover beside the controls) keeps the boxed sleeve.
-    val fullBleedBlocked = isTablet && isLandscape
+    // This full bleed is the single-column (portrait) hero. The two-column
+    // landscape layout draws its own full-bleed art pane on the left
+    // (LandscapeArtworkPane), so the portrait hero must not paint behind it.
+    val fullBleedBlocked = isTabletLandscape
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !fullBleedBlocked
     val showSleeveCanvas = isCanvasActive && !showFullBleed && !isVideoActive
     // activeCanvas is the single gate every render branch below keys off, so it also
@@ -1165,6 +1165,40 @@ internal fun FullPlayer(
                                     }
                                 },
                             ) {
+                                // Landscape: lyrics beside the same full-bleed art pane as
+                                // Now Playing, with just the seek bar and transport over it.
+                                // Lyrics' own fullscreen still takes the whole width.
+                                val landscapeSplit = isTabletLandscape && !lyricsFullscreen
+                                Row(Modifier.fillMaxSize()) {
+                                if (landscapeSplit) {
+                                    LandscapeArtworkPane(
+                                        track = track,
+                                        state = state,
+                                        player = player,
+                                        canvas = if (showSleeveCanvas) activeCanvas ?: canvas else null,
+                                        resolvedArtworkUrl = resolvedAmbientUrl,
+                                        onDoubleTapLike = onDoubleTapLike,
+                                        shownDismissY = shownDismissY,
+                                        swipeThreshold = swipeThreshold,
+                                        isVideoActive = isVideoActive,
+                                        onCloseVideo = { syncedVideoVm.setVideoActive(false) },
+                                        onEnterFullscreen = { isVideoFullscreen = true },
+                                        modifier = Modifier.weight(1f),
+                                        overlay = {
+                                            LandscapeCompactControls(
+                                                track = track,
+                                                state = state,
+                                                player = player,
+                                                progressState = progressState,
+                                                wavySeekbarEnabled = wavySeekbarEnabled,
+                                                ambientColor = ambientColor,
+                                                ambientCompanion = ambientCompanion,
+                                                ambientDeep = ambientDeep,
+                                                onShowFullControls = { onTabChange(FullPlayerTab.NOW_PLAYING) },
+                                            )
+                                        },
+                                    )
+                                }
                                 ModernLyricsPanel(
                                     state = state,
                                     player = player,
@@ -1190,10 +1224,17 @@ internal fun FullPlayer(
                                     secondaryColor = ambientCompanion,
                                     tertiaryColor = ambientDeep,
                                     resolvedArtworkUrl = resolvedAmbientUrl,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp),
+                                    modifier = if (landscapeSplit) {
+                                        Modifier
+                                            .weight(1.15f)
+                                            .fillMaxHeight()
+                                    } else {
+                                        Modifier
+                                            .fillMaxSize()
+                                            .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp)
+                                    },
                                 )
+                                }
                             }
                         }
 
@@ -1244,6 +1285,7 @@ internal fun FullPlayer(
                                     onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                     onEnterFullscreen = { isVideoFullscreen = true },
                                     onToggleVideo = onToggleSyncedVideo,
+                                    resolvedArtworkUrl = resolvedAmbientUrl,
                                 )
                             } else {
                                 // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€

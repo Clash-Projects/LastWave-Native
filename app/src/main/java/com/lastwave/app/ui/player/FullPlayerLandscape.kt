@@ -211,6 +211,9 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
@@ -366,303 +369,35 @@ internal fun FullPlayerLandscape(
     onCloseVideo: () -> Unit = {},
     onEnterFullscreen: () -> Unit = {},
     onToggleVideo: (() -> Unit)? = null,
+    resolvedArtworkUrl: String? = null,
 ) {
-    val haptics = LocalHapticFeedback.current
     val windowActive = rememberPlayerWindowActive()
-    var isArtworkDragging by remember { mutableStateOf(false) }
-    var artworkDragX by remember { mutableFloatStateOf(0f) }
-    val shownArtworkX by animateFloatAsState(
-        targetValue = artworkDragX,
-        animationSpec = if (isArtworkDragging) snap() else ExpressiveMotion.spatialDefault(),
-        label = "landscapeArtworkDragX",
-    )
-    var seekOverlaySeconds by remember { mutableIntStateOf(5) }
-    var seekOverlayDirection by remember { mutableStateOf<SeekDirection?>(null) }
-    var lastTapSide by remember { mutableStateOf<SeekDirection?>(null) }
-    var lastTapTimestamp by remember { mutableLongStateOf(0L) }
-    var lastLikeTapTimestamp by remember { mutableLongStateOf(0L) }
-    var seekResetJob by remember { mutableStateOf<Job?>(null) }
-    val coroutineScope = rememberCoroutineScope()
-    var canvasAspect by remember { mutableFloatStateOf(1f) }
 
     Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(40.dp),
+        modifier = Modifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left Column: Large Album Artwork & Canvas with gestures
-        BoxWithConstraints(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-            contentAlignment = Alignment.Center,
-        ) {
-            val artworkSize = (minOf(maxWidth, maxHeight) - 16.dp)
-                .coerceAtLeast(0.dp)
-                .coerceAtMost(480.dp)
-
-            val glowAlpha by animateFloatAsState(
-                targetValue = if (state.isPlaying) 0.65f else 0.35f,
-                animationSpec = tween(600),
-                label = "landscapeArtworkGlowAlpha",
-            )
-            Box(
-                modifier = Modifier
-                    .size(artworkSize + 36.dp)
-                    .graphicsLayer {
-                        translationX = shownArtworkX * 0.7f
-                        alpha = glowAlpha
-                    }
-                    .background(
-                        Brush.radialGradient(
-                            0.0f to ambientColor.copy(alpha = 0.50f),
-                            0.50f to ambientCompanion.copy(alpha = 0.22f),
-                            1.0f to Color.Transparent,
-                        ),
-                        shape = CircleShape,
-                    ),
-            )
-
-            val artworkPlayingScale by animateFloatAsState(
-                targetValue = if (state.isPlaying) 1.0f else 0.92f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-                label = "landscapeArtworkPlayingScale",
-            )
-
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f),
-                tonalElevation = 6.dp,
-                shadowElevation = if (state.isPlaying) 28.dp else 12.dp,
-                modifier = Modifier
-                    .size(artworkSize)
-                    .graphicsLayer {
-                        scaleX = artworkPlayingScale
-                        scaleY = artworkPlayingScale
-                        translationX = shownArtworkX
-                        rotationZ = shownArtworkX / 80f
-                    }
-                    .pointerInput(track.videoId, track.title, isVideoActive) {
-                        if (isVideoActive) return@pointerInput
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            var isDrag = false
-                            val touchSlop = viewConfiguration.touchSlop
-                            val initialX = down.position.x
-                            val initialY = down.position.y
-
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                                if (!change.pressed) {
-                                    if (isDrag) {
-                                        isArtworkDragging = false
-                                        when {
-                                            artworkDragX < -swipeThreshold -> player.next()
-                                            artworkDragX > swipeThreshold -> player.previous()
-                                        }
-                                        artworkDragX = 0f
-                                    } else {
-                                        val now = SystemClock.elapsedRealtime()
-                                        val side = when {
-                                            initialX < size.width * 0.34f -> SeekDirection.REWIND
-                                            initialX > size.width * 0.66f -> SeekDirection.FORWARD
-                                            else -> null
-                                        }
-
-                                        if (side == null) {
-                                            lastTapSide = null
-                                            lastTapTimestamp = 0L
-                                            if (lastLikeTapTimestamp != 0L && now - lastLikeTapTimestamp < 450L) {
-                                                lastLikeTapTimestamp = 0L
-                                                onDoubleTapLike()
-                                            } else {
-                                                lastLikeTapTimestamp = now
-                                            }
-                                        } else {
-                                            lastLikeTapTimestamp = 0L
-                                            if (lastTapSide != side) {
-                                                seekResetJob?.cancel()
-                                                seekOverlayDirection = null
-                                                lastTapSide = side
-                                                lastTapTimestamp = now
-                                            } else if (now - lastTapTimestamp < 450L) {
-                                                val newSeconds = if (seekOverlayDirection == side) seekOverlaySeconds + 5 else 5
-                                                seekOverlaySeconds = newSeconds
-                                                seekOverlayDirection = side
-                                                lastTapTimestamp = now
-                                                val deltaMs = if (side == SeekDirection.FORWARD) 5_000L else -5_000L
-                                                val newPos = (player.state.value.positionMs + deltaMs).coerceIn(0L, player.state.value.durationMs.coerceAtLeast(0L))
-                                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                                player.seekTo(newPos)
-
-                                                seekResetJob?.cancel()
-                                                seekResetJob = coroutineScope.launch {
-                                                    delay(700L)
-                                                    seekOverlayDirection = null
-                                                    lastTapSide = null
-                                                }
-                                            } else {
-                                                lastTapTimestamp = now
-                                                lastTapSide = side
-                                                seekOverlayDirection = null
-                                            }
-                                        }
-                                    }
-                                    break
-                                }
-
-                                if (change.isConsumed) {
-                                    isArtworkDragging = false
-                                    artworkDragX = 0f
-                                    lastLikeTapTimestamp = 0L
-                                    lastTapTimestamp = 0L
-                                    lastTapSide = null
-                                    break
-                                }
-
-                                val dx = change.position.x - initialX
-                                val dy = change.position.y - initialY
-                                if (!isDrag) {
-                                    if (kotlin.math.abs(dx) > touchSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
-                                        isDrag = true
-                                        isArtworkDragging = true
-                                        lastLikeTapTimestamp = 0L
-                                        lastTapTimestamp = 0L
-                                        lastTapSide = null
-                                        change.consume()
-                                    }
-                                } else {
-                                    change.consume()
-                                    artworkDragX = dx
-                                }
-                            }
-                        }
-                    },
-            ) {
-                if (isVideoActive) {
-                    SyncedCoverVideoPlayer(
-                        track = track,
-                        musicPlayer = player,
-                        onCloseVideo = onCloseVideo,
-                        onEnterFullscreen = onEnterFullscreen,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    PlayerArtwork(
-                        track = track,
-                        modifier = Modifier.fillMaxSize(),
-                        corner = 24.dp,
-                        canvas = if (showSleeveCanvas) canvas else null,
-                        isPlaying = state.isPlaying,
-                        pausedForTransition = shownDismissY > 1f,
-                        onAspectRatioChanged = { canvasAspect = it },
-                    )
-                }
-            }
-
-            androidx.compose.animation.AnimatedVisibility(
-                visible = seekOverlayDirection == SeekDirection.REWIND,
-                enter = fadeIn(tween(100)) + scaleIn(ExpressiveMotion.spatialSpring(), initialScale = 0.88f),
-                exit = fadeOut(tween(200)),
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .fillMaxWidth(0.42f)
-                    .height(130.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(topStart = 32.dp, bottomStart = 32.dp, topEnd = 72.dp, bottomEnd = 72.dp))
-                        .background(Color.Black.copy(alpha = 0.58f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.White.copy(alpha = 0.22f),
-                            modifier = Modifier.size(52.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Filled.FastRewind,
-                                    contentDescription = "Seek rewind",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(28.dp),
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "-${seekOverlaySeconds}s",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                        )
-                    }
-                }
-            }
-
-            androidx.compose.animation.AnimatedVisibility(
-                visible = seekOverlayDirection == SeekDirection.FORWARD,
-                enter = fadeIn(tween(100)) + scaleIn(ExpressiveMotion.spatialSpring(), initialScale = 0.88f),
-                exit = fadeOut(tween(200)),
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxWidth(0.42f)
-                    .height(130.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp, topStart = 72.dp, bottomStart = 72.dp))
-                        .background(Color.Black.copy(alpha = 0.58f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.White.copy(alpha = 0.22f),
-                            modifier = Modifier.size(52.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Filled.FastForward,
-                                    contentDescription = "Seek forward",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(28.dp),
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "+${seekOverlaySeconds}s",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                        )
-                    }
-                }
-            }
-        }
+        LandscapeArtworkPane(
+            track = track,
+            state = state,
+            player = player,
+            canvas = if (showSleeveCanvas) canvas else null,
+            resolvedArtworkUrl = resolvedArtworkUrl,
+            onDoubleTapLike = onDoubleTapLike,
+            shownDismissY = shownDismissY,
+            swipeThreshold = swipeThreshold,
+            isVideoActive = isVideoActive,
+            onCloseVideo = onCloseVideo,
+            onEnterFullscreen = onEnterFullscreen,
+            modifier = Modifier.weight(1f),
+        )
 
         // Right Column: Controls & Metadata
         Column(
             modifier = Modifier
                 .weight(1.15f)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .padding(start = 12.dp, end = 32.dp, top = 12.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -815,5 +550,344 @@ internal fun FullPlayerLandscape(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+    }
+}
+
+/**
+ * Landscape's left half: the cover, Canvas or music video full-bleed, cropped
+ * from the top so the upper part of the art always shows, its right edge
+ * fading out into the player background so both halves read as one surface.
+ * The same pane in Now Playing and in the lyrics split, so the art never
+ * moves; [overlay] draws over it (the split's compact controls).
+ */
+@Composable
+internal fun LandscapeArtworkPane(
+    track: PlayableTrack,
+    state: MusicPlayerState,
+    player: MusicPlayer,
+    canvas: com.lastwave.app.data.canvas.CanvasArtwork?,
+    resolvedArtworkUrl: String?,
+    onDoubleTapLike: () -> Unit,
+    shownDismissY: Float,
+    swipeThreshold: Float,
+    isVideoActive: Boolean,
+    onCloseVideo: () -> Unit,
+    onEnterFullscreen: () -> Unit,
+    modifier: Modifier = Modifier,
+    overlay: @Composable BoxScope.() -> Unit = {},
+) {
+    val haptics = LocalHapticFeedback.current
+    var isArtworkDragging by remember { mutableStateOf(false) }
+    var artworkDragX by remember { mutableFloatStateOf(0f) }
+    val shownArtworkX by animateFloatAsState(
+        targetValue = artworkDragX,
+        animationSpec = if (isArtworkDragging) snap() else ExpressiveMotion.spatialDefault(),
+        label = "landscapeArtworkDragX",
+    )
+    var seekOverlaySeconds by remember { mutableIntStateOf(5) }
+    var seekOverlayDirection by remember { mutableStateOf<SeekDirection?>(null) }
+    var lastTapSide by remember { mutableStateOf<SeekDirection?>(null) }
+    var lastTapTimestamp by remember { mutableLongStateOf(0L) }
+    var lastLikeTapTimestamp by remember { mutableLongStateOf(0L) }
+    var seekResetJob by remember { mutableStateOf<Job?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(modifier.fillMaxHeight().clipToBounds()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // A hint of the swipe under the finger; the art itself stays put.
+                    translationX = shownArtworkX * 0.35f
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .drawWithContent {
+                    drawContent()
+                    // Fade to transparent rather than to a colour: the real
+                    // player background shows through, so the blend is exact.
+                    drawRect(
+                        Brush.horizontalGradient(0.58f to Color.Black, 1f to Color.Transparent),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+                    .pointerInput(track.videoId, track.title, isVideoActive) {
+                        if (isVideoActive) return@pointerInput
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var isDrag = false
+                            val touchSlop = viewConfiguration.touchSlop
+                            val initialX = down.position.x
+                            val initialY = down.position.y
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                if (!change.pressed) {
+                                    if (isDrag) {
+                                        isArtworkDragging = false
+                                        when {
+                                            artworkDragX < -swipeThreshold -> player.next()
+                                            artworkDragX > swipeThreshold -> player.previous()
+                                        }
+                                        artworkDragX = 0f
+                                    } else {
+                                        val now = SystemClock.elapsedRealtime()
+                                        val side = when {
+                                            initialX < size.width * 0.34f -> SeekDirection.REWIND
+                                            initialX > size.width * 0.66f -> SeekDirection.FORWARD
+                                            else -> null
+                                        }
+
+                                        if (side == null) {
+                                            lastTapSide = null
+                                            lastTapTimestamp = 0L
+                                            if (lastLikeTapTimestamp != 0L && now - lastLikeTapTimestamp < 450L) {
+                                                lastLikeTapTimestamp = 0L
+                                                onDoubleTapLike()
+                                            } else {
+                                                lastLikeTapTimestamp = now
+                                            }
+                                        } else {
+                                            lastLikeTapTimestamp = 0L
+                                            if (lastTapSide != side) {
+                                                seekResetJob?.cancel()
+                                                seekOverlayDirection = null
+                                                lastTapSide = side
+                                                lastTapTimestamp = now
+                                            } else if (now - lastTapTimestamp < 450L) {
+                                                val newSeconds = if (seekOverlayDirection == side) seekOverlaySeconds + 5 else 5
+                                                seekOverlaySeconds = newSeconds
+                                                seekOverlayDirection = side
+                                                lastTapTimestamp = now
+                                                val deltaMs = if (side == SeekDirection.FORWARD) 5_000L else -5_000L
+                                                val newPos = (player.state.value.positionMs + deltaMs).coerceIn(0L, player.state.value.durationMs.coerceAtLeast(0L))
+                                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                                player.seekTo(newPos)
+
+                                                seekResetJob?.cancel()
+                                                seekResetJob = coroutineScope.launch {
+                                                    delay(700L)
+                                                    seekOverlayDirection = null
+                                                    lastTapSide = null
+                                                }
+                                            } else {
+                                                lastTapTimestamp = now
+                                                lastTapSide = side
+                                                seekOverlayDirection = null
+                                            }
+                                        }
+                                    }
+                                    break
+                                }
+
+                                if (change.isConsumed) {
+                                    isArtworkDragging = false
+                                    artworkDragX = 0f
+                                    lastLikeTapTimestamp = 0L
+                                    lastTapTimestamp = 0L
+                                    lastTapSide = null
+                                    break
+                                }
+
+                                val dx = change.position.x - initialX
+                                val dy = change.position.y - initialY
+                                if (!isDrag) {
+                                    if (kotlin.math.abs(dx) > touchSlop && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                                        isDrag = true
+                                        isArtworkDragging = true
+                                        lastLikeTapTimestamp = 0L
+                                        lastTapTimestamp = 0L
+                                        lastTapSide = null
+                                        change.consume()
+                                    }
+                                } else {
+                                    change.consume()
+                                    artworkDragX = dx
+                                }
+                            }
+                        }
+                    },
+        ) {
+            if (isVideoActive) {
+                SyncedCoverVideoPlayer(
+                    track = track,
+                    musicPlayer = player,
+                    onCloseVideo = onCloseVideo,
+                    onEnterFullscreen = onEnterFullscreen,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                // Static cover first, Canvas on top, handing over as the video fades in.
+                var canvasCover by remember(canvas?.url) { mutableFloatStateOf(0f) }
+                StaticArtworkHero(
+                    name = track.title,
+                    artist = track.artist,
+                    embeddedUrl = track.artworkUrl,
+                    resolvedUrl = resolvedArtworkUrl,
+                    bottomFade = 0f,
+                    alpha = if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (canvas != null) {
+                    CanvasArtworkPlayer(
+                        canvas = canvas,
+                        isPlaying = state.isPlaying,
+                        contentMode = CanvasContentMode.CROP,
+                        alignPortraitTop = true,
+                        pausedForTransition = shownDismissY > 1f,
+                        onCoverChanged = { canvasCover = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = seekOverlayDirection == SeekDirection.REWIND,
+                enter = fadeIn(tween(100)) + scaleIn(ExpressiveMotion.spatialSpring(), initialScale = 0.88f),
+                exit = fadeOut(tween(200)),
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxWidth(0.42f)
+                    .height(130.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topStart = 32.dp, bottomStart = 32.dp, topEnd = 72.dp, bottomEnd = 72.dp))
+                        .background(Color.Black.copy(alpha = 0.58f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.22f),
+                            modifier = Modifier.size(52.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.FastRewind,
+                                    contentDescription = "Seek rewind",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "-${seekOverlaySeconds}s",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = seekOverlayDirection == SeekDirection.FORWARD,
+                enter = fadeIn(tween(100)) + scaleIn(ExpressiveMotion.spatialSpring(), initialScale = 0.88f),
+                exit = fadeOut(tween(200)),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxWidth(0.42f)
+                    .height(130.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp, topStart = 72.dp, bottomStart = 72.dp))
+                        .background(Color.Black.copy(alpha = 0.58f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.22f),
+                            modifier = Modifier.size(52.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.FastForward,
+                                    contentDescription = "Seek forward",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "+${seekOverlaySeconds}s",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+        overlay()
+    }
+}
+
+/**
+ * The lyrics split's controls, over the bottom of the art pane: just the seek
+ * bar and previous / play-pause / next, plus the way back to the full player.
+ */
+@Composable
+internal fun BoxScope.LandscapeCompactControls(
+    track: PlayableTrack,
+    state: MusicPlayerState,
+    player: MusicPlayer,
+    progressState: StateFlow<PlaybackProgressState>?,
+    wavySeekbarEnabled: Boolean,
+    ambientColor: Color,
+    ambientCompanion: Color,
+    ambientDeep: Color,
+    onShowFullControls: () -> Unit,
+) {
+    IconButton(
+        onClick = hapticClick { onShowFullControls() },
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .padding(12.dp)
+            .background(Color.Black.copy(alpha = 0.32f), CircleShape),
+    ) {
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "Back to player controls",
+            tint = Color.White,
+        )
+    }
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f)))
+            .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SeekBar(
+            progressState = progressState ?: player.progressState,
+            isPlaying = state.isPlaying,
+            trackKey = track.videoId ?: "${track.artist}|${track.title}",
+            wavyEnabled = wavySeekbarEnabled,
+            onSeek = player::seekTo,
+            isTranslucent = true,
+            fallbackDurationMs = track.durationMs ?: state.durationMs,
+            primaryColor = ambientColor,
+            secondaryColor = ambientCompanion,
+            tertiaryColor = ambientDeep,
+            telemetry = state.deckBlendTelemetry,
+        )
+        Spacer(Modifier.height(6.dp))
+        MainControls(state, player, isTranslucent = true)
     }
 }
