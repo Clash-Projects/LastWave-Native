@@ -437,8 +437,14 @@ internal fun EqualizerSheet(
     onBandPreview: (Int, Float) -> Unit,
     onBandChange: (Int, Float) -> Unit,
     onOpenAutoEq: () -> Unit = {},
+    onSavePreset: (String) -> Unit = {},
+    onRenamePreset: (String, String) -> Unit = { _, _ -> },
+    onDeletePreset: (String) -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    /** Name dialog: null closed, "" saving a new preset, otherwise renaming that preset. */
+    var nameDialogFor by remember { mutableStateOf<String?>(null) }
+    var deleteConfirmFor by remember { mutableStateOf<String?>(null) }
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     var gains by remember(eq.gainsDb) {
@@ -657,6 +663,85 @@ internal fun EqualizerSheet(
                 }
             }
 
+            // The listener's own named presets, usable on any output.
+            val canSaveMore = eq.userPresets.size < com.lastwave.app.data.local.MAX_USER_EQ_PRESETS
+            SectionLabel("My presets  ${eq.userPresets.size}/${com.lastwave.app.data.local.MAX_USER_EQ_PRESETS}")
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                eq.userPresets.forEach { preset ->
+                    FilterChip(
+                        selected = eq.presetName == preset.name,
+                        onClick = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
+                            onPickPreset(preset.name)
+                        },
+                        label = { Text(preset.name, style = MaterialTheme.typography.labelMedium) },
+                    )
+                }
+                androidx.compose.material3.AssistChip(
+                    enabled = canSaveMore,
+                    onClick = { nameDialogFor = "" },
+                    leadingIcon = {
+                        androidx.compose.material3.Icon(
+                            androidx.compose.material.icons.Icons.Filled.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                    label = {
+                        Text(
+                            if (canSaveMore) "Save as preset" else "Limit of ${com.lastwave.app.data.local.MAX_USER_EQ_PRESETS} reached",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    },
+                )
+            }
+            if (eq.isUserPreset(eq.presetName)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Edits save into “${eq.presetName}” automatically",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    androidx.compose.material3.TextButton(onClick = { nameDialogFor = eq.presetName }) { Text("Rename") }
+                    androidx.compose.material3.TextButton(onClick = { deleteConfirmFor = eq.presetName }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            nameDialogFor?.let { renaming ->
+                EqPresetNameDialog(
+                    eq = eq,
+                    renaming = renaming.ifEmpty { null },
+                    onDismiss = { nameDialogFor = null },
+                    onConfirm = { name ->
+                        if (renaming.isEmpty()) onSavePreset(name) else onRenamePreset(renaming, name)
+                        nameDialogFor = null
+                    },
+                )
+            }
+            deleteConfirmFor?.let { name ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { deleteConfirmFor = null },
+                    title = { Text("Delete “$name”?") },
+                    text = { Text("The sound keeps playing as Custom until you pick another preset.") },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            onDeletePreset(name)
+                            deleteConfirmFor = null
+                        }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { deleteConfirmFor = null }) { Text("Cancel") }
+                    },
+                )
+            }
+
             // Native Equalizer Fader Board
             Surface(
                 shape = RoundedCornerShape(24.dp),
@@ -747,6 +832,48 @@ internal fun EqualizerSheet(
  * - Real-time continuous numeric dB badge on top with container coloring
  * - Standard frequency label + band category tag underneath
  */
+/** Name for a new preset (renaming == null) or a new name for [renaming]. */
+@Composable
+private fun EqPresetNameDialog(
+    eq: com.lastwave.app.data.local.EqualizerSettings,
+    renaming: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember {
+        mutableStateOf(renaming ?: com.lastwave.app.data.local.nextEqPresetName(eq))
+    }
+    val problem = com.lastwave.app.data.local.eqPresetNameProblem(name, eq, renaming)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (renaming == null) "Save preset" else "Rename preset") },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.take(com.lastwave.app.data.local.MAX_EQ_PRESET_NAME_LENGTH + 5) },
+                singleLine = true,
+                label = { Text("Name") },
+                isError = problem != null,
+                supportingText = { problem?.let { Text(it) } },
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = problem == null,
+                onClick = { onConfirm(com.lastwave.app.data.local.cleanEqPresetName(name)) },
+            ) { Text(if (renaming == null) "Save" else "Rename") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+/** Gain steps the fader lands on. Fine enough to feel continuous under a finger. */
+private const val EQ_FADER_STEP_DB = 0.1f
+/** Within this of 0 dB the fader snaps flat, so flat is easy to hit. */
+private const val EQ_FADER_SNAP_DB = 0.2f
+
 @Composable
 internal fun EqNativeSlider(
     gainDb: Float,
@@ -759,6 +886,10 @@ internal fun EqNativeSlider(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val normalized = ((gainDb + EQ_MAX_DB) / (EQ_MAX_DB * 2f)).coerceIn(0f, 1f)
     var isDragging by remember { mutableStateOf(false) }
+    // The finger's exact position, unrounded, for the whole drag. Rounding each
+    // event's delta onto the already-rounded gain threw slow movements away
+    // (they never added up to a step) and then jumped: the "rough" fader.
+    var dragGainDb by remember { mutableStateOf(gainDb) }
     val currentGain by rememberUpdatedState(gainDb)
     val currentOnGainChange by rememberUpdatedState(onGainChange)
     val currentOnChangeFinished by rememberUpdatedState(onChangeFinished)
@@ -808,7 +939,10 @@ internal fun EqNativeSlider(
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
                     detectVerticalDragGestures(
-                        onDragStart = { isDragging = true },
+                        onDragStart = {
+                            isDragging = true
+                            dragGainDb = currentGain
+                        },
                         onDragEnd = {
                             isDragging = false
                             currentOnChangeFinished()
@@ -819,11 +953,15 @@ internal fun EqNativeSlider(
                         },
                     ) { change, dragAmount ->
                         change.consume()
-                        val deltaFraction = -dragAmount / size.height.toFloat()
-                        val currentFraction = ((currentGain + EQ_MAX_DB) / (EQ_MAX_DB * 2f))
-                        val newFraction = (currentFraction + deltaFraction).coerceIn(0f, 1f)
-                        val newGain = (newFraction * EQ_MAX_DB * 2f - EQ_MAX_DB).let {
-                            if (it in -0.3f..0.3f) 0f else (Math.round(it * 2f) / 2f)
+                        val dbPerPixel = (EQ_MAX_DB * 2f) / size.height.toFloat()
+                        dragGainDb = (dragGainDb - dragAmount * dbPerPixel).coerceIn(-EQ_MAX_DB, EQ_MAX_DB)
+                        val newGain = dragGainDb.let {
+                            if (kotlin.math.abs(it) < EQ_FADER_SNAP_DB) {
+                                0f
+                            } else {
+                                (Math.round(it / EQ_FADER_STEP_DB) * EQ_FADER_STEP_DB)
+                                    .coerceIn(-EQ_MAX_DB, EQ_MAX_DB)
+                            }
                         }
                         if (newGain != currentGain) {
                             if (newGain == 0f && currentGain != 0f) {

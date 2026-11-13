@@ -808,7 +808,10 @@ class SettingsViewModel @Inject constructor(
     /** Selecting a preset also switches the EQ on — an off equalizer with a
      *  fresh preset would read as a dead control. */
     fun applyEqPreset(name: String) {
-        com.lastwave.app.data.local.EqualizerPresets.byName(name)?.let { preset ->
+        (
+            com.lastwave.app.data.local.EqualizerPresets.byName(name)
+                ?: equalizer.value.userPresets.firstOrNull { it.name == name }
+            )?.let { preset ->
             immediateEqEnabled = true
             immediateEqGains = preset.gainsDb.toFloatArray()
             eqPreviews.trySend(true to immediateEqGains.copyOf())
@@ -828,7 +831,20 @@ class SettingsViewModel @Inject constructor(
         eqPreviews.trySend(immediateEqEnabled to immediateEqGains.copyOf())
     }
 
-    /** Manual band drag → curve becomes Custom. */
+    /** Saves the current curve as one of the listener's own named presets (max 20). */
+    fun saveEqPreset(name: String) {
+        launchSettingsAction("save the equalizer preset") { equalizerPreferences.saveUserPreset(name) }
+    }
+
+    fun renameEqPreset(oldName: String, newName: String) {
+        launchSettingsAction("rename the equalizer preset") { equalizerPreferences.renameUserPreset(oldName, newName) }
+    }
+
+    fun deleteEqPreset(name: String) {
+        launchSettingsAction("delete the equalizer preset") { equalizerPreferences.deleteUserPreset(name) }
+    }
+
+    /** Manual band drag → saved into the active own preset, otherwise the curve becomes Custom. */
     fun setEqBandGain(bandIndex: Int, gainDb: Float) {
         if (bandIndex !in immediateEqGains.indices) return
         previewEqBandGain(bandIndex, gainDb)
