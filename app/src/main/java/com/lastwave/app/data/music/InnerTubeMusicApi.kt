@@ -111,6 +111,7 @@ class InnerTubeMusicApi @Inject constructor(
     @Volatile internal var cachedVideoCipherContext: PlaybackCipherContext? = null
     @Volatile internal var cachedVideoCipherContextAtMs = 0L
     @Volatile internal var webConfig: WebConfig? = null
+    private val homeBrowses = ConcurrentHashMap<Boolean, Deferred<JsonObject>>()
 
     // Account methods
     suspend fun fetchAccountInfo(): YtAccountInfo? = fetchAccountInfoImpl()
@@ -812,7 +813,7 @@ class InnerTubeMusicApi @Inject constructor(
             }
             val feed = async {
                 runCatching {
-                    parseHomeFeedSongs(browseRoot(YT_HOME_BROWSE_ID, authenticated = true))
+                    parseHomeFeedSongs(browseHome(authenticated = true))
                 }
                     .getOrDefault(emptyList())
                     .distinctBy { it.videoId }
@@ -876,7 +877,7 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun fetchHomeMixes(): List<YouTubePlaylistSummary> = withContext(Dispatchers.IO) {
         val isAuth = ytAuth.connection.value.isConnected
         runCatching {
-            val root = browseRoot(YT_HOME_BROWSE_ID, authenticated = isAuth)
+            val root = browseHome(authenticated = isAuth)
             parsePlaylistRenderers(root)
         }.getOrDefault(emptyList())
     }
@@ -884,7 +885,7 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun fetchHomeSongs(): List<YouTubeMusicTrack> = withContext(Dispatchers.IO) {
         val isAuth = ytAuth.connection.value.isConnected
         runCatching {
-            val root = browseRoot(YT_HOME_BROWSE_ID, authenticated = isAuth)
+            val root = browseHome(authenticated = isAuth)
             parseHomeFeedSongs(root)
         }.getOrDefault(emptyList())
     }
@@ -892,9 +893,9 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun fetchHomeShelves(): List<HomeShelf> = withContext(Dispatchers.IO) {
         val isAuth = ytAuth.connection.value.isConnected
         val root = runCatching {
-            browseRoot(YT_HOME_BROWSE_ID, authenticated = isAuth)
+            browseHome(authenticated = isAuth)
         }.recoverCatching { error ->
-            if (isAuth) browseRoot(YT_HOME_BROWSE_ID, authenticated = false) else throw error
+            if (isAuth) browseHome(authenticated = false) else throw error
         }.getOrNull()
 
         if (root == null) emptyList() else runCatching { parseHomeShelves(root) }.getOrDefault(emptyList())
@@ -908,9 +909,9 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun fetchHomePage(): HomePage = withContext(Dispatchers.IO) {
         val isAuth = ytAuth.connection.value.isConnected
         val root = runCatching {
-            browseRoot(YT_HOME_BROWSE_ID, authenticated = isAuth)
+            browseHome(authenticated = isAuth)
         }.recoverCatching { error ->
-            if (isAuth) browseRoot(YT_HOME_BROWSE_ID, authenticated = false) else throw error
+            if (isAuth) browseHome(authenticated = false) else throw error
         }.getOrNull()
 
         if (root == null) return@withContext HomePage()
@@ -1089,6 +1090,15 @@ class InnerTubeMusicApi @Inject constructor(
                 })
             }
         }
+
+    /** One feed load asks for FEmusic_home three or four times at once (mixes, songs,
+     *  shelves, taste feed). They join the request already in flight instead of each
+     *  downloading and parsing the same page. A waiter that is cancelled leaves it to the others. */
+    internal suspend fun browseHome(authenticated: Boolean): JsonObject =
+        homeBrowses.computeIfAbsent(authenticated) { key ->
+            apiScope.async(start = CoroutineStart.LAZY) { browseRoot(YT_HOME_BROWSE_ID, key) }
+                .also { request -> request.invokeOnCompletion { homeBrowses.remove(key, request) } }
+        }.also { it.start() }.await()
 
     /** Identity of the signed-in account (account_menu endpoint). */
     internal suspend fun browseRoot(browseId: String, authenticated: Boolean, params: String? = null): JsonObject {
