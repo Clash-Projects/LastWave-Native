@@ -1757,7 +1757,7 @@ class MusicPlayer @Inject constructor(
                 // decode E-AC-3 JOC with hardware dialogue normalization, full volume
                 // (no -8 dB FFmpeg downmix attenuation), and system spatial virtualization.
                 // Standard codecs (FLAC, Opus, AAC, MP3, Vorbis) return FORMAT_UNSUPPORTED_TYPE
-                // here so FFmpeg retains priority for them.
+                // here so the extension/platform renderers retain priority for them.
                 val dolbySpatialRenderer = object : MediaCodecAudioRenderer(
                     context,
                     mediaCodecSelector,
@@ -1803,12 +1803,10 @@ class MusicPlayer @Inject constructor(
                 }
             }
         }.apply {
-            // FFmpeg-first decoding, the Poweramp/VLC model: every codec the
-            // bundled GPL build supports (FLAC 24/96-192, Opus, AAC, MP3,
-            // Vorbis) decodes through the same battle-tested software path on
-            // every device, eliminating per-OEM platform codec bugs that
-            // surface as noise/distortion. setEnableDecoderFallback keeps the
-            // platform decoder for anything FFmpeg rejects.
+            // FFmpeg first for what the jellyfin 1.2.1+1 build ships (AAC, FLAC,
+            // ALAC, AC-3/E-AC-3, TrueHD, PCM). It has no Opus/Vorbis, so Opus
+            // stays on the platform software decoder (c2.android.opus.decoder).
+            // Decoder fallback covers anything FFmpeg rejects.
             setExtensionRendererMode(
                 if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
                 else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,

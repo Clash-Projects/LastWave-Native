@@ -425,7 +425,6 @@ fun FluidArtworkBackground(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .graphicsLayer { alpha = appear.value }
                     .layout { measurable, constraints ->
                         val w = constraints.maxWidth
                         val h = constraints.maxHeight
@@ -437,18 +436,29 @@ fun FluidArtworkBackground(
                                 scaleX = w.toFloat() / sw
                                 scaleY = h.toFloat() / sh
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    // Sigma from the FULL size, then scaled, so the blur matches the old look.
-                                    val sigma = fluidBlurSigma(w.toFloat(), h.toFloat(), extraBlur) / FLUID_RENDER_SCALE
-                                    if (sigma != cachedSigma || cachedRenderEffect == null) {
-                                        cachedSigma = sigma
-                                        cachedRenderEffect = runCatching {
-                                            RenderEffect.createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP).asComposeRenderEffect()
-                                        }.getOrNull()
-                                    }
-                                    renderEffect = cachedRenderEffect
-                                }
+                                alpha = appear.value
+                                // Part of the measured build; dropping it needs its own A/B.
+                                compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
                             }
+                        }
+                    }
+                    // Blur the 1/4-size layer, not the scaled surface: 6.7 -> 6.2 ms
+                    // GPU per frame on a 3000x2120 tablet.
+                    .graphicsLayer {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            // Sigma from the FULL size, then scaled, so the blur matches the old look.
+                            val sigma = fluidBlurSigma(
+                                size.width * FLUID_RENDER_SCALE,
+                                size.height * FLUID_RENDER_SCALE,
+                                extraBlur,
+                            ) / FLUID_RENDER_SCALE
+                            if (sigma != cachedSigma || cachedRenderEffect == null) {
+                                cachedSigma = sigma
+                                cachedRenderEffect = runCatching {
+                                    RenderEffect.createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP).asComposeRenderEffect()
+                                }.getOrNull()
+                            }
+                            renderEffect = cachedRenderEffect
                         }
                     }
                     .drawBehind {
