@@ -1,7 +1,6 @@
 package com.lastwave.app.ui.player
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.LinearGradient
@@ -32,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -53,14 +51,10 @@ import com.lastwave.app.data.canvas.CANVAS_UA
 import com.lastwave.app.data.canvas.CanvasArtwork
 import com.lastwave.app.data.canvas.CanvasCache
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import java.util.Locale
-import kotlin.math.ceil
-import kotlin.math.roundToInt
 
 private const val TAG = "CanvasArtworkPlayer"
 private const val REPAINT_TIMEOUT_MS = 700L
-private const val FRAME_CAPTURE_PX = 128
 
 /**
  * How a motion artwork clip fills its container bounds.
@@ -93,9 +87,6 @@ fun CanvasArtworkPlayer(
     portraitRevealBounds: IntSize = IntSize.Zero,
     presentationAlpha: () -> Float = { 1f },
     onRenderedChanged: (Boolean) -> Unit = {},
-    onFrameCaptured: (Bitmap) -> Unit = {},
-    refreshFrameEveryMs: Long? = null,
-    frameCapturePx: Int = FRAME_CAPTURE_PX,
     onCoverChanged: (Float) -> Unit = {},
     bottomFade: Float = 0f,
     bottomFadeEndPx: Float? = null,
@@ -202,29 +193,7 @@ fun CanvasArtworkPlayer(
     }
 
     val reportRendered by rememberUpdatedState(onRenderedChanged)
-    LaunchedEffect(rendered) {
-        reportRendered(rendered)
-        if (!rendered) return@LaunchedEffect
-        withFrameMillis { }
-        val view = textureView ?: return@LaunchedEffect
-        val bitmap = view.captureAt(frameCapturePx, clipAspect, contentMode, alignPortraitTop)
-        if (bitmap != null) {
-            onFrameCaptured(bitmap)
-        }
-    }
-
-    LaunchedEffect(rendered, refreshFrameEveryMs, frameCapturePx, clipAspect, contentMode, alignPortraitTop) {
-        val interval = refreshFrameEveryMs ?: return@LaunchedEffect
-        if (!rendered) return@LaunchedEffect
-        while (isActive) {
-            delay(interval)
-            val view = textureView ?: continue
-            val bitmap = view.captureAt(frameCapturePx, clipAspect, contentMode, alignPortraitTop)
-            if (bitmap != null) {
-                onFrameCaptured(bitmap)
-            }
-        }
-    }
+    LaunchedEffect(rendered) { reportRendered(rendered) }
 
     val alpha by animateFloatAsState(
         targetValue = if (rendered) 1f else 0f,
@@ -327,42 +296,6 @@ fun CanvasArtworkPlayer(
         },
         modifier = modifier.onSizeChanged { bounds = it },
     )
-}
-
-private fun TextureView.captureAt(
-    maxPx: Int,
-    clipAspect: Float,
-    contentMode: CanvasContentMode,
-    alignPortraitTop: Boolean,
-): Bitmap? {
-    val viewWidth = width
-    val viewHeight = height
-    if (viewWidth <= 0 || viewHeight <= 0) return null
-    val scale = maxPx.toFloat() / maxOf(viewWidth, viewHeight)
-    return runCatching {
-        val frame = if (scale >= 1f) {
-            getBitmap()
-        } else {
-            getBitmap(
-                (viewWidth * scale).roundToInt().coerceAtLeast(1),
-                (viewHeight * scale).roundToInt().coerceAtLeast(1),
-            )
-        } ?: return null
-        if (contentMode != CanvasContentMode.FIT_PORTRAIT || clipAspect >= 1f || clipAspect <= 0f) {
-            return frame
-        }
-
-        val viewAspect = viewWidth.toFloat() / viewHeight
-        val contentWidth = if (clipAspect < viewAspect) frame.height * clipAspect else frame.width.toFloat()
-        val contentHeight = if (clipAspect < viewAspect) frame.height.toFloat() else frame.width / clipAspect
-        val left = ceil((frame.width - contentWidth) / 2f).toInt().coerceIn(0, frame.width - 1)
-        val top = if (alignPortraitTop) 0 else
-            ceil((frame.height - contentHeight) / 2f).toInt().coerceIn(0, frame.height - 1)
-        val right = (frame.width - left).coerceAtLeast(left + 1)
-        val bottom = if (alignPortraitTop) contentHeight.toInt().coerceIn(1, frame.height) else
-            (frame.height - top).coerceAtLeast(top + 1)
-        Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
-    }.getOrNull()
 }
 
 private fun TextureView.applyContentTransform(
