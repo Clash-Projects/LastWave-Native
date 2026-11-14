@@ -490,7 +490,12 @@ fun LocalMusicHub(
         }
     }
 
-    val filteredAlbums = remember(albumGroups, searchQuery, sortAscending, sortMode) {
+    // Each list is only read by its own tab: typing a search refiltered and
+    // resorted all three on every keystroke, two of them never shown.
+    fun shows(tab: LocalHubTab) = detailRoute == null && activeTab == tab
+
+    val filteredAlbums = remember(albumGroups, searchQuery, sortAscending, sortMode, shows(LocalHubTab.ALBUMS)) {
+        if (!shows(LocalHubTab.ALBUMS)) return@remember emptyList<LocalAlbumGroup>()
         val q = searchQuery.trim()
         val matched = if (q.isEmpty()) albumGroups else albumGroups.filter {
             it.title.contains(q, ignoreCase = true) || it.artist.contains(q, ignoreCase = true)
@@ -502,7 +507,8 @@ fun LocalMusicHub(
         if (sortAscending) sorted else sorted.reversed()
     }
 
-    val filteredArtists = remember(artistGroups, searchQuery, sortAscending) {
+    val filteredArtists = remember(artistGroups, searchQuery, sortAscending, shows(LocalHubTab.ARTISTS)) {
+        if (!shows(LocalHubTab.ARTISTS)) return@remember emptyList<LocalArtistGroup>()
         val q = searchQuery.trim()
         val matched = if (q.isEmpty()) artistGroups else artistGroups.filter {
             it.name.contains(q, ignoreCase = true)
@@ -511,7 +517,8 @@ fun LocalMusicHub(
         if (sortAscending) sorted else sorted.reversed()
     }
 
-    val filteredFolders = remember(folderGroups, searchQuery) {
+    val filteredFolders = remember(folderGroups, searchQuery, shows(LocalHubTab.FOLDERS)) {
+        if (!shows(LocalHubTab.FOLDERS)) return@remember emptyList<LocalFolderGroup>()
         val q = searchQuery.trim()
         if (q.isEmpty()) folderGroups else folderGroups.filter {
             it.title.contains(q, ignoreCase = true) || it.subtitle.contains(q, ignoreCase = true)
