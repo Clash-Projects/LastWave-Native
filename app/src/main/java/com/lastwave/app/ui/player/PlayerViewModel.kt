@@ -482,11 +482,16 @@ class PlayerViewModel @Inject constructor(
             ) { track, wordByWord -> track to wordByWord }.collect { (track, wordByWord) ->
                 val key = track?.let { "${it.videoId ?: ""}|${it.artist}|${it.title}|$wordByWord" }
                 if (key != currentTrackLyricsKey) {
+                    // Only the last field (word-by-word) differs on a same-song refresh.
+                    val songChanged = key?.substringBeforeLast('|') != currentTrackLyricsKey?.substringBeforeLast('|')
                     currentTrackLyricsKey = key
                     spotLyricsOverride = Pair(null, emptySet())
                     probeLyricsJob?.cancel()
                     _lyricsProviderStatuses.value = emptyMap()
                     if (track != null) {
+                        // The fetch waits for audio plus a settle delay (up to ~11 s); the old
+                        // song's lines must not stay up meanwhile, where a tap seeks the new song.
+                        if (songChanged) _lyricsState.value = LyricsUiState.Loading
                         loadLyrics(track, forceRefresh = false)
                     } else {
                         lyricsJob?.cancel()
