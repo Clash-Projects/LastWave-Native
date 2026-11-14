@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
@@ -41,6 +42,7 @@ class ArtistViewModel @Inject constructor(
     private val mixLauncher: MixLauncher,
     private val settingsPreferences: SettingsPreferences,
     private val canvasRepository: CanvasRepository,
+    private val applicationScope: CoroutineScope,
 ) : ViewModel() {
 
     val settings: StateFlow<MiscSettings> = settingsPreferences.settings
@@ -56,6 +58,7 @@ class ArtistViewModel @Inject constructor(
     private var currentBrowseId: String? = null
     private var loadJob: Job? = null
     private var canvasJob: Job? = null
+    private var extendQueueJob: Job? = null
 
     fun loadArtist(artistName: String, browseId: String? = null) {
         val cached = (_uiState.value as? ArtistUiState.Success)?.data
@@ -105,6 +108,7 @@ class ArtistViewModel @Inject constructor(
         val songs = state.data.topSongs
         if (songs.isNotEmpty()) {
             musicPlayer.playQueue(songs, startIndex.coerceIn(0, songs.lastIndex), sourceLabel = state.data.name)
+            extendQueue(artistName = state.data.name, browseId = state.data.browseId, initialTracks = songs, isShuffle = false)
         }
     }
 
@@ -113,11 +117,49 @@ class ArtistViewModel @Inject constructor(
         val songs = state.data.topSongs
         if (songs.isNotEmpty()) {
             val shuffled = songs.shuffled()
-            musicPlayer.playQueue(shuffled, 0, sourceLabel = state.data.name)
+            musicPlayer.playQueue(shuffled, 0, sourceLabel = state.data.name, startShuffled = true)
+            extendQueue(artistName = state.data.name, browseId = state.data.browseId, initialTracks = songs, isShuffle = true)
+        }
+    }
+
+    private fun extendQueue(
+        artistName: String,
+        browseId: String?,
+        initialTracks: List<PlayableTrack>,
+        isShuffle: Boolean,
+    ) {
+        extendQueueJob?.cancel()
+        extendQueueJob = applicationScope.launch {
+            try {
+                val extended = repository.getArtistExtendedTracks(
+                    artistName = artistName,
+                    browseId = browseId,
+                    seedTracks = initialTracks,
+                    limit = 50,
+                )
+                coroutineContext.ensureActive()
+                // Append only if the user hasn't switched to a different playback source in the meantime
+                if (musicPlayer.state.value.sourceLabel == artistName) {
+                    val existingKeys = initialTracks.mapNotNullTo(mutableSetOf()) { it.videoId }
+                    val existingTitles = initialTracks.mapTo(mutableSetOf()) { it.title.lowercase().trim() }
+                    val newTracks = extended.filterNot {
+                        (it.videoId != null && it.videoId in existingKeys) || it.title.lowercase().trim() in existingTitles
+                    }
+                    if (newTracks.isNotEmpty()) {
+                        val tracksToAppend = if (isShuffle) newTracks.shuffled() else newTracks
+                        musicPlayer.appendTracksToQueue(tracksToAppend)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Silently keep the initial tracks playing on failure
+            }
         }
     }
 
     fun startArtistMix() {
+        extendQueueJob?.cancel()
         val state = _uiState.value as? ArtistUiState.Success ?: return
         val artistName = state.data.name
         val topSongs = state.data.topSongs

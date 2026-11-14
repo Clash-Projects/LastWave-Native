@@ -256,6 +256,104 @@ class ArtistRepository @Inject constructor(
 
         (listOfNotNull(seedTrack) + relatedPlayable).distinctBy { it.videoId ?: it.title }
     }
+
+    suspend fun getArtistExtendedTracks(
+        artistName: String,
+        browseId: String? = null,
+        seedTracks: List<PlayableTrack> = emptyList(),
+        limit: Int = 50,
+    ): List<PlayableTrack> = withContext(Dispatchers.IO) {
+        val cleanArtist = com.lastwave.app.util.ArtistHelper.primaryArtist(artistName).trim()
+        if (cleanArtist.isBlank()) return@withContext seedTracks
+
+        val existingVideoIds = seedTracks.mapNotNullTo(mutableSetOf()) { it.videoId }
+        val existingTitles = seedTracks.mapTo(mutableSetOf()) { it.title.lowercase().trim() }
+        val results = mutableListOf<PlayableTrack>()
+        results.addAll(seedTracks)
+
+        val searchCandidates = coroutineScope {
+            val mainQuery = async {
+                runCatching {
+                    innerTube.searchSongs(cleanArtist, limit = limit, prefetchStreams = false)
+                }.getOrDefault(emptyList())
+            }
+            val featQuery = async {
+                runCatching {
+                    innerTube.searchSongs("$cleanArtist feat", limit = 30, prefetchStreams = false)
+                }.getOrDefault(emptyList())
+            }
+            mainQuery.await() + featQuery.await()
+        }
+
+        for (track in searchCandidates) {
+            val vid = track.videoId.takeIf { it.isNotBlank() } ?: continue
+            if (vid in existingVideoIds) continue
+            val titleKey = track.title.lowercase().trim()
+            if (titleKey in existingTitles) continue
+
+            if (isTrackByOrFeaturingArtist(track.artist, track.title, cleanArtist)) {
+                existingVideoIds.add(vid)
+                existingTitles.add(titleKey)
+                results.add(
+                    PlayableTrack(
+                        title = track.title,
+                        artist = track.artist.takeUnless { it == "Unknown artist" } ?: cleanArtist,
+                        album = track.album,
+                        artworkUrl = track.artworkUrl,
+                        videoId = vid,
+                        durationMs = track.durationSeconds?.takeIf { it > 0 }?.times(1_000L),
+                    )
+                )
+                if (results.size >= limit + seedTracks.size) break
+            }
+        }
+
+        results
+    }
+}
+
+private val BRACKETED_FEAT_REGEX = Regex("""(?i)[\(\[]\s*(?:feat\.?|featuring|ft\.?|with)\s+([^()\[\]]+)[\)\]]""")
+private val UNBRACKETED_FEAT_REGEX = Regex("""(?i)\b(?:feat\.?|featuring|ft\.?)\s+([^-—–()\[\]|]+)""")
+
+internal fun isTrackByOrFeaturingArtist(
+    trackArtist: String,
+    trackTitle: String,
+    targetArtist: String,
+): Boolean {
+    val normTarget = com.lastwave.app.data.music.TextMatch.normalize(targetArtist)
+    if (normTarget.isBlank()) return false
+    val compactTarget = normTarget.replace(" ", "")
+
+    val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(trackArtist)
+    for (artist in splitArtists) {
+        val norm = com.lastwave.app.data.music.TextMatch.normalize(artist)
+        if (norm == normTarget || norm.replace(" ", "") == compactTarget) return true
+        if (norm.isNotBlank() && com.lastwave.app.data.music.TextMatch.similarity(norm, normTarget) >= 88) return true
+    }
+
+    val normRaw = com.lastwave.app.data.music.TextMatch.normalize(trackArtist)
+    if (normRaw == normTarget || normRaw.replace(" ", "") == compactTarget) return true
+    if (splitArtists.isEmpty() && normRaw.isNotBlank() && com.lastwave.app.data.music.TextMatch.similarity(normRaw, normTarget) >= 88) return true
+
+    for (match in BRACKETED_FEAT_REGEX.findAll(trackTitle)) {
+        val featContent = match.groupValues[1]
+        for (artist in com.lastwave.app.util.ArtistHelper.splitArtists(featContent)) {
+            val norm = com.lastwave.app.data.music.TextMatch.normalize(artist)
+            if (norm == normTarget || norm.replace(" ", "") == compactTarget) return true
+            if (norm.isNotBlank() && com.lastwave.app.data.music.TextMatch.similarity(norm, normTarget) >= 88) return true
+        }
+    }
+
+    for (match in UNBRACKETED_FEAT_REGEX.findAll(trackTitle)) {
+        val featContent = match.groupValues[1]
+        for (artist in com.lastwave.app.util.ArtistHelper.splitArtists(featContent)) {
+            val norm = com.lastwave.app.data.music.TextMatch.normalize(artist)
+            if (norm == normTarget || norm.replace(" ", "") == compactTarget) return true
+            if (norm.isNotBlank() && com.lastwave.app.data.music.TextMatch.similarity(norm, normTarget) >= 88) return true
+        }
+    }
+
+    return false
 }
 
 /**
