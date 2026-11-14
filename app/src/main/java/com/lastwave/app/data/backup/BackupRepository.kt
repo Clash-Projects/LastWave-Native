@@ -52,6 +52,7 @@ private val SENSITIVE_PREFERENCE_NAMES = setOf(
     "lw_apisecret",
     "lw_sessionkey",
     "lw_addon_url",
+    "lw_http_addons_json",
 )
 
 
