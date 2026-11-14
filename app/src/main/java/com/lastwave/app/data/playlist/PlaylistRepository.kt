@@ -25,6 +25,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -235,12 +236,16 @@ class PlaylistRepository @Inject constructor(
     private suspend fun readAllOrNull(failureLog: String): List<SavedPlaylistEntity>? =
         orNull(failureLog) { dao.getAll() }
 
-    private fun List<SavedPlaylistEntity>.toDomainSorted(): List<SavedPlaylist> =
-        mapNotNull { entity ->
-            runCatching { entity.toDomain() }.getOrNull()
+    // Room resumes on the caller's dispatcher, which for screens is Main: decoding
+    // every playlist's track JSON there dropped frames on large libraries.
+    private suspend fun List<SavedPlaylistEntity>.toDomainSorted(): List<SavedPlaylist> =
+        withContext(Dispatchers.Default) {
+            mapNotNull { entity ->
+                runCatching { entity.toDomain() }.getOrNull()
+            }
+                .sortedByDescending { it.createdAtMillis }
+                .also { backfillMissingVideoIdsOnce(it) }
         }
-            .sortedByDescending { it.createdAtMillis }
-            .also { backfillMissingVideoIdsOnce(it) }
 
     suspend fun getById(id: Long): SavedPlaylist? {
         return try {
