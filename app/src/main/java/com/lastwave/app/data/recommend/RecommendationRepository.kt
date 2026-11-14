@@ -34,8 +34,19 @@ class RecommendationRepository @Inject constructor(
         durationSeconds: Int? = null,
     ): List<YouTubeMusicTrack> {
         if (isSpotifyActive()) {
-            val seeded = spotifyTracks(title, artist, durationSeconds, limit)
-            if (seeded.isNotEmpty()) return seeded
+            val matched = spotifyTracks(title, artist, durationSeconds, limit)
+            if (matched.size >= 3) return matched
+            if (matched.size in 1..2 && !seedVideoId.isNullOrBlank()) {
+                val needed = (limit - matched.size).coerceAtLeast(0)
+                val fallback = if (needed > 0) {
+                    relatedGraph.relatedFor(seedVideoId, limit = needed, prefetchStreams = false)
+                } else {
+                    emptyList()
+                }
+                val existingIds = matched.mapTo(mutableSetOf()) { it.videoId }
+                return matched + fallback.filter { existingIds.add(it.videoId) }
+            }
+            if (matched.isNotEmpty()) return matched
         }
         return seedVideoId?.takeIf { it.isNotBlank() }
             ?.let { relatedGraph.relatedFor(it, limit, prefetchStreams = false) }
@@ -63,9 +74,23 @@ class RecommendationRepository @Inject constructor(
             candidates.take(MAX_MATCHES_PER_CALL).map { candidate ->
                 async {
                     val name = candidate.name?.takeIf { it.isNotBlank() } ?: return@async null
-                    val artists = candidate.artists.mapNotNull { it.name }.joinToString(", ")
+                    val primaryArtist = candidate.artists.firstOrNull()?.name?.takeIf { it.isNotBlank() } ?: ""
+                    val additionalArtists = candidate.artists.drop(1).mapNotNull { it.name?.takeIf(String::isNotBlank) }
+                    val artists = if (additionalArtists.isNotEmpty() && !FEAT_REGEX.containsMatchIn(name)) {
+                        if (primaryArtist.isNotBlank()) "$primaryArtist feat. ${additionalArtists.joinToString(", ")}" else additionalArtists.joinToString(", ")
+                    } else {
+                        primaryArtist.ifBlank {
+                            candidate.artists.mapNotNull { it.name?.takeIf(String::isNotBlank) }.joinToString(", ")
+                        }
+                    }
+                    val expectedDurationMs = candidate.duration_ms ?: candidate.durationMs
                     semaphore.withPermit {
-                        innerTube.findBestMatchOrNull(name, artists, prefetchStreams = false)
+                        innerTube.findBestMatchOrNull(
+                            name,
+                            artists,
+                            prefetchStreams = false,
+                            expectedDurationMs = expectedDurationMs,
+                        )
                     }
                 }
             }.awaitAll().filterNotNull()
@@ -83,5 +108,6 @@ class RecommendationRepository @Inject constructor(
         const val TAG = "RecommendationRepository"
         const val MAX_CONCURRENT_MATCHES = 4
         const val MAX_MATCHES_PER_CALL = 24
+        val FEAT_REGEX = Regex("""\b(feat|ft|featuring)\b""", RegexOption.IGNORE_CASE)
     }
 }
