@@ -125,7 +125,6 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
@@ -558,7 +557,7 @@ internal fun FullPlayerLandscape(
  * from the top so the upper part of the art always shows, its right edge
  * fading out into the player background so both halves read as one surface.
  * The same pane in Now Playing and in the lyrics split, so the art never
- * moves; [overlay] draws over it (the split's compact controls).
+ * moves.
  */
 @Composable
 internal fun LandscapeArtworkPane(
@@ -574,7 +573,6 @@ internal fun LandscapeArtworkPane(
     onCloseVideo: () -> Unit,
     onEnterFullscreen: () -> Unit,
     modifier: Modifier = Modifier,
-    overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
     var isArtworkDragging by remember { mutableStateOf(false) }
@@ -607,6 +605,11 @@ internal fun LandscapeArtworkPane(
                     // player background shows through, so the blend is exact.
                     drawRect(
                         Brush.horizontalGradient(0.58f to Color.Black, 1f to Color.Transparent),
+                        blendMode = BlendMode.DstIn,
+                    )
+                    // Same for the top and bottom, so the pane has no hard edges or corners.
+                    drawRect(
+                        Brush.verticalGradient(0f to Color.Transparent, 0.12f to Color.Black, 0.88f to Color.Black, 1f to Color.Transparent),
                         blendMode = BlendMode.DstIn,
                     )
                 }
@@ -832,62 +835,5 @@ internal fun LandscapeArtworkPane(
                     }
                 }
             }
-
-        overlay()
-    }
-}
-
-/**
- * The lyrics split's controls, over the bottom of the art pane: just the seek
- * bar and previous / play-pause / next, plus the way back to the full player.
- */
-@Composable
-internal fun BoxScope.LandscapeCompactControls(
-    track: PlayableTrack,
-    state: MusicPlayerState,
-    player: MusicPlayer,
-    progressState: StateFlow<PlaybackProgressState>?,
-    wavySeekbarEnabled: Boolean,
-    ambientColor: Color,
-    ambientCompanion: Color,
-    ambientDeep: Color,
-    onShowFullControls: () -> Unit,
-) {
-    IconButton(
-        onClick = hapticClick { onShowFullControls() },
-        modifier = Modifier
-            .align(Alignment.TopStart)
-            .padding(12.dp)
-            .background(Color.Black.copy(alpha = 0.32f), CircleShape),
-    ) {
-        Icon(
-            Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = "Back to player controls",
-            tint = Color.White,
-        )
-    }
-    Column(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f)))
-            .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        SeekBar(
-            progressState = progressState ?: player.progressState,
-            isPlaying = state.isPlaying,
-            trackKey = track.videoId ?: "${track.artist}|${track.title}",
-            wavyEnabled = wavySeekbarEnabled,
-            onSeek = player::seekTo,
-            isTranslucent = true,
-            fallbackDurationMs = track.durationMs ?: state.durationMs,
-            primaryColor = ambientColor,
-            secondaryColor = ambientCompanion,
-            tertiaryColor = ambientDeep,
-            telemetry = state.deckBlendTelemetry,
-        )
-        Spacer(Modifier.height(6.dp))
-        MainControls(state, player, isTranslucent = true)
     }
 }
