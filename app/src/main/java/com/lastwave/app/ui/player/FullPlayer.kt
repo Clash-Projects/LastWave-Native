@@ -79,7 +79,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -240,6 +239,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -592,35 +593,45 @@ internal fun FullPlayer(
     )
 
     fun Modifier.playerVerticalSwipe(enabled: Boolean): Modifier = if (!enabled) this else pointerInput(track.videoId, track.title, currentTab) {
-        detectVerticalDragGestures(
-            onDragStart = { isDismissDragging = true },
-            onDragCancel = {
-                isDismissDragging = false
-                dismissDragY = 0f
-            },
-            onDragEnd = {
-                isDismissDragging = false
-                var collapsing = false
-                when {
-                    currentTab != FullPlayerTab.NOW_PLAYING && dismissDragY > swipeThreshold -> onTabChange(FullPlayerTab.NOW_PLAYING)
-                    currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY < -swipeThreshold -> onTabChange(FullPlayerTab.QUEUE)
-                    currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY > swipeThreshold -> {
-                        collapsing = true
-                        onCollapse()
-                    }
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var slopY = 0f
+            var dragging = false
+            while (true) {
+                // Final pass: a child that scrolled with this move (the lyrics list)
+                // has consumed it by now, and then the gesture stays the child's.
+                val change = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                val dy = change.positionChange().y
+                if (!dragging) {
+                    if (change.isConsumed) return@awaitEachGesture
+                    slopY += dy
+                    if (abs(slopY) < viewConfiguration.touchSlop) continue
+                    dragging = true
+                    isDismissDragging = true
                 }
-                // Collapsing keeps the dragged offset: the close morph carries
-                // the player away from there instead of it springing back first.
-                if (!collapsing) dismissDragY = 0f
-            },
-        ) { change, amount ->
-            val updatedDrag = if (currentTab != FullPlayerTab.NOW_PLAYING) {
-                (dismissDragY + amount).coerceAtLeast(0f)
-            } else {
-                dismissDragY + amount
+                val updatedDrag = if (currentTab != FullPlayerTab.NOW_PLAYING) {
+                    (dismissDragY + dy).coerceAtLeast(0f)
+                } else {
+                    dismissDragY + dy
+                }
+                if (updatedDrag != dismissDragY) change.consume()
+                dismissDragY = updatedDrag
             }
-            if (updatedDrag != dismissDragY) change.consume()
-            dismissDragY = updatedDrag
+            if (!dragging) return@awaitEachGesture
+            isDismissDragging = false
+            var collapsing = false
+            when {
+                currentTab == FullPlayerTab.QUEUE && dismissDragY > swipeThreshold -> onTabChange(FullPlayerTab.NOW_PLAYING)
+                currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY < -swipeThreshold -> onTabChange(FullPlayerTab.QUEUE)
+                dismissDragY > swipeThreshold -> {
+                    collapsing = true
+                    onCollapse()
+                }
+            }
+            // Collapsing keeps the dragged offset: the close morph carries
+            // the player away from there instead of it springing back first.
+            if (!collapsing) dismissDragY = 0f
         }
     }
 
@@ -657,7 +668,9 @@ internal fun FullPlayer(
                 val playerHeight = size.height.coerceAtLeast(1f)
                 alpha = (1f - shownDismissY.coerceAtLeast(0f) / (playerHeight * 1.5f)).coerceIn(0.72f, 1f)
             }
-            .playerVerticalSwipe(enabled = currentTab == FullPlayerTab.NOW_PLAYING),
+            // Lyrics too: its list claims vertical drags first, so swiping down
+            // anywhere else (art pane, empty state, controls) closes the player.
+            .playerVerticalSwipe(enabled = currentTab != FullPlayerTab.QUEUE),
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val bgWidth = constraints.maxWidth.toFloat()
@@ -1007,7 +1020,7 @@ internal fun FullPlayer(
                                 .fillMaxWidth()
                                 .height(52.dp)
                                 .padding(horizontal = if (isTabletLandscape) 32.dp else 20.dp)
-                                .playerVerticalSwipe(enabled = currentTab != FullPlayerTab.NOW_PLAYING),
+                                .playerVerticalSwipe(enabled = currentTab == FullPlayerTab.QUEUE),
                         ) {
                             // FullPlayer sits on a dark blurred-artwork scrim in both light and
                             // dark mode, so foreground must use the white overlay palette â€”
