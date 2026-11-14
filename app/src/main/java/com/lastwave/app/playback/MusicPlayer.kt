@@ -2124,7 +2124,6 @@ class MusicPlayer @Inject constructor(
                     // at 0:00 while the notification looked normal. Paused /
                     // ended states still freeze via isPlaying=false.
                     if (!isCasting) {
-                        val livePlaying = player.isPlaying
                         val playingNow = _state.value.isPlaying &&
                             !exclusiveUsbOutput.isPaused() &&
                             usbAlive
