@@ -377,10 +377,10 @@ internal fun accentShades(hex: String): List<Color> {
     }.getOrDefault(0xFFE03030.toInt())
     val core = com.google.android.material.color.utilities.CorePalette.of(argb)
     return listOf(
-        Color(core.a1.tone(30)), // dark container tone
-        Color(core.a1.tone(50)), // medium tone
-        Color(core.a1.tone(80)), // light muted accent tone
-        Color(core.a1.tone(90)), // highlight tone
+        Color(core.a1.tone(24)), // dark container tone
+        Color(core.a1.tone(45)), // medium tone
+        Color(core.a1.tone(68)), // muted dark accent tone
+        Color(core.a1.tone(85)), // highlight tone
     )
 }
 

@@ -14,7 +14,8 @@ import kotlin.math.roundToInt
 /**
  * Builds Material Design 3 dynamic color schemes from seed colors using Google's
  * Monet / Material Color Utilities engine (the same engine Android uses for wallpaper
- * dynamic theming). Produces cohesive, muted dark tones and readable, accessible contrasts.
+ * dynamic theming). Tuned for a deep, muted dark tone aesthetic that remains easy on
+ * the eyes and 100% true to cover art direction.
  */
 object Md3SchemeBuilder {
 
@@ -61,8 +62,8 @@ object Md3SchemeBuilder {
 
     /**
      * Builds CorePalette from a seed and optional second color.
-     * Follows Google's Material Design 3 Monet algorithm used in wallpaper dynamic theming.
-     * Keeps tones muted and elegant by constraining chroma.
+     * Follows Google's Material Design 3 Monet algorithm with restrained chroma (14..30)
+     * so colors remain in a cohesive, muted dark tone while keeping 100% cover art direction.
      */
     private fun buildCorePalette(seedHex: String, secondHex: String? = null): CorePalette {
         val argb = parseColor(seedHex)
@@ -78,12 +79,15 @@ object Md3SchemeBuilder {
         }
         val hct = Hct.fromInt(argb)
         val core = CorePalette.of(argb)
-        // Cap primary chroma to Monet's standard range (16..48) so tones remain beautifully muted
-        core.a1 = TonalPalette.fromHueAndChroma(hct.hue, hct.chroma.coerceIn(16.0, 48.0))
+        // Constrain chroma to a refined muted range (14..30) for a comfortable, muted dark aesthetic
+        core.a1 = TonalPalette.fromHueAndChroma(hct.hue, hct.chroma.coerceIn(14.0, 30.0))
+        core.a2 = TonalPalette.fromHueAndChroma(hct.hue, 12.0)
         if (secondHex != null && !isAchromatic(secondHex)) {
             val secArgb = parseColor(secondHex)
             val secHct = Hct.fromInt(secArgb)
-            core.a3 = TonalPalette.fromHueAndChroma(secHct.hue, 24.0)
+            core.a3 = TonalPalette.fromHueAndChroma(secHct.hue, secHct.chroma.coerceIn(12.0, 20.0))
+        } else {
+            core.a3 = TonalPalette.fromHueAndChroma((hct.hue + 60.0) % 360.0, 18.0)
         }
         return core
     }
@@ -134,45 +138,45 @@ object Md3SchemeBuilder {
         amoled: Boolean,
     ): ColorScheme {
         val core = buildCorePalette(seed, secondHex)
-        val primary = Color(core.a1.tone(80))
-        val onPrimary = Color(core.a1.tone(20))
-        val primaryContainer = Color(core.a1.tone(30))
-        val onPrimaryContainer = Color(core.a1.tone(90))
+        val primary = Color(core.a1.tone(68))
+        val onPrimary = Color(core.a1.tone(10))
+        val primaryContainer = Color(core.a1.tone(24))
+        val onPrimaryContainer = Color(core.a1.tone(85))
 
-        val secondary = Color(core.a2.tone(80))
-        val onSecondary = Color(core.a2.tone(20))
-        val secondaryContainer = Color(core.a2.tone(30))
-        val onSecondaryContainer = Color(core.a2.tone(90))
+        val secondary = Color(core.a2.tone(68))
+        val onSecondary = Color(core.a2.tone(10))
+        val secondaryContainer = Color(core.a2.tone(22))
+        val onSecondaryContainer = Color(core.a2.tone(85))
 
-        val tertiary = Color(core.a3.tone(80))
-        val onTertiary = Color(core.a3.tone(20))
-        val tertiaryContainer = Color(core.a3.tone(30))
-        val onTertiaryContainer = Color(core.a3.tone(90))
+        val tertiary = Color(core.a3.tone(68))
+        val onTertiary = Color(core.a3.tone(10))
+        val tertiaryContainer = Color(core.a3.tone(22))
+        val onTertiaryContainer = Color(core.a3.tone(85))
 
-        val error = Color(core.error.tone(80))
-        val onError = Color(core.error.tone(20))
-        val errorContainer = Color(core.error.tone(30))
-        val onErrorContainer = Color(core.error.tone(90))
+        val error = Color(core.error.tone(70))
+        val onError = Color(core.error.tone(10))
+        val errorContainer = Color(core.error.tone(24))
+        val onErrorContainer = Color(core.error.tone(85))
 
-        val background = if (amoled) Color.Black else Color(core.n1.tone(6))
-        val onBackground = Color(core.n1.tone(90))
-        val surface = if (amoled) Color.Black else Color(core.n1.tone(6))
-        val onSurface = Color(core.n1.tone(90))
+        val background = if (amoled) Color.Black else Color(core.n1.tone(4))
+        val onBackground = Color(core.n1.tone(85))
+        val surface = if (amoled) Color.Black else Color(core.n1.tone(4))
+        val onSurface = Color(core.n1.tone(85))
 
-        val surfaceContainerLowest = if (amoled) Color.Black else Color(core.n1.tone(4))
-        val surfaceContainerLow = if (amoled) Color.Black else Color(core.n1.tone(10))
-        val surfaceContainer = if (amoled) Color.Black else Color(core.n1.tone(12))
-        val surfaceContainerHigh = Color(core.n1.tone(17))
-        val surfaceContainerHighest = Color(core.n1.tone(22))
+        val surfaceContainerLowest = if (amoled) Color.Black else Color(core.n1.tone(2))
+        val surfaceContainerLow = if (amoled) Color.Black else Color(core.n1.tone(5))
+        val surfaceContainer = if (amoled) Color.Black else Color(core.n1.tone(8))
+        val surfaceContainerHigh = Color(core.n1.tone(12))
+        val surfaceContainerHighest = Color(core.n1.tone(16))
 
-        val surfaceVariant = Color(core.n2.tone(30))
-        val onSurfaceVariant = Color(core.n2.tone(80))
-        val outline = Color(core.n2.tone(60))
-        val outlineVariant = Color(core.n2.tone(30))
+        val surfaceVariant = Color(core.n2.tone(20))
+        val onSurfaceVariant = Color(core.n2.tone(75))
+        val outline = Color(core.n2.tone(45))
+        val outlineVariant = Color(core.n2.tone(20))
 
-        val inverseSurface = Color(core.n1.tone(90))
-        val inverseOnSurface = Color(core.n1.tone(20))
-        val inversePrimary = Color(core.a1.tone(40))
+        val inverseSurface = Color(core.n1.tone(88))
+        val inverseOnSurface = Color(core.n1.tone(15))
+        val inversePrimary = Color(core.a1.tone(35))
 
         return darkColorScheme(
             primary = primary,
