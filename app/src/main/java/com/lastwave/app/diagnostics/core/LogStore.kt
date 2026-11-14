@@ -65,12 +65,13 @@ class LogStore(
         ?: emptyList()
 
     /** Appends [records] as one batch, rotating as needed. */
-    fun append(records: List<LogRecord>) {
+    fun append(records: List<LogRecord>, onFormatted: (List<String>) -> Unit = {}) {
         if (records.isEmpty()) return
         if (!directory.isDirectory) directory.mkdirs()
 
         records.forEach { record ->
             val lines = formatter.lines(record)
+            onFormatted(lines)
             val payload = lines.joinToString(separator = "\n", postfix = "\n")
             val payloadBytes = payload.toByteArray(Charsets.UTF_8).size.toLong()
 
