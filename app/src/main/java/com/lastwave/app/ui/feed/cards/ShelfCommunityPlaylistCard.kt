@@ -1,5 +1,6 @@
 package com.lastwave.app.ui.feed.cards
 
+import com.lastwave.app.ui.common.rememberAmbientFloat
 import android.graphics.drawable.BitmapDrawable
 import android.util.LruCache
 import androidx.compose.animation.animateColorAsState
@@ -242,8 +243,7 @@ private fun CommunitySongRow(song: YouTubeMusicTrack, plays: String?, height: Dp
 
 @Composable
 private fun CommunityLoadingRows(height: Dp) {
-    val transition = rememberInfiniteTransition(label = "playlist preview shimmer")
-    val phase = transition.animateFloat(0f, 1f,
+    val phase = rememberAmbientFloat(0f, 1f,
         infiniteRepeatable(tween(1200, easing = LinearEasing)), label = "shimmer phase")
     val base = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
     repeat(3) {
