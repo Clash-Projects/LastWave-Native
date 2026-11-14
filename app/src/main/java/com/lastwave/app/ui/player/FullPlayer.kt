@@ -1166,7 +1166,7 @@ internal fun FullPlayer(
                                 },
                             ) {
                                 // Landscape: lyrics beside the same full-bleed art pane as
-                                // Now Playing, with just the seek bar and transport over it.
+                                // Now Playing.
                                 // Lyrics' own fullscreen still takes the whole width.
                                 val landscapeSplit = isTabletLandscape && !lyricsFullscreen
                                 Row(Modifier.fillMaxSize()) {
@@ -1184,19 +1184,6 @@ internal fun FullPlayer(
                                         onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                         onEnterFullscreen = { isVideoFullscreen = true },
                                         modifier = Modifier.weight(1f),
-                                        overlay = {
-                                            LandscapeCompactControls(
-                                                track = track,
-                                                state = state,
-                                                player = player,
-                                                progressState = progressState,
-                                                wavySeekbarEnabled = wavySeekbarEnabled,
-                                                ambientColor = ambientColor,
-                                                ambientCompanion = ambientCompanion,
-                                                ambientDeep = ambientDeep,
-                                                onShowFullControls = { onTabChange(FullPlayerTab.NOW_PLAYING) },
-                                            )
-                                        },
                                     )
                                 }
                                 ModernLyricsPanel(
@@ -1219,7 +1206,6 @@ internal fun FullPlayer(
                                     onTryAnotherLyricsSource = onTryAnotherLyricsSource,
                                     onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                     isFullscreen = lyricsFullscreen,
-                                    showTransport = !landscapeSplit,
                                     onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                     primaryColor = ambientColor,
                                     secondaryColor = ambientCompanion,
