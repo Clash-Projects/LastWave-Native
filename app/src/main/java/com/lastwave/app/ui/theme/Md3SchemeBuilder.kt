@@ -16,21 +16,33 @@ import kotlin.math.roundToInt
 
 /**
  * Builds Material Design 3 color schemes using the SchemeNeutral (reduced-chroma)
- * dynamic theming architecture from SleepTracker. Keeps colors deeply muted, soft,
- * and dark while preserving 100% cover art direction and contrast accessibility.
+ * dynamic theming architecture from SleepTracker, tuned to deeply muted, dark obsidian
+ * tones while preserving 100% cover art direction and contrast accessibility.
  */
 object Md3SchemeBuilder {
 
     private val mdc = MaterialDynamicColors()
 
-    // AMOLED tokens matching SleepTracker
+    // Deep obsidian dark surfaces (standard dark mode)
+    private val DarkBackground = Color(0xFF0C0C0E)
+    private val DarkSurface = Color(0xFF0C0C0E)
+    private val DarkSurfaceDim = Color(0xFF0C0C0E)
+    private val DarkSurfaceContainerLowest = Color(0xFF070709)
+    private val DarkSurfaceContainerLow = Color(0xFF111113)
+    private val DarkSurfaceContainer = Color(0xFF161619)
+    private val DarkSurfaceContainerHigh = Color(0xFF1C1C20)
+    private val DarkSurfaceContainerHighest = Color(0xFF232328)
+    private val DarkSurfaceVariant = Color(0xFF1E1E23)
+    private val DarkSurfaceBright = Color(0xFF2A2A30)
+
+    // AMOLED tokens matching SleepTracker (deep true black)
     private val AmoledBlack = Color(0xFF000000)
-    private val AmoledSurfaceContainerLow = Color(0xFF0A0A0A)
-    private val AmoledSurfaceContainer = Color(0xFF121212)
-    private val AmoledSurfaceContainerHigh = Color(0xFF1C1C1C)
-    private val AmoledSurfaceContainerHighest = Color(0xFF272727)
-    private val AmoledSurfaceVariant = Color(0xFF1C1C1C)
-    private val AmoledSurfaceBright = Color(0xFF2E2E2E)
+    private val AmoledSurfaceContainerLow = Color(0xFF070707)
+    private val AmoledSurfaceContainer = Color(0xFF0D0D0D)
+    private val AmoledSurfaceContainerHigh = Color(0xFF141414)
+    private val AmoledSurfaceContainerHighest = Color(0xFF1A1A1A)
+    private val AmoledSurfaceVariant = Color(0xFF141414)
+    private val AmoledSurfaceBright = Color(0xFF222222)
 
     private fun parseColor(hex: String, fallback: Int = 0xFFE03030.toInt()): Int {
         val clean = hex.trim()
@@ -73,48 +85,90 @@ object Md3SchemeBuilder {
     /** True for grey/black/white seeds: their hue is meaningless ([hueOf] gives 0, red). */
     fun isAchromatic(hex: String): Boolean = saturationOf(hex) < 0.1f
 
-    private fun DynamicScheme.toComposeColorScheme(): ColorScheme = ColorScheme(
-        primary = Color(mdc.primary().getArgb(this)),
-        onPrimary = Color(mdc.onPrimary().getArgb(this)),
-        primaryContainer = Color(mdc.primaryContainer().getArgb(this)),
-        onPrimaryContainer = Color(mdc.onPrimaryContainer().getArgb(this)),
-        inversePrimary = Color(mdc.inversePrimary().getArgb(this)),
-        secondary = Color(mdc.secondary().getArgb(this)),
-        onSecondary = Color(mdc.onSecondary().getArgb(this)),
-        secondaryContainer = Color(mdc.secondaryContainer().getArgb(this)),
-        onSecondaryContainer = Color(mdc.onSecondaryContainer().getArgb(this)),
-        tertiary = Color(mdc.tertiary().getArgb(this)),
-        onTertiary = Color(mdc.onTertiary().getArgb(this)),
-        tertiaryContainer = Color(mdc.tertiaryContainer().getArgb(this)),
-        onTertiaryContainer = Color(mdc.onTertiaryContainer().getArgb(this)),
-        background = Color(mdc.background().getArgb(this)),
-        onBackground = Color(mdc.onBackground().getArgb(this)),
-        surface = Color(mdc.surface().getArgb(this)),
-        onSurface = Color(mdc.onSurface().getArgb(this)),
-        surfaceVariant = Color(mdc.surfaceVariant().getArgb(this)),
-        onSurfaceVariant = Color(mdc.onSurfaceVariant().getArgb(this)),
-        surfaceTint = Color(mdc.primary().getArgb(this)),
-        inverseSurface = Color(mdc.inverseSurface().getArgb(this)),
-        inverseOnSurface = Color(mdc.inverseOnSurface().getArgb(this)),
-        error = Color(mdc.error().getArgb(this)),
-        onError = Color(mdc.onError().getArgb(this)),
-        errorContainer = Color(mdc.errorContainer().getArgb(this)),
-        onErrorContainer = Color(mdc.onErrorContainer().getArgb(this)),
-        outline = Color(mdc.outline().getArgb(this)),
-        outlineVariant = Color(mdc.outlineVariant().getArgb(this)),
-        scrim = Color(mdc.scrim().getArgb(this)),
-        surfaceBright = Color(mdc.surfaceBright().getArgb(this)),
-        surfaceContainer = Color(mdc.surfaceContainer().getArgb(this)),
-        surfaceContainerHigh = Color(mdc.surfaceContainerHigh().getArgb(this)),
-        surfaceContainerHighest = Color(mdc.surfaceContainerHighest().getArgb(this)),
-        surfaceContainerLow = Color(mdc.surfaceContainerLow().getArgb(this)),
-        surfaceContainerLowest = Color(mdc.surfaceContainerLowest().getArgb(this)),
-        surfaceDim = Color(mdc.surfaceDim().getArgb(this)),
-    )
+    private fun DynamicScheme.toComposeColorScheme(): ColorScheme {
+        return if (this.isDark) {
+            ColorScheme(
+                primary = Color(primaryPalette.tone(72)),
+                onPrimary = Color(primaryPalette.tone(10)),
+                primaryContainer = Color(primaryPalette.tone(22)),
+                onPrimaryContainer = Color(primaryPalette.tone(85)),
+                inversePrimary = Color(primaryPalette.tone(40)),
+                secondary = Color(secondaryPalette.tone(72)),
+                onSecondary = Color(secondaryPalette.tone(10)),
+                secondaryContainer = Color(secondaryPalette.tone(22)),
+                onSecondaryContainer = Color(secondaryPalette.tone(85)),
+                tertiary = Color(tertiaryPalette.tone(72)),
+                onTertiary = Color(tertiaryPalette.tone(10)),
+                tertiaryContainer = Color(tertiaryPalette.tone(22)),
+                onTertiaryContainer = Color(tertiaryPalette.tone(85)),
+                background = DarkBackground,
+                onBackground = Color(neutralPalette.tone(90)),
+                surface = DarkSurface,
+                onSurface = Color(neutralPalette.tone(90)),
+                surfaceVariant = DarkSurfaceVariant,
+                onSurfaceVariant = Color(neutralVariantPalette.tone(75)),
+                surfaceTint = Color(primaryPalette.tone(72)),
+                inverseSurface = Color(neutralPalette.tone(90)),
+                inverseOnSurface = Color(neutralPalette.tone(20)),
+                error = Color(errorPalette.tone(70)),
+                onError = Color(errorPalette.tone(10)),
+                errorContainer = Color(errorPalette.tone(20)),
+                onErrorContainer = Color(errorPalette.tone(85)),
+                outline = Color(neutralVariantPalette.tone(45)),
+                outlineVariant = Color(neutralVariantPalette.tone(25)),
+                scrim = Color.Black,
+                surfaceBright = DarkSurfaceBright,
+                surfaceContainer = DarkSurfaceContainer,
+                surfaceContainerHigh = DarkSurfaceContainerHigh,
+                surfaceContainerHighest = DarkSurfaceContainerHighest,
+                surfaceContainerLow = DarkSurfaceContainerLow,
+                surfaceContainerLowest = DarkSurfaceContainerLowest,
+                surfaceDim = DarkSurfaceDim,
+            )
+        } else {
+            ColorScheme(
+                primary = Color(mdc.primary().getArgb(this)),
+                onPrimary = Color(mdc.onPrimary().getArgb(this)),
+                primaryContainer = Color(mdc.primaryContainer().getArgb(this)),
+                onPrimaryContainer = Color(mdc.onPrimaryContainer().getArgb(this)),
+                inversePrimary = Color(mdc.inversePrimary().getArgb(this)),
+                secondary = Color(mdc.secondary().getArgb(this)),
+                onSecondary = Color(mdc.onSecondary().getArgb(this)),
+                secondaryContainer = Color(mdc.secondaryContainer().getArgb(this)),
+                onSecondaryContainer = Color(mdc.onSecondaryContainer().getArgb(this)),
+                tertiary = Color(mdc.tertiary().getArgb(this)),
+                onTertiary = Color(mdc.onTertiary().getArgb(this)),
+                tertiaryContainer = Color(mdc.tertiaryContainer().getArgb(this)),
+                onTertiaryContainer = Color(mdc.onTertiaryContainer().getArgb(this)),
+                background = Color(mdc.background().getArgb(this)),
+                onBackground = Color(mdc.onBackground().getArgb(this)),
+                surface = Color(mdc.surface().getArgb(this)),
+                onSurface = Color(mdc.onSurface().getArgb(this)),
+                surfaceVariant = Color(mdc.surfaceVariant().getArgb(this)),
+                onSurfaceVariant = Color(mdc.onSurfaceVariant().getArgb(this)),
+                surfaceTint = Color(mdc.primary().getArgb(this)),
+                inverseSurface = Color(mdc.inverseSurface().getArgb(this)),
+                inverseOnSurface = Color(mdc.inverseOnSurface().getArgb(this)),
+                error = Color(mdc.error().getArgb(this)),
+                onError = Color(mdc.onError().getArgb(this)),
+                errorContainer = Color(mdc.errorContainer().getArgb(this)),
+                onErrorContainer = Color(mdc.onErrorContainer().getArgb(this)),
+                outline = Color(mdc.outline().getArgb(this)),
+                outlineVariant = Color(mdc.outlineVariant().getArgb(this)),
+                scrim = Color.Black,
+                surfaceBright = Color(mdc.surfaceBright().getArgb(this)),
+                surfaceContainer = Color(mdc.surfaceContainer().getArgb(this)),
+                surfaceContainerHigh = Color(mdc.surfaceContainerHigh().getArgb(this)),
+                surfaceContainerHighest = Color(mdc.surfaceContainerHighest().getArgb(this)),
+                surfaceContainerLow = Color(mdc.surfaceContainerLow().getArgb(this)),
+                surfaceContainerLowest = Color(mdc.surfaceContainerLowest().getArgb(this)),
+                surfaceDim = Color(mdc.surfaceDim().getArgb(this)),
+            )
+        }
+    }
 
     private fun generateDynamicScheme(
         seedHex: String,
-        secondHex: String?,
         isDark: Boolean,
     ): DynamicScheme {
         val argb = parseColor(seedHex)
@@ -135,13 +189,6 @@ object Md3SchemeBuilder {
         val priChroma = hct.chroma.coerceIn(8.0, 16.0)
         val priPalette = TonalPalette.fromHueAndChroma(hct.hue, priChroma)
 
-        val tertPalette = if (secondHex != null && !isAchromatic(secondHex)) {
-            val secHct = Hct.fromInt(parseColor(secondHex))
-            TonalPalette.fromHueAndChroma(secHct.hue, 16.0)
-        } else {
-            baseScheme.tertiaryPalette
-        }
-
         return DynamicScheme(
             baseScheme.sourceColorHct,
             baseScheme.variant,
@@ -149,13 +196,26 @@ object Md3SchemeBuilder {
             baseScheme.contrastLevel,
             priPalette,
             baseScheme.secondaryPalette,
-            tertPalette,
+            baseScheme.tertiaryPalette,
             baseScheme.neutralPalette,
             baseScheme.neutralVariantPalette,
         )
     }
 
-    private fun applyAmoledTheme(scheme: ColorScheme): ColorScheme = scheme.copy(
+    fun applyDarkSurfaces(scheme: ColorScheme): ColorScheme = scheme.copy(
+        background = DarkBackground,
+        surface = DarkSurface,
+        surfaceDim = DarkSurfaceDim,
+        surfaceContainerLowest = DarkSurfaceContainerLowest,
+        surfaceContainerLow = DarkSurfaceContainerLow,
+        surfaceContainer = DarkSurfaceContainer,
+        surfaceContainerHigh = DarkSurfaceContainerHigh,
+        surfaceContainerHighest = DarkSurfaceContainerHighest,
+        surfaceVariant = DarkSurfaceVariant,
+        surfaceBright = DarkSurfaceBright,
+    )
+
+    fun applyAmoledTheme(scheme: ColorScheme): ColorScheme = scheme.copy(
         background = AmoledBlack,
         surface = AmoledBlack,
         surfaceDim = AmoledBlack,
@@ -171,13 +231,13 @@ object Md3SchemeBuilder {
     )
 
     /**
-     * (dark, light) schemes for now-playing artwork using SleepTracker's SchemeNeutral architecture.
+     * (dark, light) schemes for now-playing artwork using a single major dominant color.
      */
-    fun buildArtworkSchemes(seed: String, second: String?, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
-        val darkScheme = generateDynamicScheme(seed, second, isDark = true).toComposeColorScheme().let {
+    fun buildArtworkSchemes(seed: String, @Suppress("UNUSED_PARAMETER") second: String? = null, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
+        val darkScheme = generateDynamicScheme(seed, isDark = true).toComposeColorScheme().let {
             if (amoled) applyAmoledTheme(it) else it
         }
-        val lightScheme = generateDynamicScheme(seed, second, isDark = false).toComposeColorScheme()
+        val lightScheme = generateDynamicScheme(seed, isDark = false).toComposeColorScheme()
         return darkScheme to lightScheme
     }
 
@@ -189,14 +249,14 @@ object Md3SchemeBuilder {
     /** Dark scheme, seeded from [hex]. */
     @Suppress("UNUSED_PARAMETER")
     fun buildDarkScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme {
-        val darkScheme = generateDynamicScheme(hex, secondHex = null, isDark = true).toComposeColorScheme()
+        val darkScheme = generateDynamicScheme(hex, isDark = true).toComposeColorScheme()
         return if (amoled) applyAmoledTheme(darkScheme) else darkScheme
     }
 
     /** Full dynamic light scheme, seeded from [hex]. */
     @Suppress("UNUSED_PARAMETER")
     fun buildLightScheme(hex: String, liquidGlass: Boolean = false): ColorScheme =
-        generateDynamicScheme(hex, secondHex = null, isDark = false).toComposeColorScheme()
+        generateDynamicScheme(hex, isDark = false).toComposeColorScheme()
 
     /** Pure grayscale dark scheme. */
     @Suppress("UNUSED_PARAMETER")
@@ -214,18 +274,17 @@ object Md3SchemeBuilder {
         buildLightScheme("#777777", liquidGlass)
 
     /**
-     * LastWave Signature Dark Scheme built specifically around the official app logo colors:
-     * Electric Lime (#C9FB00) and Deep Obsidian Teal (#012226).
+     * LastWave Signature Dark Scheme built specifically around the official app logo colors.
      */
     fun buildLastWaveDarkScheme(amoled: Boolean, @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
         val brandLime = Color(0xFFC9FB00)
         val darkTeal = Color(0xFF012226)
         val deepTeal = Color(0xFF01181B)
 
-        val backgroundCol = if (amoled) Color.Black else deepTeal
-        val surfaceCol = if (amoled) Color.Black else darkTeal
-        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF011E22)
-        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF001214)
+        val backgroundCol = if (amoled) Color.Black else DarkBackground
+        val surfaceCol = if (amoled) Color.Black else DarkSurface
+        val surfaceLowCol = if (amoled) Color.Black else DarkSurfaceContainerLow
+        val surfaceLowestCol = if (amoled) Color.Black else DarkSurfaceContainerLowest
 
         return darkColorScheme(
             primary = brandLime,
@@ -252,12 +311,12 @@ object Md3SchemeBuilder {
             onBackground = Color(0xFFE4F8F8),
             surface = surfaceCol,
             onSurface = Color(0xFFE4F8F8),
-            surfaceContainer = Color(0xFF02272C),
-            surfaceContainerHigh = Color(0xFF04333A),
-            surfaceContainerHighest = Color(0xFF073F47),
+            surfaceContainer = if (amoled) AmoledSurfaceContainer else Color(0xFF02272C),
+            surfaceContainerHigh = if (amoled) AmoledSurfaceContainerHigh else Color(0xFF04333A),
+            surfaceContainerHighest = if (amoled) AmoledSurfaceContainerHighest else Color(0xFF073F47),
             surfaceContainerLow = surfaceLowCol,
             surfaceContainerLowest = surfaceLowestCol,
-            surfaceVariant = Color(0xFF063B42),
+            surfaceVariant = if (amoled) AmoledSurfaceVariant else Color(0xFF063B42),
             onSurfaceVariant = Color(0xFFA1CACE),
 
             outline = Color(0xFF23656E),

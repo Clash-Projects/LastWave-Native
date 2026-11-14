@@ -224,15 +224,11 @@ class ThemeRepository @Inject constructor(
     private fun systemDynamicSchemes(amoled: Boolean): Pair<ColorScheme, ColorScheme>? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
         return runCatching {
-            val dark = androidx.compose.material3.dynamicDarkColorScheme(context).let {
-                if (amoled) {
-                    it.copy(
-                        background = Color.Black,
-                        surface = Color.Black,
-                        surfaceContainerLow = Color.Black,
-                        surfaceContainerLowest = Color.Black,
-                    )
-                } else it
+            val systemDark = androidx.compose.material3.dynamicDarkColorScheme(context)
+            val dark = if (amoled) {
+                Md3SchemeBuilder.applyAmoledTheme(systemDark)
+            } else {
+                Md3SchemeBuilder.applyDarkSurfaces(systemDark)
             }
             dark to androidx.compose.material3.dynamicLightColorScheme(context)
         }.getOrNull()

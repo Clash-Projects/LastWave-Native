@@ -367,41 +367,22 @@ internal fun AccentPresetGrid(
 }
 
 /**
- * Four coordinated tones derived from one preset hex using SchemeNeutral,
- * matching SleepTracker's muted Material You dynamic scheme engine.
- * Order returned: [primaryContainer, secondary, primary, tertiary].
+ * Renders a preset's solid accent swatch cleanly filling the tile,
+ * avoiding mixed-up multi-color slices.
  */
-internal fun accentShades(hex: String): List<Color> {
-    val argb = runCatching {
-        android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
-    }.getOrDefault(0xFFE03030.toInt())
-    val hct = com.google.android.material.color.utilities.Hct.fromInt(argb)
-    val scheme = com.google.android.material.color.utilities.SchemeNeutral(hct, true, 0.0)
-    val mdc = com.google.android.material.color.utilities.MaterialDynamicColors()
-    return listOf(
-        Color(mdc.primaryContainer().getArgb(scheme)),
-        Color(mdc.secondary().getArgb(scheme)),
-        Color(mdc.primary().getArgb(scheme)),
-        Color(mdc.tertiary().getArgb(scheme)),
-    )
-}
-
-/** Renders a preset's four shades as a 2x2 block grid filling the tile,
- *  so selecting a preset previews its whole coordinated palette rather
- *  than one flat color. */
 @Composable
 internal fun PaletteTilePreview(hex: String) {
-    val shades = remember(hex) { accentShades(hex) }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[0]))
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[1]))
-        }
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[2]))
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[3]))
-        }
+    val color = remember(hex) {
+        val argb = runCatching {
+            android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
+        }.getOrDefault(0xFFE03030.toInt())
+        Color(argb)
     }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(color),
+    )
 }
 
 
