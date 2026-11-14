@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Mutex
@@ -631,8 +632,25 @@ class PlaylistRepository @Inject constructor(
         }
     }
 
+    // Conflated: a burst of edits (bulk likes, an import) queued one full-library
+    // write each. Every write re-reads Room, so one pass after the current one
+    // still lands the newest state.
+    private val mirrorRequests = Channel<Unit>(Channel.CONFLATED).also { requests ->
+        exportScope.launch {
+            for (request in requests) {
+                // A failed pass (Room read) must not end the writer for the session.
+                try {
+                    syncPublicMirror()
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    Log.e(TAG, "Public playlist JSON sync failed", error)
+                }
+            }
+        }
+    }
+
     private fun syncPublicMirrorInBackground() {
-        exportScope.launch { syncPublicMirror() }
+        mirrorRequests.trySend(Unit)
     }
 
     private fun SavedPlaylistEntity.toDomain(): SavedPlaylist {
