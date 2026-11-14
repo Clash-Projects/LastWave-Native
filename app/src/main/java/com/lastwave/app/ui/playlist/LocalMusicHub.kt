@@ -2621,33 +2621,34 @@ private fun sortLocalTracks(
     mode: LocalSortMode,
     ascending: Boolean,
 ): List<GeneratedTrack> {
-    val base = when (mode) {
-        LocalSortMode.TITLE -> tracks.sortedBy { it.name.lowercase() }
-        LocalSortMode.ARTIST -> tracks.sortedWith(compareBy({ it.artist.lowercase() }, { it.name.lowercase() }))
-        LocalSortMode.ALBUM -> tracks.sortedWith(
-            compareBy(
-                { it.album?.lowercase().orEmpty() },
-                { it.discNumber ?: Int.MAX_VALUE },
-                { it.trackNumber ?: Int.MAX_VALUE },
-                { it.name.lowercase() },
-            ),
+    val comparator: Comparator<LocalSortKey> = when (mode) {
+        LocalSortMode.TITLE -> compareBy<LocalSortKey> { it.name }
+        LocalSortMode.ARTIST -> compareBy<LocalSortKey>({ it.artist }, { it.name })
+        LocalSortMode.ALBUM -> compareBy<LocalSortKey>(
+            { it.album },
+            { it.track.discNumber ?: Int.MAX_VALUE },
+            { it.track.trackNumber ?: Int.MAX_VALUE },
+            { it.name },
         )
-        LocalSortMode.TRACK_NUMBER -> tracks.sortedWith(
-            compareBy(
-                { it.discNumber ?: Int.MAX_VALUE },
-                { it.trackNumber ?: Int.MAX_VALUE },
-                { it.name.lowercase() },
-            ),
+        LocalSortMode.TRACK_NUMBER -> compareBy<LocalSortKey>(
+            { it.track.discNumber ?: Int.MAX_VALUE },
+            { it.track.trackNumber ?: Int.MAX_VALUE },
+            { it.name },
         )
-        LocalSortMode.ADDED -> tracks
-        LocalSortMode.FORMAT -> tracks.sortedWith(
-            compareBy(
-                { formatBadgeForTrack(it).orEmpty() },
-                { it.name.lowercase() },
-            ),
-        )
+        LocalSortMode.ADDED -> return if (ascending) tracks else tracks.reversed()
+        LocalSortMode.FORMAT -> compareBy<LocalSortKey>({ it.format }, { it.name })
     }
+    val base = tracks.map(::LocalSortKey).sortedWith(comparator).map { it.track }
     return if (ascending) base else base.reversed()
+}
+
+/** Sort keys computed once per track. In the comparator, lowercase() ran on every
+ *  comparison: n·log n string copies per keystroke on a large library. Same order. */
+private class LocalSortKey(val track: GeneratedTrack) {
+    val name = track.name.lowercase()
+    val artist by lazy(LazyThreadSafetyMode.NONE) { track.artist.lowercase() }
+    val album by lazy(LazyThreadSafetyMode.NONE) { track.album?.lowercase().orEmpty() }
+    val format by lazy(LazyThreadSafetyMode.NONE) { formatBadgeForTrack(track).orEmpty() }
 }
 
 private fun albumKeyOf(track: GeneratedTrack): String {
