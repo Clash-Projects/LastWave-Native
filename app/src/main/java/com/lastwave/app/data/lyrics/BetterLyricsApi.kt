@@ -1,6 +1,6 @@
 package com.lastwave.app.data.lyrics
 
-import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
+import com.lastwave.app.data.addon.awaitAddonResponse
 import kotlinx.coroutines.CancellationException
 
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +27,7 @@ private data class BetterLyricsTtmlResponse(
 /**
  * BetterLyrics word-sync provider (https://lyrics-api.boidu.dev).
  *
- * Free, no API key, GPL-3.0. Serves Apple-Music TTML with per-syllable
+ * Keyless only for songs already in its cache (others answer 401). Serves Apple-Music TTML with per-syllable
  * `<span begin end>` timing, which maps 1:1 onto [LyricLine]/[LyricSyllable].
  *
  * Chain position: before Kugou — both TTML endpoints are
@@ -38,6 +38,10 @@ private data class BetterLyricsTtmlResponse(
 class BetterLyricsApi @Inject constructor(
     private val okHttpClient: OkHttpClient,
 ) {
+    // A 401 means the song isn't in the keyless cache, so every other endpoint and
+    // title variant of it 401s too: that was 8 wasted calls per uncached track.
+    private val uncachedSongs = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -131,6 +135,9 @@ class BetterLyricsApi @Inject constructor(
         durationSeconds: Int?,
         album: String?,
     ): List<LyricLine>? {
+        val songKey = LrclibLyricsApi.cleanTrackTitle(title).lowercase() + '\u0000' +
+            LrclibLyricsApi.cleanArtistName(artist).lowercase()
+        if (songKey in uncachedSongs) return null
         val builder = baseUrl.toHttpUrlOrNull()?.newBuilder() ?: return null
         builder.addQueryParameter("s", title.trim())
         builder.addQueryParameter("a", artist.trim())
@@ -148,8 +155,15 @@ class BetterLyricsApi @Inject constructor(
             .build()
 
         return try {
-            val body = okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
-            parseDocument(body)?.takeIf { it.isNotEmpty() }
+            val response = okHttpClient.newCall(request).awaitAddonResponse()
+            if (response.code == 401) {
+                synchronized(uncachedSongs) {
+                    if (uncachedSongs.size >= 256) uncachedSongs.clear()
+                    uncachedSongs += songKey
+                }
+            }
+            if (!response.isSuccessful) return null
+            parseDocument(response.body)?.takeIf { it.isNotEmpty() }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: IOException) {
