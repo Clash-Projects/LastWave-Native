@@ -667,18 +667,18 @@ object SettingsSearchIndex {
             add(
                 SettingsEntry(
                     id = "appearance.wavy_seekbar",
-                    title = "Fluid Wavy Seekbar",
-                    subtitle = "Multi-layer fluid wavy progress slider for track playback",
+                    title = "Seekbar Style",
+                    subtitle = "Choose between Default, Wavy, and Waveform slider styles",
                     keywords = listOf(
                         "wavy seekbar", "wave slider", "progress bar", "fluid seekbar", "waveform",
-                        "scrubber", "timeline", "squiggly line"
+                        "scrubber", "timeline", "squiggly line", "slider style", "seekbar style"
                     ),
                     icon = Icons.Filled.Waves,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Experimental & Features",
-                    type = EntryType.TOGGLE,
+                    type = EntryType.ACTION,
                 )
             )
             add(

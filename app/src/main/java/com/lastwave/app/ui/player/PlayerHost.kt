@@ -2,6 +2,7 @@
 
 package com.lastwave.app.ui.player
 
+import com.lastwave.app.data.local.SeekbarStyle
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import com.lastwave.app.data.playlist.isLikedIn
@@ -750,6 +751,7 @@ internal fun ExpandedPlayer(
         lyricsState = lyricsState,
         lyricsProviderStatuses = lyricsProviderStatuses,
         onProbeLyricsProviders = viewModel::probeLyricsProviders,
+        seekbarStyle = settings.seekbarStyle,
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
         rotatingBackgroundEnabled = settings.rotatingBackgroundEnabled,
         lyricsRotatingBackgroundEnabled = settings.lyricsRotatingBackgroundEnabled,
