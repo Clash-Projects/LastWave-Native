@@ -442,9 +442,8 @@ fun FluidArtworkBackground(
                             }
                         }
                     }
-                    // Blur on the 1/4-size layer: HWUI evaluates it at 750x530 instead
-                    // of the 3000x2120 scaled surface. Measured 6.7 -> 6.2 ms GPU per
-                    // frame at 50 fps with a scrolling title (docs/perf/REPORT.md).
+                    // Blur the 1/4-size layer, not the scaled surface: 6.7 -> 6.2 ms
+                    // GPU per frame on a 3000x2120 tablet.
                     .graphicsLayer {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             // Sigma from the FULL size, then scaled, so the blur matches the old look.

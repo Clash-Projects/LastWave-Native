@@ -1803,14 +1803,10 @@ class MusicPlayer @Inject constructor(
                 }
             }
         }.apply {
-            // FFmpeg-first only for the codecs the bundled jellyfin 1.2.1+1
-            // build actually ships: AAC, FLAC, ALAC, AC-3/E-AC-3, TrueHD and
-            // PCM. Opus and Vorbis are not compiled into libffmpegJNI.so
-            // (FfmpegLibrary logs "No opus decoder available"), so Opus tracks
-            // correctly stay on c2.android.opus.decoder — the AOSP software
-            // C2SoftOpusDec (MediaCodecInfo: softwareOnly=true, hardwareAccelerated=false),
-            // running in media.swcodec. Do not describe that path as hardware.
-            // setEnableDecoderFallback keeps the platform decoder for anything FFmpeg rejects.
+            // FFmpeg first for what the jellyfin 1.2.1+1 build ships (AAC, FLAC,
+            // ALAC, AC-3/E-AC-3, TrueHD, PCM). It has no Opus/Vorbis, so Opus
+            // stays on the platform software decoder (c2.android.opus.decoder).
+            // Decoder fallback covers anything FFmpeg rejects.
             setExtensionRendererMode(
                 if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
                 else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
