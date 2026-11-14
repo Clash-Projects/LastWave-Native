@@ -367,20 +367,22 @@ internal fun AccentPresetGrid(
 }
 
 /**
- * Four coordinated Monet tones derived from one preset hex — Container (dark),
- * Base Accent (medium), Light Muted Tone, and Container Highlight — matching
- * the wallpaper / Material You palette engine. Order returned: [dark, medium, light, accent].
+ * Four coordinated tones derived from one preset hex using SchemeNeutral,
+ * matching SleepTracker's muted Material You dynamic scheme engine.
+ * Order returned: [primaryContainer, secondary, primary, tertiary].
  */
 internal fun accentShades(hex: String): List<Color> {
     val argb = runCatching {
         android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
     }.getOrDefault(0xFFE03030.toInt())
-    val core = com.google.android.material.color.utilities.CorePalette.of(argb)
+    val hct = com.google.android.material.color.utilities.Hct.fromInt(argb)
+    val scheme = com.google.android.material.color.utilities.SchemeNeutral(hct, true, 0.0)
+    val mdc = com.google.android.material.color.utilities.MaterialDynamicColors()
     return listOf(
-        Color(core.a1.tone(24)), // dark container tone
-        Color(core.a1.tone(45)), // medium tone
-        Color(core.a1.tone(68)), // muted dark accent tone
-        Color(core.a1.tone(85)), // highlight tone
+        Color(mdc.primaryContainer().getArgb(scheme)),
+        Color(mdc.secondary().getArgb(scheme)),
+        Color(mdc.primary().getArgb(scheme)),
+        Color(mdc.tertiary().getArgb(scheme)),
     )
 }
 
