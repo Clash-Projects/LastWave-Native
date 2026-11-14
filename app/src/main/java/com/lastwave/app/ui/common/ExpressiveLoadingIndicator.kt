@@ -2,9 +2,7 @@ package com.lastwave.app.ui.common
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,8 +32,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun ExpressiveLoadingIndicator(message: String? = null, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "expressiveLoader")
-    val breathe by transition.animateFloat(
+    val breathe by rememberAmbientFloat(
         initialValue = 0.94f,
         targetValue = 1.06f,
         animationSpec = infiniteRepeatable(
@@ -44,7 +41,7 @@ fun ExpressiveLoadingIndicator(message: String? = null, modifier: Modifier = Mod
         ),
         label = "loaderBreathe",
     )
-    val turn by transition.animateFloat(
+    val turn by rememberAmbientFloat(
         initialValue = -4f,
         targetValue = 4f,
         animationSpec = infiniteRepeatable(

@@ -544,8 +544,8 @@ fun DownloadsScreen(
                                             when (songSort) {
                                                 SongSortOption.RECENT -> list.sortedByDescending { it.downloadedAtMillis }
                                                 SongSortOption.OLDEST -> list.sortedBy { it.downloadedAtMillis }
-                                                SongSortOption.TITLE_AZ -> list.sortedBy { it.title.lowercase() }
-                                                SongSortOption.ARTIST_AZ -> list.sortedBy { it.artist.lowercase() }
+                                                SongSortOption.TITLE_AZ -> list.sortedByLowercase { it.title }
+                                                SongSortOption.ARTIST_AZ -> list.sortedByLowercase { it.artist }
                                                 SongSortOption.SIZE_DESC -> list.sortedByDescending { it.fileSizeBytes }
                                             }
                                         }
@@ -580,7 +580,7 @@ fun DownloadsScreen(
                                         }
                                         .let { list ->
                                             when (artistSort) {
-                                                ArtistSortOption.NAME_AZ -> list.sortedBy { it.name.lowercase() }
+                                                ArtistSortOption.NAME_AZ -> list.sortedByLowercase { it.name }
                                                 ArtistSortOption.MOST_SONGS -> list.sortedByDescending { it.tracks.size }
                                                 ArtistSortOption.STORAGE_SIZE -> list.sortedByDescending { it.totalSizeBytes }
                                             }
@@ -604,8 +604,8 @@ fun DownloadsScreen(
                                         }
                                         .let { list ->
                                             when (albumSort) {
-                                                AlbumSortOption.TITLE_AZ -> list.sortedBy { it.title.lowercase() }
-                                                AlbumSortOption.ARTIST_AZ -> list.sortedBy { it.artist.lowercase() }
+                                                AlbumSortOption.TITLE_AZ -> list.sortedByLowercase { it.title }
+                                                AlbumSortOption.ARTIST_AZ -> list.sortedByLowercase { it.artist }
                                                 AlbumSortOption.MOST_TRACKS -> list.sortedByDescending { it.tracks.size }
                                                 AlbumSortOption.RECENT -> list.sortedByDescending { it.tracks.maxOfOrNull { t -> t.downloadedAtMillis } ?: 0L }
                                             }
@@ -821,3 +821,7 @@ fun DownloadsScreen(
     }
 }
 }
+
+/** Lowercases each key once; in a sortedBy selector it ran on every comparison. Same order. */
+private inline fun <T> List<T>.sortedByLowercase(crossinline key: (T) -> String): List<T> =
+    map { it to key(it).lowercase() }.sortedBy { it.second }.map { it.first }

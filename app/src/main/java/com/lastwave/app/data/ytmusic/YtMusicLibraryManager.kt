@@ -215,11 +215,12 @@ class YtMusicLibraryManager @Inject constructor(
         val stableAccount = withLiked.map { summary ->
             val previousSummary = previous[summary.id]
             val localId = stableRemoteId(summary.id)
-            val diskArtwork = readFromDiskCache(localId)?.remoteArtworkUrl
+            // Disk last and only when needed: it decodes the whole cached track list,
+            // and this runs for every playlist on each 8 s refresh.
             val resolvedArt = summary.artworkUrl.normalizedRemoteArtwork()
                 ?: knownArtworkByRemoteId[summary.id]?.normalizedRemoteArtwork()
                 ?: (previousSummary?.artworkUrl).normalizedRemoteArtwork()
-                ?: diskArtwork.normalizedRemoteArtwork()
+                ?: readFromDiskCache(localId)?.remoteArtworkUrl.normalizedRemoteArtwork()
             if (!resolvedArt.isNullOrBlank()) {
                 knownArtworkByRemoteId[summary.id] = resolvedArt
             }

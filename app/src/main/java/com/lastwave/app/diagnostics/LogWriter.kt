@@ -86,11 +86,9 @@ class LogWriter(
             reportDropsIfAny()
             return
         }
-        batch.forEach { record ->
-            val lines = formatter.lines(record)
-            tail.add(lines.first())
-            store.append(listOf(record))
-        }
+        // One append per batch: formatting each record once and flushing once,
+        // instead of a separate formatted copy and flush for every record.
+        store.append(batch) { lines -> tail.add(lines.first()) }
         reportDropsIfAny()
     }
 
