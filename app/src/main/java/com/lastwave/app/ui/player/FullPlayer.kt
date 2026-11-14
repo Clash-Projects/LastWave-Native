@@ -676,95 +676,98 @@ internal fun FullPlayer(
                 animationSpec = tween(350),
                 label = "lyricsVeil",
             )
-            Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
-                FluidArtworkBackground(
-                    track = track,
-                    isPlaying = state.isPlaying,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = (1f - lyricsVeil).coerceIn(0f, 1f) },
-                    extraBlur = isLyricsTab,
-                    rotatingBackgroundEnabled = if (isLyricsTab) showLyricsFluid else rotatingBackgroundEnabled,
-                    lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
-                    fallback = {
-                        val staticBlurTransform = remember(currentTab) {
-                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                                listOf(
-                                    BlurTransformation(
-                                        radius = if (currentTab == FullPlayerTab.LYRICS) 25 else 18,
-                                        maxDimension = 100,
-                                    )
+            // Kept out of the glass capture: every motion step re-blurred each glass
+            // control (~2x frame cost). The fluid is already blurred, so it shows through.
+            FluidArtworkBackground(
+                track = track,
+                // The queue list covers it: motion there redrew a static list at ~13 fps.
+                isPlaying = state.isPlaying && currentTab != FullPlayerTab.QUEUE,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = (1f - lyricsVeil).coerceIn(0f, 1f) },
+                extraBlur = isLyricsTab,
+                rotatingBackgroundEnabled = if (isLyricsTab) showLyricsFluid else rotatingBackgroundEnabled,
+                lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
+                fallback = {
+                    val staticBlurTransform = remember(currentTab) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                            listOf(
+                                BlurTransformation(
+                                    radius = if (currentTab == FullPlayerTab.LYRICS) 25 else 18,
+                                    maxDimension = 100,
                                 )
-                            } else {
-                                emptyList()
-                            }
+                            )
+                        } else {
+                            emptyList()
                         }
-                        PlayerArtwork(
-                            track = track,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    scaleX = 1.35f
-                                    scaleY = 1.35f
-                                    alpha = 0.9f
-                                }
-                                .then(
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        if (currentTab == FullPlayerTab.LYRICS) {
-                                            Modifier.blur(36.dp)
-                                        } else {
-                                            Modifier.blur(20.dp)
-                                        }
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                            corner = 0.dp,
-                            decodeSizePx = 200,
-                            transformations = staticBlurTransform,
-                        )
-                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (isLyricsTab) 0.40f else 0.52f)))
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.radialGradient(
-                                        0f to ambientColor.copy(alpha = 0.58f),
-                                        0.45f to ambientColor.copy(alpha = 0.22f),
-                                        1f to Color.Transparent,
-                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
-                                        radius = bgMaxDimension * 0.85f,
-                                    )
-                                )
-                        )
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.radialGradient(
-                                        0f to ambientCompanion.copy(alpha = 0.52f),
-                                        0.50f to ambientCompanion.copy(alpha = 0.20f),
-                                        1f to Color.Transparent,
-                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
-                                        radius = bgMaxDimension * 0.78f,
-                                    )
-                                )
-                        )
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.radialGradient(
-                                        0f to ambientDeep.copy(alpha = 0.42f),
-                                        0.55f to ambientDeep.copy(alpha = 0.14f),
-                                        1f to Color.Transparent,
-                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
-                                        radius = bgMaxDimension * 0.70f,
-                                    )
-                                )
-                        )
                     }
-                )
+                    PlayerArtwork(
+                        track = track,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = 1.35f
+                                scaleY = 1.35f
+                                alpha = 0.9f
+                            }
+                            .then(
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    if (currentTab == FullPlayerTab.LYRICS) {
+                                        Modifier.blur(36.dp)
+                                    } else {
+                                        Modifier.blur(20.dp)
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        corner = 0.dp,
+                        decodeSizePx = 200,
+                        transformations = staticBlurTransform,
+                    )
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (isLyricsTab) 0.40f else 0.52f)))
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientColor.copy(alpha = 0.58f),
+                                    0.45f to ambientColor.copy(alpha = 0.22f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                                    radius = bgMaxDimension * 0.85f,
+                                )
+                            )
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientCompanion.copy(alpha = 0.52f),
+                                    0.50f to ambientCompanion.copy(alpha = 0.20f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                                    radius = bgMaxDimension * 0.78f,
+                                )
+                            )
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientDeep.copy(alpha = 0.42f),
+                                    0.55f to ambientDeep.copy(alpha = 0.14f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                                    radius = bgMaxDimension * 0.70f,
+                                )
+                            )
+                    )
+                }
+            )
+            Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
                 // Dynamic ambient lyrics gradient overlay: subtly shifts line-by-line strictly
                 // using the album cover art palette, preserving zero text visibility issues.
                 if (showLyricsFluid) {
