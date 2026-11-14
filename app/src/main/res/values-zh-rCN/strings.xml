@@ -67,6 +67,8 @@
     <string name="settings_bit_perfect_sub">绕过所有 DSP、EQ 与音频处理，实现比特级精确还原</string>
     <string name="settings_crossfade">淡入淡出</string>
     <string name="settings_crossfade_sub">将上一首尾部与下一首混合过渡</string>
+    <string name="settings_prefetch_queue_cellular_title">在移动网络下预缓存队列</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">连接移动数据时提前缓存队列中的下一批曲目</string>
     <string name="settings_download_lyrics">下载同步歌词</string>
     <string name="settings_download_lyrics_on">保存 .lrc 文件并将歌词嵌入下载</string>
     <string name="settings_download_lyrics_off">下载时不获取或保存歌词</string>

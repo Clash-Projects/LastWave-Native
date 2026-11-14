@@ -111,6 +111,8 @@
     <string name="settings_bit_perfect_sub">Esclude DSP, equalizzatore ed elaborazione audio per una riproduzione esatta al bit</string>
     <string name="settings_crossfade">Dissolvenza incrociata</string>
     <string name="settings_crossfade_sub">Fonde la fine di un brano con l\'inizio del successivo</string>
+    <string name="settings_prefetch_queue_cellular_title">Pre-carica la coda su rete dati</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Pre-carica i brani successivi nella coda quando sei connesso alla rete cellulare</string>
     <string name="settings_keep_lyrics_screen_awake">Tieni lo schermo acceso sui testi</string>
     <string name="settings_keep_lyrics_screen_awake_desc">Impedisce allo schermo di spegnersi mentre guardi i testi</string>
     <string name="settings_download_lyrics">Scarica testi sincronizzati</string>

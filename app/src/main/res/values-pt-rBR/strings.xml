@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">Ignora DSP, EQ e processamento para reprodução bit a bit exata</string>
     <string name="settings_crossfade">Transição (crossfade)</string>
     <string name="settings_crossfade_sub">Mistura o fim de uma faixa com a próxima</string>
+    <string name="settings_prefetch_queue_cellular_title">Pré-carregar fila nos dados móveis</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Armazenar em cache as próximas faixas da fila ao usar dados móveis</string>
     <string name="settings_download_lyrics">Baixar letras sincronizadas</string>
     <string name="settings_download_lyrics_on">Salva .lrc e incorpora letras nos downloads</string>
     <string name="settings_download_lyrics_off">Não busca nem salva letras ao baixar</string>

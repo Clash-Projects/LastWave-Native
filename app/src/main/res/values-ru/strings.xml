@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">Обход DSP, EQ и обработки для побитово точного звука</string>
     <string name="settings_crossfade">Кроссфейд</string>
     <string name="settings_crossfade_sub">Плавный переход конца трека в следующий</string>
+    <string name="settings_prefetch_queue_cellular_title">Предзагрузка очереди по моб. сети</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Кэшировать следующие треки в очереди при подключении к мобильным данным</string>
     <string name="settings_download_lyrics">Скачивать синхронные тексты</string>
     <string name="settings_download_lyrics_on">Сохранять .lrc и встраивать тексты в загрузки</string>
     <string name="settings_download_lyrics_off">Не получать и не сохранять тексты при загрузке</string>

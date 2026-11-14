@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">ビット単位で正確な再生のため DSP・EQ・音声処理をバイパス</string>
     <string name="settings_crossfade">クロスフェード</string>
     <string name="settings_crossfade_sub">曲の終わりを次の曲にミックス</string>
+    <string name="settings_prefetch_queue_cellular_title">モバイル通信でキューを事前キャッシュ</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">モバイルデータ通信接続時にもキュー内の後続曲を事前キャッシュします</string>
     <string name="settings_download_lyrics">同期歌詞をダウンロード</string>
     <string name="settings_download_lyrics_on">.lrc を保存しダウンロードに歌詞を埋め込む</string>
     <string name="settings_download_lyrics_off">ダウンロード時に歌詞を取得・保存しない</string>

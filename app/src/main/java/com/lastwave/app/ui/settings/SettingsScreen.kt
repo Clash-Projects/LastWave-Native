@@ -972,6 +972,19 @@ fun SettingsScreen(
                         }
                         add { position ->
                             SettingsToggleCard(
+                                icon = Icons.Filled.SignalCellularAlt,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_prefetch_queue_cellular_title),
+                                subtitle = stringResource(R.string.settings_prefetch_queue_cellular_subtitle),
+                                checked = misc.prefetchQueueOnCellular,
+                                onCheckedChange = viewModel::setPrefetchQueueOnCellular,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.prefetch_queue_cellular"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,

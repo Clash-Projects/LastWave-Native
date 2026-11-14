@@ -186,6 +186,7 @@ data class MiscSettings(
     val autoplaySimilarEnabled: Boolean = true,
     /** Crossfade length in seconds; kept within the native settings slider range. */
     val crossfadeSeconds: Int = 5,
+    val prefetchQueueOnCellular: Boolean = false,
     /** Animated wavy seekbar in the player; off by default (classic slider). */
     val wavySeekbarEnabled: Boolean = false,
     val rotatingBackgroundEnabled: Boolean = true,
@@ -436,6 +437,7 @@ class SettingsPreferences @Inject constructor(
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val AUTOPLAY_SIMILAR_ENABLED = booleanPreferencesKey("lw_autoplay_similar_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
+        val PREFETCH_QUEUE_ON_CELLULAR = booleanPreferencesKey("lw_prefetch_queue_on_cellular")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val LYRICS_ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_lyrics_rotating_background_enabled")
@@ -551,6 +553,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 autoplaySimilarEnabled = p.readSafely(Keys.AUTOPLAY_SIMILAR_ENABLED) ?: true,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
+                prefetchQueueOnCellular = p.readSafely(Keys.PREFETCH_QUEUE_ON_CELLULAR) ?: false,
                 wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: false,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: false,
@@ -968,6 +971,12 @@ class SettingsPreferences @Inject constructor(
     suspend fun setCrossfadeEnabled(enabled: Boolean) {
         dataStore.edit {
             it[Keys.CROSSFADE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setPrefetchQueueOnCellular(enabled: Boolean) {
+        dataStore.edit {
+            it[Keys.PREFETCH_QUEUE_ON_CELLULAR] = enabled
         }
     }
 

@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">비트 단위 정확한 재생을 위해 DSP • EQ • 오디오 처리 우회</string>
     <string name="settings_crossfade">크로스페이드</string>
     <string name="settings_crossfade_sub">곡 끝을 다음 곡과 믹싱</string>
+    <string name="settings_prefetch_queue_cellular_title">모바일 데이터에서 대기열 미리 캐시</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">모바일 데이터 연결 시에도 대기열의 다음 곡들을 미리 캐시합니다</string>
     <string name="settings_download_lyrics">동기화 가사 다운로드</string>
     <string name="settings_download_lyrics_on">.lrc 저장 및 다운로드에 가사 포함</string>
     <string name="settings_download_lyrics_off">다운로드 시 가사를 가져오거나 저장하지 않음</string>

@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">Umgeht DSP, EQ &amp; Verarbeitung für bitgenaue Wiedergabe</string>
     <string name="settings_crossfade">Überblenden</string>
     <string name="settings_crossfade_sub">Trackende in den nächsten Track mischen</string>
+    <string name="settings_prefetch_queue_cellular_title">Warteschlange über Mobilfunk vorladen</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Nächste Titel in der Warteschlange bei mobiler Datenverbindung vorab im Cache speichern</string>
     <string name="settings_download_lyrics">Synchrone Songtexte laden</string>
     <string name="settings_download_lyrics_on">.lrc speichern &amp; Texte in Downloads einbetten</string>
     <string name="settings_download_lyrics_off">Beim Laden keine Texte holen/speichern</string>

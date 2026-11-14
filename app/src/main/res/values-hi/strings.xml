@@ -67,6 +67,8 @@
     <string name="settings_bit_perfect_sub">बिट-सटीक ध्वनि के लिए सभी DSP, EQ व प्रोसेसिंग छोड़ें</string>
     <string name="settings_crossfade">क्रॉसफ़ेड</string>
     <string name="settings_crossfade_sub">गाने के अंत को अगले गाने में मिलाएँ</string>
+    <string name="settings_prefetch_queue_cellular_title">मोबाइल डेटा पर कतार प्री-कैश करें</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">मोबाइल डेटा से कनेक्ट होने पर कतार के आगामी गानों को प्री-कैश करें</string>
     <string name="settings_download_lyrics">सिंक किए गए बोल डाउनलोड करें</string>
     <string name="settings_download_lyrics_on">.lrc सहेजें व बोल डाउनलोड में एम्बेड करें</string>
     <string name="settings_download_lyrics_off">डाउनलोड करते समय बोल न लाएँ/सहेजें</string>

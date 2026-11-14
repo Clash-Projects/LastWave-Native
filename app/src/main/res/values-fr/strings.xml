@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">Contourne DSP, EQ et traitement pour une reproduction exacte au bit près</string>
     <string name="settings_crossfade">Fondu enchaîné</string>
     <string name="settings_crossfade_sub">Fondre la fin d\'un morceau dans le suivant</string>
+    <string name="settings_prefetch_queue_cellular_title">Précharger la file sur réseau mobile</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Mettre en cache les morceaux suivants de la file lors de l\'utilisation des données mobiles</string>
     <string name="settings_download_lyrics">Télécharger les paroles synchronisées</string>
     <string name="settings_download_lyrics_on">Enregistre les .lrc et intègre les paroles aux téléchargements</string>
     <string name="settings_download_lyrics_off">Ne pas récupérer/enregistrer les paroles au téléchargement</string>

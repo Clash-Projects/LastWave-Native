@@ -98,6 +98,8 @@
     <string name="settings_force_sw_volume_off">Mümkünse DAC donanım sesi, yoksa yazılım</string>
     <string name="settings_crossfade">Geçiş (Crossfade)</string>
     <string name="settings_crossfade_sub">Parça sonunu sonraki parçayla yumuşakça birleştir</string>
+    <string name="settings_prefetch_queue_cellular_title">Sırayı hücresel veride önbelleğe al</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Mobil veriye bağlıyken sıradaki parçaları önceden önbelleğe alın</string>
     <string name="settings_keep_lyrics_screen_awake">Şarkı Sözlerinde Ekranı Açık Tut</string>
     <string name="settings_keep_lyrics_screen_awake_desc">Şarkı sözlerine bakarken ekranın kapanmasını engelle</string>
     <string name="settings_download_lyrics">Eşitlenmiş Şarkı Sözlerini İndir</string>

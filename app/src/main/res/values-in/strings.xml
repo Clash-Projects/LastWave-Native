@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">Lewati DSP, EQ &amp; pemrosesan audio untuk reproduksi bit-persis</string>
     <string name="settings_crossfade">Crossfade</string>
     <string name="settings_crossfade_sub">Baurkan akhir lagu ke lagu berikut</string>
+    <string name="settings_prefetch_queue_cellular_title">Pra-muat antrean di data seluler</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Simpan lagu berikutnya di antrean saat terhubung ke data seluler</string>
     <string name="settings_download_lyrics">Unduh lirik tersinkron</string>
     <string name="settings_download_lyrics_on">Simpan .lrc &amp; sematkan lirik ke unduhan</string>
     <string name="settings_download_lyrics_off">Jangan ambil/simpan lirik saat mengunduh</string>

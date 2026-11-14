@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">Omite DSP, EQ y procesado para una reproducción bit a bit exacta</string>
     <string name="settings_crossfade">Fundido (crossfade)</string>
     <string name="settings_crossfade_sub">Fusiona el final de una canción con la siguiente</string>
+    <string name="settings_prefetch_queue_cellular_title">Precargar cola con datos móviles</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Almacena en caché las siguientes canciones de la cola al usar datos móviles</string>
     <string name="settings_download_lyrics">Descargar letras sincronizadas</string>
     <string name="settings_download_lyrics_on">Guarda .lrc e incrusta letras en las descargas</string>
     <string name="settings_download_lyrics_off">No obtiene ni guarda letras al descargar</string>

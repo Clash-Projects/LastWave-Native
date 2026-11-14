@@ -184,6 +184,8 @@
     <string name="settings_bit_perfect_sub">Bỏ qua mọi DSP, EQ &amp; xử lý âm thanh để tái tạo chính xác từng bit</string>
     <string name="settings_crossfade">Crossfade</string>
     <string name="settings_crossfade_sub">Hòa phần cuối bài hát vào bài tiếp theo</string>
+    <string name="settings_prefetch_queue_cellular_title">Tải trước hàng đợi trên dữ liệu di động</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">Lưu vào bộ nhớ đệm các bài hát tiếp theo trong hàng đợi khi dùng dữ liệu di động</string>
     <string name="settings_keep_lyrics_screen_awake">Giữ màn hình sáng khi xem lời bài hát</string>
     <string name="settings_keep_lyrics_screen_awake_desc">Ngăn màn hình tắt khi đang xem lời bài hát</string>
     <string name="settings_stop_on_recents">Dừng phát khi vuốt đóng ứng dụng</string>

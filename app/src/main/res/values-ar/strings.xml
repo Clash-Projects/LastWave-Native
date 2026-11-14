@@ -65,6 +65,8 @@
     <string name="settings_bit_perfect_sub">تجاوز DSP والمعادل والمعالجة لإعادة إنتاج دقيقة بتًّا ببت</string>
     <string name="settings_crossfade">تلاشي متقاطع</string>
     <string name="settings_crossfade_sub">مزج نهاية المقطوعة مع التالية</string>
+    <string name="settings_prefetch_queue_cellular_title">تحميل قائمة الانتظار مسبقاً على شبكة الجوال</string>
+    <string name="settings_prefetch_queue_cellular_subtitle">تخزين المسارات التالية مؤقتاً عند الاتصال ببيانات الجوال</string>
     <string name="settings_download_lyrics">تنزيل الكلمات المتزامنة</string>
     <string name="settings_download_lyrics_on">حفظ .lrc وتضمين الكلمات في التنزيلات</string>
     <string name="settings_download_lyrics_off">عدم جلب الكلمات أو حفظها عند التنزيل</string>

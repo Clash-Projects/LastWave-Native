@@ -4465,7 +4465,8 @@ class MusicPlayer @Inject constructor(
     }
 
     private fun canWarmPlayback(generation: Long): Boolean =
-        playRequestGeneration.get() == generation && !_state.value.isBuffering && networkMonitor.isUnmetered()
+        playRequestGeneration.get() == generation && !_state.value.isBuffering &&
+            (networkMonitor.isUnmetered() || latestPlaybackSettings.prefetchQueueOnCellular)
 
     private val prefixDataSourceFactory: CacheDataSource.Factory by lazy {
         val upstream = OkHttpDataSource.Factory(
@@ -4563,65 +4564,129 @@ class MusicPlayer @Inject constructor(
         if (stream == null) return
         val uri = Uri.parse(stream.url)
         if (uri.scheme !in setOf("http", "https")) return
-        val cacheKey = stream.cacheKey
-        val requestHeaders = mediaRequestHeaders(stream)
+        val generation = playRequestGeneration.get()
         currentTrackCacheJob = applicationScope.launch(Dispatchers.IO) {
+            suspend fun cacheStreamChunks(targetStream: ResolvedStream) {
+                val targetUri = Uri.parse(targetStream.url)
+                if (targetUri.scheme !in setOf("http", "https")) return
+                val cacheKey = targetStream.cacheKey
+                val requestHeaders = mediaRequestHeaders(targetStream)
+                var offset = 0L
+                while (isActive) {
+                    currentCoroutineContext().ensureActive()
+                    if (playRequestGeneration.get() != generation || !_state.value.isPlaying) return
+                    if (_state.value.isBuffering || crossfadeStandbyPreparing) {
+                        delay(CURRENT_TRACK_CACHE_STANDBY_YIELD_MS)
+                        continue
+                    }
+                    if (!(networkMonitor.isUnmetered() || latestPlaybackSettings.prefetchQueueOnCellular)) {
+                        delay(CURRENT_TRACK_CACHE_STANDBY_YIELD_MS)
+                        continue
+                    }
+                    var skippedWindows = 0
+                    while (isActive && skippedWindows < CURRENT_TRACK_CACHE_MAX_SKIP_WINDOWS &&
+                        runCatching { mediaCache.isCached(cacheKey, offset, CURRENT_TRACK_CACHE_CHUNK_BYTES) }.getOrDefault(false)
+                    ) {
+                        offset += CURRENT_TRACK_CACHE_CHUNK_BYTES
+                        skippedWindows++
+                        if (offset >= CURRENT_TRACK_CACHE_MAX_BYTES) return
+                    }
+                    if (offset >= CURRENT_TRACK_CACHE_MAX_BYTES) return
+                    currentCoroutineContext().ensureActive()
+                    val dataSpec = DataSpec.Builder()
+                        .setUri(targetUri)
+                        .setPosition(offset)
+                        .setLength(CURRENT_TRACK_CACHE_CHUNK_BYTES)
+                        .setKey(cacheKey)
+                        .build()
+                        .withRequestHeaders(requestHeaders)
+                    try {
+                        cacheSingleChunk(dataSpec)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Exception) {
+                        break
+                    }
+                    offset += CURRENT_TRACK_CACHE_CHUNK_BYTES
+                    if (offset >= CURRENT_TRACK_CACHE_MAX_BYTES) break
+                    delay(CURRENT_TRACK_CACHE_CHUNK_DELAY_MS)
+                }
+            }
+
             // Let ExoPlayer open the stream and buffer the opening window
             // first; background caching must never delay audibility.
             delay(CURRENT_TRACK_CACHE_START_DELAY_MS)
-            if (!_state.value.isPlaying) return@launch
-            currentCoroutineContext().ensureActive()
-            var offset = 0L
-            while (isActive) {
-                currentCoroutineContext().ensureActive()
-                // Read-ahead beyond the player's own buffer is a byte
-                // prefetch: only on unmetered routes, and paused on a handoff.
-                if (_state.value.isBuffering || !_state.value.isPlaying || !networkMonitor.isUnmetered()) {
+            if (!_state.value.isPlaying || playRequestGeneration.get() != generation) return@launch
+
+            // Cache current playing track until safe / completed.
+            cacheStreamChunks(stream)
+
+            // After current track reaches safety / completion, sequentially fetch up to 3 upcoming queue tracks.
+            for (step in 1..3) {
+                if (playRequestGeneration.get() != generation || !_state.value.isPlaying) return@launch
+                while (isActive && _state.value.isBuffering) {
+                    if (playRequestGeneration.get() != generation || !_state.value.isPlaying) return@launch
                     delay(CURRENT_TRACK_CACHE_STANDBY_YIELD_MS)
-                    continue
                 }
-                // An armed crossfade standby needs the pipe to reach STATE_READY.
-                // Yield while it holds the upcoming queue rather than
-                // cancelling, so no progress is lost and caching resumes after
-                // the hand-off. Only files big enough to still be downloading
-                // at the fade ever hit this, which is why Opus never showed the
-                // starvation that made lossless fades fail.
-                if (crossfadeStandbyPreparing) {
-                    delay(CURRENT_TRACK_CACHE_STANDBY_YIELD_MS)
-                    continue
+                if (!(networkMonitor.isUnmetered() || latestPlaybackSettings.prefetchQueueOnCellular)) return@launch
+
+                val upcoming = withContext(Dispatchers.Main.immediate) {
+                    if (playRequestGeneration.get() != generation || !_state.value.isPlaying) return@withContext null
+                    if (player.repeatMode == Player.REPEAT_MODE_ONE || _state.value.repeatMode == Player.REPEAT_MODE_ONE) return@withContext null
+                    val timeline = player.currentTimeline
+                    if (timeline.isEmpty) return@withContext null
+                    val currentIndex = player.currentMediaItemIndex
+                    if (currentIndex !in 0 until timeline.windowCount) return@withContext null
+                    val shuffle = player.shuffleModeEnabled
+                    val repeatMode = player.repeatMode
+                    var cursor = currentIndex
+                    for (i in 0 until step) {
+                        cursor = timeline.getNextWindowIndex(cursor, repeatMode, shuffle)
+                        if (cursor == C.INDEX_UNSET || cursor == currentIndex) return@withContext null
+                    }
+                    if (cursor !in 0 until player.mediaItemCount) return@withContext null
+                    val mediaItem = player.getMediaItemAt(cursor)
+                    val isPlaceholder = mediaItem.localConfiguration?.uri?.scheme == "lastwave"
+                    Triple(cursor, mediaItem, isPlaceholder)
+                } ?: break
+
+                val (targetIndex, mediaItem, isPlaceholder) = upcoming
+                val track = mediaItem.toPlayableTrack()
+                if (track.playbackUrl != null || track.title.isBlank()) continue
+
+                val existingStream = mediaItem.localConfiguration?.customCacheKey?.let(preparedStreams::get)
+                    ?: findPreparedStreamFor(track, track.videoId, track.mediaIdKey() in losslessBypassMediaIds)
+
+                val targetStream = if (isPlaceholder && (existingStream == null || existingStream.isExpired())) {
+                    val bypassLossless = track.mediaIdKey() in losslessBypassMediaIds
+                    val resolved = runCatching {
+                        resolveTrackAudioStreamWithRetry(
+                            track = track,
+                            videoId = track.videoId,
+                            allowLossless = !bypassLossless && latestPlaybackSettings.preferLosslessStreaming,
+                            losslessBudget = LosslessBudget.Interactive,
+                            claimPlayback = false,
+                        )
+                    }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+
+                    if (resolved != null) {
+                        withContext(Dispatchers.Main.immediate) {
+                            if (playRequestGeneration.get() == generation) {
+                                publishNextPreparedStream(targetIndex, mediaItem.mediaId, resolved)
+                                registerPreparedStream(resolved)
+                            }
+                        }
+                        resolved
+                    } else {
+                        null
+                    }
+                } else {
+                    existingStream
                 }
-                // Skip windows ExoPlayer already cached while playing so we
-                // extend ahead of playback instead of re-downloading it.
-                var skippedWindows = 0
-                while (isActive && skippedWindows < CURRENT_TRACK_CACHE_MAX_SKIP_WINDOWS &&
-                    runCatching { mediaCache.isCached(cacheKey, offset, CURRENT_TRACK_CACHE_CHUNK_BYTES) }.getOrDefault(false)
-                ) {
-                    offset += CURRENT_TRACK_CACHE_CHUNK_BYTES
-                    skippedWindows++
-                    if (offset >= CURRENT_TRACK_CACHE_MAX_BYTES) return@launch
+
+                if (targetStream != null) {
+                    cacheStreamChunks(targetStream)
                 }
-                if (offset >= CURRENT_TRACK_CACHE_MAX_BYTES) return@launch
-                currentCoroutineContext().ensureActive()
-                val dataSpec = DataSpec.Builder()
-                    .setUri(uri)
-                    .setPosition(offset)
-                    .setLength(CURRENT_TRACK_CACHE_CHUNK_BYTES)
-                    .setKey(cacheKey)
-                    .build()
-                    .withRequestHeaders(requestHeaders)
-                try {
-                    cacheSingleChunk(dataSpec)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Exception) {
-                    // Upstream range failure (e.g. rotated signed URL) must
-                    // never break playback; ExoPlayer keeps streaming and the
-                    // next resolve restarts this job with the same stable key.
-                    break
-                }
-                offset += CURRENT_TRACK_CACHE_CHUNK_BYTES
-                if (offset >= CURRENT_TRACK_CACHE_MAX_BYTES) break
-                delay(CURRENT_TRACK_CACHE_CHUNK_DELAY_MS)
             }
         }
     }
