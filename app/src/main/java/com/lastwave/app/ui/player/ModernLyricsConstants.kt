@@ -166,25 +166,25 @@ internal enum class LyricsDisplayMode { Original, Romanized, Translated }
 /** Line falloff by distance from the active row: alpha and soften radius.
  *  Past the end of the array the last value holds, so distance never needs a
  *  branch. The active line's own scale (1.0) lives with the row code. */
-internal val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.50f, 0.40f, 0.30f, 0.22f)
+internal val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.58f, 0.42f, 0.34f, 0.24f)
 
-/** Inactive rows draw at this scale drop (0.97 at one row away and beyond). */
-internal const val LYRIC_INACTIVE_SCALE_DROP = 0.03f
+/** Inactive rows draw at this scale drop (0.955 at one row away and beyond). */
+internal const val LYRIC_INACTIVE_SCALE_DROP = 0.045f
 
-/** Shared focus glide between rows. */
-internal const val LYRIC_FOCUS_MS = 420
+/** Shared focus glide between rows (matching Lyra Player lyric_follow_ms). */
+internal const val LYRIC_FOCUS_MS = 520
 
 /** Elastic trail: per-row settle, per-row stagger, and the whole clock. */
-internal const val LYRIC_TRAIL_SETTLE_MS = 560f
-internal const val LYRIC_TRAIL_STAGGER_MS = 38f
-internal const val LYRIC_TRAIL_TOTAL_MS = 560 + 6 * 38
+internal const val LYRIC_TRAIL_SETTLE_MS = 620f
+internal const val LYRIC_TRAIL_STAGGER_MS = 42f
+internal const val LYRIC_TRAIL_TOTAL_MS = 620 + 6 * 42
 
-/** The sung row is anchored this far from the top of the viewport. */
-internal const val LYRIC_ANCHOR_FRACTION = 0.18f
+/** The sung row is anchored this far from the top of the viewport (Lyra lyric_anchor_dp). */
+internal const val LYRIC_ANCHOR_FRACTION = 0.22f
 
-/** Spacing inside a stanza and the breath between stanzas. */
-internal val LYRIC_LINE_GAP = 20.dp
-internal val LYRIC_STANZA_GAP = 40.dp
+/** Spacing inside a stanza and the breath between stanzas (Lyra lyric_line_gap_dp). */
+internal val LYRIC_LINE_GAP = 28.dp
+internal val LYRIC_STANZA_GAP = 48.dp
 
 /** Backing vocals: shift below the lead and strength relative to it. */
 internal val LYRIC_BACKING_SHIFT = 7.5.dp
@@ -198,23 +198,31 @@ internal const val LYRIC_UNISON_WIDTH = 0.85f
 internal const val LYRIC_IDLE_TEXT_ALPHA = 0.85f
 
 /** Unsung part of a lit word-synced row; matches an idle row one step away. */
-internal const val LYRIC_LIT_BASE_ALPHA = 0.42f
+internal const val LYRIC_LIT_BASE_ALPHA = 0.40f
 
-/** How far a syllable rises while it is sung. */
-internal val LYRIC_LIFT = 3.dp
+/** How far a syllable rises while it is sung (Lyra lyric_lift_px). */
+internal val LYRIC_LIFT = 4.dp
 
 /** Height of the instrumental-break dots row while it is open. */
 internal val LYRIC_INTERLUDE_HEIGHT = 44.dp
 
-/** Glide curve for the follow scroll and row scale: quick departure, long
- *  soft landing â€” closer to a platform sheet than to a linear scroll. */
-internal val LYRIC_EASE = CubicBezierEasing(0.41f, 0f, 0.12f, 0.99f)
+/** Glide curve for the follow scroll and row scale: Lyra spring damping / easing. */
+internal val LYRIC_EASE = CubicBezierEasing(0.25f, 0.1f, 0.15f, 1f)
 
 /** Follow-scroll duration: small corrections stay crisp, whole-verse jumps
  *  glide. Gap (px between the row and the focus point) picks the point inside
  *  the band; the band itself is what keeps motion calm. */
-internal const val LYRIC_SCROLL_MIN_MS = 350f
-internal const val LYRIC_SCROLL_MAX_MS = 500f
+internal const val LYRIC_SCROLL_MIN_MS = 380f
+internal const val LYRIC_SCROLL_MAX_MS = 600f
+
+/** Manual scroll resume delay (ms): Lyra lyric_resume_ms before auto-scroll resumes. */
+internal const val LYRIC_RESUME_MS = 2500L
+
+/** Out-of-focus blur radius (dp) for inactive lyrics lines on Android 12+ (Lyra lyric_inactive_blur_dp). */
+internal const val LYRIC_INACTIVE_BLUR_DP = 3.2f
+
+/** Fluid album art paused scale (Lyra paused_scale). */
+internal const val PAUSED_SCALE = 0.95f
 
 /** Sub-line reveal: slightly unhurried in, clipped and quick out. */
 internal const val LYRIC_SUBLINE_OPEN_MS = 460
@@ -267,9 +275,9 @@ internal val LYRIC_FALLBACK_SHADOW = Shadow(
 )
 
 
-/** Radius/alpha of the active line's glow, kept in one place. */
-internal val LYRIC_GLOW_RADIUS = 8.dp
-internal const val LYRIC_GLOW_ALPHA = 0.5f
+/** Radius/alpha of the active line's glow (Lyra lyric_glow_radius_px, lyric_glow_alpha). */
+internal val LYRIC_GLOW_RADIUS = 10.dp
+internal const val LYRIC_GLOW_ALPHA = 0.65f
 
 
 /** Follow-scroll duration by gap: short nudges stay crisp, whole-verse jumps

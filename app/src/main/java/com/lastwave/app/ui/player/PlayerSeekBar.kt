@@ -455,6 +455,15 @@ internal fun PlayerProgressSlider(
                     )
                 }
 
+                // Lyra Player radiant progress glow around active seekbar thumb
+                val glowRadius = 14.dp.toPx()
+                val glowAlpha = if (dragged) 0.65f else if (isPlaying) 0.35f else 0.15f
+                drawCircle(
+                    color = primary.copy(alpha = glowAlpha),
+                    radius = glowRadius,
+                    center = Offset(thumbCenterX, centerY),
+                )
+
                 // Vertical thumb with a subtle shadow.
                 val thumbX = thumbCenterX - thumbWidthPx / 2f
                 val thumbCornerRadius = CornerRadius(

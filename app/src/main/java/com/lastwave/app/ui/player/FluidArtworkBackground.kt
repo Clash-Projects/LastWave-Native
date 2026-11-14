@@ -167,14 +167,14 @@ private const val ORBIT_RADIUS_MID = 0.25f
 private const val ORBIT_RADIUS_SMALL = 0.10f
 private const val ORBIT_RATE_MID = 0.045f
 private const val ORBIT_RATE_SMALL = 0.09f
-private const val FLOW_SPEED = 2.5f
+private const val FLOW_SPEED = 2.2f
 
-private const val SATURATION = 1.9f
-private const val BRIGHTNESS = 0.52f
+private const val SATURATION = 2.4f
+private const val BRIGHTNESS = 0.54f
 private const val LYRICS_BRIGHTNESS = 0.44f
-private const val CONTRAST = 0.3f
+private const val CONTRAST = 0.35f
 
-private const val TWIST_ANGLE = 1.6f
+private const val TWIST_ANGLE = 1.8f
 private const val TWIST_REACH = 1.0f
 
 private const val BLUR_FRACTION = 0.18f

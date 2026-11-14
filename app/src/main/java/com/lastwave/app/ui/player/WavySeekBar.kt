@@ -161,6 +161,10 @@ internal fun WavyProgressTrack(
 
         val thumbRadius = 7.5.dp.toPx()
         val center = Offset(thumbX, centerY)
+        // Lyra Player radiant progress glow around wave thumb
+        val glowRadius = 14.dp.toPx()
+        val glowAlpha = if (dragging) 0.65f else if (isPlaying) 0.38f else 0.15f
+        drawCircle(thumbColor.copy(alpha = glowAlpha), glowRadius, center)
         drawCircle(thumbColor.copy(alpha = 0.35f), thumbRadius + 3.5.dp.toPx(), center)
         drawCircle(thumbColor, thumbRadius, center)
         drawCircle(Color.White.copy(alpha = 0.55f), thumbRadius, center, style = Stroke(1.2.dp.toPx()))

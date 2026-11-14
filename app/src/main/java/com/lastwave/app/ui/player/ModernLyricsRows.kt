@@ -115,6 +115,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -254,17 +255,17 @@ internal fun ModernSyncedLyricsList(
 
     LaunchedEffect(activeIndex, isPlaying) {
         // Auto-follow yields to the user for a short grace period after a
-        // manual scroll; a paused player has no urgency, so the grace is
-        // longer and the line only takes the focus back once the user is
-        // clearly done browsing.
-        val resumeDelayMs = if (isPlaying) 600L else 5000L
+        // manual scroll (Lyra lyric_resume_ms); a paused player has no urgency,
+        // so the grace is longer and the line only takes the focus back once
+        // the user is clearly done browsing.
+        val resumeDelayMs = if (isPlaying) LYRIC_RESUME_MS else 5000L
         val timeSinceUserScroll = System.currentTimeMillis() - userScrolledTime
         if (!userScrollActive[0] && timeSinceUserScroll > resumeDelayMs && activeIndex in items.indices) {
             runCatching {
                 val layoutInfo = listState.layoutInfo
                 val viewportHeight = layoutInfo.viewportSize.height
                 if (viewportHeight > 0) {
-                    // Upper-third anchor: the sung line sits 18% from the top.
+                    // Upper-third anchor: the sung line sits at LYRIC_ANCHOR_FRACTION from the top.
                     val targetY = (viewportHeight * LYRIC_ANCHOR_FRACTION).toInt()
                     val targetItem = layoutInfo.visibleItemsInfo.find { it.index == activeIndex }
                     if (targetItem != null) {
@@ -283,8 +284,8 @@ internal fun ModernSyncedLyricsList(
 
     LazyColumn(
         state = listState,
-        modifier = modifier.lyricsFadingEdge(topFadeDp = 36.dp, bottomFadeDp = 110.dp),
-        contentPadding = PaddingValues(top = 40.dp, bottom = 140.dp, start = 20.dp, end = 20.dp),
+        modifier = modifier.lyricsFadingEdge(topFadeDp = 48.dp, bottomFadeDp = 120.dp),
+        contentPadding = PaddingValues(top = 48.dp, bottom = 140.dp, start = 20.dp, end = 20.dp),
     ) {
         itemsIndexed(
             items,
@@ -422,6 +423,7 @@ internal fun LyricGroupRow(
         LyricSide.End -> if (isOverallRtl) 0f else 1f
     }
     val wordLit = lit && group.isWordSynced
+    val isApi31Plus = remember { android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S }
 
     Column(
         modifier = Modifier
@@ -433,11 +435,35 @@ internal fun LyricGroupRow(
                 // its dim base plus bright fill carry the contrast.
                 val rowAlpha = if (wordLit) 1f else lyricFalloffAlpha(dist)
                 alpha = if (browsing.value) maxOf(rowAlpha, 0.72f) else rowAlpha
-                val scale = 1f - LYRIC_INACTIVE_SCALE_DROP * dist.coerceAtMost(1f)
+
+                // Lyra Player active line lift & fluid scale:
+                // Active line scales up to 1.04x and gently lifts up by -3.5dp.
+                // Inactive lines softly settle to 0.955x.
+                val activeProximity = (1f - dist).coerceIn(0f, 1f)
+                val scale = 0.955f + 0.085f * activeProximity
                 transformOrigin = TransformOrigin(pivotX, 0.5f)
                 scaleX = scale
                 scaleY = scale
-                translationY = lyricTrailOffsetDp(index - activeState.value, trail()) * density
+
+                val liftY = -3.5f * activeProximity * density
+                translationY = liftY + lyricTrailOffsetDp(index - activeState.value, trail()) * density
+
+                // Depth-of-field lens blur for inactive lines on Android 12+ (API 31+):
+                if (isApi31Plus) {
+                    val blurAmount = if (browsing.value) 0f else {
+                        (dist * LYRIC_INACTIVE_BLUR_DP).coerceIn(0f, 4.5f)
+                    }
+                    if (blurAmount > 0.4f) {
+                        val blurPx = blurAmount * density
+                        renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                            blurPx,
+                            blurPx,
+                            android.graphics.Shader.TileMode.CLAMP,
+                        ).asComposeRenderEffect()
+                    } else {
+                        renderEffect = null
+                    }
+                }
             }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -544,12 +570,12 @@ internal fun LyricInterludeRow(
                     val span = (item.endMs - item.startMs).coerceAtLeast(1L).toFloat()
                     val progress = ((pos - item.startMs) / span).coerceIn(0f, 1f)
                     val seconds = frameNanos.longValue / 1_000_000_000.0
-                    val breathe = 1f + 0.07f * kotlin.math.sin(seconds * 2.0 * Math.PI / 1.8).toFloat()
+                    val breathe = 1f + 0.09f * kotlin.math.sin(seconds * 2.0 * Math.PI / 1.6).toFloat()
                     // Fade out over the last moments so the next line lands
                     // on an empty stage.
                     val exit = ((item.endMs - pos) / 450f).coerceIn(0f, 1f)
                     val radius = 4.5.dp.toPx()
-                    val step = 17.dp.toPx()
+                    val step = 18.dp.toPx()
                     val inset = 6.dp.toPx() + radius
                     val firstX = when (side) {
                         LyricSide.Center -> size.width / 2f - step
@@ -564,6 +590,12 @@ internal fun LyricInterludeRow(
                         val e = f * f * (3f - 2f * f)
                         val scale = (0.78f + 0.34f * e) * breathe * (0.55f + 0.45f * exit) * open
                         val alpha = ((0.30f + 0.70f * e) * open * exit).coerceIn(0f, 1f)
+                        // Radiant breath glow aura matching Lyra Player
+                        drawCircle(
+                            color = Color.White.copy(alpha = alpha * 0.35f),
+                            radius = radius * scale + 3.dp.toPx(),
+                            center = Offset(firstX + step * i, cy),
+                        )
                         drawCircle(
                             color = Color.White.copy(alpha = alpha),
                             radius = radius * scale,

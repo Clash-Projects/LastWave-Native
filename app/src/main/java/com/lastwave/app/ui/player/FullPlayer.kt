@@ -853,6 +853,16 @@ internal fun FullPlayer(
                         animationSpec = tween(280, easing = FastOutSlowInEasing),
                         label = "heroAlpha",
                     )
+                    // Lyra Player fluid paused scale: cover smoothly shrinks to 0.95 when paused
+                    // and springs back with bouncy momentum when playback resumes.
+                    val coverPausedScale by animateFloatAsState(
+                        targetValue = if (state.isPlaying) 1.0f else PAUSED_SCALE,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                        label = "coverPausedScale",
+                    )
                     // Static cover first, canvas on top: the hero is the
                     // placeholder while the video loads, and hands the pixels
                     // over as the canvas's own alpha climbs to full.
@@ -868,7 +878,11 @@ internal fun FullPlayer(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
-                            .height(heroHeight),
+                            .height(heroHeight)
+                            .graphicsLayer {
+                                scaleX = coverPausedScale
+                                scaleY = coverPausedScale
+                            },
                     )
                     if (activeCanvas != null) {
                         CanvasArtworkPlayer(
@@ -888,6 +902,10 @@ internal fun FullPlayer(
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
                                     .height(heroHeight)
+                                    .graphicsLayer {
+                                        scaleX = coverPausedScale
+                                        scaleY = coverPausedScale
+                                    }
                             },
                         )
 
@@ -1140,25 +1158,21 @@ internal fun FullPlayer(
                             }
                         ),
                     transitionSpec = {
-                        // Matched fade durations keep both layers visible
-                        // throughout the crossfade so the background never
-                        // flashes through between cover and canvas/lyrics.
-                        // Same language as the player open/close: the panel
-                        // rises and grows into place like a card while the
-                        // one it covers recedes, and the reverse going back.
-                        val dur = 280
-                        val ease = tween<Float>(dur, easing = FastOutSlowInEasing)
+                        // Lyra Player fluid card reveal: spring-driven entrance and recession
+                        val dur = 260
+                        val spatialSpring = spring<Float>(dampingRatio = 0.90f, stiffness = 850f)
+                        val slideSpring = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.90f, stiffness = 850f)
                         if (targetState != FullPlayerTab.NOW_PLAYING) {
-                            (slideInVertically(tween(dur, easing = FastOutSlowInEasing)) { it / 8 } +
-                                scaleIn(ease, initialScale = 0.92f, transformOrigin = TransformOrigin(0.5f, 1f)) +
+                            (slideInVertically(slideSpring) { it / 8 } +
+                                scaleIn(spatialSpring, initialScale = 0.92f, transformOrigin = TransformOrigin(0.5f, 1f)) +
                                 fadeIn(tween(dur))) togetherWith
-                                (scaleOut(ease, targetScale = 0.94f, transformOrigin = TransformOrigin(0.5f, 0f)) +
+                                (scaleOut(spatialSpring, targetScale = 0.94f, transformOrigin = TransformOrigin(0.5f, 0f)) +
                                     fadeOut(tween(dur)))
                         } else {
-                            (scaleIn(ease, initialScale = 0.94f, transformOrigin = TransformOrigin(0.5f, 0f)) +
+                            (scaleIn(spatialSpring, initialScale = 0.94f, transformOrigin = TransformOrigin(0.5f, 0f)) +
                                 fadeIn(tween(dur))) togetherWith
-                                (slideOutVertically(tween(dur, easing = FastOutSlowInEasing)) { it / 8 } +
-                                    scaleOut(ease, targetScale = 0.92f, transformOrigin = TransformOrigin(0.5f, 1f)) +
+                                (slideOutVertically(slideSpring) { it / 8 } +
+                                    scaleOut(spatialSpring, targetScale = 0.92f, transformOrigin = TransformOrigin(0.5f, 1f)) +
                                     fadeOut(tween(dur)))
                         }
                     },
