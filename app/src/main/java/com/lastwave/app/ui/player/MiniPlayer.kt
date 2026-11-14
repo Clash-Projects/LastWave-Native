@@ -689,9 +689,16 @@ internal fun MiniPlayer(
 internal fun MiniPlayerProgress(progressState: StateFlow<PlaybackProgressState>) {
     val progressFractionState = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(progressState) {
+        // Each update re-renders every glass blur on screen (~30 ms of GPU), so normal
+        // playback moves the line once a second; seeks and track changes still jump at once.
+        var lastStepMs = 0L
         progressState.collect { s ->
             val p = if (s.durationMs > 0) s.positionMs.toFloat() / s.durationMs else 0f
-            progressFractionState.floatValue = p
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastStepMs >= 1_000L || abs(p - progressFractionState.floatValue) > 0.02f) {
+                progressFractionState.floatValue = p
+                lastStepMs = now
+            }
         }
     }
     Box(
