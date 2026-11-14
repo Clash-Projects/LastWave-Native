@@ -437,8 +437,7 @@ class PlaylistRepository @Inject constructor(
         }
     }
 
-    suspend fun getLocalSongs(): SavedPlaylist? =
-        getAll().firstOrNull { it.mode == LOCAL_SONGS_MODE }
+    suspend fun getLocalSongs(): SavedPlaylist? = newestOfMode(LOCAL_SONGS_MODE)
 
     /** Creates the built-in "Local songs" playlist (pinned) when absent. */
     suspend fun ensureLocalSongs(): SavedPlaylist = likedSongsMutex.withLock {
@@ -489,8 +488,18 @@ class PlaylistRepository @Inject constructor(
         }
     }
 
-    suspend fun getLikedSongs(): SavedPlaylist? =
-        getAll().firstOrNull { it.mode == LIKED_SONGS_MODE }
+    suspend fun getLikedSongs(): SavedPlaylist? = newestOfMode(LIKED_SONGS_MODE)
+
+    /** Every like and local import looks this up: read the one row instead of
+     *  decoding the whole library. A failed read takes the full path, which retries. */
+    private suspend fun newestOfMode(mode: String): SavedPlaylist? = try {
+        dao.getNewestByMode(mode)?.toDomain()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        Log.w(TAG, "Direct $mode playlist read failed", error)
+        getAll().firstOrNull { it.mode == mode }
+    }
 
     /** Creates the built-in local playlist only when it is genuinely absent. */
     suspend fun ensureLikedSongs(): SavedPlaylist = likedSongsMutex.withLock {
