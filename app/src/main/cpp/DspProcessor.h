@@ -107,15 +107,20 @@ private:
             const double output = b0 * value + z1[channel];
             z1[channel] = b1 * value - a1 * output + z2[channel];
             z2[channel] = b2 * value - a2 * output;
-            // Anti-denormal guard: protects against CPU penalty on budget ARM cores
-            if (std::abs(z1[channel]) < 1.0e-20) z1[channel] = 0.0;
-            if (std::abs(z2[channel]) < 1.0e-20) z2[channel] = 0.0;
-            if (!std::isfinite(output) || !std::isfinite(z1[channel]) || !std::isfinite(z2[channel])) {
-                z1[channel] = 0.0;
-                z2[channel] = 0.0;
-                return 0.0F;
-            }
             return static_cast<float>(output);
+        }
+
+        // Once per block, not per sample: five branches per tick cost more
+        // than the whole filter. Output is already sanitized per sample.
+        inline void settle() noexcept {
+            for (std::size_t channel = 0; channel < z1.size(); ++channel) {
+                if (!std::isfinite(z1[channel]) || !std::isfinite(z2[channel])) {
+                    z1[channel] = 0.0;
+                    z2[channel] = 0.0;
+                }
+                if (std::abs(z1[channel]) < 1.0e-20) z1[channel] = 0.0;
+                if (std::abs(z2[channel]) < 1.0e-20) z2[channel] = 0.0;
+            }
         }
 
         [[nodiscard]] double magnitude(double sampleRate, double frequency) const noexcept;
