@@ -1219,6 +1219,7 @@ internal fun FullPlayer(
                                     onTryAnotherLyricsSource = onTryAnotherLyricsSource,
                                     onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
                                     isFullscreen = lyricsFullscreen,
+                                    showTransport = !landscapeSplit,
                                     onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                     primaryColor = ambientColor,
                                     secondaryColor = ambientCompanion,

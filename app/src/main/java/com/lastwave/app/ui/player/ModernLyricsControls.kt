@@ -284,6 +284,7 @@ internal fun ModernLyricsControlsHost(
     wavySeekbarEnabled: Boolean = false,
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
+    showTransport: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onOpenLyricsOffset: (() -> Unit)? = null,
     controlsVisible: Boolean = true,
@@ -315,6 +316,7 @@ internal fun ModernLyricsControlsHost(
         wavySeekbarEnabled = wavySeekbarEnabled,
         onToggleFullscreen = onToggleFullscreen,
         isFullscreen = isFullscreen,
+        showTransport = showTransport,
         lyricsOffsetMs = lyricsOffsetMs,
         onOpenLyricsOffset = onOpenLyricsOffset,
         controlsVisible = controlsVisible,
@@ -349,6 +351,7 @@ internal fun ModernLyricsControls(
     wavySeekbarEnabled: Boolean = false,
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
+    showTransport: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onOpenLyricsOffset: (() -> Unit)? = null,
     controlsVisible: Boolean = true,
@@ -564,7 +567,8 @@ internal fun ModernLyricsControls(
             )
         }
 
-        if (isFullscreen) return@Column
+        // Landscape split draws its own seek bar and transport over the art pane.
+        if (isFullscreen || !showTransport) return@Column
 
         // Current-gesture value only; null = finger off, show live position.
         // Keyed by track so a previous song's drag can never leak into this
