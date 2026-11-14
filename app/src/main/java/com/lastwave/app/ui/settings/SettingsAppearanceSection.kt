@@ -367,35 +367,20 @@ internal fun AccentPresetGrid(
 }
 
 /**
- * Four coordinated shades derived from one preset hex via HSV — Dark,
- * Medium, Light, and a punchier Accent tone — used to render a real
- * multi-tone palette preview inside each Accent tile instead of one flat
- * swatch. Order returned: [dark, medium, light, accent].
- *
- * Tuned for a muted, Material You / Monet feel rather than raw HSV
- * vibrance: saturation is capped well below 100% even for the "accent"
- * shade (Monet's HCT-derived tonal palettes rarely reach full chroma —
- * that's what read as neon here), and the value range is narrower so
- * "dark" and "light" stay closer to the preset's own character instead of
- * swinging to near-black/near-white extremes.
+ * Four coordinated Monet tones derived from one preset hex — Container (dark),
+ * Base Accent (medium), Light Muted Tone, and Container Highlight — matching
+ * the wallpaper / Material You palette engine. Order returned: [dark, medium, light, accent].
  */
 internal fun accentShades(hex: String): List<Color> {
-    val argb = android.graphics.Color.parseColor(hex)
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(argb, hsv)
-    val (h, s, v) = hsv
-    val mutedBase = s * 0.72f // the single biggest lever for "less neon"
-
-    fun shade(saturation: Float, value: Float): Color {
-        val arr = floatArrayOf(h, saturation.coerceIn(0f, 0.82f), value.coerceIn(0.2f, 0.92f))
-        return Color(android.graphics.Color.HSVToColor(arr))
-    }
-
+    val argb = runCatching {
+        android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
+    }.getOrDefault(0xFFE03030.toInt())
+    val core = com.google.android.material.color.utilities.CorePalette.of(argb)
     return listOf(
-        shade(mutedBase.coerceAtLeast(0.42f), v * 0.62f), // dark
-        shade(mutedBase, v * 0.80f), // medium — closest to the preset's own tone
-        shade((mutedBase * 0.55f), (v + (1f - v) * 0.45f).coerceAtLeast(0.78f)), // light
-        shade((mutedBase * 1.15f), (v * 0.95f)), // accent — a touch richer, never maxed out
+        Color(core.a1.tone(30)), // dark container tone
+        Color(core.a1.tone(50)), // medium tone
+        Color(core.a1.tone(80)), // light muted accent tone
+        Color(core.a1.tone(90)), // highlight tone
     )
 }
 
