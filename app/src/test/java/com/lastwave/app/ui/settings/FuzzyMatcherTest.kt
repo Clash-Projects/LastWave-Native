@@ -125,6 +125,9 @@ class FuzzyMatcherTest {
             ids.add(entry.id)
             assertThat(entry.title.trim()).isNotEmpty()
             assertThat(entry.section.trim()).isNotEmpty()
+            // Search jumps to a section by its index; a section that a tab does
+            // not render would silently scroll to the top instead.
+            assertThat(entry.parentTab.sectionOrder).contains(entry.section)
             assertThat(entry.parentTab).isNotNull()
             assertThat(entry.icon).isNotNull()
         }

@@ -136,7 +136,7 @@ object FuzzyMatcher {
 
             // 5. Section and parent tab matching bonus
             val sectionLower = entry.section.lowercase(Locale.ROOT)
-            val tabTitleLower = entry.parentTab.title.lowercase(Locale.ROOT)
+            val tabTitleLower = entry.parentTab.searchTitle.lowercase(Locale.ROOT)
             if (sectionLower.contains(lowerQuery) || tabTitleLower.contains(lowerQuery)) {
                 score += 25
             }
