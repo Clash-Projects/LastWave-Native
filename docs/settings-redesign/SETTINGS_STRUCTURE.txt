@@ -1,0 +1,490 @@
+LASTWAVE SETTINGS — STRUCTURE AND LOCATION MAP
+Branch: ux/settings-reorg
+Date: 2026-11-14
+
+0) WHY DOES SETTINGS SHOW ANOTHER SETTINGS-LIKE PAGE?
+
+There is only ONE Settings screen. It has two view states inside the same screen:
+  1. Index view: header "Settings" + the category cards (Listening / Library & connections / App).
+  2. Category view: same screen, body swapped; the header title becomes Playback, Now Playing,
+     Appearance, Library, Downloads, Connections, System or About. No second screen, activity
+     or navigation destination is pushed.
+
+The index exists because the app has 89 settings in 8 categories. A flat list would be
+several screens of scrolling and the old 8-tab strip did not scale. The index is the map;
+the category page is the room.
+
+1) NEW STRUCTURE (every setting, in render order)
+
+PLAYBACK
+  [Streaming]
+    - Wi-Fi Streaming Quality   (audio.wifi_streaming_quality)
+    - Cellular Streaming Quality   (audio.cellular_streaming_quality)
+    - Playback Start   (audio.auto_upgrade_hi_res)
+    - Provider Modules & Add-ons   (playback.modules)
+  [Sound]
+    - Equalizer   (audio.equalizer)
+    - AutoEQ   (audio.autoeq)
+    - Studio Master Clarity   (audio.studio_clarity)
+    - Show AutoEQ in Volume Panel   (audio.show_autoeq_in_volume_panel)
+  [Output]
+    - Bit-Perfect Mode   (audio.bit_perfect)
+    - USB Exclusive Output   (audio.usb_exclusive)
+    - Internal Direct Output   (audio.internal_direct)
+    - Software Volume (USB DAC)   (audio.force_software_volume)
+    - Loudness Normalization   (audio.loudness_normalization)
+    - System Audio Effects   (audio.system_audio_effects)
+  [Playback]
+    - AutoMix   (audio.automix)
+    - Crossfade   (audio.crossfade)
+    - Crossfade Duration   (audio.crossfade_duration)
+    - Autoplay Similar Songs   (audio.autoplay_similar)
+    - Music Haptics   (audio.music_haptics)
+
+NOW PLAYING
+  [Player]
+    - Dynamic Now Playing Screen   (appearance.dynamic_now_playing)
+    - Button Now Playing   (appearance.button_now_playing)
+    - Fluid Wavy Seekbar   (appearance.wavy_seekbar)
+    - Rotating Background   (appearance.rotating_background)
+    - Music Video   (appearance.music_video)
+  [Canvas]
+    - Canvas Video Backgrounds   (appearance.canvas_enabled)
+    - Canvas Full Bleed   (appearance.canvas_full_bleed)
+    - Gradient Blur on Canvas   (appearance.canvas_gradient_blur)
+    - Canvas on Cellular Data   (appearance.canvas_cellular)
+    - Spotify Canvas   (spotify.canvas)
+    - Prefer Spotify Canvas   (spotify.prefer_canvas)
+  [Lyrics]
+    - Lyrics Provider   (appearance.lyrics_provider)
+    - Lyrics Sync Offset   (appearance.lyrics_offset)
+    - Lyrics Text Size   (appearance.lyrics_size)
+    - Word-by-Word Lyrics   (appearance.word_by_word_lyrics)
+    - Hide Lyrics Buttons   (appearance.lyrics_autohide)
+    - Translation Language   (appearance.translation_language)
+    - Lyrics Background Motion   (appearance.lyrics_rotating_background)
+    - Keep Screen Awake on Lyrics   (audio.keep_lyrics_screen_awake)
+
+APPEARANCE
+  [Theme]
+    - Theme Mode   (appearance.theme_mode)
+    - LastWave Signature Theme   (appearance.lastwave_theme)
+    - Pure Black AMOLED   (appearance.amoled)
+    - Dynamic Color (Material You)   (appearance.dynamic_color)
+    - Liquid Glass   (appearance.liquid_glass)
+  [Accent]
+    - Accent Color & Palette   (appearance.accent_preset)
+  [Icon & text]
+    - App Icon   (appearance.app_icon)
+    - App Font   (appearance.app_font)
+    - Bold Font   (appearance.bold_font)
+  [Layout]
+    - Material 3 Navigation Bar   (appearance.md3_nav_bar)
+    - Collapsing Navigation Bar   (appearance.collapsing_nav_bar)
+    - Hide Navigation Tabs   (appearance.hide_nav_tabs)
+    - Haptic Feedback   (appearance.ui_haptics)
+
+LIBRARY
+  [Home]
+    - Home Screen Sections   (library.home_sections)
+  [Content]
+    - Podcasts   (library.podcasts)
+    - Recommendation Provider   (library.recommendations)
+    - Recommendation Exclusions   (library.excluded_songs)
+  [Imports]
+    - Import from YouTube Music   (library.import_yt)
+    - Import from Spotify / Apple Music   (library.import_external)
+    - Import Playlist from File   (library.import_file)
+
+DOWNLOADS
+  [Files]
+    - Downloads   (downloads.manage)
+    - Storage   (downloads.storage)
+  [Quality]
+    - Download Quality   (downloads.quality)
+    - Download Synced Lyrics   (downloads.lyrics)
+
+CONNECTIONS
+  [YouTube Music]
+    - YouTube Music Account   (youtube.account)
+    - YouTube Music Cookie Login   (youtube.cookie_login)
+    - Two-way Playlist Sync   (youtube.sync)
+    - YouTube Channel   (youtube.channel)
+    - Select Playlists to Sync   (youtube.select_playlists)
+    - Show / Hide Account Playlists   (youtube.shown_playlists)
+    - YouTube Music Listening History   (youtube.history)
+  [Spotify]
+    - Spotify Account   (spotify.account)
+    - Import sp_dc Token   (spotify.token)
+    - Spotify Playlists in Library   (spotify.live_playlists)
+  [Last.fm]
+    - Last.fm Account   (lastfm.connect)
+    - Last.fm API Credentials   (lastfm.api_credentials)
+  [Social]
+    - Discord Rich Presence   (discord.presence)
+    - LastWave Jam   (social.jam)
+
+SYSTEM
+  [Language]
+    - App Language   (system.language)
+  [Background playback]
+    - Stop When Swiped Away   (system.stop_on_recents)
+    - Battery Optimization   (system.battery_optimization)
+  [Backup & restore]
+    - Backup Settings & Playlists   (backup.create)
+    - Restore from Backup   (backup.restore)
+  [Data]
+    - Reset App & Clear All Data   (backup.clear_all)
+
+ABOUT
+  [Support]
+    - Check for Updates   (about.check_updates)
+    - Telegram Updates & Support   (about.telegram_support)
+    - Discord Support   (about.discord_support)
+    - More Apps from Clash Projects   (about.more_apps)
+    - Export Diagnostics & Logs   (about.diagnostics)
+    - Open Source Code   (about.source_code)
+    - Download Desktop App   (about.desktop_app; button inside the About card)
+
+2) OLD -> NEW LOCATION MAP (all 89 settings)
+
+== Playback ==
+  Streaming:
+    Wi-Fi Streaming Quality
+      old: AUDIO / Audio & Playback
+      new: Playback / Streaming
+    Cellular Streaming Quality
+      old: AUDIO / Audio & Playback
+      new: Playback / Streaming
+    Playback Start
+      old: AUDIO / Audio & Playback
+      new: Playback / Streaming
+    Provider Modules & Add-ons
+      old: Root > Services & Add-ons (Modules screen)
+      new: Playback / Streaming
+  Sound:
+    Equalizer
+      old: AUDIO / Output & Loudness
+      new: Playback / Sound
+    AutoEQ
+      old: AUDIO / Output & Loudness
+      new: Playback / Sound
+    Studio Master Clarity
+      old: AUDIO / Output & Loudness
+      new: Playback / Sound
+    Show AutoEQ in Volume Panel
+      old: AUDIO / Output & Loudness
+      new: Playback / Sound
+  Output:
+    Bit-Perfect Mode
+      old: AUDIO / Audio & Playback
+      new: Playback / Output
+    USB Exclusive Output
+      old: AUDIO / Output & Loudness
+      new: Playback / Output
+    Internal Direct Output
+      old: AUDIO / Output & Loudness
+      new: Playback / Output
+    Software Volume (USB DAC)
+      old: AUDIO / Output & Loudness
+      new: Playback / Output
+    Loudness Normalization
+      old: AUDIO / Output & Loudness
+      new: Playback / Output
+    System Audio Effects
+      old: AUDIO / Output & Loudness
+      new: Playback / Output
+  Playback:
+    AutoMix
+      old: AUDIO / Audio & Playback
+      new: Playback / Playback
+    Crossfade
+      old: AUDIO / Audio & Playback
+      new: Playback / Playback
+    Crossfade Duration
+      old: AUDIO / Audio & Playback
+      new: Playback / Playback
+    Autoplay Similar Songs
+      old: AUDIO / Audio & Playback
+      new: Playback / Playback
+    Music Haptics
+      old: AUDIO / Audio & Playback
+      new: Playback / Playback
+
+== Now Playing ==
+  Player:
+    Dynamic Now Playing Screen
+      old: APPEARANCE / Appearance
+      new: Now Playing / Player
+    Button Now Playing
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Player
+    Fluid Wavy Seekbar
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Player
+    Rotating Background
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Player
+    Music Video
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Player
+  Canvas:
+    Canvas Video Backgrounds
+      old: APPEARANCE / Canvas
+      new: Now Playing / Canvas
+    Canvas Full Bleed
+      old: APPEARANCE / Canvas
+      new: Now Playing / Canvas
+    Gradient Blur on Canvas
+      old: APPEARANCE / Canvas
+      new: Now Playing / Canvas
+    Canvas on Cellular Data
+      old: APPEARANCE / Canvas
+      new: Now Playing / Canvas
+    Spotify Canvas
+      old: SPOTIFY / Spotify
+      new: Now Playing / Canvas
+    Prefer Spotify Canvas
+      old: SPOTIFY / Spotify
+      new: Now Playing / Canvas
+  Lyrics:
+    Lyrics Provider
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Lyrics
+    Lyrics Sync Offset
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Lyrics
+    Lyrics Text Size
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Lyrics
+    Word-by-Word Lyrics
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Lyrics
+    Hide Lyrics Buttons
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Lyrics
+    Translation Language
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Lyrics
+    Lyrics Background Motion
+      old: APPEARANCE / Experimental & Features
+      new: Now Playing / Lyrics
+    Keep Screen Awake on Lyrics
+      old: AUDIO / Audio & Playback
+      new: Now Playing / Lyrics
+
+== Appearance ==
+  Theme:
+    Theme Mode
+      old: APPEARANCE / Appearance
+      new: Appearance / Theme
+    LastWave Signature Theme
+      old: APPEARANCE / Appearance
+      new: Appearance / Theme
+    Pure Black AMOLED
+      old: APPEARANCE / Appearance
+      new: Appearance / Theme
+    Dynamic Color (Material You)
+      old: APPEARANCE / Appearance
+      new: Appearance / Theme
+    Liquid Glass
+      old: APPEARANCE / Appearance
+      new: Appearance / Theme
+  Accent:
+    Accent Color & Palette
+      old: APPEARANCE / Accent Color
+      new: Appearance / Accent
+  Icon & text:
+    App Icon
+      old: APPEARANCE / Appearance
+      new: Appearance / Icon & text
+    App Font
+      old: APPEARANCE / Appearance
+      new: Appearance / Icon & text
+    Bold Font
+      old: APPEARANCE / Appearance
+      new: Appearance / Icon & text
+  Layout:
+    Material 3 Navigation Bar
+      old: APPEARANCE / Appearance
+      new: Appearance / Layout
+    Collapsing Navigation Bar
+      old: APPEARANCE / Appearance
+      new: Appearance / Layout
+    Hide Navigation Tabs
+      old: APPEARANCE / Appearance
+      new: Appearance / Layout
+    Haptic Feedback
+      old: APPEARANCE / Appearance
+      new: Appearance / Layout
+
+== Library ==
+  Home:
+    Home Screen Sections
+      old: LIBRARY / Home & Organization
+      new: Library / Home
+  Content:
+    Podcasts
+      old: LIBRARY / Content
+      new: Library / Content
+    Recommendation Provider
+      old: SPOTIFY / Recommendations
+      new: Library / Content
+    Recommendation Exclusions
+      old: LIBRARY / Home & Organization
+      new: Library / Content
+  Imports:
+    Import from YouTube Music
+      old: LIBRARY / Imports & Addons
+      new: Library / Imports
+    Import from Spotify / Apple Music
+      old: LIBRARY / Imports & Addons
+      new: Library / Imports
+    Import Playlist from File
+      old: LIBRARY / Imports & Addons
+      new: Library / Imports
+
+== Downloads ==
+  Files:
+    Downloads
+      old: DATA_BACKUP / Storage (Downloads screen)
+      new: Downloads / Files
+    Storage
+      old: DATA_BACKUP / Storage
+      new: Downloads / Files
+  Quality:
+    Download Quality
+      old: AUDIO / Audio & Playback
+      new: Downloads / Quality
+    Download Synced Lyrics
+      old: AUDIO / Audio & Playback
+      new: Downloads / Quality
+
+== Connections ==
+  YouTube Music:
+    YouTube Music Account
+      old: YOUTUBE / YouTube & Sync
+      new: Connections / YouTube Music
+    YouTube Music Cookie Login
+      old: YOUTUBE / YouTube & Sync
+      new: Connections / YouTube Music
+    Two-way Playlist Sync
+      old: YOUTUBE / YouTube & Sync
+      new: Connections / YouTube Music
+    YouTube Channel
+      old: YOUTUBE / YouTube & Sync
+      new: Connections / YouTube Music
+    Select Playlists to Sync
+      old: YOUTUBE / YouTube & Sync
+      new: Connections / YouTube Music
+    Show / Hide Account Playlists
+      old: YOUTUBE / YouTube & Sync
+      new: Connections / YouTube Music
+    YouTube Music Listening History
+      old: YOUTUBE / YouTube & Sync
+      new: Connections / YouTube Music
+  Spotify:
+    Spotify Account
+      old: SPOTIFY / Spotify
+      new: Connections / Spotify
+    Import sp_dc Token
+      old: SPOTIFY / Session Token
+      new: Connections / Spotify
+    Spotify Playlists in Library
+      old: SPOTIFY / Spotify
+      new: Connections / Spotify
+  Last.fm:
+    Last.fm Account
+      old: LAST_FM / Integrations / Scrobbling
+      new: Connections / Last.fm
+    Last.fm API Credentials
+      old: LAST_FM / Integrations / Scrobbling
+      new: Connections / Last.fm
+  Social:
+    Discord Rich Presence
+      old: LAST_FM / Integrations / Scrobbling
+      new: Connections / Social
+    LastWave Jam
+      old: Root > Collaboration & Social (no tab)
+      new: Connections / Social
+
+== System ==
+  Language:
+    App Language
+      old: ABOUT / Language
+      new: System / Language
+  Background playback:
+    Stop When Swiped Away
+      old: AUDIO / Audio & Playback
+      new: System / Background playback
+    Battery Optimization
+      old: AUDIO / Audio & Playback
+      new: System / Background playback
+  Backup & restore:
+    Backup Settings & Playlists
+      old: DATA_BACKUP / Backup & Restore
+      new: System / Backup & restore
+    Restore from Backup
+      old: DATA_BACKUP / Backup & Restore
+      new: System / Backup & restore
+  Data:
+    Reset App & Clear All Data
+      old: DATA_BACKUP / Data Management
+      new: System / Data
+
+== About ==
+  Support:
+    Check for Updates
+      old: ABOUT / About & Community
+      new: About / Support
+    Telegram Updates & Support
+      old: ABOUT / About & Community
+      new: About / Support
+    Discord Support
+      old: ABOUT / About & Community
+      new: About / Support
+    More Apps from Clash Projects
+      old: ABOUT / About & Community
+      new: About / Support
+    Export Diagnostics & Logs
+      old: ABOUT / About & Community
+      new: About / Support
+    Open Source Code
+      old: ABOUT / About & Community
+      new: About / Support
+    Download Desktop App
+      old: ABOUT / About & Community (row removed; button remains in About card)
+      new: About / Support
+
+3) REMOVED / DE-DUPLICATED
+  - "Make YouTube Playlists Local" (YouTube tab): duplicate of Library > Imports > YouTube.
+  - "Your Spotify Playlists" (Spotify tab): duplicate of Library > Imports > Spotify / Apple Music.
+  - "Import from YouTube Music" (YouTube tab): duplicate of Library > Imports.
+  - Standalone "Download Desktop App" row in About: duplicate of the button inside the About card.
+  - "Lyrics Animation Style" search entry: never existed in the UI (phantom catalog entry).
+  - The old search entry appearance.home_sections pointed at Appearance; it now points at
+    Library / Home, where Home Sections has always lived.
+  - YouTubeImportSheet.kt (370 lines): never made visible; deleted.
+  - Jam bottom sheet state: never made visible; deleted (the Jam screen is unchanged).
+  - YouTube "Two-way Playlist Sync" row is now hidden while disconnected. It used to render as a
+    toggle that always looked off but still changed the setting.
+
+4) SEARCH INDEX FIXES
+  - Search catalog rewritten: 89 entries covering every searchable setting.
+  - Every catalog section must exist in SettingsTab.sectionOrder; a unit test now enforces it.
+  - Search scrolls by section index derived from that one order list, not hard-coded indices.
+  - Added entries that existed in the UI but were unsearchable, e.g.:
+      Music Haptics, Hide Navigation Tabs, Collapsing Navigation Bar, Button Now Playing,
+      Word-by-Word Lyrics, Show AutoEQ in Volume Panel, Spotify Playlists in Library,
+      YouTube Cookie Login, LastWave Jam, Downloads/Storage.
+  - Removed phantom/duplicate entries: Lyrics Animation Style (phantom), duplicate YouTube/Spotify
+    import entries. The old appearance.home_sections entry was repointed to library.home_sections.
+
+5) KNOWN GAPS (not changed by this PR)
+  - Download folder / location / structure still live in the Downloads screen overflow menu.
+    Settings > Downloads links to that screen.
+  - preferLosslessStreaming and clarityPreset/clarityAtmosBypass still have no UI.
+  - Tablet content width is not capped (fillMaxSize before adaptiveContentWidth); a two-pane
+    tablet settings layout is the right follow-up.
+  - Section labels are still English-only; category titles use string resources.
+  - The shared search catalog stores static descriptions, not live values.
