@@ -349,23 +349,11 @@ internal fun AddToPlaylistDialogHost(
     onFindCachedDuplicates: suspend (Set<Long>) -> Set<Long>,
     onCreate: (String) -> Unit,
 ) {
-    if (track.videoId.isNullOrBlank() && track.isLocalTrack()) {
-        val offlinePlaylists by viewModel.offlinePlaylists.collectAsStateWithLifecycle()
-        AddToOfflinePlaylistDialog(
-            track = track,
-            playlists = offlinePlaylists,
-            onDismiss = onDismiss,
-            onAdd = { selectedIds ->
-                viewModel.addToOfflinePlaylists(selectedIds, track)
-                onDismiss()
-            },
-            onCreate = { name ->
-                viewModel.createOfflinePlaylistAndAdd(name, track)
-                onDismiss()
-            },
-        )
-        return
-    }
+    // A device song used to get an offline-only sheet, which hid the user's own
+    // playlists even though those keep local files (PlaylistRepository.addTrack).
+    // It now gets the same sheet, with its offline playlists as a second section.
+    val isDeviceSong = track.videoId.isNullOrBlank() && track.isLocalTrack()
+    val offlinePlaylists by viewModel.offlinePlaylists.collectAsStateWithLifecycle()
     val allPlaylists by viewModel.customPlaylists.collectAsStateWithLifecycle()
     // An imported file can't live in a YouTube Music playlist (no videoId).
     val playlists = remember(allPlaylists, track) {
@@ -378,7 +366,17 @@ internal fun AddToPlaylistDialogHost(
         onAdd = onAdd,
         onFindDuplicates = onFindDuplicates,
         onFindCachedDuplicates = onFindCachedDuplicates,
-        onCreate = onCreate,
+        // Creating from a device song still makes an offline playlist, as before.
+        onCreate = if (isDeviceSong) {
+            { name ->
+                viewModel.createOfflinePlaylistAndAdd(name, track)
+                onDismiss()
+            }
+        } else {
+            onCreate
+        },
+        offlinePlaylists = if (isDeviceSong) offlinePlaylists else null,
+        onAddOffline = { ids -> viewModel.addToOfflinePlaylists(ids, track) },
     )
 }
 
@@ -392,10 +390,14 @@ internal fun AddToPlaylistDialog(
     onFindDuplicates: suspend (Set<Long>) -> Set<Long>,
     onFindCachedDuplicates: suspend (Set<Long>) -> Set<Long>,
     onCreate: (String) -> Unit,
+    /** Offline playlists to offer too (device songs only); null hides the section. */
+    offlinePlaylists: List<LocalOfflineRepository.OfflinePlaylist>? = null,
+    onAddOffline: (Set<String>) -> Unit = {},
 ) {
     val sanitizedPlaylists = remember(playlists) { playlists.distinctBy { it.id } }
     var newPlaylistName by remember(track) { mutableStateOf("") }
     var selectedPlaylistIds by remember(track) { mutableStateOf(emptySet<Long>()) }
+    var selectedOfflineIds by remember(track) { mutableStateOf(emptySet<String>()) }
     var duplicateConfirmation by remember(track) { mutableStateOf<Set<Long>?>(null) }
     var duplicatePlaylistIds by remember(track) { mutableStateOf(emptySet<Long>()) }
     var knownDuplicatePlaylistIds by remember(track) { mutableStateOf(emptySet<Long>()) }
@@ -403,9 +405,12 @@ internal fun AddToPlaylistDialog(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val trackKey = remember(track.title, track.artist) { track.toGeneratedTrack().key }
-    val selectedPlaylists = sanitizedPlaylists.filter { it.id in selectedPlaylistIds }
-    val playlistListMaxHeight = (LocalConfiguration.current.screenHeightDp.dp - 360.dp)
-        .coerceIn(180.dp, 410.dp)
+    val trackUrlNorm = remember(track.playbackUrl) {
+        track.playbackUrl?.let(LocalOfflineRepository.Companion::normalizeUrl)
+    }
+    val selectedCount = selectedPlaylistIds.size + selectedOfflineIds.size
+    val playlistListMaxHeight = (LocalConfiguration.current.screenHeightDp.dp - 300.dp)
+        .coerceIn(200.dp, 460.dp)
 
     LaunchedEffect(sanitizedPlaylists.map(SavedPlaylist::id)) {
         selectedPlaylistIds = selectedPlaylistIds.intersect(sanitizedPlaylists.mapTo(mutableSetOf(), SavedPlaylist::id))
@@ -451,6 +456,16 @@ internal fun AddToPlaylistDialog(
                 onAdd(playlistIds, emptySet())
             }
         }
+    }
+
+    // Offline playlists have no duplicate step: add them at once, then let the
+    // regular playlists run their check (whose onAdd closes the sheet).
+    fun submit() {
+        if (selectedOfflineIds.isNotEmpty()) {
+            onAddOffline(selectedOfflineIds)
+            selectedOfflineIds = emptySet()
+        }
+        if (selectedPlaylistIds.isNotEmpty()) requestAdd(selectedPlaylistIds) else onDismiss()
     }
 
     duplicateConfirmation?.let { duplicates ->
@@ -593,7 +608,7 @@ internal fun AddToPlaylistDialog(
         },
     ) {
         var showCreateDialog by remember { mutableStateOf(false) }
-        
+
         if (showCreateDialog) {
             AlertDialog(
                 onDismissRequest = { showCreateDialog = false },
@@ -612,7 +627,9 @@ internal fun AddToPlaylistDialog(
                         enabled = newPlaylistName.isNotBlank(),
                         onClick = {
                             val cleanName = newPlaylistName.trim()
-                            val existingPlaylist = sanitizedPlaylists.firstOrNull {
+                            // A device song's create makes an offline playlist, so it
+                            // never folds into a same-named regular one.
+                            val existingPlaylist = if (offlinePlaylists != null) null else sanitizedPlaylists.firstOrNull {
                                 it.mode == "custom" && it.title.equals(cleanName, ignoreCase = true)
                             }
                             if (existingPlaylist == null) {
@@ -639,74 +656,57 @@ internal fun AddToPlaylistDialog(
                 .fillMaxWidth()
                 .adaptiveContentWidth(maxWidth = 640.dp)
                 .align(Alignment.CenterHorizontally)
-                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(52.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.PlaylistAdd, contentDescription = null, modifier = Modifier.size(27.dp))
-                    }
-                }
-                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            // Header: what is being added, and a small way to start a new playlist.
+            Row(
+                modifier = Modifier.padding(start = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
                     Text(
                         "Add to playlist",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        if (selectedPlaylistIds.isEmpty()) "Choose one or more playlists" else "${selectedPlaylistIds.size} selected",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                androidx.compose.material3.IconButton(
-                    onClick = { showCreateDialog = true },
-                    modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(com.lastwave.app.R.string.player_create_cd))
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text(
-                        track.title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        track.artist,
+                        "${track.title} • ${track.artist}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                androidx.compose.material3.FilledTonalButton(
+                    onClick = { showCreateDialog = true },
+                    contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+                    modifier = Modifier
+                        .padding(start = 12.dp)
+                        .height(36.dp),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(com.lastwave.app.R.string.local_new_playlist), style = MaterialTheme.typography.labelLarge)
+                }
             }
 
-            if (sanitizedPlaylists.isEmpty()) {
+            val hasOffline = !offlinePlaylists.isNullOrEmpty()
+            if (sanitizedPlaylists.isEmpty() && !hasOffline) {
                 Text(
-                    "No playlists yet. Create your first playlist below.",
+                    "No playlists yet. Tap New playlist to make one.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 16.dp),
                 )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().heightIn(max = playlistListMaxHeight),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    if (hasOffline && sanitizedPlaylists.isNotEmpty()) {
+                        item(key = "header_playlists") { PlaylistSectionLabel("Your playlists") }
+                    }
                     itemsIndexed(
                         sanitizedPlaylists,
                         key = { index, playlist -> "${playlist.id}_${playlist.remotePlaylistId ?: ""}_$index" },
@@ -724,16 +724,15 @@ internal fun AddToPlaylistDialog(
                             1 -> "1 track"
                             else -> "$trackCount tracks"
                         }
-                        val rowColor by animateColorAsState(
-                            targetValue = if (selected) {
-                                MaterialTheme.colorScheme.secondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerHigh
+                        PlaylistPickRow(
+                            selected = selected,
+                            title = playlist.title,
+                            subtitle = when {
+                                isCheckingDuplicates && selected -> "$countLabel • Checking contents..."
+                                alreadyAdded -> "$countLabel • Already added"
+                                else -> countLabel
                             },
-                            animationSpec = tween(ExpressiveMotion.Quick),
-                            label = "playlistSelectionColor",
-                        )
-                        Surface(
+                            highlightSubtitle = alreadyAdded,
                             onClick = {
                                 selectedPlaylistIds = if (selected) {
                                     selectedPlaylistIds - playlist.id
@@ -741,44 +740,40 @@ internal fun AddToPlaylistDialog(
                                     selectedPlaylistIds + playlist.id
                                 }
                             },
-                            shape = RoundedCornerShape(18.dp),
-                            color = rowColor,
-                            modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                            PlaylistCover(playlist = playlist, modifier = Modifier.size(48.dp), cornerRadius = 12.dp)
+                        }
+                    }
+                    if (hasOffline) {
+                        item(key = "header_offline") {
+                            PlaylistSectionLabel(stringResource(com.lastwave.app.R.string.local_offline_playlists))
+                        }
+                        items(offlinePlaylists.orEmpty(), key = { "offline_${it.id}" }) { playlist ->
+                            val selected = playlist.id in selectedOfflineIds
+                            val alreadyAdded = trackUrlNorm != null && playlist.trackUrls.any {
+                                LocalOfflineRepository.normalizeUrl(it) == trackUrlNorm
+                            }
+                            val count = playlist.trackUrls.size
+                            val countText = if (count == 1) "1 track" else "$count tracks"
+                            PlaylistPickRow(
+                                selected = selected,
+                                title = playlist.name,
+                                subtitle = if (alreadyAdded) "$countText • Already added" else countText,
+                                highlightSubtitle = alreadyAdded,
+                                onClick = {
+                                    selectedOfflineIds = if (selected) selectedOfflineIds - playlist.id else selectedOfflineIds + playlist.id
+                                },
                             ) {
-                                PlaylistCover(
-                                    playlist = playlist,
-                                    modifier = Modifier.size(52.dp),
-                                    cornerRadius = 14.dp,
-                                )
-                                Column(Modifier.weight(1f).padding(horizontal = 13.dp)) {
-                                    Text(
-                                        playlist.title,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        when {
-                                            isCheckingDuplicates && selected -> "$countLabel \u2022 Checking contents..."
-                                            alreadyAdded -> "$countLabel \u2022 Already added"
-                                            else -> countLabel
-                                        },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = if (alreadyAdded) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.QueueMusic, contentDescription = null)
+                                    }
                                 }
-                                Checkbox(checked = selected, onCheckedChange = null)
                             }
                         }
                     }
@@ -793,8 +788,8 @@ internal fun AddToPlaylistDialog(
                 TextButton(onClick = onDismiss) { Text(stringResource(com.lastwave.app.R.string.common_cancel)) }
                 Spacer(Modifier.width(8.dp))
                 Button(
-                    onClick = { requestAdd(selectedPlaylistIds) },
-                    enabled = selectedPlaylistIds.isNotEmpty() && !isCheckingDuplicates,
+                    onClick = { submit() },
+                    enabled = selectedCount > 0 && !isCheckingDuplicates,
                 ) {
                     if (isCheckingDuplicates) {
                         ExpressiveInlineLoadingIndicator(
@@ -808,9 +803,9 @@ internal fun AddToPlaylistDialog(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when {
-                            selectedPlaylistIds.isEmpty() -> "Add"
+                            selectedCount == 0 -> "Add"
                             isCheckingDuplicates -> "Checking"
-                            else -> "Add to ${selectedPlaylists.size}"
+                            else -> "Add to $selectedCount"
                         },
                     )
                 }
@@ -819,229 +814,58 @@ internal fun AddToPlaylistDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddToOfflinePlaylistDialog(
-    track: PlayableTrack,
-    playlists: List<LocalOfflineRepository.OfflinePlaylist>,
-    onDismiss: () -> Unit,
-    onAdd: (Set<String>) -> Unit,
-    onCreate: (String) -> Unit,
+private fun PlaylistSectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
+    )
+}
+
+/** One selectable playlist: cover, title, count line and a checkbox. */
+@Composable
+private fun PlaylistPickRow(
+    selected: Boolean,
+    title: String,
+    subtitle: String,
+    highlightSubtitle: Boolean,
+    onClick: () -> Unit,
+    cover: @Composable () -> Unit,
 ) {
-    var selectedIds by remember(track) { mutableStateOf(emptySet<String>()) }
-    var showCreateDialog by remember { mutableStateOf(false) }
-    var newName by remember(track) { mutableStateOf("") }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val trackUrlNorm = remember(track.playbackUrl) {
-        track.playbackUrl?.let(LocalOfflineRepository.Companion::normalizeUrl)
-    }
-    val playlistListMaxHeight = (LocalConfiguration.current.screenHeightDp.dp - 360.dp)
-        .coerceIn(180.dp, 410.dp)
-
-    if (showCreateDialog) {
-        AlertDialog(
-            onDismissRequest = { showCreateDialog = false },
-            title = { Text(stringResource(com.lastwave.app.R.string.local_new_playlist)) },
-            text = {
-                OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
-                    label = { Text(stringResource(com.lastwave.app.R.string.local_playlist_name_hint)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = newName.isNotBlank(),
-                    onClick = {
-                        onCreate(newName.trim())
-                        showCreateDialog = false
-                    },
-                ) {
-                    Text(stringResource(com.lastwave.app.R.string.add_create_and_add))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCreateDialog = false }) {
-                    Text(stringResource(com.lastwave.app.R.string.common_cancel))
-                }
-            },
-        )
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        scrimColor = Color.Black.copy(alpha = 0.55f),
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
-        dragHandle = {
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                modifier = Modifier
-                    .padding(top = 12.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp),
-            ) {}
-        },
+    val rowColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        animationSpec = tween(ExpressiveMotion.Quick),
+        label = "playlistSelectionColor",
+    )
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = rowColor,
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        com.lastwave.app.ui.common.EdgeToEdgeDialogWindow()
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .adaptiveContentWidth(maxWidth = 640.dp)
-                .align(Alignment.CenterHorizontally)
-                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(52.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.PlaylistAdd, contentDescription = null, modifier = Modifier.size(27.dp))
-                    }
-                }
-                Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                    Text(
-                        stringResource(com.lastwave.app.R.string.local_add_to_offline_playlist),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        if (selectedIds.isEmpty()) stringResource(com.lastwave.app.R.string.local_offline_playlists)
-                        else stringResource(com.lastwave.app.R.string.local_selected_count, selectedIds.size),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                androidx.compose.material3.IconButton(
-                    onClick = { showCreateDialog = true },
-                    modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(com.lastwave.app.R.string.local_new_playlist))
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text(
-                        track.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        track.artist,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
-            if (playlists.isEmpty()) {
+            cover()
+            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                 Text(
-                    stringResource(com.lastwave.app.R.string.local_empty_offline_playlists),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = playlistListMaxHeight),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    itemsIndexed(playlists, key = { _, p -> p.id }) { _, playlist ->
-                        val selected = playlist.id in selectedIds
-                        val alreadyAdded = trackUrlNorm != null && playlist.trackUrls.any {
-                            LocalOfflineRepository.normalizeUrl(it) == trackUrlNorm
-                        }
-                        val rowColor by animateColorAsState(
-                            targetValue = if (selected) {
-                                MaterialTheme.colorScheme.secondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerHigh
-                            },
-                            animationSpec = tween(ExpressiveMotion.Quick),
-                            label = "offlinePlaylistSelectionColor",
-                        )
-                        Surface(
-                            onClick = {
-                                selectedIds = if (selected) selectedIds - playlist.id else selectedIds + playlist.id
-                            },
-                            shape = RoundedCornerShape(18.dp),
-                            color = rowColor,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.size(44.dp),
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            Icons.Filled.QueueMusic,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        )
-                                    }
-                                }
-                                Column(Modifier.weight(1f).padding(horizontal = 13.dp)) {
-                                    Text(
-                                        playlist.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    val count = playlist.trackUrls.size
-                                    val countText = if (count == 1) "1 track" else "$count tracks"
-                                    Text(
-                                        if (alreadyAdded) "$countText • Already added" else countText,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = if (alreadyAdded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Checkbox(checked = selected, onCheckedChange = null)
-                            }
-                        }
-                    }
-                }
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (highlightSubtitle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onDismiss) { Text(stringResource(com.lastwave.app.R.string.common_cancel)) }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = { onAdd(selectedIds) },
-                    enabled = selectedIds.isNotEmpty(),
-                ) {
-                    Icon(Icons.Filled.PlaylistAdd, contentDescription = null, modifier = Modifier.size(19.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (selectedIds.isEmpty()) "Add" else "Add to ${selectedIds.size}")
-                }
-            }
+            Checkbox(checked = selected, onCheckedChange = null)
         }
     }
 }
