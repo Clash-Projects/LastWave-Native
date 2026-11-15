@@ -767,6 +767,8 @@ internal fun ExpandedPlayer(
         onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
         lyricsFontScale = settings.lyricsFontScale,
         onSetLyricsFontScale = viewModel::setLyricsFontScale,
+        lyricsCentered = settings.lyricsCentered,
+        onSetLyricsCentered = viewModel::setLyricsCentered,
         lyricsButtonsAutoHideSeconds = settings.lyricsButtonsAutoHideSeconds,
         translationLanguage = settings.translationLanguage,
         canvas = canvas,

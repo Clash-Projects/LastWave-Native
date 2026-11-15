@@ -353,6 +353,8 @@ internal fun FullPlayer(
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
     onSetLyricsFontScale: ((Float) -> Unit)? = null,
+    lyricsCentered: Boolean = false,
+    onSetLyricsCentered: ((Boolean) -> Unit)? = null,
     /** 0 = floating lyrics buttons never auto-hide; 2..10 = idle seconds. */
     lyricsButtonsAutoHideSeconds: Int = 5,
     /** Language the lyric translate button targets; blank = app language. */
@@ -674,6 +676,7 @@ internal fun FullPlayer(
         LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalIsDarkTheme provides true,
+        LocalLyricsAlignment provides LyricsAlignment(lyricsCentered, onSetLyricsCentered),
     ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,

@@ -180,6 +180,8 @@ data class MiscSettings(
     /** Scale factor applied to lyrics font size across both modern and classic views.
      *  Default 1.0f (100%), clamped between 0.7f (70%) and 1.5f (150%). */
     val lyricsFontScale: Float = 1.0f,
+    /** Synced and plain lyrics centred instead of following each row's singer side. */
+    val lyricsCentered: Boolean = false,
     /** Blend the end of one queued track into the beginning of the next. */
     val crossfadeEnabled: Boolean = false,
     /** When the queue runs out, keep playing similar songs (radio). Off = stop at the end. */
@@ -431,6 +433,7 @@ class SettingsPreferences @Inject constructor(
         val SPOTIFY_PLAYLISTS_SYNC_ENABLED = booleanPreferencesKey("lw_spotify_playlists_sync_enabled")
         val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
+        val LYRICS_CENTERED = booleanPreferencesKey("lw_lyrics_centered")
         val APP_VOLUME = floatPreferencesKey("lw_app_volume")
         val APP_VOLUME_CAST_FIX_DONE = booleanPreferencesKey("lw_app_volume_cast_fix_done")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
@@ -548,6 +551,7 @@ class SettingsPreferences @Inject constructor(
                 spotifyPlaylistsSyncEnabled = p.readSafely(Keys.SPOTIFY_PLAYLISTS_SYNC_ENABLED) ?: false,
                 lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-10000L, 10000L),
                 lyricsFontScale = (p.readSafely(Keys.LYRICS_FONT_SCALE) ?: 1.0f).coerceIn(0.7f, 1.5f),
+                lyricsCentered = p.readSafely(Keys.LYRICS_CENTERED) ?: false,
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 autoplaySimilarEnabled = p.readSafely(Keys.AUTOPLAY_SIMILAR_ENABLED) ?: true,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
@@ -959,6 +963,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLyricsFontScale(scale: Float) {
         dataStore.edit { it[Keys.LYRICS_FONT_SCALE] = scale.coerceIn(0.7f, 1.5f) }
+    }
+
+    suspend fun setLyricsCentered(centered: Boolean) {
+        dataStore.edit { it[Keys.LYRICS_CENTERED] = centered }
     }
 
     suspend fun setAutoplaySimilarEnabled(enabled: Boolean) {
