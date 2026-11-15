@@ -351,6 +351,7 @@ internal fun FullPlayer(
     wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
+    fluidBeatSyncEnabled: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
@@ -722,6 +723,7 @@ internal fun FullPlayer(
                 extraBlur = isLyricsTab,
                 rotatingBackgroundEnabled = if (isLyricsTab) showLyricsFluid else rotatingBackgroundEnabled,
                 lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
+                fluidBeatSyncEnabled = fluidBeatSyncEnabled,
                 fallback = {
                     val staticBlurTransform = remember(currentTab) {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -729,6 +731,12 @@ internal fun FullPlayer(
                                 BlurTransformation(
                                     radius = if (currentTab == FullPlayerTab.LYRICS) 25 else 18,
                                     maxDimension = 100,
+                                )
+                            )
+                        } else {
+                            emptyList()
+                        }
+                    }
                                 )
                             )
                         } else {
@@ -882,38 +890,61 @@ internal fun FullPlayer(
                     // over as the canvas's own alpha climbs to full.
                     val heroCover =
                         if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f)
-                    StaticArtworkHero(
-                        name = track.title,
-                        artist = track.artist,
-                        embeddedUrl = track.artworkUrl,
-                        resolvedUrl = resolvedAmbientUrl,
-                        bottomFade = 0.38f,
-                        alpha = heroAlpha * heroCover,
+                    RhythmCoverBox(
+                        enabled = fluidBeatSyncEnabled,
+                        isPlaying = state.isPlaying,
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
                             .height(heroHeight),
-                    )
+                    ) {
+                        StaticArtworkHero(
+                            name = track.title,
+                            artist = track.artist,
+                            embeddedUrl = track.artworkUrl,
+                            resolvedUrl = resolvedAmbientUrl,
+                            bottomFade = 0.38f,
+                            alpha = heroAlpha * heroCover,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     if (activeCanvas != null) {
-                        CanvasArtworkPlayer(
-                            canvas = activeCanvas,
-                            isPlaying = state.isPlaying,
-                            contentMode = CanvasContentMode.CROP,
-                            alignPortraitTop = true,
-                            bottomFade = if (isTallCanvas) 0f else 0.38f,
-                            presentationAlpha = { heroAlpha },
-                            onCoverChanged = { canvasCover = it },
-                            onAspectRatioChanged = { canvasAspect = it },
-                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                            modifier = if (isTallCanvas) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier
+                        if (isTallCanvas) {
+                            CanvasArtworkPlayer(
+                                canvas = activeCanvas,
+                                isPlaying = state.isPlaying,
+                                contentMode = CanvasContentMode.CROP,
+                                alignPortraitTop = true,
+                                bottomFade = 0f,
+                                presentationAlpha = { heroAlpha },
+                                onCoverChanged = { canvasCover = it },
+                                onAspectRatioChanged = { canvasAspect = it },
+                                pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            RhythmCoverBox(
+                                enabled = fluidBeatSyncEnabled,
+                                isPlaying = state.isPlaying,
+                                modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
-                                    .height(heroHeight)
-                            },
-                        )
+                                    .height(heroHeight),
+                            ) {
+                                CanvasArtworkPlayer(
+                                    canvas = activeCanvas,
+                                    isPlaying = state.isPlaying,
+                                    contentMode = CanvasContentMode.CROP,
+                                    alignPortraitTop = true,
+                                    bottomFade = 0.38f,
+                                    presentationAlpha = { heroAlpha },
+                                    onCoverChanged = { canvasCover = it },
+                                    onAspectRatioChanged = { canvasAspect = it },
+                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
 
                         // For true full-bleed canvas: a subtle contrast gradient scrim so top header and
                         // bottom playback controls/title remain 100% legible without blurring the video
@@ -1991,4 +2022,27 @@ internal fun FullPlayer(
         com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
     }
 }
+}
+
+@Composable
+private fun RhythmCoverBox(
+    enabled: Boolean,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    if (!enabled || !isPlaying) {
+        Box(modifier) { content() }
+        return
+    }
+    val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
+    Box(
+        modifier = modifier.graphicsLayer {
+            val scale = 1.0f + r * 0.045f
+            scaleX = scale
+            scaleY = scale
+        }
+    ) {
+        content()
+    }
 }

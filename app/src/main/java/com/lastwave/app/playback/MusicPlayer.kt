@@ -1961,6 +1961,7 @@ class MusicPlayer @Inject constructor(
                         effects.attach(audioSessionId)
                         runCatching { systemEffectsBridge.onSessionChanged(audioSessionId) }
                         musicHapticsController.onAudioSessionIdChanged(audioSessionId)
+                        com.lastwave.app.playback.rhythm.FluidRhythmEngine.attachSession(audioSessionId)
                     }
                 })
             }.also { playerInstance ->
@@ -2045,6 +2046,7 @@ class MusicPlayer @Inject constructor(
     @MainThread
     fun release() {
         cancelCrossfade()
+        com.lastwave.app.playback.rhythm.FluidRhythmEngine.detachSession()
         activePlayer?.removeListener(listener)
         activePlayer?.release()
         activePlayer = null
@@ -8180,6 +8182,7 @@ class MusicPlayer @Inject constructor(
             activePlayer = standby
             musicHapticsController.bindToPlayer(standby)
             musicHapticsController.onAudioSessionIdChanged(standby.audioSessionId)
+            com.lastwave.app.playback.rhythm.FluidRhythmEngine.attachSession(standby.audioSessionId)
             standby.addListener(listener)
             committed = true
             standbyQueue = emptyList()

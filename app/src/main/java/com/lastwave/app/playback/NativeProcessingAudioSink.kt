@@ -168,6 +168,7 @@ class NativeProcessingAudioSink(
     var hapticsAnalyzer: com.lastwave.app.playback.haptics.MusicHapticsAnalyzer? = null
     /** Buffer already analysed: Media3 retries the same object until consumed. */
     private var hapticsBuffer: ByteBuffer? = null
+    private var rhythmPcmBuffer: ByteBuffer? = null
 
     var onConfiguredFormat: ((sampleRateHz: Int, pcmEncoding: Int, channelCount: Int) -> Unit)? = null
     var bitDepthHintProvider: (() -> Int?)? = null
@@ -621,6 +622,23 @@ class NativeProcessingAudioSink(
                     positionUs = { getCurrentPositionUs(false) },
                     playbackSpeed = { getPlaybackParameters().speed },
                 )
+            }
+        }
+        if (com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled && rhythmPcmBuffer !== buffer) {
+            rhythmPcmBuffer = buffer
+            val fmt = configuredFormat
+            if (fmt != null) {
+                runCatching {
+                    com.lastwave.app.playback.rhythm.FluidRhythmEngine.processPcmBuffer(
+                        buffer = buffer,
+                        sampleRate = fmt.sampleRate,
+                        channels = fmt.channelCount,
+                        pcmEncoding = fmt.pcmEncoding,
+                        presentationTimeUs = presentationTimeUs,
+                        positionUs = { getCurrentPositionUs(false) },
+                        playbackSpeed = { getPlaybackParameters().speed },
+                    )
+                }
             }
         }
         // A copy in flight stays the routed buffer until consumed, even if the
@@ -1672,7 +1690,9 @@ class NativeProcessingAudioSink(
         directEqBuffer = null
         eqCopySource = null
         hapticsBuffer = null
+        rhythmPcmBuffer = null
         runCatching { hapticsAnalyzer?.flush() }
+        runCatching { com.lastwave.app.playback.rhythm.FluidRhythmEngine.flush() }
         clearPending()
         clearEndOfStream()
         exclusiveEnded = false
@@ -1716,7 +1736,9 @@ class NativeProcessingAudioSink(
         eqCopySource = null
         eqCopy = null
         hapticsBuffer = null
+        rhythmPcmBuffer = null
         runCatching { hapticsAnalyzer?.reset() }
+        runCatching { com.lastwave.app.playback.rhythm.FluidRhythmEngine.reset() }
         usbOutput?.setFormat(null)
         if (usbExclusive && exclusiveWanted) {
             exclusiveUsb?.prepareForNextItem()

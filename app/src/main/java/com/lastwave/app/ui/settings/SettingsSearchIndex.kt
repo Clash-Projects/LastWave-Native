@@ -735,6 +735,24 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.fluid_beat_sync",
+                    title = "Beat-Synced Fluid Motion",
+                    subtitle = "Fluid artwork pulses and swirls in sync with musical beats",
+                    keywords = listOf(
+                        "beat synced fluid motion", "beat sync", "fluid motion", "beat pulse",
+                        "fluid beat", "audio reactive", "fluid animation", "per beat",
+                        "beat animation", "kick pulse", "music beat"
+                    ),
+                    icon = Icons.Filled.Waves,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.lyrics_provider",
                     title = "Lyrics Provider",
                     subtitle = "Choose preferred synced lyrics provider (LRCLIB, Musixmatch, etc.)",
