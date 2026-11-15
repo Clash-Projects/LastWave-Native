@@ -66,6 +66,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.Refresh
@@ -892,6 +893,30 @@ internal fun LyricsOptionsMenuDialog(
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text("A", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+
+                        val alignment = LocalLyricsAlignment.current
+                        val onCenteredChange = alignment.onCenteredChange
+                        if (onCenteredChange != null) {
+                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Icon(Icons.Filled.FormatAlignCenter, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                Text("Alignment", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                listOf(false to "Auto", true to "Center").forEach { (centered, label) ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = alignment.centered == centered,
+                                        onClick = hapticClick { onCenteredChange(centered) },
+                                        label = { Text(label) },
+                                        modifier = Modifier.padding(start = 6.dp),
+                                    )
+                                }
                             }
                         }
 

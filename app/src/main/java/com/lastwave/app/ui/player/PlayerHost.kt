@@ -375,16 +375,20 @@ fun PlayerHost(
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
     var expanded by rememberSaveable { mutableStateOf(false) }
     var currentTab by rememberSaveable { mutableStateOf(FullPlayerTab.NOW_PLAYING) }
+    // Lyrics shown inline on Now Playing. Kept beside currentTab, not as a tab,
+    // so the regular lyrics tab returns to it on back.
+    var playerLyrics by rememberSaveable { mutableStateOf(false) }
     // Only line-synced lyrics need the 60 ms playhead; on Now Playing each
     // tick redrew the whole full player to move the seek bar under a pixel.
-    val lyricsOpen = expanded && currentTab == FullPlayerTab.LYRICS
+    val lyricsOpen = expanded &&
+        (currentTab == FullPlayerTab.LYRICS || (currentTab == FullPlayerTab.NOW_PLAYING && playerLyrics))
     DisposableEffect(lyricsOpen) {
         com.lastwave.app.playback.PlaybackUiDemand.needsHighFrequency = lyricsOpen
         onDispose { com.lastwave.app.playback.PlaybackUiDemand.needsHighFrequency = false }
     }
     var playlistTrack by remember { mutableStateOf<PlayableTrack?>(null) }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val keepLyricsAwake = expanded && currentTab == FullPlayerTab.LYRICS && settings.keepLyricsScreenAwake
+    val keepLyricsAwake = lyricsOpen && settings.keepLyricsScreenAwake
     val currentView = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(keepLyricsAwake) {
         if (keepLyricsAwake) {
@@ -413,6 +417,7 @@ fun PlayerHost(
     LaunchedEffect(expanded) {
         if (!expanded) {
             currentTab = FullPlayerTab.NOW_PLAYING
+            playerLyrics = false
         }
     }
     LaunchedEffect(Unit) {
@@ -658,12 +663,15 @@ fun PlayerHost(
                     ) {
                         PredictiveBackScreen(
                             enabled = expanded && state.current != null && currentTab == FullPlayerTab.NOW_PLAYING,
-                            onBack = { expanded = false },
+                            // The player's only back handler: leave Player Lyrics first, then close.
+                            onBack = { if (playerLyrics) playerLyrics = false else expanded = false },
                         ) {
                             ExpandedPlayer(
                                 viewModel = viewModel,
                                 currentTab = currentTab,
                                 onTabChange = { currentTab = it },
+                                playerLyrics = playerLyrics,
+                                onPlayerLyricsChange = { playerLyrics = it },
                                 onRetryLyrics = viewModel::retryLyrics,
                                 onCollapse = { expanded = false },
                                 onOpenArtist = { artist ->
@@ -726,6 +734,8 @@ internal fun ExpandedPlayer(
     viewModel: PlayerViewModel,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
+    playerLyrics: Boolean,
+    onPlayerLyricsChange: (Boolean) -> Unit,
     onRetryLyrics: () -> Unit,
     onCollapse: () -> Unit,
     onOpenArtist: (String) -> Unit,
@@ -759,6 +769,8 @@ internal fun ExpandedPlayer(
         onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
         lyricsFontScale = settings.lyricsFontScale,
         onSetLyricsFontScale = viewModel::setLyricsFontScale,
+        lyricsCentered = settings.lyricsCentered,
+        onSetLyricsCentered = viewModel::setLyricsCentered,
         lyricsButtonsAutoHideSeconds = settings.lyricsButtonsAutoHideSeconds,
         translationLanguage = settings.translationLanguage,
         canvas = canvas,
@@ -769,6 +781,8 @@ internal fun ExpandedPlayer(
         showAutoEqInVolumePanel = settings.showAutoEqInVolumePanel,
         currentTab = currentTab,
         onTabChange = onTabChange,
+        playerLyrics = playerLyrics,
+        onPlayerLyricsChange = onPlayerLyricsChange,
         onRetryLyrics = onRetryLyrics,
         onCollapse = onCollapse,
         onOpenArtist = onOpenArtist,

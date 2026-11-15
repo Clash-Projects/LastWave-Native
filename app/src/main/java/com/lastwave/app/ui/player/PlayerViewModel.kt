@@ -436,6 +436,12 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    fun setLyricsCentered(centered: Boolean) {
+        viewModelScope.launch {
+            settingsPreferences.setLyricsCentered(centered)
+        }
+    }
+
     private val _lyricsState = MutableStateFlow<LyricsUiState>(LyricsUiState.Idle)
     val lyricsState = _lyricsState.asStateFlow()
 

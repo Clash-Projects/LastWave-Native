@@ -163,6 +163,18 @@ import java.util.Locale
  *  ([Translated]). At most one mode is shown at a time. */
 internal enum class LyricsDisplayMode { Original, Romanized, Translated }
 
+/** Lyrics alignment chosen in the options menu. Auto stages rows on their
+ *  singer's side; centred puts every row in the middle. [onCenteredChange]
+ *  is null where the choice can't be saved, which hides it from the menu.
+ *  A local rather than a parameter so the rows and the menu share one source
+ *  without threading it through every lyrics host. */
+internal data class LyricsAlignment(
+    val centered: Boolean = false,
+    val onCenteredChange: ((Boolean) -> Unit)? = null,
+)
+
+internal val LocalLyricsAlignment = androidx.compose.runtime.compositionLocalOf { LyricsAlignment() }
+
 /** Line falloff by distance from the active row: alpha and soften radius.
  *  Past the end of the array the last value holds, so distance never needs a
  *  branch. The active line's own scale (1.0) lives with the row code. */

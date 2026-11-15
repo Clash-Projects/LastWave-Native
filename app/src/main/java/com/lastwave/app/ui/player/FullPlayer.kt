@@ -84,6 +84,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Arrangement
@@ -354,6 +355,8 @@ internal fun FullPlayer(
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
     onSetLyricsFontScale: ((Float) -> Unit)? = null,
+    lyricsCentered: Boolean = false,
+    onSetLyricsCentered: ((Boolean) -> Unit)? = null,
     /** 0 = floating lyrics buttons never auto-hide; 2..10 = idle seconds. */
     lyricsButtonsAutoHideSeconds: Int = 5,
     /** Language the lyric translate button targets; blank = app language. */
@@ -366,6 +369,8 @@ internal fun FullPlayer(
     showAutoEqInVolumePanel: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
+    playerLyrics: Boolean = false,
+    onPlayerLyricsChange: (Boolean) -> Unit = {},
     onRetryLyrics: () -> Unit,
     onCollapse: () -> Unit,
     onOpenArtist: (String) -> Unit = {},
@@ -391,6 +396,13 @@ internal fun FullPlayer(
     val isTablet = isTabletOrWideScreen()
     val isTabletLandscape = isLandscape && (isTablet || configuration.screenWidthDp >= 600)
     val isCanvasActive = canvasEnabled && canvas != null
+    // The two-column landscape layout has no single art area to replace, so
+    // its lyrics button keeps opening the lyrics tab. Not tied to currentTab:
+    // Now Playing keeps showing Player Lyrics while it fades out to the lyrics tab.
+    val playerLyricsActive = playerLyrics && !isTabletLandscape
+    // Rotating into that layout leaves the mode, so the host's back press and
+    // its 60 ms playhead never serve an invisible Player Lyrics.
+    LaunchedEffect(isTabletLandscape) { if (isTabletLandscape) onPlayerLyricsChange(false) }
     val syncedVideoVm: SyncedVideoViewModel = hiltViewModel()
     val showSyncedVideo by syncedVideoVm.isVideoActive.collectAsStateWithLifecycle()
     val syncedVideoState by syncedVideoVm.uiState.collectAsStateWithLifecycle()
@@ -441,6 +453,12 @@ internal fun FullPlayer(
     // the same pixels. A disposed canvas reports 0, so the hero returns the
     // moment a track without a canvas starts.
     var canvasCover by remember { mutableFloatStateOf(0f) }
+    val playerLyricsUi = rememberPlayerLyricsUiState(
+        trackKey = track.videoId ?: "${track.artist}|${track.title}",
+        lyricsState = lyricsState,
+        translationLanguage = translationLanguage,
+        lyricsFontScale = lyricsFontScale,
+    )
     var lyricsFullscreen by remember(currentTab) { mutableStateOf(false) }
     var lyricsControlsVisible by remember(currentTab) { mutableStateOf(true) }
     val view = LocalView.current
@@ -660,6 +678,7 @@ internal fun FullPlayer(
         LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalIsDarkTheme provides true,
+        LocalLyricsAlignment provides LyricsAlignment(lyricsCentered, onSetLyricsCentered),
     ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -913,6 +932,20 @@ internal fun FullPlayer(
                         }
                     }
                 }
+
+                // Player Lyrics puts white text over the art: a scrim keeps it
+                // legible without hiding what plays behind. Read only in draw.
+                val playerLyricsScrim = animateFloatAsState(
+                    targetValue = when {
+                        !playerLyricsActive || currentTab != FullPlayerTab.NOW_PLAYING -> 0f
+                        // A moving canvas behind text needs a little more than a still cover.
+                        showFullBleed -> if (activeCanvas != null) 0.58f else 0.5f
+                        else -> 0.2f
+                    },
+                    animationSpec = tween(320),
+                    label = "playerLyricsScrim",
+                )
+                Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black, alpha = playerLyricsScrim.value) })
 
                 // Lyrics tab backdrop (ArchiveTune / Apple Music style):
                 // Deep dark base (#050505), blurred artwork (46.dp, 62% alpha),
@@ -1220,7 +1253,17 @@ internal fun FullPlayer(
                                     onRetry = onRetryLyrics,
                                     onSelectLyricsProvider = onSelectLyricsProvider,
                                     onTryAnotherLyricsSource = onTryAnotherLyricsSource,
-                                    onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
+                                    // Full Screen cycles: Player Lyrics -> lyrics -> full screen -> back
+                                    // to Player Lyrics. The two-column landscape has no Player Lyrics,
+                                    // so it lands on its Now Playing.
+                                    onToggleFullscreen = {
+                                        if (lyricsFullscreen) {
+                                            if (!isTabletLandscape) onPlayerLyricsChange(true)
+                                            onTabChange(FullPlayerTab.NOW_PLAYING)
+                                        } else {
+                                            lyricsFullscreen = true
+                                        }
+                                    },
                                     isFullscreen = lyricsFullscreen,
                                     onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                     primaryColor = ambientColor,
@@ -1301,10 +1344,22 @@ internal fun FullPlayer(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     val hasArtwork = !track.artworkUrl.isNullOrBlank() || !resolvedAmbientUrl.isNullOrBlank() || activeCanvas != null
+                                    // Player Lyrics takes the sleeve's place and a video moves up. A
+                                    // sleeve canvas stays composed, dimmed, so it keeps playing under
+                                    // the lyrics instead of being disposed and restarted.
                                     val sleeveAlpha by animateFloatAsState(
-                                        targetValue = if (showFullBleed && hasArtwork) 0f else 1f,
+                                        targetValue = when {
+                                            showFullBleed && hasArtwork -> 0f
+                                            playerLyricsActive && !isVideoActive -> if (showSleeveCanvas) 0.3f else 0f
+                                            else -> 1f
+                                        },
                                         animationSpec = tween(350),
                                         label = "sleeveAlpha",
+                                    )
+                                    val videoBias by animateFloatAsState(
+                                        targetValue = if (playerLyricsActive) -1f else 0f,
+                                        animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                        label = "videoBias",
                                     )
 
                                     BoxWithConstraints(
@@ -1318,8 +1373,10 @@ internal fun FullPlayer(
                                                     heroBottomPx = bottom
                                                 }
                                             }
-                                            .pointerInput(track.videoId, track.title, isVideoActive) {
-                                                if (isVideoActive) return@pointerInput
+                                            .pointerInput(track.videoId, track.title, isVideoActive, playerLyricsActive) {
+                                                // Lyric rows own taps in Player Lyrics: a double tap
+                                                // there must not seek 5 s or like the song.
+                                                if (isVideoActive || playerLyricsActive) return@pointerInput
                                                 awaitEachGesture {
                                                     val down = awaitFirstDown(requireUnconsumed = false)
                                                     var isDrag = false
@@ -1420,7 +1477,7 @@ internal fun FullPlayer(
                                                     }
                                                 }
                                             },
-                                        contentAlignment = if (isVideoActive) Alignment.Center else BiasAlignment(0f, if (isTablet) -0.15f else -0.55f),
+                                        contentAlignment = if (isVideoActive) BiasAlignment(0f, videoBias) else BiasAlignment(0f, if (isTablet) -0.15f else -0.55f),
                                     ) {
                                         val artworkSize = (minOf(maxWidth, maxHeight) - 6.dp)
                                             .coerceAtLeast(0.dp)
@@ -1532,6 +1589,39 @@ internal fun FullPlayer(
                                                 )
                                             }
                                             }
+                                        }
+
+                                        androidx.compose.animation.AnimatedVisibility(
+                                            visible = playerLyricsActive,
+                                            enter = fadeIn(tween(320, delayMillis = 60)) +
+                                                scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
+                                            exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.96f),
+                                            modifier = Modifier
+                                                .layout { measurable, constraints ->
+                                                    // The lyric rows pad themselves 20 dp, as on the lyrics
+                                                    // screen; bleed through this column's own 20 dp so the
+                                                    // text sits at the same inset there and here.
+                                                    val bleed = if (isVideoActive) 0 else 20.dp.roundToPx()
+                                                    val width = constraints.maxWidth + bleed * 2
+                                                    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                                                    layout(constraints.maxWidth, placeable.height) { placeable.place(-bleed, 0) }
+                                                }
+                                                .fillMaxSize()
+                                                // Below the 16:9 video, never over its controls.
+                                                .padding(top = if (isVideoActive) maxWidth * 9f / 16f + 8.dp else 0.dp),
+                                        ) {
+                                            PlayerInlineLyrics(
+                                                state = state,
+                                                player = player,
+                                                lyricsState = lyricsState,
+                                                progressState = progressState,
+                                                lyricsOffsetMs = lyricsOffsetMs,
+                                                fontScale = playerLyricsUi.fontScale,
+                                                subLines = playerLyricsUi.subLines,
+                                                displayMode = playerLyricsUi.displayMode,
+                                                onRetry = onRetryLyrics,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
                                         }
 
                                         androidx.compose.animation.AnimatedVisibility(
@@ -1695,44 +1785,72 @@ internal fun FullPlayer(
 
                                         Spacer(Modifier.width(12.dp))
 
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            PlayerLikeButton(
-                                                liked = isLiked,
-                                                onClick = hapticClick(if (isLiked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onToggleLiked),
-                                                size = 48.dp,
-                                            )
-                                            val lyricsInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                            val isLyricsPressed by lyricsInteraction.collectIsPressedAsState()
-                                            val lyricsScale by animateFloatAsState(
-                                                targetValue = if (isLyricsPressed) 0.82f else 1.0f,
-                                                animationSpec = ExpressiveMotion.spatialSpring(),
-                                                label = "lyricsScale",
-                                            )
-                                            LiquidGlassSurface(
-                                                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
-                                                onClick = hapticClick { onTabChange(FullPlayerTab.LYRICS) },
-                                                interactionSource = lyricsInteraction,
-                                                shape = CircleShape,
-                                                color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                                contentColor = Color.White.copy(alpha = 0.90f),
-                                                tonalElevation = 0.dp,
-                                                shadowElevation = 0.dp,
-                                                modifier = Modifier
-                                                    .size(46.dp)
-                                                    .graphicsLayer {
-                                                        scaleX = lyricsScale
-                                                        scaleY = lyricsScale
-                                                    },
+                                        // Player Lyrics swaps Like + Lyrics for the lyrics screen's Full Screen + options pair.
+                                        AnimatedContent(
+                                            targetState = playerLyricsActive,
+                                            transitionSpec = {
+                                                (fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.85f)) togetherWith
+                                                    (fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.85f))
+                                            },
+                                            contentAlignment = Alignment.CenterEnd,
+                                            label = "playerTitleActions",
+                                        ) { lyricsActions ->
+                                            if (lyricsActions) {
+                                                PlayerLyricsActions(
+                                                    ui = playerLyricsUi,
+                                                    lyricsState = lyricsState,
+                                                    track = track,
+                                                    progressState = progressState,
+                                                    lyricsOffsetMs = lyricsOffsetMs,
+                                                    resolvedArtworkUrl = resolvedAmbientUrl,
+                                                    primaryColor = ambientColor,
+                                                    onOpenFullLyrics = { onTabChange(FullPlayerTab.LYRICS) },
+                                                    onLyricsFontScaleChange = onSetLyricsFontScale ?: {},
+                                                    onOpenLyricsOffset = { showLyricsOffsetDialog = true },
+                                                    lyricsProviderStatuses = lyricsProviderStatuses,
+                                                    onProbeLyricsProviders = onProbeLyricsProviders,
+                                                    onSelectLyricsProvider = onSelectLyricsProvider,
+                                                    onTryAnotherLyricsSource = onTryAnotherLyricsSource,
+                                                )
+                                            } else Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
-                                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        Icons.Filled.FormatQuote,
-                                                        contentDescription = stringResource(com.lastwave.app.R.string.player_show_lyrics_cd),
-                                                        modifier = Modifier.size(24.dp),
-                                                    )
+                                                PlayerLikeButton(
+                                                    liked = isLiked,
+                                                    onClick = hapticClick(if (isLiked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onToggleLiked),
+                                                    size = 48.dp,
+                                                )
+                                                val lyricsInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                                val isLyricsPressed by lyricsInteraction.collectIsPressedAsState()
+                                                val lyricsScale by animateFloatAsState(
+                                                    targetValue = if (isLyricsPressed) 0.82f else 1.0f,
+                                                    animationSpec = ExpressiveMotion.spatialSpring(),
+                                                    label = "lyricsScale",
+                                                )
+                                                LiquidGlassSurface(
+                                                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
+                                                    onClick = hapticClick { onPlayerLyricsChange(true) },
+                                                    interactionSource = lyricsInteraction,
+                                                    shape = CircleShape,
+                                                    color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                                    contentColor = Color.White.copy(alpha = 0.90f),
+                                                    tonalElevation = 0.dp,
+                                                    shadowElevation = 0.dp,
+                                                    modifier = Modifier
+                                                        .size(46.dp)
+                                                        .graphicsLayer {
+                                                            scaleX = lyricsScale
+                                                            scaleY = lyricsScale
+                                                        },
+                                                ) {
+                                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            Icons.Filled.FormatQuote,
+                                                            contentDescription = stringResource(com.lastwave.app.R.string.player_show_lyrics_cd),
+                                                            modifier = Modifier.size(24.dp),
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }

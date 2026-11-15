@@ -205,7 +205,7 @@ internal fun ModernPlainLyricsView(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.3).sp,
                 ),
-                textAlign = TextAlign.Start,
+                textAlign = if (LocalLyricsAlignment.current.centered) TextAlign.Center else TextAlign.Start,
                 color = Color.White.copy(alpha = 0.94f),
                 modifier = Modifier.fillMaxWidth(),
             )
