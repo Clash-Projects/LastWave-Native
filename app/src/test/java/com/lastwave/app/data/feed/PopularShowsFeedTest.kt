@@ -9,16 +9,26 @@ import com.lastwave.app.data.music.HomePage
 import com.lastwave.app.data.music.HomeShelf
 import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.data.music.InnerTubeMusicApi
+import com.lastwave.app.data.music.YouTubeMusicTrack
+import com.lastwave.app.data.music.YouTubeMusicEntity
+import com.lastwave.app.data.music.YouTubeMusicEntityKind
+import com.lastwave.app.data.music.YtMusicTasteSignals
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.podcast.PodcastRepository
 import com.lastwave.app.data.repository.HomeRepository
+import com.lastwave.app.data.repository.HomeAlbum
 import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.data.ytmusic.YtConnection
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import io.mockk.coEvery
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -84,6 +94,137 @@ class PopularShowsFeedTest {
     }
 
     @Test
+    fun completedRefreshDoesNotReuseOldRecommendations() = runBlocking {
+        val oldTrack = YouTubeMusicTrack("old", "Old song", "Artist")
+        val oldRelease = com.lastwave.app.data.music.YouTubePlaylistSummary("release", "Old release")
+        coEvery { innerTube.fetchHomeSongs() } returnsMany listOf(listOf(oldTrack), emptyList())
+        coEvery { innerTube.fetchNewReleases() } returnsMany listOf(listOf(oldRelease), emptyList())
+        val repository = createRepository()
+
+        val first = repository.loadFeed("test_user")
+        val refreshed = repository.loadFeed("test_user")
+
+        assertThat(first.quickPicks).contains(oldTrack)
+        assertThat(first.newReleases).containsExactly(oldRelease)
+        assertThat(refreshed.quickPicks).isEmpty()
+        assertThat(refreshed.newReleases).isEmpty()
+        assertThat(repository.getCachedFeed("test_user", YtConnection())?.newReleases).isEmpty()
+    }
+
+    @Test
+    fun refreshEmitsFreshHomePageWithoutWaitingForOtherSources() = runBlocking {
+        val oldShelf = HomeShelf("Old", items = listOf(HomeShelfItem.Track(YouTubeMusicTrack("old", "Old", "Artist"))))
+        val newShelf = HomeShelf("New", items = listOf(HomeShelfItem.Track(YouTubeMusicTrack("new", "New", "Artist"))))
+        coEvery { innerTube.fetchHomePage() } returns HomePage(shelves = listOf(oldShelf))
+        val repository = createRepository()
+        val cached = repository.loadFeed("test_user")
+
+        val homeStarted = CompletableDeferred<Unit>()
+        val homePage = CompletableDeferred<HomePage>()
+        val releases = CompletableDeferred<List<com.lastwave.app.data.music.YouTubePlaylistSummary>>()
+        val update = CompletableDeferred<FeedData>()
+        coEvery { innerTube.fetchHomePage() } coAnswers {
+            homeStarted.complete(Unit)
+            homePage.await()
+        }
+        coEvery { innerTube.fetchNewReleases() } coAnswers { releases.await() }
+        val load = async { repository.loadFeed("test_user") { update.complete(it) } }
+
+        try {
+            withTimeout(5_000) { homeStarted.await() }
+            assertThat(update.isCompleted).isFalse()
+            homePage.complete(HomePage(shelves = listOf(newShelf)))
+            val fresh = withTimeout(5_000) { update.await() }
+            assertThat(fresh.nativeShelves).containsExactly(newShelf)
+            assertThat(fresh.quickTiles).isEqualTo(cached.quickTiles)
+            assertThat(load.isCompleted).isFalse()
+        } finally {
+            homePage.complete(HomePage())
+            releases.complete(emptyList())
+        }
+        load.await()
+        Unit
+    }
+
+    @Test
+    fun timedOutDiscoveryDoesNotKeepFeedLoading() = runBlocking {
+        val connection = YtConnection(cookies = mapOf("session" to "value"), accountName = "User")
+        val discoveryCancelled = CompletableDeferred<Unit>()
+        coEvery { ytAuth.awaitLoadedConnection() } returns connection
+        coEvery { ytAuth.connection } returns MutableStateFlow(connection)
+        coEvery { innerTube.fetchTasteSignals(any(), any(), any()) } returns YtMusicTasteSignals(
+            likedTracks = listOf(YouTubeMusicTrack("video", "Song", "Artist")),
+        )
+        coEvery { recommendationRepository.relatedFor(any(), any(), any(), 30, any()) } coAnswers {
+            try {
+                awaitCancellation()
+            } finally {
+                discoveryCancelled.complete(Unit)
+            }
+        }
+
+        withTimeout(10_000) { createRepository().loadFeed("test_user") }
+        assertThat(discoveryCancelled.isCompleted).isTrue()
+    }
+
+    @Test
+    fun albumSourcesLoadInParallel() = runBlocking {
+        val artistPageStarted = CompletableDeferred<Unit>()
+        val releaseArtistPage = CompletableDeferred<Unit>()
+        val albumSearchStarted = CompletableDeferred<Unit>()
+        coEvery { innerTube.fetchHomeSongs() } returns listOf(YouTubeMusicTrack("video", "Song", "Artist"))
+        coEvery { innerTube.searchArtists("Artist", any()) } returns listOf(
+            YouTubeMusicEntity(YouTubeMusicEntityKind.ARTIST, "Artist", browseId = "artist_id"),
+        )
+        coEvery { homeRepository.fetchTopAlbums(any(), any(), any()) } returns Result.success(
+            listOf(HomeAlbum("Album", "Artist")),
+        )
+        coEvery { innerTube.fetchArtistPage(any(), any(), any(), any()) } coAnswers {
+            artistPageStarted.complete(Unit)
+            releaseArtistPage.await()
+            null
+        }
+        coEvery { innerTube.searchAlbums(any(), any()) } coAnswers {
+            albumSearchStarted.complete(Unit)
+            emptyList()
+        }
+
+        val load = async { createRepository().loadFeed("test_user") }
+        try {
+            withTimeout(5_000) { artistPageStarted.await() }
+            withTimeout(5_000) { albumSearchStarted.await() }
+            assertThat(load.isCompleted).isFalse()
+        } finally {
+            releaseArtistPage.complete(Unit)
+        }
+        load.await()
+        Unit
+    }
+
+    @Test
+    fun homeShelvesAppearBeforeOtherFeedSourcesFinish() = runBlocking {
+        val releases = CompletableDeferred<List<com.lastwave.app.data.music.YouTubePlaylistSummary>>()
+        val firstUpdate = CompletableDeferred<FeedData>()
+        val shelf = HomeShelf(
+            title = "For you",
+            items = listOf(HomeShelfItem.Track(YouTubeMusicTrack("video", "Song", "Artist"))),
+        )
+        coEvery { innerTube.fetchHomePage() } returns HomePage(shelves = listOf(shelf))
+        coEvery { innerTube.fetchNewReleases() } coAnswers { releases.await() }
+
+        val load = async { createRepository().loadFeed("test_user") { firstUpdate.complete(it) } }
+        try {
+            val update = withTimeout(5_000) { firstUpdate.await() }
+            assertThat(update.nativeShelves).containsExactly(shelf)
+            assertThat(load.isCompleted).isFalse()
+        } finally {
+            releases.complete(emptyList())
+        }
+        load.await()
+        Unit
+    }
+
+    @Test
     fun popularShows_sampleSize_isAtMost10() = runTest {
         val raw28Shows = createShows(28)
         coEvery { innerTube.fetchHomeChip(any()) } returns HomePage(
@@ -146,11 +287,12 @@ class PopularShowsFeedTest {
 
         val repository = createRepository()
         val feed = repository.loadFeed("test_user")
-        val cached = repository.getCachedFeed()
+        val cached = repository.getCachedFeed("test_user", YtConnection())
 
         assertThat(cached).isNotNull()
         assertThat(cached?.podcastShows).isEqualTo(feed.podcastShows)
         assertThat(cached?.podcastShelfTitle).isEqualTo(feed.podcastShelfTitle)
+        assertThat(repository.getCachedFeed("another_user", YtConnection())).isNull()
     }
 
     @Test

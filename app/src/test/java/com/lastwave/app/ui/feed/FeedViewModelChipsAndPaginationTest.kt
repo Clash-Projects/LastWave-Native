@@ -15,6 +15,7 @@ import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.repository.HomeRepository
+import com.lastwave.app.data.repository.HomeStats
 import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.data.ytmusic.YtConnection
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
@@ -111,6 +112,184 @@ class FeedViewModelChipsAndPaginationTest {
     }
 
     @Test
+    fun becomingVisibleDoesNotStartAnotherLoadWhileAuthIsLoading() {
+        val connection = CompletableDeferred<YtConnection>()
+        coEvery { ytAuth.awaitLoadedConnection() } coAnswers { connection.await() }
+        coEvery { feedRepository.loadFeed(any(), any()) } returns FeedData()
+
+        val vm = createViewModel()
+        vm.onVisible()
+        coVerify(exactly = 0) { feedRepository.loadFeed(any(), any()) }
+
+        connection.complete(YtConnection())
+        coVerify(exactly = 1) { feedRepository.loadFeed(any(), any()) }
+    }
+
+    @Test
+    fun cachedFeedRemainsVisibleDuringReload() {
+        val cached = FeedData(nativeShelves = listOf(createShelf("Cached", "cached_video")))
+        val pending = CompletableDeferred<FeedData>()
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns cached
+        coEvery { feedRepository.loadFeed(any(), any()) } coAnswers { pending.await() }
+
+        val vm = createViewModel()
+        vm.onVisible()
+
+        assertThat(vm.uiState.value.feedData).isEqualTo(cached)
+        assertThat(vm.uiState.value.isLoading).isFalse()
+        coVerify(exactly = 1) { feedRepository.loadFeed(any(), any()) }
+        pending.complete(cached)
+    }
+
+    @Test
+    fun defaultPaginationWaitsForInitialFeedToFinish() {
+        val feed = FeedData(nativeShelves = listOf(createShelf("Home", "video")), homeContinuationToken = "next")
+        val pending = CompletableDeferred<FeedData>()
+        coEvery { feedRepository.loadFeed(any(), any()) } coAnswers {
+            secondArg<(FeedData) -> Unit>()(feed)
+            pending.await()
+        }
+        coEvery { innerTube.fetchHomeContinuation("next") } returns HomePage()
+
+        val vm = createViewModel()
+        vm.loadMoreHomeShelves()
+        coVerify(exactly = 0) { innerTube.fetchHomeContinuation(any()) }
+
+        pending.complete(feed)
+        vm.loadMoreHomeShelves()
+        waitFor { !vm.uiState.value.isLoadingMore }
+        coVerify(exactly = 1) { innerTube.fetchHomeContinuation("next") }
+    }
+
+    @Test
+    fun refreshKeepsPagedShelvesAndUpdatesThemWithoutChangingTheirPositions() {
+        val first = createShelf("First", "first")
+        val page = createShelf("Paged", "old")
+        val updatedPage = createShelf("Paged", "updated")
+        val added = createShelf("New", "new")
+        val initial = FeedData(nativeShelves = listOf(first), homeContinuationToken = "page", lastUpdatedMillis = 1)
+        val refreshed = FeedData(nativeShelves = listOf(updatedPage, added), homeContinuationToken = "fresh", lastUpdatedMillis = 2)
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns initial
+        coEvery { feedRepository.loadFeed(any(), any()) } returns initial
+        coEvery { innerTube.fetchHomeContinuation("page") } returns HomePage(shelves = listOf(page))
+
+        val vm = createViewModel()
+        vm.loadMoreHomeShelves()
+        waitFor { !vm.uiState.value.isLoadingMore }
+        assertThat(vm.uiState.value.pagedShelves).containsExactly(page)
+
+        coEvery { feedRepository.loadFeed(any(), any()) } returns refreshed
+        vm.refresh()
+
+        assertThat(vm.uiState.value.feedData.nativeShelves).containsExactly(first)
+        assertThat(vm.uiState.value.pagedShelves).containsExactly(updatedPage, added).inOrder()
+        assertThat(vm.uiState.value.defaultContinuationToken).isEqualTo("fresh")
+    }
+
+    @Test
+    fun refreshKeepsRemovedShelvesInPlaceAfterTheFinalFeedArrives() {
+        val first = createShelf("First", "first")
+        val second = createShelf("Second", "second")
+        val added = createShelf("New", "new")
+        val cached = FeedData(nativeShelves = listOf(first, second), lastUpdatedMillis = 1)
+        val partial = cached.copy(nativeShelves = listOf(second, added))
+        val allowUpdate = CompletableDeferred<Unit>()
+        val finalResult = CompletableDeferred<FeedData>()
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns cached
+        coEvery { feedRepository.loadFeed(any(), any()) } coAnswers {
+            allowUpdate.await()
+            secondArg<(FeedData) -> Unit>()(partial)
+            finalResult.await()
+        }
+
+        val vm = createViewModel()
+        vm.refresh()
+        allowUpdate.complete(Unit)
+        assertThat(vm.uiState.value.feedData.nativeShelves).containsExactly(first, second, added).inOrder()
+
+        finalResult.complete(partial)
+        assertThat(vm.uiState.value.feedData.nativeShelves).containsExactly(first, second, added).inOrder()
+        assertThat(vm.uiState.value.lastCompletedFeed).isEqualTo(partial)
+        assertThat(hasFreshFeedSection("yt:First", vm.uiState.value.lastCompletedFeed, emptySet(), "First")).isFalse()
+    }
+
+    @Test
+    fun continuationRefreshesRetainedPageInPlaceAndStopsAtTheEnd() {
+        val first = createShelf("First", "first")
+        val oldPage = createShelf("Paged", "old")
+        val newPage = createShelf("Paged", "new")
+        val initial = FeedData(nativeShelves = listOf(first), homeContinuationToken = "old-token", lastUpdatedMillis = 1)
+        val refreshed = FeedData(nativeShelves = listOf(first), homeContinuationToken = "new-token", lastUpdatedMillis = 2)
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns initial
+        coEvery { feedRepository.loadFeed(any(), any()) } returns initial
+        coEvery { innerTube.fetchHomeContinuation("old-token") } returns HomePage(shelves = listOf(oldPage))
+        coEvery { innerTube.fetchHomeContinuation("new-token") } returns HomePage(shelves = listOf(newPage))
+
+        val vm = createViewModel()
+        vm.loadMoreHomeShelves()
+        waitFor { !vm.uiState.value.isLoadingMore }
+        assertThat(vm.uiState.value.pagedShelves).containsExactly(oldPage)
+
+        coEvery { feedRepository.loadFeed(any(), any()) } returns refreshed
+        vm.refresh()
+        assertThat(hasFreshFeedSection("paged_shelf_0_Paged", vm.uiState.value.lastCompletedFeed,
+            vm.uiState.value.freshPagedShelfTitles, "Paged")).isFalse()
+
+        vm.loadMoreHomeShelves()
+        waitFor { !vm.uiState.value.isLoadingMore }
+        assertThat(vm.uiState.value.pagedShelves).containsExactly(newPage)
+        assertThat(hasFreshFeedSection("paged_shelf_0_Paged", vm.uiState.value.lastCompletedFeed,
+            vm.uiState.value.freshPagedShelfTitles, "Paged")).isTrue()
+        vm.loadMoreHomeShelves()
+        coVerify(exactly = 1) { innerTube.fetchHomeContinuation("new-token") }
+    }
+
+    @Test
+    fun refreshIndicatorStopsWhenFreshFeedArrivesWhileRemainingWorkContinues() {
+        val cached = FeedData(nativeShelves = listOf(createShelf("Cached", "cached")))
+        val fresh = FeedData(nativeShelves = listOf(createShelf("Fresh", "fresh")))
+        val allowUpdate = CompletableDeferred<Unit>()
+        val finalResult = CompletableDeferred<FeedData>()
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns cached
+        coEvery { feedRepository.loadFeed(any(), any()) } coAnswers {
+            allowUpdate.await()
+            secondArg<(FeedData) -> Unit>()(fresh)
+            finalResult.await()
+        }
+
+        val vm = createViewModel()
+        vm.refresh()
+        assertThat(vm.uiState.value.isRefreshIndicatorVisible).isTrue()
+
+        allowUpdate.complete(Unit)
+        assertThat(vm.uiState.value.feedData.nativeShelves)
+            .containsExactlyElementsIn(cached.nativeShelves + fresh.nativeShelves).inOrder()
+        assertThat(vm.uiState.value.isRefreshIndicatorVisible).isFalse()
+        assertThat(vm.uiState.value.isRefreshing).isTrue()
+        assertThat(vm.uiState.value.isFeedUpdating).isTrue()
+
+        finalResult.complete(fresh)
+        assertThat(vm.uiState.value.isRefreshing).isFalse()
+        assertThat(vm.uiState.value.isFeedUpdating).isFalse()
+    }
+
+    @Test
+    fun refreshFinishesWithoutWaitingForProfileStats() {
+        val feed = FeedData(nativeShelves = listOf(createShelf("Home", "video")))
+        val stats = CompletableDeferred<Result<HomeStats>>()
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns feed
+        coEvery { feedRepository.loadFeed(any(), any()) } returns feed
+        coEvery { homeRepository.fetchStats() } coAnswers { stats.await() }
+
+        val vm = createViewModel()
+        vm.refresh()
+
+        assertThat(vm.uiState.value.feedData).isEqualTo(feed)
+        assertThat(vm.uiState.value.isRefreshing).isFalse()
+        stats.complete(Result.failure(Exception("no stats")))
+    }
+
+    @Test
     fun selectChip_togglesSelection_andLoadsChipShelves() {
         val chip = HomeChip(title = "Energize", params = "energize_params_1")
         val chipShelf = createShelf("High Energy Beats", "energy_vid_1")
@@ -166,7 +345,7 @@ class FeedViewModelChipsAndPaginationTest {
             homeContinuationToken = "page1_token",
         )
         coEvery { feedRepository.loadFeed(any(), any()) } returns initialFeedData
-        coEvery { feedRepository.getCachedFeed() } returns initialFeedData
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns initialFeedData
         coEvery { innerTube.fetchHomeContinuation("page1_token") } returns HomePage(
             shelves = listOf(page2Shelf),
             chips = emptyList(),
@@ -202,7 +381,7 @@ class FeedViewModelChipsAndPaginationTest {
             homeContinuationToken = "token_dup_test",
         )
         coEvery { feedRepository.loadFeed(any(), any()) } returns initialFeedData
-        coEvery { feedRepository.getCachedFeed() } returns initialFeedData
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns initialFeedData
         coEvery { innerTube.fetchHomeContinuation("token_dup_test") } returns HomePage(
             shelves = listOf(duplicateShelf, distinctShelf),
             chips = emptyList(),
@@ -227,7 +406,7 @@ class FeedViewModelChipsAndPaginationTest {
             homeContinuationToken = null,
         )
         coEvery { feedRepository.loadFeed(any(), any()) } returns initialFeedData
-        coEvery { feedRepository.getCachedFeed() } returns initialFeedData
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns initialFeedData
 
         val vm = createViewModel()
         vm.loadFeed()
@@ -339,7 +518,7 @@ class FeedViewModelChipsAndPaginationTest {
     fun selectingChipDuringHomePagination_releasesLoadingMore() {
         val feed = FeedData(homeContinuationToken = "home-next")
         coEvery { feedRepository.loadFeed(any(), any()) } returns feed
-        coEvery { feedRepository.getCachedFeed() } returns feed
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns feed
         val response = CompletableDeferred<HomePage>()
         val started = AtomicBoolean(false)
         coEvery { innerTube.fetchHomeContinuation("home-next") } coAnswers {
@@ -369,7 +548,7 @@ class FeedViewModelChipsAndPaginationTest {
     fun deselectingChipDuringPagination_releasesLoadingMore() {
         val feed = FeedData(homeContinuationToken = "home-next")
         coEvery { feedRepository.loadFeed(any(), any()) } returns feed
-        coEvery { feedRepository.getCachedFeed() } returns feed
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns feed
         val chip = HomeChip(title = "Relax", params = "relax")
         coEvery { innerTube.fetchHomeChip(chip) } returns HomePage(
             shelves = listOf(createShelf("Relaxing", "relax-1")),

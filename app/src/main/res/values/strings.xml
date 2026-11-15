@@ -787,6 +787,8 @@
     <string name="feed_see_all">See all</string>
     <string name="feed_discover">Discover New Music</string>
     <string name="feed_discover_sub">Handpicked tracks matched to your taste</string>
+    <string name="feed_discover_empty">No recommendations available</string>
+    <string name="feed_section_not_in_refresh">Not in the latest refresh</string>
     <string name="feed_fresh">Fresh finds</string>
     <string name="feed_fresh_sub">New tracks beyond your usual rotation</string>
     <string name="feed_jump">Jump back in</string>
