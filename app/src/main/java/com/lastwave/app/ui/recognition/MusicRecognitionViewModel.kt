@@ -8,6 +8,8 @@ import com.lastwave.app.data.recognition.PcmResampler
 import com.lastwave.app.data.recognition.RecognitionClient
 import com.lastwave.app.data.recognition.RecognitionFailure
 import com.lastwave.app.data.recognition.RecognizedSong
+import com.lastwave.app.ui.navigation.AppRouteNavigator
+import com.lastwave.app.ui.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -32,6 +34,7 @@ sealed interface RecognitionState {
 @HiltViewModel
 class MusicRecognitionViewModel @Inject constructor(
     private val client: RecognitionClient,
+    private val routeNavigator: AppRouteNavigator,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<RecognitionState>(RecognitionState.Idle)
@@ -72,6 +75,11 @@ class MusicRecognitionViewModel @Inject constructor(
 
     fun onPermissionDenied() {
         _state.value = RecognitionState.Failed(RecognitionError.PERMISSION)
+    }
+
+    fun searchFor(song: RecognizedSong) {
+        dismiss()
+        routeNavigator.navigateTo(Screen.Search.createRoute(listOf(song.title, song.artist).filter { it.isNotBlank() }.joinToString(" ")))
     }
 
     /** Stops listening or identifying and closes the sheet. */

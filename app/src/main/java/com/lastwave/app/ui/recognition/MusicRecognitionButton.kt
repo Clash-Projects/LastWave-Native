@@ -57,10 +57,10 @@ import com.lastwave.app.ui.common.HeaderActionIcon
 /**
  * Header action that listens to the room and identifies the playing song.
  * [key] keeps each screen's recognition state separate when several are composed
- * at once (pager tabs). [onSearch] receives a ready-made query for the match.
+ * at once (pager tabs).
  */
 @Composable
-fun MusicRecognitionButton(key: String, onSearch: (String) -> Unit) {
+fun MusicRecognitionButton(key: String) {
     val viewModel: MusicRecognitionViewModel = hiltViewModel(key = key)
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -88,10 +88,7 @@ fun MusicRecognitionButton(key: String, onSearch: (String) -> Unit) {
                 )
                 viewModel.dismiss()
             },
-            onSearch = { song ->
-                viewModel.dismiss()
-                onSearch(listOf(song.title, song.artist).filter { it.isNotBlank() }.joinToString(" "))
-            },
+            onSearch = viewModel::searchFor,
         )
     }
 }
