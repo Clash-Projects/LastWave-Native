@@ -21,7 +21,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -625,6 +628,12 @@ class SettingsPreferences @Inject constructor(
                 musicHapticsPauseOnBatterySaver = p.readSafely(Keys.MUSIC_HAPTICS_BATTERY_SAVER) ?: true,
             )
         }
+        // Cold, every one of ~60 collectors (mostly on Main) re-ran this mapping and
+        // its JSON parse on each write to this DataStore: 0.5 s main-thread stalls
+        // at launch. Map once per change off Main and share one value.
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.Default)
+        .shareIn(CoroutineScope(Dispatchers.Default + SupervisorJob()), SharingStarted.Eagerly, replay = 1)
 
     val storageCacheLimitMb: Flow<Int> = dataStore.data
         .recoverPreferences("SettingsPreferences")
