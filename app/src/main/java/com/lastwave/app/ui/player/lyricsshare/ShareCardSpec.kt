@@ -21,6 +21,8 @@ data class ShareCardSpec(
     val derivedColors: DerivedCardColors = ColorContrastHelper.deriveTextColors(swatchColor),
     val isCoverBackground: Boolean = false,
     val isRtl: Boolean = false,
+    /** Settings "Use Bold Font": the card draws the same heavier lyric cut the lyrics screen does. */
+    val boldFont: Boolean = false,
     val targetWidth: Int = 1080,
     val scaleFactor: Float = 1.0f,
 )

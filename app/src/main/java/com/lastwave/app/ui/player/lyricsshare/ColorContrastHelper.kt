@@ -8,13 +8,17 @@ import kotlin.math.min
 import kotlin.math.pow
 
 /**
- * Metadata for a color swatch available in the Lyrics Share color picker.
+ * A Lyrics Share picker entry, YouTube Music style: [color] is the faint card
+ * fill and [darkColor] the deeper shade of the same colour behind the card.
+ * [nameRes] 0 means the plain [label] is the accessibility name.
  */
 data class ColorSwatch(
     val id: String,
     val nameRes: Int,
     val color: Int, // ARGB packed integer
     val isCoverArt: Boolean = false,
+    val darkColor: Int = ColorContrastHelper.darken(color),
+    val label: String = "",
 )
 
 /**
@@ -35,7 +39,14 @@ object ColorContrastHelper {
     const val BRAND_LIME: Int = 0xFFC9FB00.toInt()
     const val DEFAULT_DARK: Int = 0xFF12161A.toInt()
     const val PURE_WHITE: Int = 0xFFFFFFFF.toInt()
-    const val PURE_BLACK: Int = 0xFF101010.toInt()
+    const val PURE_BLACK: Int = 0xFF333333.toInt()
+
+    /** The ~70% shade YouTube Music pairs with every card colour for the screen behind it. */
+    fun darken(color: Int, factor: Float = 0.70f): Int = AndroidColor.rgb(
+        (AndroidColor.red(color) * factor).toInt(),
+        (AndroidColor.green(color) * factor).toInt(),
+        (AndroidColor.blue(color) * factor).toInt(),
+    )
 
     /**
      * Calculates the WCAG 2.1 relative luminance of an sRGB color.
@@ -122,82 +133,44 @@ object ColorContrastHelper {
             )
         }
 
-        val bgLum = relativeLuminance(backgroundColor)
+        // The card is the picked colour itself. Remapping every swatch to one deep
+        // tone is what made all the colours render as the same few dark cards.
+        val bg = backgroundColor or 0xFF000000.toInt()
         val hsv = FloatArray(3)
-        AndroidColor.colorToHSV(backgroundColor, hsv)
+        AndroidColor.colorToHSV(bg, hsv)
         val hue = hsv[0]
         val sat = hsv[1]
-        val value = hsv[2]
+        // Text goes whichever way (light or dark) has more headroom on this colour,
+        // tinted with the card's own hue like YouTube Music's cream-on-brown.
+        val light = contrastRatio(PURE_WHITE, bg) >= contrastRatio(0xFF000000.toInt(), bg)
 
-        // 1. Pure White / very light backgrounds
-        if (bgLum > 0.80 || (sat < 0.08f && value > 0.90f)) {
-            val bg = 0xFFFFFFFF.toInt()
-            val lyricsColor = ensureMinContrast(0xFF101418.toInt(), bg, 7.0, preferLight = false)
-            val secColor = ensureMinContrast(0xFF475569.toInt(), bg, 4.5, preferLight = false)
-            val brandColor = ensureMinContrast(0xFF1E293B.toInt(), bg, 4.5, preferLight = false)
-            return DerivedCardColors(
-                backgroundColor = bg,
-                lyricsTextColor = lyricsColor,
-                secondaryTextColor = secColor,
-                brandTextColor = brandColor,
-                dividerColor = 0x26000000.toInt(),
-                isDarkBackground = false,
-            )
+        fun tint(satFactor: Float, maxSat: Float, value: Float): Int {
+            val s = (sat * satFactor).coerceAtMost(maxSat)
+            return AndroidColor.HSVToColor(0xFF, floatArrayOf(hue, s, value))
         }
 
-        // 2. Pure Black / near-black backgrounds
-        if (bgLum < 0.02 && sat < 0.15f) {
-            val bg = 0xFF101214.toInt()
-            val lyricsColor = ensureMinContrast(0xFFF9FAFB.toInt(), bg, 7.0, preferLight = true)
-            val secColor = ensureMinContrast(0xFFA0AEC0.toInt(), bg, 4.5, preferLight = true)
-            val brandColor = ensureMinContrast(0xFFE2E8F0.toInt(), bg, 4.5, preferLight = true)
-            return DerivedCardColors(
-                backgroundColor = bg,
-                lyricsTextColor = lyricsColor,
-                secondaryTextColor = secColor,
-                brandTextColor = brandColor,
-                dividerColor = 0x33FFFFFF.toInt(),
-                isDarkBackground = true,
-            )
+        // ensureMinContrast falls back to pure white/black, so text on a mid tone
+        // still gets the best contrast the colour allows.
+        val lyricsColor: Int
+        val secondaryColor: Int
+        val brandColor: Int
+        if (light) {
+            lyricsColor = ensureMinContrast(tint(0.45f, 0.40f, 1.0f), bg, 7.0, preferLight = true)
+            secondaryColor = ensureMinContrast(tint(0.35f, 0.30f, 0.86f), bg, 4.5, preferLight = true)
+            brandColor = ensureMinContrast(tint(0.40f, 0.35f, 0.94f), bg, 4.5, preferLight = true)
+        } else {
+            lyricsColor = ensureMinContrast(tint(1.0f, 0.90f, 0.16f), bg, 7.0, preferLight = false)
+            secondaryColor = ensureMinContrast(tint(0.8f, 0.70f, 0.30f), bg, 4.5, preferLight = false)
+            brandColor = ensureMinContrast(tint(1.0f, 0.85f, 0.22f), bg, 4.5, preferLight = false)
         }
-
-        // 3. Rich Saturated Colors (YouTube Music style: deep saturated background + same-hue tinted text)
-        val richBgSat = (sat * 1.15f).coerceIn(0.65f, 1.0f)
-        val richBgVal = if (value > 0.70f) 0.22f else value.coerceIn(0.18f, 0.28f)
-        val richBg = AndroidColor.HSVToColor(0xFF, floatArrayOf(hue, richBgSat, richBgVal))
-
-        // Same-hue subtle light tint for lyrics
-        val tintSat = (sat * 0.16f).coerceIn(0.08f, 0.20f)
-        val tintVal = 0.98f
-        val rawLyrics = AndroidColor.HSVToColor(0xFF, floatArrayOf(hue, tintSat, tintVal))
-        val lyricsColor = ensureMinContrast(rawLyrics, richBg, 7.0, preferLight = true)
-
-        // Secondary text: same hue, slightly softer tint
-        val secSat = (sat * 0.22f).coerceIn(0.12f, 0.26f)
-        val secVal = 0.82f
-        val rawSec = AndroidColor.HSVToColor(0xFF, floatArrayOf(hue, secSat, secVal))
-        val secondaryColor = ensureMinContrast(rawSec, richBg, 4.5, preferLight = true)
-
-        // Brand lockup: bold tint
-        val brandSat = (sat * 0.18f).coerceIn(0.10f, 0.22f)
-        val brandVal = 0.90f
-        val rawBrand = AndroidColor.HSVToColor(0xFF, floatArrayOf(hue, brandSat, brandVal))
-        val brandColor = ensureMinContrast(rawBrand, richBg, 4.5, preferLight = true)
-
-        val dividerColor = AndroidColor.argb(
-            50,
-            AndroidColor.red(secondaryColor),
-            AndroidColor.green(secondaryColor),
-            AndroidColor.blue(secondaryColor),
-        )
 
         return DerivedCardColors(
-            backgroundColor = richBg,
+            backgroundColor = bg,
             lyricsTextColor = lyricsColor,
             secondaryTextColor = secondaryColor,
             brandTextColor = brandColor,
-            dividerColor = dividerColor,
-            isDarkBackground = true,
+            dividerColor = (secondaryColor and 0x00FFFFFF) or (0x40 shl 24),
+            isDarkBackground = light,
         )
     }
 
@@ -240,9 +213,19 @@ object ColorContrastHelper {
         return AndroidColor.rgb(r, g, b)
     }
 
+    private fun shade(color: Int, sat: (Float) -> Float, value: (Float) -> Float): Int {
+        val hsv = FloatArray(3)
+        AndroidColor.colorToHSV(color, hsv)
+        // A grey cover keeps its grey; forcing saturation would invent a hue.
+        val s = if (hsv[1] < 0.12f) hsv[1] else sat(hsv[1])
+        return AndroidColor.HSVToColor(0xFF, floatArrayOf(hsv[0], s, value(hsv[2])))
+    }
+
     /**
-     * Extracts palette colors from a software bitmap and combines them with theme tokens.
-     * When [artBitmap] is present, prepends the Cover swatch as the FIRST item in the list.
+     * Picker entries. The first three come from the cover (the theme accent
+     * stands in until the artwork loads, so the default re-picks from the real
+     * cover): a deep tone, the vibrant colour and a pale tint - YouTube Music's
+     * cream-on-brown look for most covers. Then YouTube Music's fixed faint/dark pairs.
      */
     fun extractSwatches(
         artBitmap: Bitmap?,
@@ -251,34 +234,36 @@ object ColorContrastHelper {
         val palette = artBitmap?.let {
             runCatching { Palette.from(it).clearFilters().generate() }.getOrNull()
         }
-
-        val vibrant = palette?.vibrantSwatch?.rgb
-            ?: palette?.lightVibrantSwatch?.rgb
+        val seed = palette?.vibrantSwatch?.rgb
+            ?: palette?.darkVibrantSwatch?.rgb
             ?: palette?.dominantSwatch?.rgb
-            ?: 0xFF2563EB.toInt()
+            ?: themeAccentColor
+        val pale = palette?.lightVibrantSwatch?.rgb
+            ?: palette?.lightMutedSwatch?.rgb
+            ?: palette?.mutedSwatch?.rgb
+            ?: seed
 
-        val muted = palette?.mutedSwatch?.rgb
-            ?: palette?.darkMutedSwatch?.rgb
-            ?: 0xFF64748B.toInt()
-
-        val dominant = palette?.dominantSwatch?.rgb
-            ?: 0xFF1E293B.toInt()
-
-        val darkVariant = palette?.darkVibrantSwatch?.rgb
-            ?: palette?.darkMutedSwatch?.rgb
-            ?: 0xFF0F172A.toInt()
-
-        val list = mutableListOf<ColorSwatch>()
-
-        list.add(ColorSwatch("song_vibrant", com.lastwave.app.R.string.lyshare_color_song, vibrant))
-        list.add(ColorSwatch("muted", com.lastwave.app.R.string.lyshare_color_muted, muted))
-        list.add(ColorSwatch("dominant", com.lastwave.app.R.string.lyshare_color_dominant, dominant))
-        list.add(ColorSwatch("dark", com.lastwave.app.R.string.lyshare_color_dark, darkVariant))
-        list.add(ColorSwatch("white", com.lastwave.app.R.string.lyshare_color_white, PURE_WHITE))
-        list.add(ColorSwatch("black", com.lastwave.app.R.string.lyshare_color_black, PURE_BLACK))
-        list.add(ColorSwatch("accent", com.lastwave.app.R.string.lyshare_color_accent, themeAccentColor))
-        list.add(ColorSwatch("brand", com.lastwave.app.R.string.lyshare_color_brand, BRAND_LIME))
-
-        return list
+        val deep = shade(seed, { it.coerceIn(0.60f, 0.95f) }, { 0.24f })
+        val cover = listOf(
+            ColorSwatch("song_deep", com.lastwave.app.R.string.lyshare_color_song, deep, darkColor = darken(deep, 0.65f)),
+            ColorSwatch("song_vibrant", com.lastwave.app.R.string.lyshare_color_dominant, shade(seed, { it.coerceIn(0.45f, 0.85f) }, { it.coerceIn(0.55f, 0.80f) })),
+            ColorSwatch("song_pale", com.lastwave.app.R.string.lyshare_color_muted, shade(pale, { it.coerceIn(0.20f, 0.45f) }, { it.coerceIn(0.85f, 0.97f) })),
+        )
+        val presets = listOf(
+            ColorSwatch("white", com.lastwave.app.R.string.lyshare_color_white, PURE_WHITE, darkColor = 0xFFB2B2B2.toInt()),
+            ColorSwatch("black", com.lastwave.app.R.string.lyshare_color_black, PURE_BLACK, darkColor = 0xFF0F0F0F.toInt()),
+            ColorSwatch("teal", 0, 0xFF06413F.toInt(), darkColor = 0xFF052D2C.toInt(), label = "Deep teal"),
+            ColorSwatch("navy", 0, 0xFF073B86.toInt(), darkColor = 0xFF062A5E.toInt(), label = "Navy blue"),
+            ColorSwatch("maroon", 0, 0xFFDD5851.toInt(), darkColor = 0xFF9B3E39.toInt(), label = "Maroon"),
+            ColorSwatch("green", 0, 0xFFAEF3A3.toInt(), darkColor = 0xFF79AA72.toInt(), label = "Green"),
+            ColorSwatch("lavender", 0, 0xFFD29BF6.toInt(), darkColor = 0xFF946DAC.toInt(), label = "Lavender"),
+            ColorSwatch("light_purple", 0, 0xFFAAACFF.toInt(), darkColor = 0xFF7678B1.toInt(), label = "Light purple"),
+            ColorSwatch("peach", 0, 0xFFFFB59E.toInt(), label = "Peach"),
+            ColorSwatch("sky", 0, 0xFF9ED8FF.toInt(), label = "Sky"),
+            ColorSwatch("wine", 0, 0xFF4A1230.toInt(), label = "Wine"),
+            ColorSwatch("brand", com.lastwave.app.R.string.lyshare_color_brand, BRAND_LIME),
+        )
+        // The picker keys selection by colour, so a cover tone equal to a preset must not appear twice.
+        return (cover + presets).distinctBy { it.color }
     }
 }
