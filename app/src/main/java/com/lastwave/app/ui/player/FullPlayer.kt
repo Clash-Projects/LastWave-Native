@@ -932,7 +932,8 @@ internal fun FullPlayer(
                 val playerLyricsScrim = animateFloatAsState(
                     targetValue = when {
                         !playerLyricsActive || currentTab != FullPlayerTab.NOW_PLAYING -> 0f
-                        showFullBleed -> 0.5f
+                        // A moving canvas behind text needs a little more than a still cover.
+                        showFullBleed -> if (activeCanvas != null) 0.58f else 0.5f
                         else -> 0.2f
                     },
                     animationSpec = tween(320),
@@ -1325,9 +1326,15 @@ internal fun FullPlayer(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     val hasArtwork = !track.artworkUrl.isNullOrBlank() || !resolvedAmbientUrl.isNullOrBlank() || activeCanvas != null
-                                    // Player Lyrics takes the sleeve's place; a video stays and moves up.
+                                    // Player Lyrics takes the sleeve's place and a video moves up. A
+                                    // sleeve canvas stays composed, dimmed, so it keeps playing under
+                                    // the lyrics instead of being disposed and restarted.
                                     val sleeveAlpha by animateFloatAsState(
-                                        targetValue = if ((showFullBleed && hasArtwork) || (playerLyricsActive && !isVideoActive)) 0f else 1f,
+                                        targetValue = when {
+                                            showFullBleed && hasArtwork -> 0f
+                                            playerLyricsActive && !isVideoActive -> if (showSleeveCanvas) 0.3f else 0f
+                                            else -> 1f
+                                        },
                                         animationSpec = tween(350),
                                         label = "sleeveAlpha",
                                     )
