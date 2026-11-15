@@ -33,6 +33,11 @@ class ArtistExtendedTracksTest {
         assertTrue(isTrackByOrFeaturingArtist("Taylor Swift", "Fortnight (feat. Post Malone)", "Post Malone"))
         assertTrue(isTrackByOrFeaturingArtist("Metro Boomin", "Creepin' (with The Weeknd)", "The Weeknd"))
         assertTrue(isTrackByOrFeaturingArtist("Travis Scott", "SICKO MODE ft. Drake", "Drake"))
+        // Multilingual featuring markers (Italian/Spanish "con", "e", French "avec", German "mit")
+        assertTrue(isTrackByOrFeaturingArtist("Charlie Charles", "Peace & Love (con Sfera Ebbasta e Ghali)", "Sfera Ebbasta"))
+        assertTrue(isTrackByOrFeaturingArtist("Capo Plaza", "Tesla (con Sfera Ebbasta e DrefGold)", "Sfera Ebbasta"))
+        assertTrue(isTrackByOrFeaturingArtist("Tedua", "Hoe (con Sfera Ebbasta)", "Sfera Ebbasta"))
+        assertTrue(isTrackByOrFeaturingArtist("GIMS", "Hola Señorita (avec Maluma)", "Maluma"))
     }
 
     @Test

@@ -312,8 +312,9 @@ class ArtistRepository @Inject constructor(
     }
 }
 
-private val BRACKETED_FEAT_REGEX = Regex("""(?i)[\(\[]\s*(?:feat\.?|featuring|ft\.?|with)\s+([^()\[\]]+)[\)\]]""")
-private val UNBRACKETED_FEAT_REGEX = Regex("""(?i)\b(?:feat\.?|featuring|ft\.?)\s+([^-—–()\[\]|]+)""")
+private val BRACKETED_FEAT_REGEX = Regex("""(?i)[\(\[]\s*(?:feat\.?|featuring|ft\.?|with|con|avec|mit)\s+([^()\[\]]+)[\)\]]""")
+private val UNBRACKETED_FEAT_REGEX = Regex("""(?i)\b(?:feat\.?|featuring|ft\.?|con)\s+([^-—–()\[\]|]+)""")
+private val FEAT_CLAUSE_SEPARATOR = Regex("""(?i)(?:\s*,\s*|\s*&\s*|\s*;\s*|\s*\/\s*|\s*\+\s*|\s+(?:and|e|y|con|with|ft\.?|feat\.?|x)\s+)""")
 
 internal fun isTrackByOrFeaturingArtist(
     trackArtist: String,
@@ -324,11 +325,16 @@ internal fun isTrackByOrFeaturingArtist(
     if (normTarget.isBlank()) return false
     val compactTarget = normTarget.replace(" ", "")
 
-    val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(trackArtist)
-    for (artist in splitArtists) {
-        val norm = com.lastwave.app.data.music.TextMatch.normalize(artist)
+    fun matchesArtistCandidate(candidate: String): Boolean {
+        val norm = com.lastwave.app.data.music.TextMatch.normalize(candidate)
         if (norm == normTarget || norm.replace(" ", "") == compactTarget) return true
         if (norm.isNotBlank() && com.lastwave.app.data.music.TextMatch.similarity(norm, normTarget) >= 88) return true
+        return false
+    }
+
+    val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(trackArtist)
+    for (artist in splitArtists) {
+        if (matchesArtistCandidate(artist)) return true
     }
 
     val normRaw = com.lastwave.app.data.music.TextMatch.normalize(trackArtist)
@@ -337,19 +343,21 @@ internal fun isTrackByOrFeaturingArtist(
 
     for (match in BRACKETED_FEAT_REGEX.findAll(trackTitle)) {
         val featContent = match.groupValues[1]
+        for (artist in featContent.split(FEAT_CLAUSE_SEPARATOR)) {
+            if (matchesArtistCandidate(artist.trim())) return true
+        }
         for (artist in com.lastwave.app.util.ArtistHelper.splitArtists(featContent)) {
-            val norm = com.lastwave.app.data.music.TextMatch.normalize(artist)
-            if (norm == normTarget || norm.replace(" ", "") == compactTarget) return true
-            if (norm.isNotBlank() && com.lastwave.app.data.music.TextMatch.similarity(norm, normTarget) >= 88) return true
+            if (matchesArtistCandidate(artist)) return true
         }
     }
 
     for (match in UNBRACKETED_FEAT_REGEX.findAll(trackTitle)) {
         val featContent = match.groupValues[1]
+        for (artist in featContent.split(FEAT_CLAUSE_SEPARATOR)) {
+            if (matchesArtistCandidate(artist.trim())) return true
+        }
         for (artist in com.lastwave.app.util.ArtistHelper.splitArtists(featContent)) {
-            val norm = com.lastwave.app.data.music.TextMatch.normalize(artist)
-            if (norm == normTarget || norm.replace(" ", "") == compactTarget) return true
-            if (norm.isNotBlank() && com.lastwave.app.data.music.TextMatch.similarity(norm, normTarget) >= 88) return true
+            if (matchesArtistCandidate(artist)) return true
         }
     }
 

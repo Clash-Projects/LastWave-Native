@@ -1312,7 +1312,7 @@ class InnerTubeMusicApi @Inject constructor(
     ): List<YouTubeMusicTrack> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
         var config = getWebConfig()
-        suspend fun runSearch(params: String?): List<YouTubeMusicTrack> {
+        suspend fun runSearch(params: String?): Pair<List<YouTubeMusicTrack>, String?> {
             val body = buildJsonObject {
                 put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
                 put("query", query.trim())
@@ -1326,31 +1326,61 @@ class InnerTubeMusicApi @Inject constructor(
                 userAgent = WEB_USER_AGENT,
                 callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
             )
-            return parseSongRenderers(root)
+            return parseSongRenderers(root) to genericContinuationToken(root)
         }
-        var filtered = runCatching { runSearch("EgWKAQIIAWoKEAkQBRAKEAMQBA==") }.getOrDefault(emptyList())
+        var filtered = runCatching { runSearch("EgWKAQIIAWoKEAkQBRAKEAMQBA==") }.getOrDefault(emptyList<YouTubeMusicTrack>() to null)
         // Unfiltered POST only when the filtered search came back empty (rare miss).
-        var results = if (filtered.isEmpty()) {
-            runCatching { runSearch(null) }.getOrDefault(emptyList())
+        var results = if (filtered.first.isEmpty()) {
+            runCatching { runSearch(null) }.getOrDefault(emptyList<YouTubeMusicTrack>() to null)
         } else {
             filtered
         }
-        if (results.isEmpty()) {
+        if (results.first.isEmpty()) {
             webConfig = null
             val freshVisitor = fetchFreshVisitorData()
             if (isValidVisitorData(freshVisitor)) {
                 config = WebConfig(FALLBACK_WEB_KEY, FALLBACK_WEB_VERSION, freshVisitor)
                 webConfig = config
-                filtered = runCatching { runSearch("EgWKAQIIAWoKEAkQBRAKEAMQBA==") }.getOrDefault(emptyList())
-                results = if (filtered.isEmpty()) {
-                    runCatching { runSearch(null) }.getOrDefault(emptyList())
+                filtered = runCatching { runSearch("EgWKAQIIAWoKEAkQBRAKEAMQBA==") }.getOrDefault(emptyList<YouTubeMusicTrack>() to null)
+                results = if (filtered.first.isEmpty()) {
+                    runCatching { runSearch(null) }.getOrDefault(emptyList<YouTubeMusicTrack>() to null)
                 } else {
                     filtered
                 }
             }
         }
-        val candidates = if (results.isNotEmpty()) {
-            results
+        val collected = results.first.toMutableList()
+        var nextToken = results.second
+        if (limit > collected.size && !nextToken.isNullOrBlank()) {
+            val seenTokens = mutableSetOf<String>()
+            val knownIds = collected.mapTo(mutableSetOf()) { it.videoId }
+            var page = 0
+            val maxPages = minOf(4, (limit / 20) + 1)
+            while (!nextToken.isNullOrBlank() && collected.size < limit && page < maxPages) {
+                val current = nextToken ?: break
+                if (!seenTokens.add(current)) break
+                val nextRoot = runCatching {
+                    post(
+                        url = "$MUSIC_API/search?key=${config.apiKey}&prettyPrint=false",
+                        body = buildJsonObject {
+                            put("context", context("WEB_REMIX", config.clientVersion, config.visitorData))
+                            put("continuation", current)
+                        },
+                        clientName = "WEB_REMIX",
+                        clientVersion = config.clientVersion,
+                        userAgent = WEB_USER_AGENT,
+                        callTimeoutMs = SEARCH_REQUEST_TIMEOUT_MS,
+                    )
+                }.getOrNull() ?: break
+                val pageSongs = parseSongRenderers(nextRoot)
+                if (pageSongs.isEmpty()) break
+                collected.addAll(pageSongs.filter { knownIds.add(it.videoId) })
+                nextToken = genericContinuationToken(nextRoot)
+                page++
+            }
+        }
+        val candidates = if (collected.isNotEmpty()) {
+            collected
         } else {
             // Fallback: in regions or on networks where YouTube Music (WEB_REMIX) is blocked/restricted,
             // query YouTube's standard web endpoint using the WEB client.
@@ -1862,6 +1892,7 @@ class InnerTubeMusicApi @Inject constructor(
                     normalizedHeading.contains("sarki") || normalizedHeading.contains("parca") ||
                     normalizedHeading.contains("musique") || normalizedHeading.contains("cancion") ||
                     normalizedHeading.contains("canzone") || normalizedHeading.contains("cancoes") ||
+                    normalizedHeading.contains("brano") || normalizedHeading.contains("brani") ||
                     normalizedHeading.contains("titel") || normalizedHeading.contains("lieder") ||
                     normalizedHeading.contains("песн") || normalizedHeading.contains("曲") ||
                     normalizedHeading.contains("노래") || normalizedHeading.contains("歌曲") ||
