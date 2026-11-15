@@ -66,6 +66,27 @@ class FeedViewModelDiscoveryTest {
     }
 
     @Test
+    fun emptyRefreshDoesNotKeepPreviousTracks() {
+        val track = GeneratedTrack("Song", "Artist", "https://artwork.url")
+        coEvery { discoverRepository.allowedCachedFeed() } returnsMany listOf(listOf(track), listOf(track))
+        coEvery { discoverRepository.nextBatch(8) } returns emptyList()
+        val vm = FeedViewModel(
+            context, feedRepository, sessionPreferences, settingsPreferences, musicPlayer, innerTube,
+            recommendationRepository, ytAuth, homeRepository, discoverRepository, genresRepository,
+        )
+        fun waitForDiscovery() {
+            val deadline = System.currentTimeMillis() + 2_000
+            while (vm.isDiscoveryLoading.value && System.currentTimeMillis() < deadline) Thread.sleep(10)
+        }
+
+        waitForDiscovery()
+        assertThat(vm.discoveryTracks.value).containsExactly(track)
+        vm.loadDiscovery(forceRotate = true)
+        waitForDiscovery()
+        assertThat(vm.discoveryTracks.value).isEmpty()
+    }
+
+    @Test
     fun loadDiscovery_populatesDiscoveryTracks() {
         val mockTrack = GeneratedTrack("Discovery Song", "Discovery Artist", "https://artwork.url")
         coEvery { discoverRepository.allowedCachedFeed() } returns listOf(mockTrack)

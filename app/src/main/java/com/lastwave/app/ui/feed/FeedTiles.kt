@@ -232,6 +232,55 @@ internal fun ExpressiveGreetingHeader(
 }
 
 @Composable
+internal fun InfiniteRadioLoadingSkeleton() {
+    Surface(
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 3.dp),
+    ) {
+        val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHighest
+        Column(
+            modifier = Modifier.fillMaxWidth().height(208.dp).padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(Modifier.size(96.dp, 24.dp).background(placeholderColor, CircleShape))
+            Box(Modifier.size(160.dp, 24.dp).background(placeholderColor, RoundedCornerShape(4.dp)))
+            Box(Modifier.size(224.dp, 14.dp).background(placeholderColor, RoundedCornerShape(4.dp)))
+            Box(Modifier.size(96.dp, 48.dp).background(placeholderColor, CircleShape))
+        }
+    }
+}
+
+@Composable
+internal fun QuickTilesLoadingSkeleton() {
+    val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        userScrollEnabled = false,
+    ) {
+        items(4) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+                modifier = Modifier.width(136.dp),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)).background(placeholderColor))
+                    Column(
+                        Modifier.fillMaxWidth().padding(top = 8.dp, start = 2.dp, end = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(" ", Modifier.width(80.dp).background(placeholderColor), style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold))
+                        Text(" ", Modifier.width(56.dp).background(placeholderColor), style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun InfiniteRadioHero(
     quickPicks: List<YouTubeMusicTrack>,
     onPlay: () -> Unit,
