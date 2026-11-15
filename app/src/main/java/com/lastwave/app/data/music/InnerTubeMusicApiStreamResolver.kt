@@ -1195,8 +1195,9 @@ internal suspend fun InnerTubeMusicApi.findBestMatchOrNullImpl(
         title: String,
         artist: String,
         prefetchStreams: Boolean = false,
+        expectedDurationMs: Long? = null,
     ): YouTubeMusicTrack? = try {
-        findBestMatchImpl(title, artist, prefetchStreams)
+        findBestMatchImpl(title, artist, prefetchStreams, expectedDurationMs = expectedDurationMs)
     } catch (cancellation: kotlinx.coroutines.CancellationException) {
         throw cancellation
     } catch (_: Exception) {

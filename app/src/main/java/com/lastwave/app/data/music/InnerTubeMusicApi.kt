@@ -145,8 +145,13 @@ class InnerTubeMusicApi @Inject constructor(
         excludedVideoIds: Set<String> = emptySet(),
         expectedDurationMs: Long? = null,
     ): YouTubeMusicTrack = findBestMatchImpl(title, artist, prefetchStreams, excludedVideoId, excludedVideoIds, expectedDurationMs)
-    suspend fun findBestMatchOrNull(title: String, artist: String, prefetchStreams: Boolean = false): YouTubeMusicTrack? =
-        findBestMatchOrNullImpl(title, artist, prefetchStreams)
+    suspend fun findBestMatchOrNull(
+        title: String,
+        artist: String,
+        prefetchStreams: Boolean = false,
+        expectedDurationMs: Long? = null,
+    ): YouTubeMusicTrack? =
+        findBestMatchOrNullImpl(title, artist, prefetchStreams, expectedDurationMs)
     suspend fun findDownloadCandidates(title: String, artist: String, excludedVideoIds: Set<String> = emptySet(), limit: Int = 6): List<YouTubeMusicTrack> =
         findDownloadCandidatesImpl(title, artist, excludedVideoIds, limit)
     suspend fun isPlayable(title: String, artist: String): Boolean = isPlayableImpl(title, artist)
