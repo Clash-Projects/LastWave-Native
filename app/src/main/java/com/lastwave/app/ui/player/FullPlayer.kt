@@ -1250,7 +1250,17 @@ internal fun FullPlayer(
                                     onRetry = onRetryLyrics,
                                     onSelectLyricsProvider = onSelectLyricsProvider,
                                     onTryAnotherLyricsSource = onTryAnotherLyricsSource,
-                                    onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
+                                    // Full Screen cycles: Player Lyrics -> lyrics -> full screen -> back
+                                    // to Player Lyrics. The two-column landscape has no Player Lyrics,
+                                    // so it lands on its Now Playing.
+                                    onToggleFullscreen = {
+                                        if (lyricsFullscreen) {
+                                            if (!isTabletLandscape) onPlayerLyricsChange(true)
+                                            onTabChange(FullPlayerTab.NOW_PLAYING)
+                                        } else {
+                                            lyricsFullscreen = true
+                                        }
+                                    },
                                     isFullscreen = lyricsFullscreen,
                                     onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                     primaryColor = ambientColor,
