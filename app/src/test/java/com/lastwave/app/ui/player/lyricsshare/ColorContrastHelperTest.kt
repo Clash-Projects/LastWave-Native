@@ -100,8 +100,11 @@ class ColorContrastHelperTest {
 
         for (c in colors) {
             val derived = ColorContrastHelper.deriveTextColors(c)
+            // The card keeps the picked colour; on mid tones 7:1 is unreachable, but
+            // white or black always clears 4.5:1.
+            assertThat(derived.backgroundColor).isEqualTo(c)
             val lyricsContrast = ColorContrastHelper.contrastRatio(derived.lyricsTextColor, derived.backgroundColor)
-            assertThat(lyricsContrast).isAtLeast(7.0)
+            assertThat(lyricsContrast).isAtLeast(4.5)
 
             val secondaryContrast = ColorContrastHelper.contrastRatio(derived.secondaryTextColor, derived.backgroundColor)
             assertThat(secondaryContrast).isAtLeast(4.5)
@@ -153,31 +156,22 @@ class ColorContrastHelperTest {
     }
 
     @Test
-    fun extractSwatches_alwaysReturns8DistinctSwatches() {
+    fun extractSwatches_coverTonesLeadThenYouTubeMusicPairs() {
         val swatches = ColorContrastHelper.extractSwatches(
             artBitmap = null,
             themeAccentColor = 0xFF38BDF8.toInt(),
         )
 
-        assertThat(swatches).hasSize(8)
+        assertThat(swatches.take(3).map { it.id })
+            .containsExactly("song_deep", "song_vibrant", "song_pale").inOrder()
+        assertThat(swatches.map { it.color }).containsNoDuplicates()
 
-        val ids = swatches.map { it.id }
-        assertThat(ids).containsExactly(
-            "song_vibrant",
-            "muted",
-            "dominant",
-            "dark",
-            "white",
-            "black",
-            "accent",
-            "brand",
-        ).inOrder()
+        val white = swatches.first { it.id == "white" }
+        assertThat(white.color).isEqualTo(0xFFFFFFFF.toInt())
+        assertThat(white.darkColor).isEqualTo(0xFFB2B2B2.toInt())
 
         val brandSwatch = swatches.first { it.id == "brand" }
         assertThat(brandSwatch.color).isEqualTo(ColorContrastHelper.BRAND_LIME)
-
-        val accentSwatch = swatches.first { it.id == "accent" }
-        assertThat(accentSwatch.color).isEqualTo(0xFF38BDF8.toInt())
     }
 
     @Test
@@ -190,6 +184,6 @@ class ColorContrastHelperTest {
             themeAccentColor = 0xFF38BDF8.toInt(),
         )
 
-        assertThat(swatches).hasSize(8)
+        assertThat(swatches.size).isAtLeast(12)
     }
 }

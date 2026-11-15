@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -70,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lastwave.app.R
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
+import com.lastwave.app.ui.theme.LocalUseBoldFont
 import com.lastwave.app.util.FileExportHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -99,6 +101,7 @@ fun SharePreviewScreen(
     }
 
     val isCoverSelected = selectedSwatchColor == ColorContrastHelper.SWATCH_COVER_ART && selectedMode == CardMode.Lyrics
+    val boldFont = LocalUseBoldFont.current
 
     // Build specification for renderer
     val spec = remember(
@@ -108,6 +111,7 @@ fun SharePreviewScreen(
         artworkResolution,
         selectedSwatchColor,
         isCoverSelected,
+        boldFont,
     ) {
         val derived = ColorContrastHelper.deriveTextColors(selectedSwatchColor, isCoverScrim = isCoverSelected)
         val hasRtl = selectedLines.any { it.isRtl }
@@ -122,6 +126,7 @@ fun SharePreviewScreen(
             derivedColors = derived,
             isCoverBackground = isCoverSelected,
             isRtl = hasRtl,
+            boldFont = boldFont,
             targetWidth = ShareCardRenderer.BASE_WIDTH,
             scaleFactor = 0.50f, // Scaled for fast live preview
         )
@@ -199,10 +204,37 @@ fun SharePreviewScreen(
         }
     }
 
+    val displaySwatches = remember(swatches, selectedMode, artworkResolution.coverBitmap) {
+        val colors = swatches.filter { !it.isCoverArt }
+        if (selectedMode == CardMode.Lyrics && artworkResolution.coverBitmap != null) {
+            listOf(
+                ColorSwatch(
+                    id = "cover_art",
+                    nameRes = R.string.lyshare_color_cover,
+                    color = ColorContrastHelper.SWATCH_COVER_ART,
+                    isCoverArt = true,
+                    darkColor = colors.firstOrNull()?.darkColor ?: 0xFF0F0F0F.toInt(),
+                )
+            ) + colors
+        } else {
+            colors
+        }
+    }
+
+    // YouTube Music look: the screen takes the dark shade of the card's colour.
+    val screenColor by animateColorAsState(
+        targetValue = Color(displaySwatches.firstOrNull { it.color == selectedSwatchColor }?.darkColor ?: 0xFF0F0F0F.toInt()),
+        animationSpec = androidx.compose.animation.core.tween(250),
+        label = "shareScreenBg",
+    )
+    // Light shades (White's #B2B2B2, Green's) need dark chrome to stay readable.
+    val onScreen = if (screenColor.luminance() > 0.4f) Color.Black else Color.White
+    val offScreen = if (onScreen == Color.White) Color.Black else Color.White
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF090C0E)),
+            .background(screenColor),
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -225,7 +257,7 @@ fun SharePreviewScreen(
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = stringResource(R.string.lyshare_back_cd),
-                        tint = Color.White,
+                        tint = onScreen,
                     )
                 }
 
@@ -233,7 +265,7 @@ fun SharePreviewScreen(
                     text = stringResource(R.string.lyshare_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = onScreen,
                 )
 
                 IconButton(
@@ -245,7 +277,7 @@ fun SharePreviewScreen(
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.lyshare_close_cd),
-                        tint = Color.White,
+                        tint = onScreen,
                     )
                 }
             }
@@ -270,7 +302,7 @@ fun SharePreviewScreen(
                     )
                 } else {
                     CircularProgressIndicator(
-                        color = Color.White,
+                        color = onScreen,
                         modifier = Modifier.size(36.dp),
                     )
                 }
@@ -297,7 +329,7 @@ fun SharePreviewScreen(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(vertical = 8.dp)
-                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                    .background(onScreen.copy(alpha = 0.12f), CircleShape)
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -305,27 +337,14 @@ fun SharePreviewScreen(
                     label = stringResource(R.string.lyshare_mode_song),
                     selected = selectedMode == CardMode.Song,
                     onClick = { onModeChange(CardMode.Song) },
+                    contentColor = onScreen,
                 )
                 CardModeTab(
                     label = stringResource(R.string.lyshare_mode_lyrics),
                     selected = selectedMode == CardMode.Lyrics,
                     onClick = { onModeChange(CardMode.Lyrics) },
+                    contentColor = onScreen,
                 )
-            }
-
-            val displaySwatches = remember(swatches, selectedMode, artworkResolution.coverBitmap) {
-                if (selectedMode == CardMode.Lyrics && artworkResolution.coverBitmap != null) {
-                    listOf(
-                        ColorSwatch(
-                            id = "cover_art",
-                            nameRes = R.string.lyshare_color_cover,
-                            color = ColorContrastHelper.SWATCH_COVER_ART,
-                            isCoverArt = true,
-                        )
-                    ) + swatches.filter { !it.isCoverArt }
-                } else {
-                    swatches.filter { !it.isCoverArt }
-                }
             }
 
             // YT Music Style Color Swatches Picker (with Cover swatch as first item in Lyrics mode)
@@ -340,7 +359,7 @@ fun SharePreviewScreen(
             ) {
                 items(displaySwatches, key = { it.id }) { swatch ->
                     val isSelected = swatch.color == selectedSwatchColor
-                    val swatchName = stringResource(swatch.nameRes)
+                    val swatchName = if (swatch.nameRes != 0) stringResource(swatch.nameRes) else swatch.label
 
                     Box(
                         modifier = Modifier
@@ -355,9 +374,9 @@ fun SharePreviewScreen(
                             )
                             .then(
                                 if (isSelected) {
-                                    Modifier.border(BorderStroke(3.dp, Color.White), CircleShape)
+                                    Modifier.border(BorderStroke(3.dp, onScreen), CircleShape)
                                 } else {
-                                    Modifier.border(BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)), CircleShape)
+                                    Modifier.border(BorderStroke(1.dp, onScreen.copy(alpha = 0.25f)), CircleShape)
                                 }
                             )
                             .clickable { onSwatchChange(swatch.color) }
@@ -379,10 +398,12 @@ fun SharePreviewScreen(
                             )
                         }
                         if (isSelected) {
+                            // The dot contrasts with the swatch itself; a white dot vanished on White.
+                            val swatchIsLight = !swatch.isCoverArt && Color(swatch.color).luminance() > 0.5f
                             Box(
                                 modifier = Modifier
                                     .size(10.dp)
-                                    .background(Color.White, CircleShape),
+                                    .background(if (swatchIsLight) Color.Black else Color.White, CircleShape),
                             )
                         }
                     }
@@ -405,12 +426,12 @@ fun SharePreviewScreen(
                     modifier = Modifier
                         .size(52.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.14f)),
+                        .background(onScreen.copy(alpha = 0.14f)),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Download,
                         contentDescription = stringResource(R.string.lyshare_action_save),
-                        tint = Color.White,
+                        tint = onScreen,
                         modifier = Modifier.size(24.dp),
                     )
                 }
@@ -421,17 +442,17 @@ fun SharePreviewScreen(
                     enabled = !isExporting,
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black,
-                        disabledContainerColor = Color.White.copy(alpha = 0.35f),
-                        disabledContentColor = Color.Black.copy(alpha = 0.50f),
+                        containerColor = onScreen,
+                        contentColor = offScreen,
+                        disabledContainerColor = onScreen.copy(alpha = 0.35f),
+                        disabledContentColor = offScreen.copy(alpha = 0.50f),
                     ),
                     modifier = Modifier
                         .weight(1f)
                         .height(52.dp),
                 ) {
                     if (isExporting) {
-                        ExpressiveInlineLoadingIndicator(size = 20.dp, color = Color.Black)
+                        ExpressiveInlineLoadingIndicator(size = 20.dp, color = offScreen)
                     } else {
                         Icon(
                             imageVector = Icons.Rounded.Share,
@@ -456,14 +477,15 @@ private fun CardModeTab(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    contentColor: Color,
 ) {
     val bg by animateColorAsState(
-        targetValue = if (selected) Color.White else Color.Transparent,
+        targetValue = if (selected) contentColor else Color.Transparent,
         animationSpec = androidx.compose.animation.core.tween(150),
         label = "modeTabBg",
     )
     val fg by animateColorAsState(
-        targetValue = if (selected) Color.Black else Color.White.copy(alpha = 0.70f),
+        targetValue = if (selected) (if (contentColor == Color.White) Color.Black else Color.White) else contentColor.copy(alpha = 0.70f),
         animationSpec = androidx.compose.animation.core.tween(150),
         label = "modeTabFg",
     )
