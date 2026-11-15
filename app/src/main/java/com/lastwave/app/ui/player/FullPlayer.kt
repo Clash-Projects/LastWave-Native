@@ -83,6 +83,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Arrangement
@@ -1579,19 +1580,28 @@ internal fun FullPlayer(
                                                 scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
                                             exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.96f),
                                             modifier = Modifier
+                                                .layout { measurable, constraints ->
+                                                    // The lyric rows pad themselves 20 dp, as on the lyrics
+                                                    // screen; bleed through this column's own 20 dp so the
+                                                    // text sits at the same inset there and here.
+                                                    val bleed = if (isVideoActive) 0 else 20.dp.roundToPx()
+                                                    val width = constraints.maxWidth + bleed * 2
+                                                    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                                                    layout(constraints.maxWidth, placeable.height) { placeable.place(-bleed, 0) }
+                                                }
                                                 .fillMaxSize()
                                                 // Below the 16:9 video, never over its controls.
-                                                .padding(top = if (isVideoActive) maxWidth * 9f / 16f + 8.dp else 0.dp)
-                                                .padding(horizontal = if (isVideoActive) 20.dp else 0.dp),
+                                                .padding(top = if (isVideoActive) maxWidth * 9f / 16f + 8.dp else 0.dp),
                                         ) {
                                             PlayerInlineLyrics(
+                                                state = state,
+                                                player = player,
                                                 lyricsState = lyricsState,
                                                 progressState = progressState,
                                                 lyricsOffsetMs = lyricsOffsetMs,
                                                 fontScale = playerLyricsUi.fontScale,
                                                 subLines = playerLyricsUi.subLines,
-                                                // Inverse of the highlight shift: a tap targets audio time.
-                                                onSeek = { player.seekTo((it - lyricsOffsetMs).coerceAtLeast(0L)) },
+                                                displayMode = playerLyricsUi.displayMode,
                                                 onRetry = onRetryLyrics,
                                                 modifier = Modifier.fillMaxSize(),
                                             )

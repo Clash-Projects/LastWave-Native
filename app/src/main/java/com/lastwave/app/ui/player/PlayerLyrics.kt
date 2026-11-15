@@ -3,85 +3,65 @@ package com.lastwave.app.ui.player
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextMotion
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
 import com.lastwave.app.R
 import com.lastwave.app.data.local.LyricsProvider
 import com.lastwave.app.data.lyrics.LyricLine
 import com.lastwave.app.data.lyrics.LyricsSyncType
 import com.lastwave.app.data.lyrics.LyricsTranslation
-import com.lastwave.app.data.lyrics.VocalRole
 import com.lastwave.app.data.lyrics.providerForSource
 import com.lastwave.app.data.lyrics.translationLanguageName
 import com.lastwave.app.data.lyrics.translationWireTarget
+import com.lastwave.app.playback.MusicPlayer
+import com.lastwave.app.playback.MusicPlayerState
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
@@ -92,17 +72,16 @@ import com.lastwave.app.ui.player.lyricsshare.buildLyricsSnapshot
 import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.LocalLiquidGlass
 import com.lastwave.app.ui.theme.LocalUseBoldFont
-import com.lastwave.app.ui.theme.lyricsLeadFontFamily
-import com.lastwave.app.ui.theme.lyricsSubLineFontFamily
 import com.lastwave.app.ui.theme.liquidGlassChrome
 import com.lastwave.app.ui.theme.liquidGlassContainerColor
+import com.lastwave.app.ui.theme.lyricsBackingFontFamily
+import com.lastwave.app.ui.theme.lyricsLeadFontFamily
+import com.lastwave.app.ui.theme.lyricsSubLineFontFamily
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.util.Locale
-import kotlin.math.abs
 
 /**
  * What Player Lyrics shows on top of the shared lyrics: the sub-line script
@@ -197,18 +176,37 @@ internal fun rememberPlayerLyricsUiState(
     return holder
 }
 
-/** Lyrics centred in the Now Playing art area: the sung line leads, its neighbours recede. */
+/**
+ * The lyrics screen's own synced list, placed in the Now Playing art area:
+ * same rows, styles, word wipe, glow and motion. Styles mirror
+ * [ModernLyricsPanel]'s exactly so both screens read 1:1.
+ */
 @Composable
 internal fun PlayerInlineLyrics(
+    state: MusicPlayerState,
+    player: MusicPlayer,
     lyricsState: LyricsUiState,
     progressState: StateFlow<PlaybackProgressState>,
     lyricsOffsetMs: Long,
     fontScale: Float,
     subLines: List<String?>?,
-    onSeek: (Long) -> Unit,
+    displayMode: LyricsDisplayMode,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Sub-lines grow in and out together, as on the lyrics screen.
+    val subReveal = remember { Animatable(if (subLines != null) 1f else 0f) }
+    var shownSubLines by remember { mutableStateOf(subLines) }
+    LaunchedEffect(subLines) {
+        if (subLines == null) {
+            subReveal.animateTo(0f, tween(LYRIC_SUBLINE_CLOSE_MS, easing = FastOutSlowInEasing))
+            shownSubLines = null
+        } else {
+            shownSubLines = subLines
+            subReveal.animateTo(1f, tween(LYRIC_SUBLINE_OPEN_MS, easing = FastOutSlowInEasing))
+        }
+    }
+    val progressInitial = PlaybackProgressState(positionMs = state.positionMs, durationMs = state.durationMs)
     Crossfade(
         targetState = lyricsState,
         animationSpec = tween(ExpressiveMotion.Quick * 2),
@@ -218,222 +216,96 @@ internal fun PlayerInlineLyrics(
         when (target) {
             is LyricsUiState.Idle -> Box(Modifier.fillMaxSize())
             is LyricsUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ExpressiveInlineLoadingIndicator(size = 36.dp, strokeWidth = 3.dp, color = Color.White)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    ExpressiveInlineLoadingIndicator(size = 42.dp, strokeWidth = 3.5.dp, color = Color.White)
+                    Text(
+                        "Finding lyrics...",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.White.copy(alpha = 0.70f),
+                    )
+                }
             }
             is LyricsUiState.Empty, is LyricsUiState.Error -> ModernEmptyLyricsView(isInstrumental = false, onRetry = onRetry)
             is LyricsUiState.Success -> when {
                 target.isInstrumental -> ModernEmptyLyricsView(isInstrumental = true, onRetry = onRetry)
-                target.isSynced && target.lines.any { it.text.isNotBlank() } -> CenteredSyncedLyrics(
-                    lines = target.lines,
-                    progressState = progressState,
-                    lyricsOffsetMs = lyricsOffsetMs,
-                    fontScale = fontScale,
-                    subLines = subLines,
-                    onSeek = onSeek,
+                target.isSynced && target.lines.isNotEmpty() -> {
+                    val isWordSynced = target.isWordSynced ||
+                        remember(target.lines) { target.lines.any { it.hasSyllables } }
+                    val isOverallRtl = remember(target.lines) {
+                        val meaningful = target.lines.filter { it.text.isNotBlank() && it.text != "♪" }
+                        meaningful.isNotEmpty() && meaningful.count { it.isRtl } > meaningful.size / 2
+                    }
+                    val isAppleMusic = remember(target.source) {
+                        target.source?.contains("Apple Music", ignoreCase = true) == true
+                    }
+                    val currentTextStyle = LocalTextStyle.current
+                    val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != FontFamily.Default
+                    val boldFont = LocalUseBoldFont.current
+                    val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * fontScale
+                    val normalStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont) {
+                        currentTextStyle.copy(
+                            fontFamily = if (useAppFont) lyricsLeadFontFamily(boldFont) else FontFamily.Default,
+                            fontSize = baseSize.sp,
+                            lineHeight = (baseSize * 1.20f).sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.6).sp,
+                            textMotion = TextMotion.Animated,
+                        )
+                    }
+                    val accompanimentStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont) {
+                        val size = baseSize * 0.65f
+                        currentTextStyle.copy(
+                            fontFamily = if (useAppFont) lyricsBackingFontFamily(boldFont) else FontFamily.Default,
+                            fontSize = size.sp,
+                            lineHeight = (size * 1.22f).sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.3).sp,
+                            textMotion = TextMotion.Animated,
+                        )
+                    }
+                    val subLineStyle = remember(currentTextStyle, fontScale, useAppFont, boldFont) {
+                        currentTextStyle.copy(
+                            fontFamily = if (useAppFont) lyricsSubLineFontFamily(boldFont) else FontFamily.Default,
+                            fontSize = (16f * fontScale).sp,
+                            lineHeight = (22f * fontScale).sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = (-0.1).sp,
+                            textMotion = TextMotion.Animated,
+                        )
+                    }
+                    CompositionLocalProvider(
+                        LocalLayoutDirection provides if (isOverallRtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+                    ) {
+                        SyncedLyricsProgressHost(
+                            lines = target.lines,
+                            isOverallRtl = isOverallRtl,
+                            normalStyle = normalStyle,
+                            accompanimentStyle = accompanimentStyle,
+                            subLineStyle = subLineStyle,
+                            subLines = shownSubLines,
+                            subReveal = { subReveal.value },
+                            displayMode = displayMode,
+                            progressFlow = progressState,
+                            progressInitial = progressInitial,
+                            state = state,
+                            player = player,
+                            lyricsOffsetMs = lyricsOffsetMs,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                !target.plainLyrics.isNullOrBlank() -> ModernPlainLyricsView(
+                    plainLyrics = target.plainLyrics,
+                    lyricsFontScale = fontScale,
+                    modifier = Modifier.fillMaxSize(),
                 )
-                !target.plainLyrics.isNullOrBlank() -> CenteredPlainLyrics(target.plainLyrics, fontScale)
                 else -> ModernEmptyLyricsView(isInstrumental = false, onRetry = onRetry)
             }
         }
     }
-}
-
-/** Lead and sub-line styles in the same lyric cuts the lyrics screen uses. */
-@Composable
-private fun lyricTextStyles(fontScale: Float): Pair<TextStyle, TextStyle> {
-    val lead = MaterialTheme.typography.headlineMedium
-    val sub = MaterialTheme.typography.titleMedium
-    // App font on: the heavy lyric cuts of the variable font. Off: the system font.
-    val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != FontFamily.Default
-    val bold = LocalUseBoldFont.current
-    return remember(lead, sub, fontScale, useAppFont, bold) {
-        val size = 28f * fontScale
-        lead.copy(
-            fontFamily = if (useAppFont) lyricsLeadFontFamily(bold) else FontFamily.Default,
-            fontSize = size.sp,
-            lineHeight = (size * 1.18f).sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = (-0.4).sp,
-            textAlign = TextAlign.Center,
-        ) to sub.copy(
-            fontFamily = if (useAppFont) lyricsSubLineFontFamily(bold) else FontFamily.Default,
-            fontSize = (17f * fontScale).sp,
-            lineHeight = (23f * fontScale).sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
-private fun CenteredSyncedLyrics(
-    lines: List<LyricLine>,
-    progressState: StateFlow<PlaybackProgressState>,
-    lyricsOffsetMs: Long,
-    fontScale: Float,
-    subLines: List<String?>?,
-    onSeek: (Long) -> Unit,
-) {
-    // Blank rows are instrumental breaks and backing vocals nest under their
-    // lead, so neither gets a row of its own here.
-    val rows = remember(lines) {
-        lines.indices.filter { lines[it].text.isNotBlank() && lines[it].role != VocalRole.BACKGROUND_SUBLINE }
-    }
-    // Playhead samples land in a state read only by derivedStateOf below, so
-    // a 60 ms tick recomposes nothing unless the sung row (or word) changes.
-    val position = remember { mutableLongStateOf(progressState.value.positionMs) }
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(progressState, lifecycleOwner) {
-        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            progressState.collect { position.longValue = it.positionMs }
-        }
-    }
-    val offset by rememberUpdatedState(lyricsOffsetMs)
-    val shiftedPosition: () -> Long = remember { { position.longValue + offset } }
-    val activeSource by remember(lines) { derivedStateOf { activeLineIndex(lines, shiftedPosition()) } }
-    // Last row at or before the sung line; it keeps the scroll anchored
-    // through a break instead of jumping back to the top.
-    val focusRow = remember(rows, activeSource) {
-        val i = rows.binarySearch(activeSource)
-        if (i >= 0) i else -i - 2
-    }
-    val inBreak = activeSource >= 0 && lines[activeSource].text.isBlank()
-    val highlightRow = if (inBreak) -1 else focusRow
-
-    val (style, subStyle) = lyricTextStyles(fontScale)
-    val listState = rememberLazyListState()
-    val dragged by listState.interactionSource.collectIsDraggedAsState()
-    var holdAutoScroll by remember { mutableStateOf(false) }
-    // A user scroll wins for a moment, then the sung line takes the list back.
-    LaunchedEffect(dragged) {
-        if (dragged) {
-            holdAutoScroll = true
-        } else if (holdAutoScroll) {
-            delay(USER_SCROLL_HOLD_MS)
-            holdAutoScroll = false
-        }
-    }
-    val target = focusRow.coerceAtLeast(0)
-    var placed by remember { mutableStateOf(false) }
-    LaunchedEffect(target, holdAutoScroll) {
-        if (holdAutoScroll) return@LaunchedEffect
-        if (!placed) {
-            listState.scrollToItem(target)
-            placed = true
-            return@LaunchedEffect
-        }
-        // Item offset 0 is the top of the content area, i.e. the anchor line.
-        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
-        if (item != null) {
-            listState.animateScrollBy(item.offset.toFloat(), tween(LYRIC_FOCUS_MS, easing = FastOutSlowInEasing))
-        } else {
-            listState.animateScrollToItem(target)
-        }
-    }
-
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val anchor = maxHeight * LYRIC_ANCHOR
-        LazyColumn(
-            state = listState,
-            contentPadding = PaddingValues(top = anchor, bottom = maxHeight - anchor),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithContent {
-                    drawContent()
-                    drawRect(EdgeFade, blendMode = BlendMode.DstIn)
-                },
-        ) {
-            itemsIndexed(rows, key = { _, source -> source }) { row, source ->
-                val distance = if (highlightRow < 0) abs(row - focusRow) + 1 else abs(row - highlightRow)
-                CenteredLyricRow(
-                    line = lines[source],
-                    active = row == highlightRow,
-                    falloff = LINE_FALLOFF_ALPHA[distance.coerceAtMost(LINE_FALLOFF_ALPHA.lastIndex)],
-                    subLine = subLines?.getOrNull(source),
-                    style = style,
-                    subStyle = subStyle,
-                    position = shiftedPosition,
-                    onClick = hapticClick { onSeek(lines[source].timeMs) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CenteredLyricRow(
-    line: LyricLine,
-    active: Boolean,
-    falloff: Float,
-    subLine: String?,
-    style: TextStyle,
-    subStyle: TextStyle,
-    position: () -> Long,
-    onClick: () -> Unit,
-) {
-    val alpha by animateFloatAsState(falloff, tween(LYRIC_FOCUS_MS), label = "playerLyricAlpha")
-    val scale by animateFloatAsState(
-        if (active) 1f else INACTIVE_SCALE,
-        ExpressiveMotion.spatialSpring(),
-        label = "playerLyricScale",
-    )
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                this.alpha = alpha
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-    ) {
-        if (active && line.hasSyllables) {
-            WordSyncedLine(line, style, position)
-        } else {
-            Text(line.text, style = style, color = Color.White)
-        }
-        if (!subLine.isNullOrBlank()) {
-            Text(
-                subLine,
-                style = subStyle,
-                color = Color.White.copy(alpha = 0.72f),
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-    }
-}
-
-/** The sung words are lit, the rest wait dimmed; recomposes once per word, not per frame. */
-@Composable
-private fun WordSyncedLine(line: LyricLine, style: TextStyle, position: () -> Long) {
-    val words = remember(line) { line.syllables.filterNot { it.isBackground } }
-    val parts = remember(words, line.text) { renderedSyllableContents(words, needsSpacing = line.text.contains(' ')) }
-    val sung by remember(words) { derivedStateOf { position().let { p -> words.count { it.timeMs <= p } } } }
-    val text = remember(parts, sung) {
-        buildAnnotatedString {
-            withStyle(SpanStyle(color = Color.White)) { append(parts.take(sung).joinToString("")) }
-            withStyle(SpanStyle(color = Color.White.copy(alpha = UNSUNG_WORD_ALPHA))) { append(parts.drop(sung).joinToString("")) }
-        }
-    }
-    Text(text, style = style)
-}
-
-@Composable
-private fun CenteredPlainLyrics(plainLyrics: String, fontScale: Float) {
-    Text(
-        plainLyrics,
-        style = lyricTextStyles(fontScale).first.copy(fontSize = (22f * fontScale).sp, lineHeight = (30f * fontScale).sp),
-        color = Color.White.copy(alpha = 0.88f),
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 24.dp),
-    )
 }
 
 /**
@@ -550,15 +422,3 @@ private fun LyricsGlassButton(icon: ImageVector, contentDescription: String, onC
         Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(24.dp), tint = Color.White.copy(alpha = 0.90f))
     }
 }
-
-/** The sung line sits a bit above centre, where the eye rests over the title. */
-private const val LYRIC_ANCHOR = 0.36f
-private const val INACTIVE_SCALE = 0.94f
-private const val UNSUNG_WORD_ALPHA = 0.42f
-private const val USER_SCROLL_HOLD_MS = 2_500L
-private val EdgeFade = Brush.verticalGradient(
-    0f to Color.Transparent,
-    0.14f to Color.Black,
-    0.82f to Color.Black,
-    1f to Color.Transparent,
-)
