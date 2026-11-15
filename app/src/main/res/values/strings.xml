@@ -1454,4 +1454,19 @@
     <string name="spotify_playlists_section_title">Spotify</string>
     <string name="spotify_liked_songs_title">Liked Songs</string>
     <string name="spotify_liked_songs_sub">Your Spotify likes</string>
+    <string name="recognize_music">Identify music</string>
+    <string name="recognize_listening">Listening…</string>
+    <string name="recognize_listening_hint">Hold your phone near the music</string>
+    <string name="recognize_identifying">Identifying…</string>
+    <string name="recognize_cancel">Cancel</string>
+    <string name="recognize_close">Close</string>
+    <string name="recognize_search">Search in LastWave</string>
+    <string name="recognize_retry">Try again</string>
+    <string name="recognize_open_settings">Open settings</string>
+    <string name="recognize_error_permission">Microphone access is needed to listen for music.</string>
+    <string name="recognize_error_mic">The microphone is not available. Close other apps that use it and try again.</string>
+    <string name="recognize_error_silence">Nothing was heard. Turn the music up or move closer and try again.</string>
+    <string name="recognize_error_no_match">This song could not be recognised. Move closer to the music and try again.</string>
+    <string name="recognize_error_rate_limited">Too many attempts. Wait a moment and try again.</string>
+    <string name="recognize_error_network">The recognition service could not be reached. Check your connection and try again.</string>
 </resources>
