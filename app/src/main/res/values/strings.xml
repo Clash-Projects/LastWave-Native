@@ -163,6 +163,10 @@
     <string name="settings_wavy_seekbar">Wavy Seekbar</string>
     <string name="settings_wavy_seekbar_on">Multi-layer fluid wavy progress slider</string>
     <string name="settings_wavy_seekbar_off">Classic standard progress slider</string>
+    <string name="settings_seekbar_style">Seekbar Style</string>
+    <string name="settings_seekbar_style_default">Default</string>
+    <string name="settings_seekbar_style_wavy">Wavy</string>
+    <string name="settings_seekbar_style_waveform">Waveform</string>
     <string name="settings_rotating_background">Rotating Background</string>
     <string name="settings_rotating_background_on">Animate fluid rotating artwork in player and lyrics view</string>
     <string name="settings_rotating_background_off">Static blurred background (recommended for Android 11 and below)</string>

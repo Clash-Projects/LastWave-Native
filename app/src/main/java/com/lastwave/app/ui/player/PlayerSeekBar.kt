@@ -2,6 +2,7 @@
 
 package com.lastwave.app.ui.player
 
+import com.lastwave.app.data.local.SeekbarStyle
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import com.lastwave.app.data.playlist.isLikedIn
@@ -351,10 +352,12 @@ internal fun PlayerProgressSlider(
     interactionSource: MutableInteractionSource,
     primaryColor: Color = MaterialTheme.colorScheme.primary,
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
-    wavy: Boolean = false,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavy: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     isPlaying: Boolean = false,
     secondaryColor: Color = MaterialTheme.colorScheme.secondary,
 ) {
+    val effectiveStyle = if (seekbarStyle != SeekbarStyle.DEFAULT) seekbarStyle else if (wavy) SeekbarStyle.WAVY else SeekbarStyle.DEFAULT
     val dragged by interactionSource.collectIsDraggedAsState()
     val primary = remember(primaryColor) {
         primaryColor.ensureLuminousForDarkBackground(0.38f)
@@ -372,16 +375,32 @@ internal fun PlayerProgressSlider(
             modifier = modifier.height(44.dp),
             contentAlignment = Alignment.Center,
         ) {
-            if (wavy) WavyProgressTrack(
-                fraction = { fraction },
-                isPlaying = isPlaying,
-                dragging = dragged,
-                isTranslucent = true,
-                primaryColor = primaryColor,
-                secondaryColor = secondaryColor,
-                tertiaryColor = tertiaryColor,
-                modifier = Modifier.fillMaxSize(),
-            ) else Canvas(modifier = Modifier.fillMaxSize()) {
+            if (effectiveStyle == SeekbarStyle.WAVEFORM) {
+                WaveformSlider(
+                    value = value,
+                    valueRange = valueRange,
+                    onValueChange = onValueChange,
+                    onValueChangeFinished = onValueChangeFinished,
+                    isPlaying = isPlaying,
+                    primaryColor = primaryColor,
+                    secondaryColor = secondaryColor,
+                    tertiaryColor = tertiaryColor,
+                    isTranslucent = true,
+                    trackHeight = 44.dp,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                if (effectiveStyle == SeekbarStyle.WAVY) WavyProgressTrack(
+                    fraction = { fraction },
+                    isPlaying = isPlaying,
+                    dragging = dragged,
+                    isTranslucent = true,
+                    primaryColor = primaryColor,
+                    secondaryColor = secondaryColor,
+                    tertiaryColor = tertiaryColor,
+                    modifier = Modifier.fillMaxSize(),
+                ) else Canvas(modifier = Modifier.fillMaxSize()) {
                 val width = size.width
                 val centerY = size.height / 2f
 
@@ -512,6 +531,7 @@ internal fun PlayerProgressSlider(
                     disabledInactiveTickColor = Color.Transparent,
                 ),
             )
+            }
         }
     }
 }
@@ -583,7 +603,8 @@ internal fun SeekBar(
     progressState: StateFlow<PlaybackProgressState>,
     isPlaying: Boolean,
     trackKey: String?,
-    wavyEnabled: Boolean = false,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavyEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     onSeek: (Long) -> Unit,
     isTranslucent: Boolean = false,
     fallbackDurationMs: Long = 0L,
@@ -592,6 +613,7 @@ internal fun SeekBar(
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     telemetry: com.lastwave.app.playback.automix.api.DeckBlendTelemetry = com.lastwave.app.playback.automix.api.DeckBlendTelemetry(),
 ) {
+    val effectiveStyle = if (seekbarStyle != SeekbarStyle.DEFAULT) seekbarStyle else if (wavyEnabled) SeekbarStyle.WAVY else SeekbarStyle.DEFAULT
     // The 60 ms ticker is read in the draw phase (bar) and at 1 s (labels +
     // invisible slider semantics). Collecting it from composition recomposed
     // this whole subtree and re-recorded the full player on every tick.
@@ -707,16 +729,48 @@ internal fun SeekBar(
                 .height(44.dp),
             contentAlignment = Alignment.Center,
         ) {
-            if (wavyEnabled) WavyProgressTrack(
-                fraction = { dragFraction ?: progressFraction.floatValue },
-                isPlaying = isPlaying,
-                dragging = isInteracting || dragFraction != null,
-                isTranslucent = isTranslucent,
-                primaryColor = primaryColor,
-                secondaryColor = secondaryColor,
-                tertiaryColor = tertiaryColor,
-                modifier = Modifier.fillMaxWidth().height(44.dp),
-            ) else Canvas(modifier = Modifier.fillMaxWidth().height(44.dp)) {
+            val scrubHaptics = rememberScrubHaptics()
+            if (effectiveStyle == SeekbarStyle.WAVEFORM) {
+                WaveformSlider(
+                    value = (dragFraction ?: progressFraction.floatValue).coerceIn(0f, 1f),
+                    valueRange = 0f..1f,
+                    onValueChange = {
+                        scrubHaptics.onScrub(it)
+                        dragFraction = it
+                        lastSeekFraction = it
+                    },
+                    onValueChangeFinished = {
+                        scrubHaptics.onRelease()
+                        // Commit only this gesture's value; no value = no seek.
+                        val target = (lastSeekFraction ?: dragFraction)?.let {
+                            (it * boundedDurationMs).toLong().coerceIn(0L, boundedDurationMs)
+                        }
+                        dragFraction = null
+                        lastSeekFraction = null
+                        if (target != null && boundedDurationMs > 0L) {
+                            onSeek(target)
+                        }
+                    },
+                    isPlaying = isPlaying,
+                    primaryColor = primaryColor,
+                    secondaryColor = secondaryColor,
+                    tertiaryColor = tertiaryColor,
+                    isTranslucent = isTranslucent,
+                    trackHeight = 44.dp,
+                    enabled = boundedDurationMs > 0L,
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                )
+            } else {
+                if (effectiveStyle == SeekbarStyle.WAVY) WavyProgressTrack(
+                    fraction = { dragFraction ?: progressFraction.floatValue },
+                    isPlaying = isPlaying,
+                    dragging = isInteracting || dragFraction != null,
+                    isTranslucent = isTranslucent,
+                    primaryColor = primaryColor,
+                    secondaryColor = secondaryColor,
+                    tertiaryColor = tertiaryColor,
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                ) else Canvas(modifier = Modifier.fillMaxWidth().height(44.dp)) {
                 // Draw-phase read: the 60 ms tick invalidates draw without a recomposition.
                 val fraction = (dragFraction ?: progressFraction.floatValue).coerceIn(0f, 1f)
                 val width = size.width
@@ -787,7 +841,6 @@ internal fun SeekBar(
             }
 
             // Invisible Material interaction layer: custom visuals, reliable seeking semantics.
-            val scrubHaptics = rememberScrubHaptics()
             Slider(
                 value = sliderValue,
                 onValueChange = {
@@ -824,6 +877,7 @@ internal fun SeekBar(
                     disabledInactiveTickColor = Color.Transparent,
                 ),
             )
+            }
         }
 
         Spacer(Modifier.height(2.dp))

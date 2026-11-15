@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.settings
 
 import androidx.compose.material3.HorizontalDivider
+import com.lastwave.app.data.local.SeekbarStyle
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -431,6 +432,7 @@ fun SettingsScreen(
     var showHiResStartDialog by remember { mutableStateOf(false) }
     var showEqSheet by remember { mutableStateOf(false) }
     var showAutoEq by remember { mutableStateOf(false) }
+    var showSeekbarStyleDialog by remember { mutableStateOf(false) }
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     var showLyricsSizeDialog by remember { mutableStateOf(false) }
@@ -1399,18 +1401,17 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.word_by_word_lyrics"),
                             )
-                            1 -> SettingsToggleCard(
+                            1 -> SettingsActionCard(
                                 icon = Icons.Filled.Waves,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_wavy_seekbar),
-                                subtitle = if (misc.wavySeekbarEnabled) {
-                                    stringResource(R.string.settings_wavy_seekbar_on)
-                                } else {
-                                    stringResource(R.string.settings_wavy_seekbar_off)
+                                title = stringResource(R.string.settings_seekbar_style),
+                                subtitle = when (misc.seekbarStyle) {
+                                    SeekbarStyle.DEFAULT -> stringResource(R.string.settings_seekbar_style_default)
+                                    SeekbarStyle.WAVY -> stringResource(R.string.settings_seekbar_style_wavy)
+                                    SeekbarStyle.WAVEFORM -> stringResource(R.string.settings_seekbar_style_waveform)
                                 },
-                                checked = misc.wavySeekbarEnabled,
-                                onCheckedChange = viewModel::setWavySeekbarEnabled,
+                                onClick = { showSeekbarStyleDialog = true },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.wavy_seekbar"),
                             )
@@ -2698,6 +2699,18 @@ fun SettingsScreen(
     }
 
 
+
+    // -- Seekbar visual style selector (Default, Wavy, Waveform) --
+    if (showSeekbarStyleDialog) {
+        SeekbarStyleDialog(
+            current = misc.seekbarStyle,
+            onSelect = {
+                viewModel.setSeekbarStyle(it)
+                showSeekbarStyleDialog = false
+            },
+            onDismiss = { showSeekbarStyleDialog = false },
+        )
+    }
 
     // -- Lyrics provider picker: preferred source first, automatic
     // fallback to the rest when it returns nothing --

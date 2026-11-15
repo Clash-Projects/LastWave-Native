@@ -1,5 +1,6 @@
 package com.lastwave.app.ui.player
 
+import com.lastwave.app.data.local.SeekbarStyle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -281,7 +282,8 @@ internal fun ModernLyricsControlsHost(
     progressFlow: StateFlow<PlaybackProgressState>,
     progressInitial: PlaybackProgressState,
     player: MusicPlayer,
-    wavySeekbarEnabled: Boolean = false,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
@@ -312,6 +314,7 @@ internal fun ModernLyricsControlsHost(
         currentPositionMs = progress.positionMs,
         totalDurationMs = if (progress.durationMs > 0) progress.durationMs else state.durationMs,
         player = player,
+        seekbarStyle = seekbarStyle,
         wavySeekbarEnabled = wavySeekbarEnabled,
         onToggleFullscreen = onToggleFullscreen,
         isFullscreen = isFullscreen,
@@ -346,7 +349,8 @@ internal fun ModernLyricsControls(
     currentPositionMs: Long,
     totalDurationMs: Long,
     player: MusicPlayer,
-    wavySeekbarEnabled: Boolean = false,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     lyricsOffsetMs: Long = 0L,
@@ -628,6 +632,7 @@ internal fun ModernLyricsControls(
             interactionSource = seekInteraction,
             primaryColor = primaryColor,
             tertiaryColor = tertiaryColor,
+            seekbarStyle = seekbarStyle,
             wavy = wavySeekbarEnabled,
             isPlaying = state.isPlaying,
             secondaryColor = secondaryColor,

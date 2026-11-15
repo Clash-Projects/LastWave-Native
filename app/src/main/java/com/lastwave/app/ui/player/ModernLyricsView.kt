@@ -1,5 +1,6 @@
 package com.lastwave.app.ui.player
 
+import com.lastwave.app.data.local.SeekbarStyle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -164,7 +165,8 @@ fun ModernLyricsPanel(
     player: MusicPlayer,
     lyricsState: LyricsUiState,
     progressState: StateFlow<PlaybackProgressState>? = null,
-    wavySeekbarEnabled: Boolean = false,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     onToggleFullscreen: (() -> Unit)? = null,
     isFullscreen: Boolean = false,
     onRetry: () -> Unit = {},
@@ -590,6 +592,7 @@ fun ModernLyricsPanel(
             progressFlow = progressFlow,
             progressInitial = progressInitial,
             player = player,
+            seekbarStyle = seekbarStyle,
             wavySeekbarEnabled = wavySeekbarEnabled,
             onToggleFullscreen = onToggleFullscreen,
             isFullscreen = isFullscreen,
