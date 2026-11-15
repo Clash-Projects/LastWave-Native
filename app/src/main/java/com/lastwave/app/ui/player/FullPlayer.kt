@@ -927,6 +927,19 @@ internal fun FullPlayer(
                     }
                 }
 
+                // Player Lyrics puts white text over the art: a scrim keeps it
+                // legible without hiding what plays behind. Read only in draw.
+                val playerLyricsScrim = animateFloatAsState(
+                    targetValue = when {
+                        !playerLyricsActive || currentTab != FullPlayerTab.NOW_PLAYING -> 0f
+                        showFullBleed -> 0.5f
+                        else -> 0.2f
+                    },
+                    animationSpec = tween(320),
+                    label = "playerLyricsScrim",
+                )
+                Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black, alpha = playerLyricsScrim.value) })
+
                 // Lyrics tab backdrop (ArchiveTune / Apple Music style):
                 // Deep dark base (#050505), blurred artwork (46.dp, 62% alpha),
                 // 3-stop vertical gradient of the extracted album art colors (0.88, 0.76, 0.96 alpha),
@@ -1312,10 +1325,16 @@ internal fun FullPlayer(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     val hasArtwork = !track.artworkUrl.isNullOrBlank() || !resolvedAmbientUrl.isNullOrBlank() || activeCanvas != null
+                                    // Player Lyrics takes the sleeve's place; a video stays and moves up.
                                     val sleeveAlpha by animateFloatAsState(
-                                        targetValue = if (showFullBleed && hasArtwork) 0f else 1f,
+                                        targetValue = if ((showFullBleed && hasArtwork) || (playerLyricsActive && !isVideoActive)) 0f else 1f,
                                         animationSpec = tween(350),
                                         label = "sleeveAlpha",
+                                    )
+                                    val videoBias by animateFloatAsState(
+                                        targetValue = if (playerLyricsActive) -1f else 0f,
+                                        animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                        label = "videoBias",
                                     )
 
                                     BoxWithConstraints(
@@ -1329,8 +1348,10 @@ internal fun FullPlayer(
                                                     heroBottomPx = bottom
                                                 }
                                             }
-                                            .pointerInput(track.videoId, track.title, isVideoActive) {
-                                                if (isVideoActive) return@pointerInput
+                                            .pointerInput(track.videoId, track.title, isVideoActive, playerLyricsActive) {
+                                                // Lyric rows own taps in Player Lyrics: a double tap
+                                                // there must not seek 5 s or like the song.
+                                                if (isVideoActive || playerLyricsActive) return@pointerInput
                                                 awaitEachGesture {
                                                     val down = awaitFirstDown(requireUnconsumed = false)
                                                     var isDrag = false
@@ -1431,7 +1452,7 @@ internal fun FullPlayer(
                                                     }
                                                 }
                                             },
-                                        contentAlignment = if (isVideoActive) Alignment.Center else BiasAlignment(0f, if (isTablet) -0.15f else -0.55f),
+                                        contentAlignment = if (isVideoActive) BiasAlignment(0f, videoBias) else BiasAlignment(0f, if (isTablet) -0.15f else -0.55f),
                                     ) {
                                         val artworkSize = (minOf(maxWidth, maxHeight) - 6.dp)
                                             .coerceAtLeast(0.dp)
@@ -1543,6 +1564,30 @@ internal fun FullPlayer(
                                                 )
                                             }
                                             }
+                                        }
+
+                                        androidx.compose.animation.AnimatedVisibility(
+                                            visible = playerLyricsActive,
+                                            enter = fadeIn(tween(320, delayMillis = 60)) +
+                                                scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
+                                            exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.96f),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                // Below the 16:9 video, never over its controls.
+                                                .padding(top = if (isVideoActive) maxWidth * 9f / 16f + 8.dp else 0.dp)
+                                                .padding(horizontal = if (isVideoActive) 20.dp else 0.dp),
+                                        ) {
+                                            PlayerInlineLyrics(
+                                                lyricsState = lyricsState,
+                                                progressState = progressState,
+                                                lyricsOffsetMs = lyricsOffsetMs,
+                                                fontScale = playerLyricsUi.fontScale,
+                                                subLines = playerLyricsUi.subLines,
+                                                // Inverse of the highlight shift: a tap targets audio time.
+                                                onSeek = { player.seekTo((it - lyricsOffsetMs).coerceAtLeast(0L)) },
+                                                onRetry = onRetryLyrics,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
                                         }
 
                                         androidx.compose.animation.AnimatedVisibility(
