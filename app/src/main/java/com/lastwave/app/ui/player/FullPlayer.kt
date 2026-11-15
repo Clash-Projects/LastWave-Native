@@ -364,6 +364,8 @@ internal fun FullPlayer(
     showAutoEqInVolumePanel: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
+    playerLyrics: Boolean = false,
+    onPlayerLyricsChange: (Boolean) -> Unit = {},
     onRetryLyrics: () -> Unit,
     onCollapse: () -> Unit,
     onOpenArtist: (String) -> Unit = {},
@@ -389,6 +391,9 @@ internal fun FullPlayer(
     val isTablet = isTabletOrWideScreen()
     val isTabletLandscape = isLandscape && (isTablet || configuration.screenWidthDp >= 600)
     val isCanvasActive = canvasEnabled && canvas != null
+    // The two-column landscape layout has no single art area to replace, so
+    // its lyrics button keeps opening the lyrics tab.
+    val playerLyricsActive = playerLyrics && !isTabletLandscape && currentTab == FullPlayerTab.NOW_PLAYING
     val syncedVideoVm: SyncedVideoViewModel = hiltViewModel()
     val showSyncedVideo by syncedVideoVm.isVideoActive.collectAsStateWithLifecycle()
     val syncedVideoState by syncedVideoVm.uiState.collectAsStateWithLifecycle()
@@ -654,6 +659,9 @@ internal fun FullPlayer(
         )
         return
     }
+    // Registered inside the host's collapse handler, so back leaves Player
+    // Lyrics first and only the next back closes the player.
+    BackHandler(enabled = playerLyricsActive) { onPlayerLyricsChange(false) }
     CompositionLocalProvider(
         LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
@@ -1709,7 +1717,7 @@ internal fun FullPlayer(
                                             )
                                             LiquidGlassSurface(
                                                 glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
-                                                onClick = hapticClick { onTabChange(FullPlayerTab.LYRICS) },
+                                                onClick = hapticClick { onPlayerLyricsChange(true) },
                                                 interactionSource = lyricsInteraction,
                                                 shape = CircleShape,
                                                 color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
