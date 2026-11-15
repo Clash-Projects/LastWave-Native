@@ -394,14 +394,18 @@ fun MainShell(
 
     Box(Modifier.fillMaxSize()) {
         val feedIndex = tabs.indexOf(MainTab.FEED)
+        // Composing Stats and Playlists on the launch frame (plus their own
+        // loads recomposing them) froze the Feed's first load for seconds on
+        // slower phones. Add them once the user leaves the Feed, then keep every
+        // tab: tab handlers set selectedTabIndex before scrolling, so the jump
+        // frame already composes all of them and a dock jump back to Feed never
+        // disposes and rebuilds it.
+        var composeAllTabs by remember { mutableStateOf(false) }
+        val allTabs = composeAllTabs || selectedTabIndex != feedIndex || pagerState.isScrollInProgress
+        if (allTabs) LaunchedEffect(Unit) { composeAllTabs = true }
         HorizontalPager(
             state = pagerState,
-            // Keep every tab composed. With 1, jumping Playlists -> Home
-            // (dock tap = instant scrollToPage) disposed and rebuilt the whole
-            // Feed (sections, shelves, covers) on that frame, and Statistics
-            // was rebuilt the same way from the far tab. Only 3 tabs, and
-            // off-screen pages are not drawn, so this is cheap.
-            beyondViewportPageCount = tabs.size - 1,
+            beyondViewportPageCount = if (allTabs) tabs.size - 1 else 0,
             modifier = Modifier.fillMaxSize()
                 .then(if (chromeCollapse != null) Modifier.nestedScroll(chromeCollapse.connection) else Modifier)
                 .then(
