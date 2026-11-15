@@ -2,6 +2,20 @@
 
 package com.lastwave.app.ui.player
 
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.BatterySaver
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import com.lastwave.app.ui.theme.M3ExpressiveShape
+
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import com.lastwave.app.data.playlist.isLikedIn
@@ -23,12 +37,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.lastwave.app.ui.common.PredictiveBackScreen
-import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
 import com.lastwave.app.playback.haptics.MusicHapticsIntensity
 import com.lastwave.app.playback.haptics.MusicHapticsMode
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
@@ -750,31 +762,29 @@ internal fun AudioControlsSheet(
                 }
             }
 
-            // 6. Music Haptics Card - All adjustments in the Speaker Tray
             val hapticsConfig by player.hapticsController.config.collectAsStateWithLifecycle()
             val isUsbActive = player.isUsbExclusiveActive
             val isHardwareAvailable = player.hapticsController.isHardwareHapticGeneratorAvailable()
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(24.dp)
                         .animateContentSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.weight(1f),
                         ) {
                             Box(
@@ -788,13 +798,13 @@ internal fun AudioControlsSheet(
                                     imageVector = QualityGlyphs.MusicHaptics,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(22.dp),
                                 )
                             }
-                            Column {
+                            Column(Modifier.weight(1f)) {
                                 Text(
                                     text = "Music Haptics",
-                                    style = MaterialTheme.typography.titleSmall,
+                                    style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
@@ -816,6 +826,10 @@ internal fun AudioControlsSheet(
                                     player.hapticsController.triggerPreviewPulse()
                                 }
                             },
+                            thumbContent = if (hapticsConfig.enabled) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
+                            } else null,
+                            modifier = Modifier.semantics { contentDescription = "Music Haptics" },
                         )
                     }
 
@@ -841,149 +855,220 @@ internal fun AudioControlsSheet(
                             }
                         }
 
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-
-                        // Mode Selection
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                text = "Focus Mode",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
+                                text = "Focus mode",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            Column(
+                                modifier = Modifier.selectableGroup(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 MusicHapticsMode.entries.forEach { mode ->
                                     val isSelected = hapticsConfig.mode == mode
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = {
-                                            player.updateMusicHapticsConfig(hapticsConfig.copy(mode = mode))
-                                        },
-                                        label = {
-                                            Text(
-                                                mode.label,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    val shape = MaterialTheme.shapes.large
+                                    Surface(
+                                        shape = shape,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(shape)
+                                            .selectable(
+                                                selected = isSelected,
+                                                role = Role.RadioButton,
+                                                onClick = {
+                                                    player.updateMusicHapticsConfig(hapticsConfig.copy(mode = mode))
+                                                },
+                                            ),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = when (mode) {
+                                                    MusicHapticsMode.WHOLE_SONG -> Icons.Filled.Audiotrack
+                                                    MusicHapticsMode.BASS_AND_BEATS -> Icons.Filled.GraphicEq
+                                                    MusicHapticsMode.VOCALS_ONLY -> Icons.Outlined.Mic
+                                                },
+                                                contentDescription = null,
+                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(24.dp),
                                             )
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                    )
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                Text(
+                                                    text = when (mode) {
+                                                        MusicHapticsMode.WHOLE_SONG -> "Whole song"
+                                                        MusicHapticsMode.BASS_AND_BEATS -> "Bass & Beats"
+                                                        MusicHapticsMode.VOCALS_ONLY -> "Vocals only"
+                                                    },
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                                )
+                                                if (isSelected) {
+                                                    Text(
+                                                        text = when (mode) {
+                                                            MusicHapticsMode.WHOLE_SONG -> "Full-range taps and rhythmic textures"
+                                                            MusicHapticsMode.BASS_AND_BEATS -> "Deep bass & drum hits · 40–130 Hz"
+                                                            MusicHapticsMode.VOCALS_ONLY -> "Lead vocal phrasing · 300–3,200 Hz"
+                                                        },
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                            RadioButton(selected = isSelected, onClick = null)
+                                        }
+                                    }
                                 }
                             }
-                            Text(
-                                text = hapticsConfig.mode.subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                         }
 
-                        // Intensity Selection
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "Intensity",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
-                                MusicHapticsIntensity.entries.forEach { intensity ->
+                                MusicHapticsIntensity.entries.forEachIndexed { index, intensity ->
                                     val isSelected = hapticsConfig.intensity == intensity
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = {
-                                            player.updateMusicHapticsConfig(hapticsConfig.copy(intensity = intensity))
-                                            player.hapticsController.triggerPreviewPulse(intensity)
-                                        },
-                                        label = {
+                                    val shape = when (index) {
+                                        0 -> M3ExpressiveShape.GroupLeft
+                                        MusicHapticsIntensity.entries.lastIndex -> M3ExpressiveShape.GroupRight
+                                        else -> M3ExpressiveShape.GroupMiddle
+                                    }
+                                    Surface(
+                                        shape = shape,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .heightIn(min = 48.dp)
+                                            .clip(shape)
+                                            .selectable(
+                                                selected = isSelected,
+                                                role = Role.RadioButton,
+                                                onClick = {
+                                                    player.updateMusicHapticsConfig(hapticsConfig.copy(intensity = intensity))
+                                                    player.hapticsController.triggerPreviewPulse(intensity)
+                                                },
+                                            ),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                                        ) {
+                                            if (isSelected) {
+                                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            }
                                             Text(
-                                                intensity.label,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                text = intensity.label,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                modifier = Modifier.weight(1f, fill = false),
                                             )
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                    )
+                                        }
+                                    }
                                 }
                             }
                             Text(
                                 text = when (hapticsConfig.intensity) {
-                                    MusicHapticsIntensity.LIGHT -> "Subtle 35% pulse for relaxed listening"
-                                    MusicHapticsIntensity.MEDIUM -> "Balanced 65% pulse tuned for standard rhythm"
-                                    MusicHapticsIntensity.STRONG -> "Full 100% kick for heavy bass drops & transients"
+                                    MusicHapticsIntensity.LIGHT -> "Subtle pulses for relaxed listening."
+                                    MusicHapticsIntensity.MEDIUM -> "Balanced pulses for everyday listening."
+                                    MusicHapticsIntensity.STRONG -> "Full-strength pulses for bass drops."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
 
-                        // Engine Routing Selection
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "Engine Routing",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                        var engineMenuExpanded by remember { mutableStateOf(false) }
+                        Box {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(MaterialTheme.shapes.large)
+                                    .clickable { engineMenuExpanded = true }
+                                    .heightIn(min = 48.dp)
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
+                                Icon(
+                                    Icons.Filled.Tune,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 12.dp).size(24.dp),
+                                )
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Engine routing", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        text = when (hapticsConfig.engineMode) {
+                                            MusicHapticsEngineMode.AUTO -> if (isHardwareAvailable) "Native for whole song; DSP for filters" else "Precision DSP active"
+                                            MusicHapticsEngineMode.DSP_PRECISION -> "Precision DSP active"
+                                            MusicHapticsEngineMode.HARDWARE_NATIVE -> if (isHardwareAvailable) "Android native haptics" else "Hardware unavailable · using DSP"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        hapticsConfig.engineMode.displayLabel(),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Icon(Icons.Filled.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            DropdownMenu(expanded = engineMenuExpanded, onDismissRequest = { engineMenuExpanded = false }) {
                                 MusicHapticsEngineMode.entries.forEach { engine ->
-                                    val isSelected = hapticsConfig.engineMode == engine
-                                    val isEnabled = engine != MusicHapticsEngineMode.HARDWARE_NATIVE || isHardwareAvailable
-                                    FilterChip(
-                                        selected = isSelected,
-                                        enabled = isEnabled,
+                                    DropdownMenuItem(
+                                        text = { Text(engine.displayLabel()) },
+                                        enabled = engine != MusicHapticsEngineMode.HARDWARE_NATIVE || isHardwareAvailable,
+                                        trailingIcon = if (engine == hapticsConfig.engineMode) {
+                                            { Icon(Icons.Filled.Check, contentDescription = null) }
+                                        } else null,
                                         onClick = {
                                             player.updateMusicHapticsConfig(hapticsConfig.copy(engineMode = engine))
+                                            engineMenuExpanded = false
                                         },
-                                        label = {
-                                            Text(
-                                                when (engine) {
-                                                    MusicHapticsEngineMode.AUTO -> "Auto"
-                                                    MusicHapticsEngineMode.DSP_PRECISION -> "DSP"
-                                                    MusicHapticsEngineMode.HARDWARE_NATIVE -> "Hardware"
-                                                },
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            )
-                                        },
-                                        modifier = Modifier.weight(1f),
                                     )
                                 }
                             }
-                            val engineDesc = when (hapticsConfig.engineMode) {
-                                MusicHapticsEngineMode.AUTO -> if (isHardwareAvailable) "Hardware HAL for Whole Song; DSP for filtered modes" else "Precision Media3 DSP engine active"
-                                MusicHapticsEngineMode.DSP_PRECISION -> "Precision Media3 transient analyzer (cross-device)"
-                                MusicHapticsEngineMode.HARDWARE_NATIVE -> if (isHardwareAvailable) "Android 12+ hardware HapticGenerator coupled to audio HAL" else "Unavailable on this device (falling back to DSP)"
-                            }
-                            Text(
-                                text = engineDesc,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                         }
 
-                        // Pause on Battery Saver
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(Modifier.weight(1f)) {
+                            Icon(
+                                Icons.Outlined.BatterySaver,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 12.dp).size(24.dp),
+                            )
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    "Pause on Battery Saver",
+                                    "Pause on battery saver",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium,
                                 )
                                 Text(
-                                    "Preserves battery when Power Saver is active",
+                                    "Suspend haptics to save power",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -993,6 +1078,10 @@ internal fun AudioControlsSheet(
                                 onCheckedChange = { pause ->
                                     player.updateMusicHapticsConfig(hapticsConfig.copy(pauseOnBatterySaver = pause))
                                 },
+                                thumbContent = if (hapticsConfig.pauseOnBatterySaver) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
+                                } else null,
+                                modifier = Modifier.semantics { contentDescription = "Pause on battery saver" },
                             )
                         }
                     }
@@ -1000,4 +1089,10 @@ internal fun AudioControlsSheet(
             }
         }
     }
+}
+
+private fun MusicHapticsEngineMode.displayLabel(): String = when (this) {
+    MusicHapticsEngineMode.AUTO -> "Auto"
+    MusicHapticsEngineMode.DSP_PRECISION -> "DSP"
+    MusicHapticsEngineMode.HARDWARE_NATIVE -> "Hardware"
 }
