@@ -6,22 +6,35 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +59,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -58,14 +73,25 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.lastwave.app.R
+import com.lastwave.app.data.local.LyricsProvider
 import com.lastwave.app.data.lyrics.LyricLine
+import com.lastwave.app.data.lyrics.LyricsSyncType
 import com.lastwave.app.data.lyrics.LyricsTranslation
 import com.lastwave.app.data.lyrics.VocalRole
+import com.lastwave.app.data.lyrics.providerForSource
 import com.lastwave.app.data.lyrics.translationLanguageName
 import com.lastwave.app.data.lyrics.translationWireTarget
+import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
+import com.lastwave.app.ui.player.lyricsshare.ShareLyricsDialog
+import com.lastwave.app.ui.player.lyricsshare.TrackInfo
+import com.lastwave.app.ui.player.lyricsshare.buildLyricsSnapshot
+import com.lastwave.app.ui.theme.LiquidGlassPreset
+import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.liquidGlassChrome
+import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -397,6 +423,121 @@ private fun CenteredPlainLyrics(plainLyrics: String, fontScale: Float) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 24.dp),
     )
+}
+
+/**
+ * Player Lyrics' Full Screen and options pair. Same look as the lyrics
+ * screen's floating pair and the same [LyricsOptionsMenuDialog], source
+ * picker and share sheet behind it; Full Screen opens the lyrics screen.
+ */
+@Composable
+internal fun PlayerLyricsActions(
+    ui: PlayerLyricsUiState,
+    lyricsState: LyricsUiState,
+    track: PlayableTrack,
+    progressState: StateFlow<PlaybackProgressState>,
+    lyricsOffsetMs: Long,
+    resolvedArtworkUrl: String?,
+    primaryColor: Color,
+    onOpenFullLyrics: () -> Unit,
+    onLyricsFontScaleChange: (Float) -> Unit,
+    onOpenLyricsOffset: (() -> Unit)?,
+    lyricsProviderStatuses: Map<LyricsProvider, LyricsSyncType>,
+    onProbeLyricsProviders: (() -> Unit)?,
+    onSelectLyricsProvider: ((LyricsProvider) -> Unit)?,
+    onTryAnotherLyricsSource: (() -> Unit)?,
+) {
+    var showOptions by remember { mutableStateOf(false) }
+    var showSource by rememberSaveable { mutableStateOf(false) }
+    var showShare by rememberSaveable { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        LyricsGlassButton(Icons.Filled.Fullscreen, "Fullscreen lyrics", onOpenFullLyrics)
+        Spacer(Modifier.width(10.dp))
+        LyricsGlassButton(Icons.Filled.MoreVert, "Lyrics options") { showOptions = true }
+    }
+    if (showOptions) {
+        LyricsOptionsMenuDialog(
+            onDismiss = { showOptions = false },
+            onOpenLyricsSource = if (onSelectLyricsProvider != null || onTryAnotherLyricsSource != null) {
+                { showSource = true }
+            } else null,
+            canShareLyrics = lyricsState is LyricsUiState.Success &&
+                !lyricsState.isInstrumental &&
+                (lyricsState.lines.any { it.text.isNotBlank() } || !lyricsState.plainLyrics.isNullOrBlank()),
+            onShareLyrics = { showShare = true },
+            lyricsFontScale = ui.fontScale,
+            onLyricsFontScaleChange = {
+                ui.fontScale = it
+                onLyricsFontScaleChange(it)
+            },
+            onLyricsFontScalePreview = { ui.fontScale = it },
+            displayMode = ui.displayMode,
+            translationAvailable = ui.lines != null,
+            onToggleTranslation = { ui.toggle(LyricsDisplayMode.Translated) },
+            onToggleRomanization = { ui.toggle(LyricsDisplayMode.Romanized) },
+            lyricsOffsetMs = lyricsOffsetMs,
+            onOpenLyricsOffset = onOpenLyricsOffset,
+        )
+    }
+    if (showSource) {
+        LaunchedEffect(Unit) { onProbeLyricsProviders?.invoke() }
+        val currentSource = (lyricsState as? LyricsUiState.Success)?.source
+        val currentProvider = remember(currentSource) { providerForSource(currentSource) }
+        LyricsSourceDialog(
+            currentSource = currentSource,
+            currentProvider = currentProvider,
+            providerStatuses = lyricsProviderStatuses,
+            onSelectProvider = { provider ->
+                showSource = false
+                onSelectLyricsProvider?.invoke(provider)
+            },
+            onTryAnotherSource = {
+                showSource = false
+                onTryAnotherLyricsSource?.invoke()
+            },
+            onDismiss = { showSource = false },
+        )
+    }
+    if (showShare) {
+        // A share session keeps the song and line it opened with while playback moves on.
+        val snapshot = remember {
+            val lines = (lyricsState as? LyricsUiState.Success)?.lines.orEmpty()
+            buildLyricsSnapshot(
+                lyricsState,
+                TrackInfo(track.title, track.artist, track.artworkUrl, resolvedArtworkUrl),
+                if (lines.isNotEmpty()) activeLineIndex(lines, progressState.value.positionMs + lyricsOffsetMs) else -1,
+            )
+        }
+        if (snapshot != null) {
+            ShareLyricsDialog(snapshot = snapshot, onDismiss = { showShare = false }, primaryColor = primaryColor)
+        }
+    }
+}
+
+@Composable
+private fun LyricsGlassButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.82f else 1.0f,
+        animationSpec = ExpressiveMotion.spatialSpring(),
+        label = "playerLyricsButtonScale",
+    )
+    IconButton(
+        onClick = hapticClick(action = onClick),
+        interactionSource = interaction,
+        modifier = Modifier
+            .size(44.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.FloatingControls, interactionSource = interaction)
+            .background(liquidGlassContainerColor(Color.White.copy(alpha = 0.14f))),
+    ) {
+        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(24.dp), tint = Color.White.copy(alpha = 0.90f))
+    }
 }
 
 /** The sung line sits a bit above centre, where the eye rests over the title. */
