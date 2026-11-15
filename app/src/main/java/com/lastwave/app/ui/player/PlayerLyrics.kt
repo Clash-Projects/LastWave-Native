@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
@@ -90,6 +91,9 @@ import com.lastwave.app.ui.player.lyricsshare.TrackInfo
 import com.lastwave.app.ui.player.lyricsshare.buildLyricsSnapshot
 import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LocalUseBoldFont
+import com.lastwave.app.ui.theme.lyricsLeadFontFamily
+import com.lastwave.app.ui.theme.lyricsSubLineFontFamily
 import com.lastwave.app.ui.theme.liquidGlassChrome
 import com.lastwave.app.ui.theme.liquidGlassContainerColor
 import kotlinx.coroutines.CoroutineScope
@@ -234,16 +238,28 @@ internal fun PlayerInlineLyrics(
     }
 }
 
+/** Lead and sub-line styles in the same lyric cuts the lyrics screen uses. */
 @Composable
-private fun lyricTextStyle(fontScale: Float): TextStyle {
-    val base = MaterialTheme.typography.headlineMedium
-    return remember(base, fontScale) {
+private fun lyricTextStyles(fontScale: Float): Pair<TextStyle, TextStyle> {
+    val lead = MaterialTheme.typography.headlineMedium
+    val sub = MaterialTheme.typography.titleMedium
+    // App font on: the heavy lyric cuts of the variable font. Off: the system font.
+    val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != FontFamily.Default
+    val bold = LocalUseBoldFont.current
+    return remember(lead, sub, fontScale, useAppFont, bold) {
         val size = 28f * fontScale
-        base.copy(
+        lead.copy(
+            fontFamily = if (useAppFont) lyricsLeadFontFamily(bold) else FontFamily.Default,
             fontSize = size.sp,
             lineHeight = (size * 1.18f).sp,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = (-0.4).sp,
+            textAlign = TextAlign.Center,
+        ) to sub.copy(
+            fontFamily = if (useAppFont) lyricsSubLineFontFamily(bold) else FontFamily.Default,
+            fontSize = (17f * fontScale).sp,
+            lineHeight = (23f * fontScale).sp,
+            fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
         )
     }
@@ -284,12 +300,7 @@ private fun CenteredSyncedLyrics(
     val inBreak = activeSource >= 0 && lines[activeSource].text.isBlank()
     val highlightRow = if (inBreak) -1 else focusRow
 
-    val style = lyricTextStyle(fontScale)
-    val subStyle = MaterialTheme.typography.titleMedium.copy(
-        fontSize = (17f * fontScale).sp,
-        fontWeight = FontWeight.SemiBold,
-        textAlign = TextAlign.Center,
-    )
+    val (style, subStyle) = lyricTextStyles(fontScale)
     val listState = rememberLazyListState()
     val dragged by listState.interactionSource.collectIsDraggedAsState()
     var holdAutoScroll by remember { mutableStateOf(false) }
@@ -379,7 +390,7 @@ private fun CenteredLyricRow(
             }
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 8.dp, vertical = 10.dp),
     ) {
         if (active && line.hasSyllables) {
             WordSyncedLine(line, style, position)
@@ -416,7 +427,7 @@ private fun WordSyncedLine(line: LyricLine, style: TextStyle, position: () -> Lo
 private fun CenteredPlainLyrics(plainLyrics: String, fontScale: Float) {
     Text(
         plainLyrics,
-        style = lyricTextStyle(fontScale).copy(fontSize = (22f * fontScale).sp, lineHeight = (30f * fontScale).sp),
+        style = lyricTextStyles(fontScale).first.copy(fontSize = (22f * fontScale).sp, lineHeight = (30f * fontScale).sp),
         color = Color.White.copy(alpha = 0.88f),
         modifier = Modifier
             .fillMaxSize()

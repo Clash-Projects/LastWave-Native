@@ -662,7 +662,8 @@ fun PlayerHost(
                     ) {
                         PredictiveBackScreen(
                             enabled = expanded && state.current != null && currentTab == FullPlayerTab.NOW_PLAYING,
-                            onBack = { expanded = false },
+                            // The player's only back handler: leave Player Lyrics first, then close.
+                            onBack = { if (playerLyrics) playerLyrics = false else expanded = false },
                         ) {
                             ExpandedPlayer(
                                 viewModel = viewModel,

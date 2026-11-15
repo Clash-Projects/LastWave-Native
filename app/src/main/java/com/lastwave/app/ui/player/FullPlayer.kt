@@ -395,6 +395,9 @@ internal fun FullPlayer(
     // its lyrics button keeps opening the lyrics tab. Not tied to currentTab:
     // Now Playing keeps showing Player Lyrics while it fades out to the lyrics tab.
     val playerLyricsActive = playerLyrics && !isTabletLandscape
+    // Rotating into that layout leaves the mode, so the host's back press and
+    // its 60 ms playhead never serve an invisible Player Lyrics.
+    LaunchedEffect(isTabletLandscape) { if (isTabletLandscape) onPlayerLyricsChange(false) }
     val syncedVideoVm: SyncedVideoViewModel = hiltViewModel()
     val showSyncedVideo by syncedVideoVm.isVideoActive.collectAsStateWithLifecycle()
     val syncedVideoState by syncedVideoVm.uiState.collectAsStateWithLifecycle()
@@ -666,9 +669,6 @@ internal fun FullPlayer(
         )
         return
     }
-    // Registered inside the host's collapse handler, so back leaves Player
-    // Lyrics first and only the next back closes the player.
-    BackHandler(enabled = playerLyricsActive && currentTab == FullPlayerTab.NOW_PLAYING) { onPlayerLyricsChange(false) }
     CompositionLocalProvider(
         LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
