@@ -1384,8 +1384,27 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 12) { index, position ->
-                        when (index) {
+                    val showArtworkBeatSync = misc.fluidBeatSyncEnabled
+                    SettingsGroup(rowCount = if (showArtworkBeatSync) 13 else 12) { index, position ->
+                        val effectiveIndex = if (showArtworkBeatSync && index > 5) index - 1 else index
+                        if (showArtworkBeatSync && index == 5) {
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Album,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_beat_synced_artwork),
+                                subtitle = if (misc.beatSyncedArtworkEnabled) {
+                                    stringResource(R.string.settings_beat_synced_artwork_on)
+                                } else {
+                                    stringResource(R.string.settings_beat_synced_artwork_off)
+                                },
+                                checked = misc.beatSyncedArtworkEnabled,
+                                onCheckedChange = viewModel::setBeatSyncedArtworkEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.beat_synced_artwork"),
+                            )
+                        } else {
+                            when (effectiveIndex) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
@@ -1568,6 +1587,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
                             )
+                        }
                         }
                     }
                 }

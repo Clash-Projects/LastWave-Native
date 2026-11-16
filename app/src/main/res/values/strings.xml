@@ -176,6 +176,9 @@
     <string name="settings_fluid_beat_sync">Beat-Synced Fluid Motion</string>
     <string name="settings_fluid_beat_sync_on">Fluid artwork pulses and swirls in sync with musical beats</string>
     <string name="settings_fluid_beat_sync_off">Fluid artwork moves at a steady constant speed</string>
+    <string name="settings_beat_synced_artwork">Beat-Synced Album Art</string>
+    <string name="settings_beat_synced_artwork_on">Album cover punches and glows in sync with musical beats</string>
+    <string name="settings_beat_synced_artwork_off">Album cover stays static while background fluid pulses</string>
     <string name="settings_studio_clarity">Studio Master Clarity</string>
     <string name="settings_studio_clarity_on">Crystal-clear open sound • airy detail • deep clean separation</string>
     <string name="settings_studio_clarity_off">Original unshaped output</string>

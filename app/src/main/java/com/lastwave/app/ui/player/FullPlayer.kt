@@ -352,6 +352,7 @@ internal fun FullPlayer(
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
     fluidBeatSyncEnabled: Boolean = true,
+    beatSyncedArtworkEnabled: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
@@ -885,7 +886,7 @@ internal fun FullPlayer(
                     val heroCover =
                         if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f)
                     RhythmCoverBox(
-                        enabled = fluidBeatSyncEnabled,
+                        enabled = fluidBeatSyncEnabled && beatSyncedArtworkEnabled,
                         isPlaying = state.isPlaying,
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -918,7 +919,7 @@ internal fun FullPlayer(
                             )
                         } else {
                             RhythmCoverBox(
-                                enabled = fluidBeatSyncEnabled,
+                                enabled = fluidBeatSyncEnabled && beatSyncedArtworkEnabled,
                                 isPlaying = state.isPlaying,
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
@@ -1566,9 +1567,10 @@ internal fun FullPlayer(
                                                 label = "artworkGlowAlpha",
                                             )
                                             val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
-                                            val activeRhythm = if (fluidBeatSyncEnabled && state.isPlaying) r else 0f
-                                            val beatGlowScale = 1.0f + activeRhythm * 0.16f
-                                            val beatGlowAlpha = (glowAlpha + activeRhythm * 0.35f).coerceIn(0f, 1f)
+                                            val isArtworkBeatActive = fluidBeatSyncEnabled && beatSyncedArtworkEnabled && state.isPlaying
+                                            val activeRhythm = if (isArtworkBeatActive) r else 0f
+                                            val beatGlowScale = if (isArtworkBeatActive) 1.0f + activeRhythm * 0.16f else 1.0f
+                                            val beatGlowAlpha = if (isArtworkBeatActive) (glowAlpha + activeRhythm * 0.35f).coerceIn(0f, 1f) else glowAlpha
                                             Box(
                                                 modifier = Modifier
                                                     .size(artworkSize + 28.dp)
@@ -1596,13 +1598,17 @@ internal fun FullPlayer(
                                                 ),
                                                 label = "artworkPlayingScale",
                                             )
-                                            val beatArtworkScale = artworkPlayingScale * (1.0f + activeRhythm * 0.075f)
+                                            val beatArtworkScale = if (isArtworkBeatActive) artworkPlayingScale * (1.0f + activeRhythm * 0.075f) else artworkPlayingScale
 
                                             Surface(
                                                 shape = RoundedCornerShape(22.dp),
                                                 color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f * sleeveAlpha),
                                                 tonalElevation = 6.dp * sleeveAlpha,
-                                                shadowElevation = if (state.isPlaying) (28.dp + 12.dp * activeRhythm) * sleeveAlpha else 12.dp * sleeveAlpha,
+                                                shadowElevation = if (state.isPlaying) {
+                                                    if (isArtworkBeatActive) (28.dp + 12.dp * activeRhythm) * sleeveAlpha else 28.dp * sleeveAlpha
+                                                } else {
+                                                    12.dp * sleeveAlpha
+                                                },
                                                 modifier = Modifier
                                                     .size(artworkSize)
                                                     .graphicsLayer {
