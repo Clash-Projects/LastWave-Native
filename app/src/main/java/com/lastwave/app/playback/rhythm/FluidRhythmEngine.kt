@@ -88,6 +88,52 @@ object FluidRhythmEngine {
     private var peakWide = 0.06f
     private var floorWide = 0.005f
 
+    // Fast & slow envelope state for transient onset detection (isolating beat kicks from drones)
+    private var fastBassEnv = 0f
+    private var slowBassEnv = 0.01f
+    private var fastWideEnv = 0f
+    private var slowWideEnv = 0.01f
+
+    // Presentation-time scheduled target queue
+    private const val QUEUE_CAPACITY = 256
+    private val queueTimes = LongArray(QUEUE_CAPACITY)
+    private val queueTargets = FloatArray(QUEUE_CAPACITY)
+    private var queueHead = 0
+    private var queueCount = 0
+    private val queueLock = Any()
+
+    private fun enqueueTarget(uptimeMs: Long, target: Float) {
+        synchronized(queueLock) {
+            if (queueCount == QUEUE_CAPACITY) {
+                queueHead = (queueHead + 1) % QUEUE_CAPACITY
+                queueCount--
+            }
+            val idx = (queueHead + queueCount) % QUEUE_CAPACITY
+            queueTimes[idx] = uptimeMs
+            queueTargets[idx] = target
+            queueCount++
+        }
+    }
+
+    private fun pollTarget(nowMs: Long): Float {
+        synchronized(queueLock) {
+            var target = -1f
+            while (queueCount > 0 && queueTimes[queueHead] <= nowMs) {
+                target = maxOf(target, queueTargets[queueHead])
+                queueHead = (queueHead + 1) % QUEUE_CAPACITY
+                queueCount--
+            }
+            return target
+        }
+    }
+
+    private fun clearQueue() {
+        synchronized(queueLock) {
+            queueHead = 0
+            queueCount = 0
+        }
+    }
+
     private var analysisWindowFrames = 441
     private var windowCount = 0
     private var windowBassAccum = 0f
@@ -160,8 +206,9 @@ object FluidRhythmEngine {
         val normBass = (bassSum / peakBass).coerceIn(0f, 1f)
         val normWide = (wideSum / peakWide).coerceIn(0f, 1f)
         val instantaneous = ((normBass.pow(1.5f) * 0.75f + normWide * 0.35f) * 1.15f).coerceIn(0f, 1f) * STRENGTH
-        rawRhythmTarget = instantaneous
-        lastAudioFeedUptimeMs = SystemClock.uptimeMillis()
+        val targetUptime = SystemClock.uptimeMillis()
+        enqueueTarget(targetUptime, instantaneous)
+        lastAudioFeedUptimeMs = targetUptime
     }
 
     /**
@@ -181,6 +228,7 @@ object FluidRhythmEngine {
         if (!ensureFormat(sampleRate, channels, pcmEncoding)) return
 
         val data = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
+        var frameIndex = 0L
 
         while (data.remaining() >= bytesPerFrame) {
             // Read 2-sample averaged mono frame
@@ -188,6 +236,7 @@ object FluidRhythmEngine {
             if (data.remaining() >= bytesPerFrame) {
                 mono = (mono + readMonoSample(data)) * 0.5f
             }
+            frameIndex += DECIMATION
 
             // 180 Hz Low-Pass Biquad filter (Kick / Bass)
             val lpY = lpB0 * mono + lpB1 * lpX1 + lpB2 * lpX2 - lpA1 * lpY1 - lpA2 * lpY2
@@ -209,23 +258,50 @@ object FluidRhythmEngine {
                 windowWideAccum = 0f
                 windowCount = 0
 
-                // Adaptive dynamic range tracking
-                peakBass = max(bassRms, peakBass * 0.995f).coerceAtLeast(0.015f)
-                floorBass = min(bassRms, floorBass * 1.002f + 0.0001f).coerceAtMost(peakBass * 0.55f)
-                val dynamicBass = max(peakBass - floorBass, 0.005f)
-                val normBass = ((bassRms - floorBass) / dynamicBass).coerceIn(0f, 1f)
+                // Dual-envelope transient onset detector
+                fastBassEnv = if (bassRms > fastBassEnv) fastBassEnv * 0.40f + bassRms * 0.60f
+                              else fastBassEnv * 0.82f + bassRms * 0.18f
+                slowBassEnv = slowBassEnv * 0.96f + bassRms * 0.04f
 
-                peakWide = max(wideRms, peakWide * 0.995f).coerceAtLeast(0.015f)
-                floorWide = min(wideRms, floorWide * 1.002f + 0.0001f).coerceAtMost(peakWide * 0.55f)
+                fastWideEnv = if (wideRms > fastWideEnv) fastWideEnv * 0.45f + wideRms * 0.55f
+                              else fastWideEnv * 0.85f + wideRms * 0.15f
+                slowWideEnv = slowWideEnv * 0.96f + wideRms * 0.04f
+
+                // Adaptive dynamic range tracking
+                peakBass = max(fastBassEnv, peakBass * 0.995f).coerceAtLeast(0.015f)
+                floorBass = min(fastBassEnv, floorBass * 1.002f + 0.0001f).coerceAtMost(peakBass * 0.50f)
+                val dynamicBass = max(peakBass - floorBass, 0.005f)
+                val normBass = ((fastBassEnv - floorBass) / dynamicBass).coerceIn(0f, 1f)
+
+                peakWide = max(fastWideEnv, peakWide * 0.995f).coerceAtLeast(0.015f)
+                floorWide = min(fastWideEnv, floorWide * 1.002f + 0.0001f).coerceAtMost(peakWide * 0.50f)
                 val dynamicWide = max(peakWide - floorWide, 0.005f)
-                val normWide = ((wideRms - floorWide) / dynamicWide).coerceIn(0f, 1f)
+                val normWide = ((fastWideEnv - floorWide) / dynamicWide).coerceIn(0f, 1f)
+
+                // Transient flux / onset ratio (spikes on actual drum hits)
+                val bassRatio = fastBassEnv / max(slowBassEnv, 0.003f)
+                val wideRatio = fastWideEnv / max(slowWideEnv, 0.003f)
+                val bassTransient = ((bassRatio - 1.15f) * 1.8f).coerceIn(0f, 1f)
+                val wideTransient = ((wideRatio - 1.15f) * 1.2f).coerceIn(0f, 1f)
 
                 // Non-linear power expansion for punchy beat feel (accentuating kicks above background noise)
-                val bassPunch = normBass.pow(1.6f)
-                val widePunch = normWide.pow(1.3f)
-                val instantaneous = ((bassPunch * 0.75f + widePunch * 0.35f) * 1.15f).coerceIn(0f, 1f) * STRENGTH
+                val beatPower = (normBass.pow(1.4f) * 0.45f + bassTransient * 0.55f +
+                                 normWide.pow(1.2f) * 0.20f + wideTransient * 0.25f)
+                val instantaneous = (beatPower * 1.25f).coerceIn(0f, 1f) * STRENGTH
 
-                rawRhythmTarget = instantaneous
+                // Presentation timing calculation
+                val nowUs = runCatching { positionUs() }.getOrDefault(Long.MIN_VALUE)
+                val onsetFrame = frameIndex - analysisWindowFrames
+                val pulseUs = presentationTimeUs + onsetFrame * 1_000_000L / sampleRate
+                val speed = runCatching { playbackSpeed() }.getOrDefault(1f).coerceIn(0.25f, 4f)
+                val leadMs = if (nowUs != Long.MIN_VALUE && presentationTimeUs != C.TIME_UNSET) {
+                    ((pulseUs - nowUs) / 1000f / speed).toLong().coerceIn(0L, 500L)
+                } else {
+                    0L
+                }
+
+                val targetUptime = SystemClock.uptimeMillis() + leadMs
+                enqueueTarget(targetUptime, instantaneous)
                 lastAudioFeedUptimeMs = SystemClock.uptimeMillis()
             }
         }
@@ -244,18 +320,26 @@ object FluidRhythmEngine {
             currentRhythmValue = max(0f, currentRhythmValue - currentRhythmValue * releaseAlpha)
             _rhythm.value = currentRhythmValue
             rawRhythmTarget = 0f
+            clearQueue()
             return currentRhythmValue
         }
 
-        // If audio stream recently fed samples (< 350ms), follow target smoothly
-        val target = if (now - lastAudioFeedUptimeMs < 350L) {
+        // Poll scheduled target for the current timestamp
+        val scheduledTarget = pollTarget(now)
+        if (scheduledTarget >= 0f) {
+            rawRhythmTarget = scheduledTarget
+            lastAudioFeedUptimeMs = now
+        }
+
+        // If audio stream recently fed samples (< 450ms), follow target smoothly
+        val target = if (now - lastAudioFeedUptimeMs < 450L) {
             rawRhythmTarget
         } else {
             rawRhythmTarget = 0f
             0f
         }
 
-        // 35ms attack / 180ms release asymmetric continuous envelope
+        // 35ms attack / 180ms release asymmetric continuous envelope (Lyra spec)
         if (target > currentRhythmValue) {
             val attackAlpha = (1f - exp(-dtMs / ATTACK_MS)).coerceIn(0f, 1f)
             currentRhythmValue += (target - currentRhythmValue) * attackAlpha
@@ -271,8 +355,11 @@ object FluidRhythmEngine {
 
     fun flush() {
         rawRhythmTarget = 0f
+        clearQueue()
         lpX1 = 0f; lpX2 = 0f; lpY1 = 0f; lpY2 = 0f
         wpX1 = 0f; wpX2 = 0f; wpY1 = 0f; wpY2 = 0f
+        fastBassEnv = 0f; slowBassEnv = 0.01f
+        fastWideEnv = 0f; slowWideEnv = 0.01f
         windowCount = 0
         windowBassAccum = 0f
         windowWideAccum = 0f

@@ -201,9 +201,9 @@ private const val BLUR_SIGMA_MAX_ORIGINAL = 360f
 // Beat-synced fluid motion constants (Lyra-spec: crisp contours, punchy surge)
 private val ROTATION_BEAT = floatArrayOf(0.24f, -0.32f, 0.20f, -0.18f)
 private const val FLOW_SPEED_BEAT = 3.6f
-private const val BLUR_FRACTION_BEAT = 0.035f
-private const val BLUR_SIGMA_MIN_BEAT = 24f
-private const val BLUR_SIGMA_MAX_BEAT = 42f
+private const val BLUR_FRACTION_BEAT = 0.065f
+private const val BLUR_SIGMA_MIN_BEAT = 45f
+private const val BLUR_SIGMA_MAX_BEAT = 85f
 
 private const val ORBIT_RADIUS_MID = 0.25f
 private const val ORBIT_RADIUS_SMALL = 0.10f
@@ -334,10 +334,10 @@ private class AgslFluidRenderer {
         shader.setFloatUniform("saturation", sat)
 
         val baseBrightness = if (extraBlur) LYRICS_BRIGHTNESS else BRIGHTNESS
-        val brightness = if (beatSync) baseBrightness + rhythm * 0.14f else baseBrightness
+        val brightness = if (beatSync) (baseBrightness + rhythm * 0.10f).coerceIn(0.42f, 0.70f) else baseBrightness
         shader.setFloatUniform("brightness", brightness)
 
-        val contrast = if (beatSync) CONTRAST + rhythm * 0.32f else CONTRAST
+        val contrast = if (beatSync) (CONTRAST + rhythm * 0.10f).coerceIn(0.20f, 0.42f) else CONTRAST
         shader.setFloatUniform("contrast", contrast)
 
         paint.shader = shader
@@ -517,11 +517,6 @@ fun FluidArtworkBackground(
                         alpha = appear.value
                         @Suppress("UNUSED_VARIABLE")
                         val anim = seconds
-                        val r = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-                        // Lyra Player: dilation = 0.16 (up to 16% elastic scale pulse on beats)
-                        val beatScale = if (fluidBeatSyncEnabled) 1.0f + r * 0.16f else 1.0f
-                        scaleX = beatScale
-                        scaleY = beatScale
                     }
                     .layout { measurable, constraints ->
                         val w = constraints.maxWidth
@@ -530,12 +525,14 @@ fun FluidArtworkBackground(
                         val sh = (h / FLUID_RENDER_SCALE).coerceAtLeast(1)
                         val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(sw, sh))
                         layout(w, h) {
+                            val r = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
+                            val beatScale = if (fluidBeatSyncEnabled) 1.0f + r * 0.12f else 1.0f
                             placeable.placeWithLayer(0, 0) {
-                                scaleX = w.toFloat() / sw
-                                scaleY = h.toFloat() / sh
-                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                                scaleX = (w.toFloat() / sw) * beatScale
+                                scaleY = (h.toFloat() / sh) * beatScale
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    // Sigma from the FULL size, then scaled, so the blur matches the old look.
+                                    // Sigma from the FULL size, then scaled, so the blur matches the look.
                                     val sigma = fluidBlurSigma(w.toFloat(), h.toFloat(), extraBlur, beatSync = fluidBeatSyncEnabled) / FLUID_RENDER_SCALE
                                     if (sigma != cachedSigma || cachedRenderEffect == null) {
                                         cachedSigma = sigma

@@ -712,6 +712,47 @@ internal fun FullPlayer(
                 animationSpec = tween(350),
                 label = "lyricsVeil",
             )
+            // Base vibrant ambient gradients: ALWAYS underneath everything so the background
+            // is NEVER pitch black, even before the fluid texture loads or during track transitions.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            0f to ambientColor.copy(alpha = 0.58f),
+                            0.45f to ambientColor.copy(alpha = 0.22f),
+                            1f to Color.Transparent,
+                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                            radius = bgMaxDimension * 0.85f,
+                        )
+                    )
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            0f to ambientCompanion.copy(alpha = 0.52f),
+                            0.50f to ambientCompanion.copy(alpha = 0.20f),
+                            1f to Color.Transparent,
+                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                            radius = bgMaxDimension * 0.78f,
+                        )
+                    )
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            0f to ambientDeep.copy(alpha = 0.42f),
+                            0.55f to ambientDeep.copy(alpha = 0.14f),
+                            1f to Color.Transparent,
+                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                            radius = bgMaxDimension * 0.70f,
+                        )
+                    )
+            )
             // Kept out of the glass capture: every motion step re-blurred each glass
             // control (~2x frame cost). The fluid is already blurred, so it shows through.
             FluidArtworkBackground(
