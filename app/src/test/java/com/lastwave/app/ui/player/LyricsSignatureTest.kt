@@ -33,6 +33,16 @@ class LyricsSignatureTest {
     }
 
     @Test
+    fun title_keepsOnlyTheMainName() {
+        assertThat(signatureTitle("Flower In A Hurricane [From GTAVI: Original Score]")).isEqualTo("Flower In A Hurricane")
+        assertThat(signatureTitle("Round 2 (feat. Someone)")).isEqualTo("Round 2")
+        assertThat(signatureTitle("Song - Remastered 2011")).isEqualTo("Song")
+        assertThat(signatureTitle("Song feat. Someone")).isEqualTo("Song")
+        assertThat(signatureTitle("Hip-Hop Hooray")).isEqualTo("Hip-Hop Hooray")
+        assertThat(signatureTitle("(Untitled)")).isEqualTo("(Untitled)")
+    }
+
+    @Test
     fun provider_usesTheProviderTitle() {
         assertThat(lyricsProviderLabel("Apple Music (Line-Sync)")).isEqualTo("Apple Music")
         assertThat(lyricsProviderLabel("LRCLIB (Plain)")).isEqualTo("LRCLIB")
