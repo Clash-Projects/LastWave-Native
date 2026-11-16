@@ -1624,6 +1624,7 @@ internal fun FullPlayer(
                                                 displayMode = playerLyricsUi.displayMode,
                                                 onRetry = onRetryLyrics,
                                                 modifier = Modifier.fillMaxSize(),
+                                                accentColor = ambientColor,
                                             )
                                         }
 
