@@ -725,7 +725,8 @@ fun FeedScreen(
 
                 val showInitialPlaceholders = showSynthetic && state.isFeedUpdating && state.feedData.lastUpdatedMillis == 0L
                 val isInfiniteRadioVisible = showSynthetic && (combinedQuickPicks.isNotEmpty() || showInitialPlaceholders)
-                val isQuickTilesVisible = showSynthetic && (quickTiles.isNotEmpty() || showInitialPlaceholders)
+                val isQuickTilesVisible = showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) &&
+                    (quickTiles.isNotEmpty() || showInitialPlaceholders)
                 val hasSectionsBelowQuickTiles = allContainerKeys.isNotEmpty()
                 val quickTilesShape = RoundedCornerShape(
                     topStart = if (isInfiniteRadioVisible) 0.dp else 28.dp,
@@ -909,8 +910,10 @@ fun FeedScreen(
                                 HomeContainerSection(
                                     shape = quickTilesShape,
                                 ) {
+                                    val quickAccessTitle = stringResource(R.string.feed_quick_access)
                                     FeedSectionHeader(
-                                        title = stringResource(R.string.feed_quick_access),
+                                        title = quickAccessTitle,
+                                        onLongClick = { sectionMenuTarget = "quick_tiles" to quickAccessTitle },
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                     if (quickTiles.isEmpty()) QuickTilesLoadingSkeleton() else QuickTilesGrid(
