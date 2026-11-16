@@ -893,6 +893,19 @@ internal fun FullPlayer(
                         ),
                 )
                 if (showFullBleed) {
+                    // Player Lyrics over full-screen art: a light blur so the cover's
+                    // detail stops competing with the text. Read only in the layer.
+                    val lyricsArtBlur = animateFloatAsState(
+                        targetValue = if (playerLyricsActive && currentTab == FullPlayerTab.NOW_PLAYING) 1f else 0f,
+                        animationSpec = tween(320),
+                        label = "playerLyricsArtBlur",
+                    )
+                    val lyricsArtBlurModifier = Modifier.graphicsLayer {
+                        val radius = 6.dp.toPx() * lyricsArtBlur.value
+                        renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && radius > 0.5f) {
+                            androidx.compose.ui.graphics.BlurEffect(radius, radius, androidx.compose.ui.graphics.TileMode.Clamp)
+                        } else null
+                    }
                     val isTallCanvas = remember(activeCanvas, canvasAspect, canvasGradientBlurEnabled) {
                         if (canvasGradientBlurEnabled || activeCanvas == null) false
                         else if (canvasAspect > 0f) {
@@ -941,7 +954,7 @@ internal fun FullPlayer(
                             resolvedUrl = resolvedAmbientUrl,
                             bottomFade = 0.38f,
                             alpha = heroAlpha * heroCover,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().then(lyricsArtBlurModifier),
                         )
                     }
                     if (activeCanvas != null) {
@@ -956,7 +969,7 @@ internal fun FullPlayer(
                                 onCoverChanged = { canvasCover = it },
                                 onAspectRatioChanged = { canvasAspect = it },
                                 pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize().then(lyricsArtBlurModifier),
                             )
                         } else {
                             RhythmCoverBox(
@@ -977,7 +990,7 @@ internal fun FullPlayer(
                                     onCoverChanged = { canvasCover = it },
                                     onAspectRatioChanged = { canvasAspect = it },
                                     pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier.fillMaxSize().then(lyricsArtBlurModifier),
                                 )
                             }
                         }
