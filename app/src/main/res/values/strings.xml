@@ -1239,6 +1239,31 @@
     <string name="ly_no_vocals">This track has no vocal lyrics.</string>
     <string name="ly_no_synced">No synced lyrics found for this track.</string>
     <string name="ly_retry">Try again</string>
+    <string name="ly_signature_credit">Lyrics by %1$s</string>
+    <string name="ly_signature_not_found">Couldn\'t find your lyrics, %1$s</string>
+    <string name="ly_signature_not_found_hint">The words are shy on this one. The music isn\'t.</string>
+    <string-array name="ly_signature_loading">
+        <item>Finding your lyrics…</item>
+        <item>Hunting down every word…</item>
+        <item>Getting the verses ready…</item>
+        <item>Brewing your lyrics…</item>
+        <item>Tuning in to the words…</item>
+        <item>Lining up the first line…</item>
+        <item>Asking the providers nicely…</item>
+        <item>Warming up the stage…</item>
+    </string-array>
+    <string-array name="ly_signature_address">
+        <item>Sir</item>
+        <item>Comrade</item>
+        <item>Master</item>
+        <item>My Lord</item>
+        <item>Captain</item>
+        <item>Chief</item>
+        <item>Maestro</item>
+        <item>Your Highness</item>
+        <item>Legend</item>
+        <item>Boss</item>
+    </string-array>
     <string name="ly_size_cd">Adjust lyrics text size</string>
 
     <!-- Artist detail -->
