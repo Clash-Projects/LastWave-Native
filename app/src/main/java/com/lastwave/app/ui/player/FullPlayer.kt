@@ -2035,6 +2035,7 @@ internal fun FullPlayer(
         com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
     }
 }
+}
 
 @Composable
 private fun RhythmCoverBox(
