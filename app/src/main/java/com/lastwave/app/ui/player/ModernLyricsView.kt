@@ -4,7 +4,6 @@ import com.lastwave.app.data.local.SeekbarStyle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -152,7 +151,6 @@ import com.lastwave.app.data.lyrics.translationWireTarget
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.MusicPlayerState
 import com.lastwave.app.playback.PlaybackProgressState
-import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -192,7 +190,7 @@ fun ModernLyricsPanel(
     onTryAnotherLyricsSource: (() -> Unit)? = null,
     resolvedArtworkUrl: String? = null,
 ) {
-    state.current ?: return
+    val track = state.current ?: return
 
     var showShareDialog by rememberSaveable { mutableStateOf(false) }
     val canShareLyrics = lyricsState is LyricsUiState.Success &&
@@ -393,8 +391,9 @@ fun ModernLyricsPanel(
 
     Column(modifier = modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            AnimatedContent(
-                targetState = lyricsState,
+            LyricsStateContent(
+                lyricsState = lyricsState,
+                signature = rememberLyricsSignature(track, lyricsState, primaryColor),
                 transitionSpec = {
                     (fadeIn(tween(ExpressiveMotion.Quick)) +
                         androidx.compose.animation.scaleIn(ExpressiveMotion.spatialSpring(), initialScale = 0.96f)) togetherWith
@@ -405,34 +404,10 @@ fun ModernLyricsPanel(
                 modifier = Modifier.fillMaxSize(),
             ) { targetState ->
                 when (targetState) {
-                    is LyricsUiState.Loading -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                            ) {
-                                ExpressiveInlineLoadingIndicator(
-                                    size = 42.dp,
-                                    strokeWidth = 3.5.dp,
-                                    color = Color.White,
-                                )
-                                Text(
-                                    "Finding lyrics...",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = Color.White.copy(alpha = 0.70f),
-                                )
-                            }
-                        }
-                    }
+                    is LyricsUiState.Loading -> LyricsSignatureStatus(SignatureMode.Loading)
 
                     is LyricsUiState.Empty, is LyricsUiState.Error -> {
-                        ModernEmptyLyricsView(
-                            isInstrumental = false,
-                            onRetry = onRetry,
-                        )
+                        LyricsSignatureStatus(SignatureMode.NotFound, onRetry)
                     }
 
                     is LyricsUiState.Success -> {
@@ -505,8 +480,8 @@ fun ModernLyricsPanel(
 
                             val layoutDirection = if (isOverallRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
                             // Sync-type badge: makes it visible why words animate
-                            // (word-sync) or just scroll (line-sync). No source
-                            // or provider name is ever shown on the canvas.
+                            // (word-sync) or just scroll (line-sync). The provider
+                            // is credited only on the signature intro card.
                             val wordSyncLabel = stringResource(R.string.ly_word_sync)
                             val lineSyncLabel = stringResource(R.string.ly_line_sync)
                             val syncLabel = if (isWordSynced) wordSyncLabel else lineSyncLabel
@@ -564,10 +539,7 @@ fun ModernLyricsPanel(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
-                            ModernEmptyLyricsView(
-                                isInstrumental = false,
-                                onRetry = onRetry,
-                            )
+                            LyricsSignatureStatus(SignatureMode.NotFound, onRetry)
                         }
                     }
 

@@ -288,15 +288,29 @@ internal fun ModernSyncedLyricsList(
     ) {
         itemsIndexed(
             items,
-            key = { index, item -> "${if (item is LyricInterlude) "b" else "g"}$index:${item.startMs}" },
+            key = { index, item ->
+                val kind = when (item) {
+                    is LyricIntro -> "i"
+                    is LyricInterlude -> "b"
+                    is LyricLineGroup -> "g"
+                }
+                "$kind$index:${item.startMs}"
+            },
             contentType = { _, item ->
                 when (item) {
+                    is LyricIntro -> "intro"
                     is LyricInterlude -> "interlude"
                     is LyricLineGroup -> if (item.isWordSynced) "word" else "line"
                 }
             },
         ) { index, item ->
             when (item) {
+                is LyricIntro -> LyricIntroRow(
+                    item = item,
+                    index = index,
+                    activeState = activeState,
+                    currentPositionMs = currentPositionMs,
+                )
                 is LyricInterlude -> LyricInterludeRow(
                     item = item,
                     index = index,
@@ -575,6 +589,70 @@ internal fun LyricInterludeRow(
         )
     }
 }
+
+/**
+ * Song intro: the signature card holds the pre-lyrics zone until the first
+ * line, then folds away like the break dots so the line lands on a clear
+ * stage. It only opens while enough intro is left to read it.
+ */
+@Composable
+internal fun LyricIntroRow(
+    item: LyricIntro,
+    index: Int,
+    activeState: androidx.compose.runtime.State<Int>,
+    currentPositionMs: () -> Long,
+) {
+    val active by remember(index) { derivedStateOf { activeState.value == index } }
+    // Decided in the first composition, not in an effect: the card has to be
+    // there on the first frame to catch the loading card's shared glide.
+    var shown by remember { mutableStateOf(active && shouldShowSignatureIntro(item.endMs, currentPositionMs())) }
+    LaunchedEffect(active) {
+        if (!active) {
+            shown = false
+            return@LaunchedEffect
+        }
+        // Opens on entering the intro or on a seek back into it, but never
+        // reopens in its last moments.
+        snapshotFlow { shouldShowSignatureIntro(item.endMs, currentPositionMs()) }
+            .collect { if (it) shown = true }
+    }
+    val reveal = remember { Animatable(if (shown) 1f else 0f) }
+    LaunchedEffect(shown) {
+        reveal.animateTo(
+            targetValue = if (shown) 1f else 0f,
+            animationSpec = if (shown) {
+                tween(LYRIC_INTRO_OPEN_MS, easing = LYRIC_EASE)
+            } else {
+                tween(LYRIC_INTRO_CLOSE_MS, easing = FastOutSlowInEasing)
+            },
+        )
+    }
+    val composed by remember { derivedStateOf { shown || reveal.value > 0f } }
+    if (!composed) return
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val height = (placeable.height * reveal.value).roundToInt().coerceIn(0, placeable.height)
+                layout(placeable.width, height) { placeable.place(0, 0) }
+            }
+            .graphicsLayer {
+                val r = reveal.value
+                alpha = r * r
+                scaleX = 0.94f + 0.06f * r
+                scaleY = scaleX
+                translationY = -(1f - r) * 16.dp.toPx()
+                transformOrigin = TransformOrigin(0.5f, 0f)
+            }
+            .padding(bottom = 28.dp),
+    ) {
+        LyricsSignatureCard(mode = SignatureMode.Intro)
+    }
+}
+
+private const val LYRIC_INTRO_OPEN_MS = 520
+private const val LYRIC_INTRO_CLOSE_MS = 420
 
 /**
  * Translated or romanized copy of a line, drawn underneath it. Height grows
