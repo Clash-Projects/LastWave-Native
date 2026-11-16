@@ -525,12 +525,10 @@ fun FluidArtworkBackground(
                         val sh = (h / FLUID_RENDER_SCALE).coerceAtLeast(1)
                         val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(sw, sh))
                         layout(w, h) {
-                            val r = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-                            val beatScale = if (fluidBeatSyncEnabled) 1.0f + r * 0.12f else 1.0f
                             placeable.placeWithLayer(0, 0) {
-                                scaleX = (w.toFloat() / sw) * beatScale
-                                scaleY = (h.toFloat() / sh) * beatScale
-                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
+                                scaleX = w.toFloat() / sw
+                                scaleY = h.toFloat() / sh
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                                     // Sigma from the FULL size, then scaled, so the blur matches the look.
                                     val sigma = fluidBlurSigma(w.toFloat(), h.toFloat(), extraBlur, beatSync = fluidBeatSyncEnabled) / FLUID_RENDER_SCALE
@@ -572,7 +570,7 @@ fun FluidArtworkBackground(
                             for (copy in copies) {
                                 rotate(
                                     degrees = Math.toDegrees(copy.angle.toDouble()).toFloat(),
-                                    pivot = Offset(copy.centreX, copy.copy(angle = copy.angle).centreY)
+                                    pivot = Offset(copy.centreX, copy.centreY)
                                 ) {
                                     drawImage(
                                         image = curImg,
