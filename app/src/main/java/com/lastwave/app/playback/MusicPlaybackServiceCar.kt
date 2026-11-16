@@ -117,10 +117,14 @@ internal fun MusicPlaybackService.isAllowedMediaClient(clientPackageName: String
     }.getOrDefault(true)
 
     /**
-     * OriginOS music card / Origin Island lyrics: once per track, fetch the
-     * synced lyrics (same cached repository the lyrics screen uses) and hand
-     * them over as whole-song LRC through the session extras, resending
-     * while the track stays current. The media id matches the metadata one.
+     * OriginOS music card / Origin Island lyrics: once per track, hand the
+     * synced lyrics over as whole-song LRC through the session extras,
+     * resending while the track stays current. The media id matches the
+     * metadata one.
+     *
+     * The lyrics are the ones the lyrics screen settled on whenever it has
+     * loaded them, so the card shows what the app shows. Until then, or when
+     * the app has no screen open, the service fetches them itself.
      */
 internal fun MusicPlaybackService.publishOriginOsLyrics(state: MusicPlayerState) {
         if (!OriginOsMusicCard.isSupportedDevice()) return
@@ -130,31 +134,68 @@ internal fun MusicPlaybackService.publishOriginOsLyrics(state: MusicPlayerState)
         originLyricsMediaId = mediaId
         originLyricsJob?.cancel()
         if (track == null || mediaId == null) return
+        val trackKey = OriginOsMusicCard.trackKeyOf(track)
         originLyricsJob = scope.launch {
-            val result = runCatching {
-                lyricsRepository.getLyrics(
-                    title = track.title,
-                    artist = track.artist,
-                    album = track.album,
-                    durationSeconds = (state.durationMs.takeIf { it > 0 } ?: track.durationMs)
-                        ?.takeIf { it > 0 }?.let { (it / 1000).toInt() },
-                    wordByWord = false,
-                    videoId = track.videoId,
-                    localLrcPath = com.lastwave.app.data.generate.LocalAudioFormats
-                        .importedPathOrNull(track.playbackUrl)
-                        ?.let(com.lastwave.app.data.generate.LocalAudioFormats::lrcPathFor),
-                )
-            }.getOrNull() as? com.lastwave.app.data.lyrics.LyricsResult.Success ?: return@launch
-            if (!result.isSynced) return@launch
-            val lrc = OriginOsMusicCard.lrcOf(result.lines) ?: return@launch
-            // Never setExtras with an empty bundle: that wipes what the card has.
-            val extras = OriginOsMusicCard.lyricsExtras(mediaId, lrc)
-            while (isActive) {
-                runCatching { mediaSession?.setExtras(extras) }
-                delay(OriginOsMusicCard.LYRICS_RESEND_INTERVAL_MS)
+            val lrc = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+            launch {
+                val fetched = fetchOriginOsLrc(track) ?: return@launch
+                // The lyrics screen's lyrics win when they came first.
+                lrc.compareAndSet(null, fetched)
+            }
+            launch {
+                OriginOsMusicCard.playerLyrics.collectLatest { player ->
+                    if (player?.trackKey != trackKey) return@collectLatest
+                    delay(OriginOsMusicCard.PLAYER_LYRICS_SETTLE_MS)
+                    OriginOsMusicCard.lrcOf(player.lines)?.let { lrc.value = it }
+                }
+            }
+            lrc.collectLatest { value ->
+                // Never setExtras with an empty bundle: that wipes what the card has.
+                if (value == null) return@collectLatest
+                val extras = OriginOsMusicCard.lyricsExtras(mediaId, value)
+                while (isActive) {
+                    runCatching { mediaSession?.setExtras(extras) }
+                    delay(OriginOsMusicCard.LYRICS_RESEND_INTERVAL_MS)
+                }
             }
         }
     }
+
+    /**
+     * The track's synced lyrics as LRC, prepared like the lyrics screen's.
+     * Waits for the duration of the track first, as the lyrics screen does:
+     * providers pick the version of the song by it, and without it some
+     * return another cut (one with only half the song, for example).
+     */
+private suspend fun MusicPlaybackService.fetchOriginOsLrc(track: PlayableTrack): String? {
+        val durationMs = withTimeoutOrNull(ORIGIN_OS_DURATION_WAIT_MS) {
+            musicPlayer.state.first { state ->
+                state.current?.let(OriginOsMusicCard::trackKeyOf) == OriginOsMusicCard.trackKeyOf(track) &&
+                    state.durationMs > 0
+            }.durationMs
+        } ?: track.durationMs
+        val result = runCatching {
+            lyricsRepository.getLyrics(
+                title = track.title,
+                artist = track.artist,
+                album = track.album,
+                durationSeconds = durationMs?.takeIf { it > 0 }?.let { (it / 1000).toInt() },
+                wordByWord = false,
+                videoId = track.videoId,
+                localLrcPath = com.lastwave.app.data.generate.LocalAudioFormats
+                    .importedPathOrNull(track.playbackUrl)
+                    ?.let(com.lastwave.app.data.generate.LocalAudioFormats::lrcPathFor),
+            )
+        }.getOrNull() as? com.lastwave.app.data.lyrics.LyricsResult.Success ?: return null
+        if (!result.isSynced || result.isInstrumental) return null
+        return OriginOsMusicCard.lrcOf(
+            com.lastwave.app.data.lyrics.LyricsRepository.normalizeLyricTiming(
+                com.lastwave.app.data.lyrics.LyricsSanitizer.sanitize(result.lines),
+            ),
+        )
+    }
+
+private const val ORIGIN_OS_DURATION_WAIT_MS = 8_000L
 
 internal fun MusicPlaybackService.playCarMediaId(mediaId: String) {
         scope.launch {
