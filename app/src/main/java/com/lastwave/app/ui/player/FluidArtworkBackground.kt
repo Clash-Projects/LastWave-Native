@@ -150,16 +150,16 @@ internal fun fluidCopies(
     val cy = height / 2f
     val orbit = { rate: Float, radius: Float, phase: Float ->
         val a = rate * t + phase
-        val r = radius * (1.0f + rhythm * 0.12f)
+        val r = radius * (1.0f + rhythm * 0.25f)
         cx + width * r * cos(a) to cy + width * r * sin(a)
     }
     val (x3, y3) = orbit(ORBIT_RATE_MID, ORBIT_RADIUS_MID, startPhase(seed, 4))
     val (x4, y4) = orbit(ORBIT_RATE_SMALL, ORBIT_RADIUS_SMALL, startPhase(seed, 5))
     return listOf(
-        FluidCopy(cx, cy, longest * SQRT_2 * (1.0f + rhythm * 0.08f), startPhase(seed, 0) + ROTATION[0] * t),
-        FluidCopy(width / 2.5f, height / 2.5f, longest * 0.8f * (1.0f + rhythm * 0.14f), startPhase(seed, 1) + ROTATION[1] * t),
-        FluidCopy(x3, y3, longest * 0.5f * (1.0f + rhythm * 0.20f), startPhase(seed, 2) + ROTATION[2] * t),
-        FluidCopy(x4, y4, longest * 0.25f * (1.0f + rhythm * 0.25f), startPhase(seed, 3) + ROTATION[3] * t),
+        FluidCopy(cx, cy, longest * SQRT_2 * (1.0f + rhythm * 0.10f), startPhase(seed, 0) + ROTATION[0] * t),
+        FluidCopy(width / 2.5f, height / 2.5f, longest * 0.8f * (1.0f + rhythm * 0.20f), startPhase(seed, 1) + ROTATION[1] * t),
+        FluidCopy(x3, y3, longest * 0.5f * (1.0f + rhythm * 0.35f), startPhase(seed, 2) + ROTATION[2] * t),
+        FluidCopy(x4, y4, longest * 0.25f * (1.0f + rhythm * 0.50f), startPhase(seed, 3) + ROTATION[3] * t),
     )
 }
 
@@ -169,13 +169,14 @@ private fun startPhase(seed: Int, index: Int): Float =
 private const val TWO_PI = 6.2831855f
 private val SQRT_2 = sqrt(2f)
 
-private val ROTATION = floatArrayOf(0.06f, -0.12f, 0.06f, -0.08f)
+// Dynamic multi-lobe rotations matching Lyra Player's rotation speeds (~0.6 - 1.2 rad/s)
+private val ROTATION = floatArrayOf(0.24f, -0.32f, 0.20f, -0.18f)
 
 private const val ORBIT_RADIUS_MID = 0.25f
 private const val ORBIT_RADIUS_SMALL = 0.10f
 private const val ORBIT_RATE_MID = 0.045f
 private const val ORBIT_RATE_SMALL = 0.09f
-private const val FLOW_SPEED = 2.5f
+private const val FLOW_SPEED = 3.6f
 
 private const val SATURATION = 1.9f
 private const val BRIGHTNESS = 0.52f
@@ -185,9 +186,11 @@ private const val CONTRAST = 0.3f
 private const val TWIST_ANGLE = 1.6f
 private const val TWIST_REACH = 1.0f
 
-private const val BLUR_FRACTION = 0.18f
-private const val BLUR_SIGMA_MIN = 80f
-private const val BLUR_SIGMA_MAX = 360f
+// Precise blur sigma matching Lyra Player specification (flow.sigma = 31.77)
+// Preserves fluid contours, lobe shapes, and beat ripples without turning into flat fog.
+private const val BLUR_FRACTION = 0.035f
+private const val BLUR_SIGMA_MIN = 24f
+private const val BLUR_SIGMA_MAX = 42f
 private const val FLUID_RENDER_SCALE = 4
 
 private const val TEXTURE_PX = 256
@@ -227,9 +230,9 @@ private suspend fun loadTexture(context: Context, url: String, preBlur: Boolean 
 }
 
 internal fun fluidBlurSigma(width: Float, height: Float, extraBlur: Boolean = false): Float =
-    (minOf(width, height) * (if (extraBlur) 0.50f else BLUR_FRACTION)).coerceIn(
-        if (extraBlur) 280f else BLUR_SIGMA_MIN,
-        if (extraBlur) 720f else BLUR_SIGMA_MAX
+    (minOf(width, height) * (if (extraBlur) 0.08f else BLUR_FRACTION)).coerceIn(
+        if (extraBlur) 70f else BLUR_SIGMA_MIN,
+        if (extraBlur) 110f else BLUR_SIGMA_MAX
     )
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -283,7 +286,7 @@ private class AgslFluidRenderer {
         shader.setFloatUniform("twistAngle", TWIST_ANGLE * (1.0f + rhythm * 0.45f))
         shader.setFloatUniform("saturation", SATURATION + rhythm * 0.28f)
         val baseBrightness = if (extraBlur) LYRICS_BRIGHTNESS else BRIGHTNESS
-        shader.setFloatUniform("brightness", baseBrightness + rhythm * 0.18f)
+        shader.setFloatUniform("brightness", baseBrightness + rhythm * 0.14f)
         shader.setFloatUniform("contrast", CONTRAST + rhythm * 0.32f)
         paint.shader = shader
         canvas.drawRect(0f, 0f, width, height, paint)

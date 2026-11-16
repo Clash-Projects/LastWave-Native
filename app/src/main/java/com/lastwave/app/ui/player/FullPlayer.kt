@@ -1571,12 +1571,18 @@ internal fun FullPlayer(
                                                 animationSpec = tween(600),
                                                 label = "artworkGlowAlpha",
                                             )
+                                            val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
+                                            val activeRhythm = if (fluidBeatSyncEnabled && state.isPlaying) r else 0f
+                                            val beatGlowScale = 1.0f + activeRhythm * 0.16f
+                                            val beatGlowAlpha = (glowAlpha + activeRhythm * 0.35f).coerceIn(0f, 1f)
                                             Box(
                                                 modifier = Modifier
                                                     .size(artworkSize + 28.dp)
                                                     .graphicsLayer {
                                                         translationX = shownArtworkX * 0.7f
-                                                        alpha = glowAlpha * sleeveAlpha
+                                                        scaleX = beatGlowScale
+                                                        scaleY = beatGlowScale
+                                                        alpha = beatGlowAlpha * sleeveAlpha
                                                     }
                                                     .background(
                                                         Brush.radialGradient(
@@ -1596,31 +1602,44 @@ internal fun FullPlayer(
                                                 ),
                                                 label = "artworkPlayingScale",
                                             )
+                                            val beatArtworkScale = artworkPlayingScale * (1.0f + activeRhythm * 0.075f)
 
                                             Surface(
                                                 shape = RoundedCornerShape(22.dp),
                                                 color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f * sleeveAlpha),
                                                 tonalElevation = 6.dp * sleeveAlpha,
-                                                shadowElevation = if (state.isPlaying) 28.dp * sleeveAlpha else 12.dp * sleeveAlpha,
+                                                shadowElevation = if (state.isPlaying) (28.dp + 12.dp * activeRhythm) * sleeveAlpha else 12.dp * sleeveAlpha,
                                                 modifier = Modifier
                                                     .size(artworkSize)
                                                     .graphicsLayer {
-                                                        scaleX = artworkPlayingScale
-                                                        scaleY = artworkPlayingScale
+                                                        scaleX = beatArtworkScale
+                                                        scaleY = beatArtworkScale
                                                         translationX = shownArtworkX
                                                         rotationZ = shownArtworkX / 80f
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                PlayerArtwork(
-                                                    track = track,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    corner = 22.dp,
-                                                    canvas = if (showSleeveCanvas) canvas else null,
-                                                    isPlaying = state.isPlaying,
-                                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                                    onAspectRatioChanged = { canvasAspect = it },
-                                                )
+                                                Box(modifier = Modifier.fillMaxSize()) {
+                                                    PlayerArtwork(
+                                                        track = track,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        corner = 22.dp,
+                                                        canvas = if (showSleeveCanvas) canvas else null,
+                                                        isPlaying = state.isPlaying,
+                                                        pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                        onAspectRatioChanged = { canvasAspect = it },
+                                                    )
+                                                    if (activeRhythm > 0.02f) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .graphicsLayer {
+                                                                    alpha = (activeRhythm * 0.22f).coerceIn(0f, 0.25f)
+                                                                }
+                                                                .background(Color.White.copy(alpha = 0.18f))
+                                                        )
+                                                    }
+                                                }
                                             }
                                             }
                                         }
@@ -2022,7 +2041,6 @@ internal fun FullPlayer(
         com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
     }
 }
-}
 
 @Composable
 private fun RhythmCoverBox(
@@ -2038,11 +2056,21 @@ private fun RhythmCoverBox(
     val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
     Box(
         modifier = modifier.graphicsLayer {
-            val scale = 1.0f + r * 0.045f
+            val scale = 1.0f + r * 0.075f
             scaleX = scale
             scaleY = scale
         }
     ) {
         content()
+        if (r > 0.02f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = (r * 0.22f).coerceIn(0f, 0.25f)
+                    }
+                    .background(Color.White.copy(alpha = 0.18f))
+            )
+        }
     }
 }
