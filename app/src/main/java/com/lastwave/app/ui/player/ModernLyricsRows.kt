@@ -628,14 +628,17 @@ internal fun LyricIntroRow(
         )
     }
     val composed by remember { derivedStateOf { shown || reveal.value > 0f } }
-    if (!composed) return
+    // Once shown, the row keeps its height after the card fades: collapsing it
+    // while the follow scroll runs pulled the first line up to the very top
+    // instead of the usual focus anchor.
+    val heldHeight = remember { intArrayOf(0) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
-                val height = (placeable.height * reveal.value).roundToInt().coerceIn(0, placeable.height)
-                layout(placeable.width, height) { placeable.place(0, 0) }
+                heldHeight[0] = maxOf(heldHeight[0], placeable.height)
+                layout(placeable.width, heldHeight[0]) { placeable.place(0, 0) }
             }
             .graphicsLayer {
                 val r = reveal.value
@@ -644,10 +647,10 @@ internal fun LyricIntroRow(
                 scaleY = scaleX
                 translationY = -(1f - r) * 16.dp.toPx()
                 transformOrigin = TransformOrigin(0.5f, 0f)
-            }
-            .padding(bottom = 28.dp),
+            },
     ) {
-        LyricsSignatureCard(mode = SignatureMode.Intro)
+        // Padding rides with the card, so a skipped intro takes no room at all.
+        if (composed) LyricsSignatureCard(mode = SignatureMode.Intro, modifier = Modifier.padding(bottom = 28.dp))
     }
 }
 
