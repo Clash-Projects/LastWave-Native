@@ -772,6 +772,12 @@ class SettingsViewModel @Inject constructor(
     fun setLyricsRotatingBackgroundEnabled(enabled: Boolean) = launchSettingsAction("update lyrics rotating background") {
         settingsPreferences.setLyricsRotatingBackgroundEnabled(enabled)
     }
+    fun setFluidBeatSyncEnabled(enabled: Boolean) = launchSettingsAction("update fluid beat sync") {
+        settingsPreferences.setFluidBeatSyncEnabled(enabled)
+    }
+    fun setBeatSyncedArtworkEnabled(enabled: Boolean) = launchSettingsAction("update beat-synced artwork") {
+        settingsPreferences.setBeatSyncedArtworkEnabled(enabled)
+    }
     fun setKeepLyricsScreenAwake(enabled: Boolean) = launchSettingsAction("update keep lyrics screen awake") {
         settingsPreferences.setKeepLyricsScreenAwake(enabled)
     }

@@ -1384,8 +1384,27 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 11) { index, position ->
-                        when (index) {
+                    val showArtworkBeatSync = misc.fluidBeatSyncEnabled
+                    SettingsGroup(rowCount = if (showArtworkBeatSync) 13 else 12) { index, position ->
+                        val effectiveIndex = if (showArtworkBeatSync && index > 5) index - 1 else index
+                        if (showArtworkBeatSync && index == 5) {
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Album,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_beat_synced_artwork),
+                                subtitle = if (misc.beatSyncedArtworkEnabled) {
+                                    stringResource(R.string.settings_beat_synced_artwork_on)
+                                } else {
+                                    stringResource(R.string.settings_beat_synced_artwork_off)
+                                },
+                                checked = misc.beatSyncedArtworkEnabled,
+                                onCheckedChange = viewModel::setBeatSyncedArtworkEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.beat_synced_artwork"),
+                            )
+                        } else {
+                            when (effectiveIndex) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
@@ -1445,7 +1464,22 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_rotating_background"),
                             )
-                            4 -> SettingsActionCard(
+                            4 -> SettingsToggleCard(
+                                icon = Icons.Filled.Waves,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_fluid_beat_sync),
+                                subtitle = if (misc.fluidBeatSyncEnabled) {
+                                    stringResource(R.string.settings_fluid_beat_sync_on)
+                                } else {
+                                    stringResource(R.string.settings_fluid_beat_sync_off)
+                                },
+                                checked = misc.fluidBeatSyncEnabled,
+                                onCheckedChange = viewModel::setFluidBeatSyncEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.fluid_beat_sync"),
+                            )
+                            5 -> SettingsActionCard(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1455,7 +1489,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_provider"),
                             )
-                            5 -> SettingsActionCard(
+                            6 -> SettingsActionCard(
                                 icon = Icons.Filled.Timer,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1473,7 +1507,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_offset"),
                             )
-                            6 -> SettingsActionCard(
+                            7 -> SettingsActionCard(
                                 icon = Icons.Filled.FormatSize,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1492,7 +1526,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
                             )
-                            7 -> SettingsActionCard(
+                            8 -> SettingsActionCard(
                                 icon = Icons.Filled.VisibilityOff,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1509,7 +1543,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_autohide"),
                             )
-                            8 -> SettingsActionCard(
+                            9 -> SettingsActionCard(
                                 icon = Icons.Filled.Translate,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1523,7 +1557,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.translation_language"),
                             )
-                            9 -> SettingsToggleCard(
+                            10 -> SettingsToggleCard(
                                 icon = Icons.Filled.SmartDisplay,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1538,7 +1572,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.music_video"),
                             )
-                            10 -> SettingsToggleCard(
+                            11 -> SettingsToggleCard(
                                 icon = Icons.Filled.PlayCircle,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1553,6 +1587,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
                             )
+                        }
                         }
                     }
                 }

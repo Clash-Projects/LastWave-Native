@@ -351,6 +351,8 @@ internal fun FullPlayer(
     wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
+    fluidBeatSyncEnabled: Boolean = true,
+    beatSyncedArtworkEnabled: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
@@ -710,6 +712,47 @@ internal fun FullPlayer(
                 animationSpec = tween(350),
                 label = "lyricsVeil",
             )
+            // Base vibrant ambient gradients: ALWAYS underneath everything so the background
+            // is NEVER pitch black, even before the fluid texture loads or during track transitions.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            0f to ambientColor.copy(alpha = 0.58f),
+                            0.45f to ambientColor.copy(alpha = 0.22f),
+                            1f to Color.Transparent,
+                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                            radius = bgMaxDimension * 0.85f,
+                        )
+                    )
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            0f to ambientCompanion.copy(alpha = 0.52f),
+                            0.50f to ambientCompanion.copy(alpha = 0.20f),
+                            1f to Color.Transparent,
+                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                            radius = bgMaxDimension * 0.78f,
+                        )
+                    )
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            0f to ambientDeep.copy(alpha = 0.42f),
+                            0.55f to ambientDeep.copy(alpha = 0.14f),
+                            1f to Color.Transparent,
+                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                            radius = bgMaxDimension * 0.70f,
+                        )
+                    )
+            )
             // Kept out of the glass capture: every motion step re-blurred each glass
             // control (~2x frame cost). The fluid is already blurred, so it shows through.
             FluidArtworkBackground(
@@ -722,6 +765,7 @@ internal fun FullPlayer(
                 extraBlur = isLyricsTab,
                 rotatingBackgroundEnabled = if (isLyricsTab) showLyricsFluid else rotatingBackgroundEnabled,
                 lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
+                fluidBeatSyncEnabled = fluidBeatSyncEnabled,
                 fallback = {
                     val staticBlurTransform = remember(currentTab) {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -882,38 +926,61 @@ internal fun FullPlayer(
                     // over as the canvas's own alpha climbs to full.
                     val heroCover =
                         if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f)
-                    StaticArtworkHero(
-                        name = track.title,
-                        artist = track.artist,
-                        embeddedUrl = track.artworkUrl,
-                        resolvedUrl = resolvedAmbientUrl,
-                        bottomFade = 0.38f,
-                        alpha = heroAlpha * heroCover,
+                    RhythmCoverBox(
+                        enabled = fluidBeatSyncEnabled && beatSyncedArtworkEnabled,
+                        isPlaying = state.isPlaying,
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
                             .height(heroHeight),
-                    )
+                    ) {
+                        StaticArtworkHero(
+                            name = track.title,
+                            artist = track.artist,
+                            embeddedUrl = track.artworkUrl,
+                            resolvedUrl = resolvedAmbientUrl,
+                            bottomFade = 0.38f,
+                            alpha = heroAlpha * heroCover,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     if (activeCanvas != null) {
-                        CanvasArtworkPlayer(
-                            canvas = activeCanvas,
-                            isPlaying = state.isPlaying,
-                            contentMode = CanvasContentMode.CROP,
-                            alignPortraitTop = true,
-                            bottomFade = if (isTallCanvas) 0f else 0.38f,
-                            presentationAlpha = { heroAlpha },
-                            onCoverChanged = { canvasCover = it },
-                            onAspectRatioChanged = { canvasAspect = it },
-                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                            modifier = if (isTallCanvas) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier
+                        if (isTallCanvas) {
+                            CanvasArtworkPlayer(
+                                canvas = activeCanvas,
+                                isPlaying = state.isPlaying,
+                                contentMode = CanvasContentMode.CROP,
+                                alignPortraitTop = true,
+                                bottomFade = 0f,
+                                presentationAlpha = { heroAlpha },
+                                onCoverChanged = { canvasCover = it },
+                                onAspectRatioChanged = { canvasAspect = it },
+                                pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            RhythmCoverBox(
+                                enabled = fluidBeatSyncEnabled && beatSyncedArtworkEnabled,
+                                isPlaying = state.isPlaying,
+                                modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
-                                    .height(heroHeight)
-                            },
-                        )
+                                    .height(heroHeight),
+                            ) {
+                                CanvasArtworkPlayer(
+                                    canvas = activeCanvas,
+                                    isPlaying = state.isPlaying,
+                                    contentMode = CanvasContentMode.CROP,
+                                    alignPortraitTop = true,
+                                    bottomFade = 0.38f,
+                                    presentationAlpha = { heroAlpha },
+                                    onCoverChanged = { canvasCover = it },
+                                    onAspectRatioChanged = { canvasAspect = it },
+                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
 
                         // For true full-bleed canvas: a subtle contrast gradient scrim so top header and
                         // bottom playback controls/title remain 100% legible without blurring the video
@@ -1540,12 +1607,19 @@ internal fun FullPlayer(
                                                 animationSpec = tween(600),
                                                 label = "artworkGlowAlpha",
                                             )
+                                            val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
+                                            val isArtworkBeatActive = fluidBeatSyncEnabled && beatSyncedArtworkEnabled && state.isPlaying
+                                            val activeRhythm = if (isArtworkBeatActive) r else 0f
+                                            val beatGlowScale = if (isArtworkBeatActive) 1.0f + activeRhythm * 0.16f else 1.0f
+                                            val beatGlowAlpha = if (isArtworkBeatActive) (glowAlpha + activeRhythm * 0.35f).coerceIn(0f, 1f) else glowAlpha
                                             Box(
                                                 modifier = Modifier
                                                     .size(artworkSize + 28.dp)
                                                     .graphicsLayer {
                                                         translationX = shownArtworkX * 0.7f
-                                                        alpha = glowAlpha * sleeveAlpha
+                                                        scaleX = beatGlowScale
+                                                        scaleY = beatGlowScale
+                                                        alpha = beatGlowAlpha * sleeveAlpha
                                                     }
                                                     .background(
                                                         Brush.radialGradient(
@@ -1565,31 +1639,48 @@ internal fun FullPlayer(
                                                 ),
                                                 label = "artworkPlayingScale",
                                             )
+                                            val beatArtworkScale = if (isArtworkBeatActive) artworkPlayingScale * (1.0f + activeRhythm * 0.075f) else artworkPlayingScale
 
                                             Surface(
                                                 shape = RoundedCornerShape(22.dp),
                                                 color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f * sleeveAlpha),
                                                 tonalElevation = 6.dp * sleeveAlpha,
-                                                shadowElevation = if (state.isPlaying) 28.dp * sleeveAlpha else 12.dp * sleeveAlpha,
+                                                shadowElevation = if (state.isPlaying) {
+                                                    if (isArtworkBeatActive) (28.dp + 12.dp * activeRhythm) * sleeveAlpha else 28.dp * sleeveAlpha
+                                                } else {
+                                                    12.dp * sleeveAlpha
+                                                },
                                                 modifier = Modifier
                                                     .size(artworkSize)
                                                     .graphicsLayer {
-                                                        scaleX = artworkPlayingScale
-                                                        scaleY = artworkPlayingScale
+                                                        scaleX = beatArtworkScale
+                                                        scaleY = beatArtworkScale
                                                         translationX = shownArtworkX
                                                         rotationZ = shownArtworkX / 80f
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                PlayerArtwork(
-                                                    track = track,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    corner = 22.dp,
-                                                    canvas = if (showSleeveCanvas) canvas else null,
-                                                    isPlaying = state.isPlaying,
-                                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                                    onAspectRatioChanged = { canvasAspect = it },
-                                                )
+                                                Box(modifier = Modifier.fillMaxSize()) {
+                                                    PlayerArtwork(
+                                                        track = track,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        corner = 22.dp,
+                                                        canvas = if (showSleeveCanvas) canvas else null,
+                                                        isPlaying = state.isPlaying,
+                                                        pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                        onAspectRatioChanged = { canvasAspect = it },
+                                                    )
+                                                    if (activeRhythm > 0.02f) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .graphicsLayer {
+                                                                    alpha = (activeRhythm * 0.22f).coerceIn(0f, 0.25f)
+                                                                }
+                                                                .background(Color.White.copy(alpha = 0.18f))
+                                                        )
+                                                    }
+                                                }
                                             }
                                             }
                                         }
@@ -1992,4 +2083,37 @@ internal fun FullPlayer(
         com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
     }
 }
+}
+
+@Composable
+private fun RhythmCoverBox(
+    enabled: Boolean,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    if (!enabled || !isPlaying) {
+        Box(modifier) { content() }
+        return
+    }
+    val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
+    Box(
+        modifier = modifier.graphicsLayer {
+            val scale = 1.0f + r * 0.075f
+            scaleX = scale
+            scaleY = scale
+        }
+    ) {
+        content()
+        if (r > 0.02f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = (r * 0.22f).coerceIn(0f, 0.25f)
+                    }
+                    .background(Color.White.copy(alpha = 0.18f))
+            )
+        }
+    }
 }

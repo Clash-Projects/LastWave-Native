@@ -2,7 +2,7 @@ name: Build LastWave APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'feat/**', 'feature/**' ]
     paths-ignore:
       - '**.md'
       - 'Screenshot/**'

@@ -765,6 +765,8 @@ internal fun ExpandedPlayer(
         wavySeekbarEnabled = settings.wavySeekbarEnabled,
         rotatingBackgroundEnabled = settings.rotatingBackgroundEnabled,
         lyricsRotatingBackgroundEnabled = settings.lyricsRotatingBackgroundEnabled,
+        fluidBeatSyncEnabled = settings.fluidBeatSyncEnabled,
+        beatSyncedArtworkEnabled = settings.beatSyncedArtworkEnabled,
         lyricsOffsetMs = lyricsOffsetMs,
         onSetLyricsOffsetMs = viewModel::setLyricsOffsetMs,
         lyricsFontScale = settings.lyricsFontScale,
