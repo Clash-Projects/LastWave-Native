@@ -737,12 +737,6 @@ internal fun FullPlayer(
                             emptyList()
                         }
                     }
-                                )
-                            )
-                        } else {
-                            emptyList()
-                        }
-                    }
                     PlayerArtwork(
                         track = track,
                         modifier = Modifier
