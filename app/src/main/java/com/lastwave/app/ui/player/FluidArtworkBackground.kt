@@ -466,6 +466,8 @@ fun FluidArtworkBackground(
     var cachedRenderEffect by remember { mutableStateOf<androidx.compose.ui.graphics.RenderEffect?>(null) }
     val isForeground = rememberIsForeground()
     val motionActive = isPlaying && isForeground
+    val rhythmState by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
+    val activeRhythm = if (fluidBeatSyncEnabled) rhythmState else 0f
 
     LaunchedEffect(fluidBeatSyncEnabled) {
         com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled = fluidBeatSyncEnabled
@@ -494,9 +496,9 @@ fun FluidArtworkBackground(
             if (fluidBeatSyncEnabled) {
                 val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.tick(dt, isPlaying)
                 // Lyra Player: speed_boost = 1.8f
-                seconds = (seconds + dt * (1.0f + r * 1.8f)) % 62831.85f
+                seconds = (seconds + dt * (1.0f + r * 1.8f)) % 6283.185f
             } else {
-                seconds = (seconds + dt) % 62831.85f
+                seconds = (seconds + dt) % 6283.185f
             }
         }
     }
@@ -512,6 +514,8 @@ fun FluidArtworkBackground(
                     .fillMaxSize()
                     .graphicsLayer {
                         alpha = appear.value
+                        @Suppress("UNUSED_VARIABLE")
+                        val anim = seconds
                     }
                     .layout { measurable, constraints ->
                         val w = constraints.maxWidth
@@ -541,7 +545,7 @@ fun FluidArtworkBackground(
                     .drawBehind {
                         val cur = current ?: return@drawBehind
                         val prv = previous ?: cur
-                        val r = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
+                        val r = if (fluidBeatSyncEnabled) activeRhythm else 0f
 
                         if (agslRenderer != null) {
                             drawIntoCanvas { canvas ->

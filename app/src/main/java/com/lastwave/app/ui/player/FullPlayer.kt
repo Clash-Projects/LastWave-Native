@@ -431,6 +431,7 @@ internal fun FullPlayer(
     val fullBleedBlocked = isTabletLandscape
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !fullBleedBlocked
     val showSleeveCanvas = isCanvasActive && !showFullBleed && !isVideoActive
+    val beatRhythm by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
     // activeCanvas is the single gate every render branch below keys off, so it also
     // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
     // asynchronously, so without this a disabled toggle still paints one frame of
@@ -869,10 +870,10 @@ internal fun FullPlayer(
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                0.00f to Color.Black.copy(alpha = if (showFullBleed) 0.22f else 0.35f),
-                                0.28f to Color.Black.copy(alpha = if (showFullBleed) 0.08f else 0.15f),
-                                0.60f to Color.Black.copy(alpha = if (showFullBleed) 0.15f else 0.40f),
-                                1.00f to Color.Black.copy(alpha = if (showFullBleed) 0.38f else 0.72f),
+                                0.00f to Color.Black.copy(alpha = if (showFullBleed) 0.18f else 0.35f),
+                                0.28f to Color.Black.copy(alpha = if (showFullBleed) 0.05f else 0.15f),
+                                0.60f to Color.Black.copy(alpha = if (showFullBleed) 0.12f else 0.40f),
+                                1.00f to Color.Black.copy(alpha = if (showFullBleed) 0.32f else 0.72f),
                             )
                         )
                 )
@@ -894,26 +895,27 @@ internal fun FullPlayer(
                         ),
                 )
                 if (showFullBleed && fluidBeatSyncEnabled) {
-                    // Beat-reactive ambient luminescence wave underneath the full-screen artwork
+                    val activeBeat = if (state.isPlaying) beatRhythm else 0f
+                    // Prominent beat-reactive ambient visualizer wave under full-screen artwork
                     Box(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                val r = if (state.isPlaying) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-                                alpha = (0.35f + r * 0.65f).coerceIn(0f, 1f)
-                                val pulseScale = 1.0f + r * 0.14f
+                                val r = activeBeat
+                                alpha = (0.42f + r * 0.58f).coerceIn(0f, 1f)
+                                val pulseScale = 1.0f + r * 0.22f
                                 scaleX = pulseScale
                                 scaleY = pulseScale
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1.0f)
                             }
                             .background(
                                 Brush.radialGradient(
-                                    0.0f to ambientColor.copy(alpha = 0.68f),
-                                    0.45f to ambientCompanion.copy(alpha = 0.40f),
-                                    0.80f to ambientDeep.copy(alpha = 0.20f),
+                                    0.0f to ambientColor.copy(alpha = 0.85f),
+                                    0.35f to ambientCompanion.copy(alpha = 0.55f),
+                                    0.70f to ambientDeep.copy(alpha = 0.30f),
                                     1.0f to Color.Transparent,
-                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.50f, bgHeight * 0.88f),
-                                    radius = bgMaxDimension * 0.78f,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.50f, bgHeight * 0.90f),
+                                    radius = bgMaxDimension * 0.85f,
                                 )
                             )
                     )
