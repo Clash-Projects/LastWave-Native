@@ -17,6 +17,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -137,6 +138,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.local.LyricsProvider
@@ -197,6 +199,7 @@ internal fun ModernSyncedLyricsList(
     subReveal: () -> Float = { 0f },
     subLineStyle: TextStyle? = null,
     displayMode: LyricsDisplayMode = LyricsDisplayMode.Original,
+    lyricsStyle: LyricsStyle = LocalLyricsStyleState.current.style,
 ) {
     val items = stage.items
     val listState = rememberLazyListState()
@@ -207,6 +210,8 @@ internal fun ModernSyncedLyricsList(
         derivedStateOf { stage.activeIndex(currentPositionMsState()) }
     }
     val activeIndex = activeState.value
+
+    val themeSpec = remember(lyricsStyle) { lyricsStyle.toThemeSpec() }
 
     val isDraggedState = listState.interactionSource.collectIsDraggedAsState()
     // [0] = a user drag or the fling it started is still moving the list.
@@ -305,18 +310,38 @@ internal fun ModernSyncedLyricsList(
             },
         ) { index, item ->
             when (item) {
-                is LyricIntro -> LyricIntroRow(
-                    item = item,
-                    index = index,
-                    activeState = activeState,
-                    currentPositionMs = currentPositionMs,
-                )
+                is LyricIntro -> {
+                    if (lyricsStyle == LyricsStyle.DEFAULT) {
+                        LyricIntroRow(
+                            item = item,
+                            index = index,
+                            activeState = activeState,
+                            currentPositionMs = currentPositionMs,
+                        )
+                    } else if (item.endMs >= 3000L) {
+                        LyricInterludeRow(
+                            item = LyricInterlude(startMs = 0L, endMs = item.endMs, role = VocalRole.LEAD_LEFT),
+                            index = index,
+                            activeState = activeState,
+                            isOverallRtl = isOverallRtl,
+                            currentPositionMs = currentPositionMs,
+                            lyricsStyle = lyricsStyle,
+                            themeSpec = themeSpec,
+                            onSeek = onSeek,
+                            browsing = isDraggedState,
+                        )
+                    }
+                }
                 is LyricInterlude -> LyricInterludeRow(
                     item = item,
                     index = index,
                     activeState = activeState,
                     isOverallRtl = isOverallRtl,
                     currentPositionMs = currentPositionMs,
+                    lyricsStyle = lyricsStyle,
+                    themeSpec = themeSpec,
+                    onSeek = onSeek,
+                    browsing = isDraggedState,
                 )
                 is LyricLineGroup -> {
                     val subLine = subLines?.getOrNull(item.subLineIndex)
@@ -339,6 +364,8 @@ internal fun ModernSyncedLyricsList(
                         subLineStyle = subLineStyle,
                         subReveal = subReveal,
                         onSeek = onSeek,
+                        lyricsStyle = lyricsStyle,
+                        themeSpec = themeSpec,
                     )
                 }
             }
@@ -393,6 +420,8 @@ internal fun LyricGroupRow(
     subLineStyle: TextStyle?,
     subReveal: () -> Float,
     onSeek: (Long) -> Unit,
+    lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
+    themeSpec: LyricsThemeSpec = remember(lyricsStyle) { lyricsStyle.toThemeSpec() },
 ) {
     // Lit = the focused row, or a duet row still being sung while the other
     // voice has already started. Flips only at those moments, so the row
@@ -438,68 +467,205 @@ internal fun LyricGroupRow(
     }
     val wordLit = lit && group.isWordSynced
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = if (group.stanzaGapAfter) LYRIC_STANZA_GAP else LYRIC_LINE_GAP)
-            .graphicsLayer {
-                val dist = kotlin.math.abs(index - focus())
-                // A word-synced row being sung is always at full strength:
-                // its dim base plus bright fill carry the contrast.
-                val rowAlpha = if (wordLit) 1f else lyricFalloffAlpha(dist)
-                alpha = if (browsing.value) maxOf(rowAlpha, 0.72f) else rowAlpha
-                val scale = 1f - LYRIC_INACTIVE_SCALE_DROP * dist.coerceAtMost(1f)
-                transformOrigin = TransformOrigin(pivotX, 0.5f)
-                scaleX = scale
-                scaleY = scale
-                translationY = lyricTrailOffsetDp(index - activeState.value, trail()) * density
-            }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                onSeek(group.seekMs)
-            }
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        horizontalAlignment = horizontal,
-    ) {
-        group.lead?.let { vocal ->
-            KaraokeVocal(
-                vocal = vocal,
-                lit = lit,
-                currentPositionMs = currentPositionMs,
-                style = normalStyle,
-                textAlign = textAlign,
-                emphasis = 1f,
-                glow = true,
-                modifier = Modifier.fillMaxWidth(widthFraction),
-            )
-        }
-        // Backing vocals nest under the lead: smaller, a little dimmer, and
-        // part of the same item so they never take the focus.
-        group.backgrounds.forEachIndexed { i, vocal ->
-            KaraokeVocal(
-                vocal = vocal,
-                lit = lit,
-                currentPositionMs = currentPositionMs,
-                style = accompanimentStyle,
-                textAlign = textAlign,
-                emphasis = LYRIC_BACKING_EMPHASIS,
-                glow = false,
-                modifier = Modifier
-                    .fillMaxWidth(widthFraction)
-                    .padding(top = if (group.lead != null || i > 0) LYRIC_BACKING_SHIFT else 0.dp),
-            )
-        }
-        if (!subLine.isNullOrBlank() && subLineStyle != null) {
-            Box(Modifier.fillMaxWidth(widthFraction)) {
-                LyricSubLine(
-                    text = subLine,
-                    style = subLineStyle,
-                    isActive = lit,
-                    reveal = subReveal,
+    if (lyricsStyle == LyricsStyle.DEFAULT) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = if (group.stanzaGapAfter) LYRIC_STANZA_GAP else LYRIC_LINE_GAP)
+                .graphicsLayer {
+                    val dist = kotlin.math.abs(index - focus())
+                    val rowAlpha = if (wordLit) 1f else lyricFalloffAlpha(dist)
+                    alpha = if (browsing.value) maxOf(rowAlpha, 0.72f) else rowAlpha
+                    val scale = 1f - LYRIC_INACTIVE_SCALE_DROP * dist.coerceAtMost(1f)
+                    transformOrigin = TransformOrigin(pivotX, 0.5f)
+                    scaleX = scale
+                    scaleY = scale
+                    translationY = lyricTrailOffsetDp(index - activeState.value, trail()) * density
+                }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    onSeek(group.seekMs)
+                }
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            horizontalAlignment = horizontal,
+        ) {
+            group.lead?.let { vocal ->
+                KaraokeVocal(
+                    vocal = vocal,
+                    lit = lit,
+                    currentPositionMs = currentPositionMs,
+                    style = normalStyle,
                     textAlign = textAlign,
+                    emphasis = 1f,
+                    glow = true,
+                    modifier = Modifier.fillMaxWidth(widthFraction),
                 )
+            }
+            group.backgrounds.forEachIndexed { i, vocal ->
+                KaraokeVocal(
+                    vocal = vocal,
+                    lit = lit,
+                    currentPositionMs = currentPositionMs,
+                    style = accompanimentStyle,
+                    textAlign = textAlign,
+                    emphasis = LYRIC_BACKING_EMPHASIS,
+                    glow = false,
+                    modifier = Modifier
+                        .fillMaxWidth(widthFraction)
+                        .padding(top = if (group.lead != null || i > 0) LYRIC_BACKING_SHIFT else 0.dp),
+                )
+            }
+            if (!subLine.isNullOrBlank() && subLineStyle != null) {
+                Box(Modifier.fillMaxWidth(widthFraction)) {
+                    LyricSubLine(
+                        text = subLine,
+                        style = subLineStyle,
+                        isActive = lit,
+                        reveal = subReveal,
+                        textAlign = textAlign,
+                    )
+                }
+            }
+        }
+    } else {
+        val isPreviousLine = index < activeState.value
+        val isFutureLine = index > activeState.value
+        val isNextLine = index == activeState.value + 1
+
+        val targetScale = when {
+            lit -> themeSpec.activeLineScale
+            else -> {
+                val scaleDist = kotlin.math.abs(index - activeState.value).coerceAtLeast(1)
+                themeSpec.inactiveScaleFalloff.getOrElse(scaleDist - 1) {
+                    themeSpec.inactiveScaleFalloff.lastOrNull() ?: 1.0f
+                }
+            }
+        }
+        val animatedScale by animateFloatAsState(
+            targetValue = targetScale,
+            animationSpec = if (themeSpec.useSpringForScale) {
+                spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
+            } else {
+                tween(
+                    durationMillis = themeSpec.scaleDurationMs ?: themeSpec.transitionDurationMs,
+                    delayMillis = if (isPreviousLine) themeSpec.transitionDelayMs else 0,
+                    easing = themeSpec.transitionEasing,
+                )
+            },
+            label = "lyricScale",
+        )
+
+        val targetAlpha = when {
+            lit -> themeSpec.activeLineAlpha
+            isPreviousLine -> themeSpec.previousLineAlpha
+            else -> {
+                val futureDist = index - activeState.value
+                themeSpec.futureAlphaFalloff.getOrElse(futureDist - 1) {
+                    themeSpec.futureAlphaFalloff.lastOrNull() ?: 0.15f
+                }
+            }
+        }
+        val animatedAlpha by animateFloatAsState(
+            targetValue = if (browsing.value) maxOf(targetAlpha, 0.72f) else targetAlpha,
+            animationSpec = tween(
+                durationMillis = if (isPreviousLine) (themeSpec.previousAlphaDurationMs ?: themeSpec.transitionDurationMs) else themeSpec.transitionDurationMs,
+                delayMillis = if (isPreviousLine) themeSpec.transitionDelayMs else 0,
+                easing = themeSpec.transitionEasing,
+            ),
+            label = "lyricAlpha",
+        )
+
+        val targetBlurRadius = when {
+            browsing.value -> 0f
+            lit -> 0f
+            isPreviousLine && themeSpec.blurPreviousLines -> themeSpec.blurRadiusPx
+            isFutureLine && themeSpec.blurFutureLines -> {
+                val distance = index - activeState.value
+                themeSpec.futureBlurFalloffPx.getOrElse(distance - 1) {
+                    themeSpec.futureBlurFalloffPx.lastOrNull() ?: themeSpec.blurRadiusPx
+                }
+            }
+            else -> 0f
+        }
+        val animatedBlurRadius by animateFloatAsState(
+            targetValue = targetBlurRadius,
+            animationSpec = tween(
+                durationMillis = if (isPreviousLine) (themeSpec.previousBlurDurationMs ?: themeSpec.transitionDurationMs) else themeSpec.transitionDurationMs,
+                delayMillis = if (isPreviousLine) themeSpec.transitionDelayMs else 0,
+                easing = themeSpec.transitionEasing,
+            ),
+            label = "lyricBlur",
+        )
+
+        val textColorOverride: Color? = when {
+            themeSpec.tintNextLineWithAccent && isNextLine && themeSpec.themeAccentColor != null ->
+                themeSpec.themeAccentColor.copy(alpha = 0.7f)
+            else -> null
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = if (group.stanzaGapAfter) LYRIC_STANZA_GAP else LYRIC_LINE_GAP)
+                .lyricsBlurEffect(animatedBlurRadius)
+                .graphicsLayer {
+                    alpha = animatedAlpha
+                    scaleX = animatedScale
+                    scaleY = animatedScale
+                    transformOrigin = TransformOrigin(pivotX, 0.5f)
+                }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    onSeek(group.seekMs)
+                }
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            horizontalAlignment = horizontal,
+        ) {
+            group.lead?.let { vocal ->
+                KaraokeVocal(
+                    vocal = vocal,
+                    lit = lit,
+                    currentPositionMs = currentPositionMs,
+                    style = normalStyle,
+                    textAlign = textAlign,
+                    emphasis = 1f,
+                    glow = true,
+                    modifier = Modifier.fillMaxWidth(widthFraction),
+                    textColorOverride = textColorOverride,
+                    themeSpec = themeSpec,
+                )
+            }
+            group.backgrounds.forEachIndexed { i, vocal ->
+                KaraokeVocal(
+                    vocal = vocal,
+                    lit = lit,
+                    currentPositionMs = currentPositionMs,
+                    style = accompanimentStyle,
+                    textAlign = textAlign,
+                    emphasis = LYRIC_BACKING_EMPHASIS,
+                    glow = false,
+                    modifier = Modifier
+                        .fillMaxWidth(widthFraction)
+                        .padding(top = if (group.lead != null || i > 0) LYRIC_BACKING_SHIFT else 0.dp),
+                    textColorOverride = textColorOverride,
+                    themeSpec = themeSpec,
+                )
+            }
+            if (!subLine.isNullOrBlank() && subLineStyle != null) {
+                Box(Modifier.fillMaxWidth(widthFraction)) {
+                    LyricSubLine(
+                        text = subLine,
+                        style = subLineStyle,
+                        isActive = lit,
+                        reveal = subReveal,
+                        textAlign = textAlign,
+                        themeSpec = themeSpec,
+                    )
+                }
             }
         }
     }
@@ -520,73 +686,170 @@ internal fun LyricInterludeRow(
     activeState: androidx.compose.runtime.State<Int>,
     isOverallRtl: Boolean,
     currentPositionMs: () -> Long,
+    lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
+    themeSpec: LyricsThemeSpec = remember(lyricsStyle) { lyricsStyle.toThemeSpec() },
+    onSeek: ((Long) -> Unit)? = null,
+    browsing: androidx.compose.runtime.State<Boolean>? = null,
 ) {
-    val active by remember(index) { derivedStateOf { activeState.value == index } }
-    val reveal = animateFloatAsState(
-        targetValue = if (active) 1f else 0f,
-        animationSpec = tween(if (active) 420 else 280, easing = FastOutSlowInEasing),
-        label = "lyricInterludeReveal",
-    )
-    val frameNanos = remember { mutableLongStateOf(0L) }
-    LaunchedEffect(active) {
-        if (!active) return@LaunchedEffect
-        while (true) {
-            withFrameNanos { frameNanos.longValue = it }
+    if (lyricsStyle == LyricsStyle.DEFAULT) {
+        val active by remember(index) { derivedStateOf { activeState.value == index } }
+        val reveal = animateFloatAsState(
+            targetValue = if (active) 1f else 0f,
+            animationSpec = tween(if (active) 420 else 280, easing = FastOutSlowInEasing),
+            label = "lyricInterludeReveal",
+        )
+        val frameNanos = remember { mutableLongStateOf(0L) }
+        LaunchedEffect(active) {
+            if (!active) return@LaunchedEffect
+            while (true) {
+                withFrameNanos { frameNanos.longValue = it }
+            }
         }
-    }
-    val side = if (LocalLyricsAlignment.current.centered) LyricSide.Center else when (item.role) {
-        VocalRole.DUET_RIGHT -> LyricSide.End
-        VocalRole.UNISON_CENTER -> LyricSide.Center
-        else -> LyricSide.Start
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .layout { measurable, constraints ->
-                val placeable = measurable.measure(constraints)
-                val height = (placeable.height * reveal.value).roundToInt().coerceIn(0, placeable.height)
-                layout(placeable.width, height) { placeable.place(0, 0) }
-            },
-    ) {
-        Spacer(
+        val side = if (LocalLyricsAlignment.current.centered) LyricSide.Center else when (item.role) {
+            VocalRole.DUET_RIGHT -> LyricSide.End
+            VocalRole.UNISON_CENTER -> LyricSide.Center
+            else -> LyricSide.Start
+        }
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(LYRIC_INTERLUDE_HEIGHT)
-                .drawBehind {
-                    val open = reveal.value
-                    if (open <= 0.01f) return@drawBehind
-                    val pos = currentPositionMs()
-                    val span = (item.endMs - item.startMs).coerceAtLeast(1L).toFloat()
-                    val progress = ((pos - item.startMs) / span).coerceIn(0f, 1f)
-                    val seconds = frameNanos.longValue / 1_000_000_000.0
-                    val breathe = 1f + 0.07f * kotlin.math.sin(seconds * 2.0 * Math.PI / 1.8).toFloat()
-                    // Fade out over the last moments so the next line lands
-                    // on an empty stage.
-                    val exit = ((item.endMs - pos) / 450f).coerceIn(0f, 1f)
-                    val radius = 4.5.dp.toPx()
-                    val step = 17.dp.toPx()
-                    val inset = 6.dp.toPx() + radius
-                    val firstX = when (side) {
-                        LyricSide.Center -> size.width / 2f - step
-                        LyricSide.Start -> if (isOverallRtl) size.width - inset - 2 * step else inset
-                        LyricSide.End -> if (isOverallRtl) inset else size.width - inset - 2 * step
-                    }
-                    val cy = size.height / 2f - 4.dp.toPx()
-                    for (i in 0 until 3) {
-                        // Fill in reading order.
-                        val order = if (isOverallRtl) 2 - i else i
-                        val f = (progress * 3f - order).coerceIn(0f, 1f)
-                        val e = f * f * (3f - 2f * f)
-                        val scale = (0.78f + 0.34f * e) * breathe * (0.55f + 0.45f * exit) * open
-                        val alpha = ((0.30f + 0.70f * e) * open * exit).coerceIn(0f, 1f)
-                        drawCircle(
-                            color = Color.White.copy(alpha = alpha),
-                            radius = radius * scale,
-                            center = Offset(firstX + step * i, cy),
-                        )
-                    }
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    val height = (placeable.height * reveal.value).roundToInt().coerceIn(0, placeable.height)
+                    layout(placeable.width, height) { placeable.place(0, 0) }
                 },
+        ) {
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(LYRIC_INTERLUDE_HEIGHT)
+                    .drawBehind {
+                        val open = reveal.value
+                        if (open <= 0.01f) return@drawBehind
+                        val pos = currentPositionMs()
+                        val span = (item.endMs - item.startMs).coerceAtLeast(1L).toFloat()
+                        val progress = ((pos - item.startMs) / span).coerceIn(0f, 1f)
+                        val seconds = frameNanos.longValue / 1_000_000_000.0
+                        val breathe = 1f + 0.07f * kotlin.math.sin(seconds * 2.0 * Math.PI / 1.8).toFloat()
+                        // Fade out over the last moments so the next line lands
+                        // on an empty stage.
+                        val exit = ((item.endMs - pos) / 450f).coerceIn(0f, 1f)
+                        val radius = 4.5.dp.toPx()
+                        val step = 17.dp.toPx()
+                        val inset = 6.dp.toPx() + radius
+                        val firstX = when (side) {
+                            LyricSide.Center -> size.width / 2f - step
+                            LyricSide.Start -> if (isOverallRtl) size.width - inset - 2 * step else inset
+                            LyricSide.End -> if (isOverallRtl) inset else size.width - inset - 2 * step
+                        }
+                        val cy = size.height / 2f - 4.dp.toPx()
+                        for (i in 0 until 3) {
+                            // Fill in reading order.
+                            val order = if (isOverallRtl) 2 - i else i
+                            val f = (progress * 3f - order).coerceIn(0f, 1f)
+                            val e = f * f * (3f - 2f * f)
+                            val scale = (0.78f + 0.34f * e) * breathe * (0.55f + 0.45f * exit) * open
+                            val alpha = ((0.30f + 0.70f * e) * open * exit).coerceIn(0f, 1f)
+                            drawCircle(
+                                color = Color.White.copy(alpha = alpha),
+                                radius = radius * scale,
+                                center = Offset(firstX + step * i, cy),
+                            )
+                        }
+                    },
+            )
+        }
+    } else {
+        val active by remember(index) { derivedStateOf { activeState.value == index } }
+        val distanceFromActive = kotlin.math.abs(index - activeState.value)
+        val instrAlpha = when {
+            active -> 1f
+            distanceFromActive == 1 -> 0.52f
+            distanceFromActive == 2 -> 0.30f
+            distanceFromActive == 3 -> 0.18f
+            else -> themeSpec.previousLineAlpha
+        }
+        val animatedInstrAlpha by animateFloatAsState(
+            targetValue = instrAlpha,
+            animationSpec = tween(
+                durationMillis = if (active) 330 else 500,
+                easing = FastOutSlowInEasing,
+            ),
+            label = "v2InstrumentalAlpha",
         )
+        val animatedInstrScale by animateFloatAsState(
+            targetValue = if (active) 1f else 0.95f,
+            animationSpec = tween(
+                durationMillis = 166,
+                easing = FastOutSlowInEasing,
+            ),
+            label = "v2InstrumentalScale",
+        )
+        val targetInstrBlur = when {
+            browsing?.value == true -> 0f
+            active -> 0f
+            distanceFromActive == 1 -> 2.0f
+            distanceFromActive == 2 -> 3.5f
+            distanceFromActive == 3 -> 5.0f
+            distanceFromActive == 4 -> 6.5f
+            distanceFromActive == 5 -> 8.0f
+            else -> 9.5f
+        }
+        val animatedInstrBlur by animateFloatAsState(
+            targetValue = targetInstrBlur,
+            animationSpec = tween(
+                durationMillis = 300,
+                easing = FastOutSlowInEasing,
+            ),
+            label = "v2InstrumentalBlur",
+        )
+
+        val centered = LocalLyricsAlignment.current.centered
+        val side = if (centered) LyricSide.Center else when (item.role) {
+            VocalRole.DUET_RIGHT -> LyricSide.End
+            VocalRole.UNISON_CENTER -> LyricSide.Center
+            else -> LyricSide.Start
+        }
+        val boxAlignment = when (side) {
+            LyricSide.Center -> Alignment.Center
+            LyricSide.Start -> Alignment.CenterStart
+            LyricSide.End -> Alignment.CenterEnd
+        }
+
+        val inactiveAlpha = if (themeSpec.previousLineAlpha < 0.1f) 0.3f else themeSpec.previousLineAlpha
+        val noteColor = themeSpec.themeAccentColor ?: Color.White
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+                .lyricsBlurEffect(animatedInstrBlur)
+                .graphicsLayer {
+                    scaleX = animatedInstrScale
+                    scaleY = animatedInstrScale
+                    alpha = animatedInstrAlpha
+                }
+                .then(
+                    if (onSeek != null && item.startMs >= 0) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onSeek(item.startMs) }
+                    } else Modifier
+                ),
+            contentAlignment = boxAlignment,
+        ) {
+            InstrumentalBreakItem(
+                durationMs = (item.endMs - item.startMs).coerceAtLeast(0L),
+                currentPositionMs = currentPositionMs(),
+                startTimeMs = item.startMs,
+                textColor = noteColor,
+                inactiveAlpha = inactiveAlpha,
+                drawOutline = themeSpec.loaderDrawOutline,
+                useBreathingPulse = themeSpec.loaderUseBreathingPulse,
+                isActive = active,
+            )
+        }
     }
 }
 
@@ -670,6 +933,7 @@ internal fun LyricSubLine(
     isActive: Boolean,
     reveal: () -> Float,
     textAlign: TextAlign = TextAlign.Start,
+    themeSpec: LyricsThemeSpec? = null,
 ) {
     Box(
         modifier = Modifier
@@ -680,10 +944,21 @@ internal fun LyricSubLine(
                 layout(placeable.width, height) { placeable.place(0, 0) }
             },
     ) {
-        val targetAlpha = if (isActive) 0.82f else 0.45f
+        val targetAlpha = if (themeSpec != null) {
+            if (themeSpec.romanizedTextAlpha <= 0.25f) themeSpec.romanizedTextAlpha
+            else if (isActive) 0.82f else themeSpec.romanizedTextAlpha
+        } else {
+            if (isActive) 0.82f else 0.45f
+        }
+        val baseStyle = if (themeSpec?.romanizedFontStyle != null) {
+            style.copy(fontStyle = themeSpec.romanizedFontStyle)
+        } else style
+        val resolvedStyle = if (themeSpec?.smallerTranslatedSize == true && style.fontSize.isSpecified) {
+            baseStyle.copy(fontSize = style.fontSize * 0.9f)
+        } else baseStyle
         Text(
             text = text,
-            style = style,
+            style = resolvedStyle,
             color = Color.White.copy(alpha = targetAlpha),
             textAlign = textAlign,
             modifier = Modifier
