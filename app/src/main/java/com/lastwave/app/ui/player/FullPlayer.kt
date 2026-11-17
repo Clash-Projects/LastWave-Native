@@ -895,24 +895,29 @@ internal fun FullPlayer(
                         ),
                 )
                 if (showFullBleed && fluidBeatSyncEnabled) {
-                    val activeBeat = if (state.isPlaying) beatRhythm else 0f
                     // Prominent beat-reactive ambient visualizer wave under full-screen artwork
                     Box(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                val r = activeBeat
-                                alpha = (0.42f + r * 0.58f).coerceIn(0f, 1f)
-                                val pulseScale = 1.0f + r * 0.22f
+                                @Suppress("UNUSED_VARIABLE")
+                                val observed = beatRhythm
+                                val r = if (state.isPlaying && fluidBeatSyncEnabled) {
+                                    com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
+                                } else {
+                                    0f
+                                }
+                                alpha = (0.35f + r * 0.65f).coerceIn(0f, 1f)
+                                val pulseScale = 1.0f + r * 0.28f
                                 scaleX = pulseScale
                                 scaleY = pulseScale
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1.0f)
                             }
                             .background(
                                 Brush.radialGradient(
-                                    0.0f to ambientColor.copy(alpha = 0.85f),
-                                    0.35f to ambientCompanion.copy(alpha = 0.55f),
-                                    0.70f to ambientDeep.copy(alpha = 0.30f),
+                                    0.0f to ambientColor.copy(alpha = 0.90f),
+                                    0.35f to ambientCompanion.copy(alpha = 0.60f),
+                                    0.70f to ambientDeep.copy(alpha = 0.35f),
                                     1.0f to Color.Transparent,
                                     center = androidx.compose.ui.geometry.Offset(bgWidth * 0.50f, bgHeight * 0.90f),
                                     radius = bgMaxDimension * 0.85f,

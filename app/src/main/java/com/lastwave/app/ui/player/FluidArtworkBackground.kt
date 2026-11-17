@@ -467,7 +467,7 @@ fun FluidArtworkBackground(
     val isForeground = rememberIsForeground()
     val motionActive = isPlaying && isForeground
     val rhythmState by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
-    val activeRhythm = if (fluidBeatSyncEnabled) rhythmState else 0f
+    val activeRhythm = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
 
     LaunchedEffect(fluidBeatSyncEnabled) {
         com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled = fluidBeatSyncEnabled
@@ -545,7 +545,7 @@ fun FluidArtworkBackground(
                     .drawBehind {
                         val cur = current ?: return@drawBehind
                         val prv = previous ?: cur
-                        val r = if (fluidBeatSyncEnabled) activeRhythm else 0f
+                        val r = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
 
                         if (agslRenderer != null) {
                             drawIntoCanvas { canvas ->
