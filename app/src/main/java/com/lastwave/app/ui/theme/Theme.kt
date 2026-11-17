@@ -3,7 +3,10 @@ package com.lastwave.app.ui.theme
 import android.app.Activity
 import android.content.res.Configuration
 import android.os.Build
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.foundation.layout.fillMaxSize
@@ -159,6 +162,7 @@ fun LastWaveTheme(
                 }
             }
             CompositionLocalProvider(
+                LocalDensity provides rememberFittedDensity(),
                 LocalFontFamilyResolver provides fontResolver,
                 LocalHapticFeedback provides appHaptics,
                 LocalLiquidGlass provides themeState.liquidGlass,
@@ -170,5 +174,24 @@ fun LastWaveTheme(
                 content()
             }
         }
+    }
+}
+
+private const val MAX_FONT_SCALE = 1.3f
+private const val MIN_LAYOUT_WIDTH_DP = 360f
+
+/**
+ * Layouts use fixed dp boxes, so huge system font or a very narrow screen
+ * (old phones, large "Display size") overflowed them. Cap the font scale and
+ * lay narrow screens out as 360dp wide. Normal setups get the system density untouched.
+ */
+@Composable
+private fun rememberFittedDensity(): Density {
+    val density = LocalDensity.current
+    val widthDp = LocalConfiguration.current.screenWidthDp.toFloat()
+    val shrink = if (widthDp > 0f && widthDp < MIN_LAYOUT_WIDTH_DP) widthDp / MIN_LAYOUT_WIDTH_DP else 1f
+    if (shrink == 1f && density.fontScale <= MAX_FONT_SCALE) return density
+    return remember(density, shrink) {
+        Density(density.density * shrink, density.fontScale.coerceAtMost(MAX_FONT_SCALE))
     }
 }
