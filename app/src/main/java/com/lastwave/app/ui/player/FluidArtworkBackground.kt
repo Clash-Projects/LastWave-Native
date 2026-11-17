@@ -327,17 +327,17 @@ private class AgslFluidRenderer {
             (if (beatSync) (1.0f + rhythm * 0.15f) else 1.0f)
         shader.setFloatUniform("twistRadius", twistRadius)
 
-        val twistAngle = if (beatSync) TWIST_ANGLE * (1.0f + rhythm * 0.45f) else TWIST_ANGLE
+        val twistAngle = if (beatSync) TWIST_ANGLE * (1.0f + rhythm * 0.55f) else TWIST_ANGLE
         shader.setFloatUniform("twistAngle", twistAngle)
 
-        val sat = if (beatSync) SATURATION + rhythm * 0.28f else SATURATION
+        val sat = if (beatSync) SATURATION + rhythm * 0.35f else SATURATION
         shader.setFloatUniform("saturation", sat)
 
         val baseBrightness = if (extraBlur) LYRICS_BRIGHTNESS else BRIGHTNESS
-        val brightness = if (beatSync) (baseBrightness + rhythm * 0.10f).coerceIn(0.42f, 0.70f) else baseBrightness
+        val brightness = if (beatSync) (baseBrightness + rhythm * 0.16f).coerceIn(0.42f, 0.75f) else baseBrightness
         shader.setFloatUniform("brightness", brightness)
 
-        val contrast = if (beatSync) (CONTRAST + rhythm * 0.10f).coerceIn(0.20f, 0.42f) else CONTRAST
+        val contrast = if (beatSync) (CONTRAST + rhythm * 0.14f).coerceIn(0.20f, 0.46f) else CONTRAST
         shader.setFloatUniform("contrast", contrast)
 
         paint.shader = shader
@@ -478,6 +478,9 @@ fun FluidArtworkBackground(
                 com.lastwave.app.playback.rhythm.FluidRhythmEngine.tick(0.016f, false)
             }
             return@LaunchedEffect
+        }
+        if (fluidBeatSyncEnabled) {
+            com.lastwave.app.playback.rhythm.FluidRhythmEngine.onForegroundResume()
         }
         var last = withFrameNanos { it }
         while (true) {

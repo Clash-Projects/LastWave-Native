@@ -353,7 +353,6 @@ internal fun FullPlayer(
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
     fluidBeatSyncEnabled: Boolean = true,
-    beatSyncedArtworkEnabled: Boolean = true,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
@@ -870,10 +869,10 @@ internal fun FullPlayer(
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                0.00f to Color.Black.copy(alpha = 0.35f),
-                                0.28f to Color.Black.copy(alpha = 0.15f),
-                                0.65f to Color.Black.copy(alpha = 0.40f),
-                                1.00f to Color.Black.copy(alpha = 0.72f),
+                                0.00f to Color.Black.copy(alpha = if (showFullBleed) 0.22f else 0.35f),
+                                0.28f to Color.Black.copy(alpha = if (showFullBleed) 0.08f else 0.15f),
+                                0.60f to Color.Black.copy(alpha = if (showFullBleed) 0.15f else 0.40f),
+                                1.00f to Color.Black.copy(alpha = if (showFullBleed) 0.38f else 0.72f),
                             )
                         )
                 )
@@ -894,6 +893,31 @@ internal fun FullPlayer(
                             ),
                         ),
                 )
+                if (showFullBleed && fluidBeatSyncEnabled) {
+                    // Beat-reactive ambient luminescence wave underneath the full-screen artwork
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val r = if (state.isPlaying) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
+                                alpha = (0.35f + r * 0.65f).coerceIn(0f, 1f)
+                                val pulseScale = 1.0f + r * 0.14f
+                                scaleX = pulseScale
+                                scaleY = pulseScale
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1.0f)
+                            }
+                            .background(
+                                Brush.radialGradient(
+                                    0.0f to ambientColor.copy(alpha = 0.68f),
+                                    0.45f to ambientCompanion.copy(alpha = 0.40f),
+                                    0.80f to ambientDeep.copy(alpha = 0.20f),
+                                    1.0f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.50f, bgHeight * 0.88f),
+                                    radius = bgMaxDimension * 0.78f,
+                                )
+                            )
+                    )
+                }
                 if (showFullBleed) {
                     // Player Lyrics over full-screen art: a light blur, only where the
                     // lyrics sit, so the cover stops competing with the text while the
@@ -942,9 +966,7 @@ internal fun FullPlayer(
                     // over as the canvas's own alpha climbs to full.
                     val heroCover =
                         if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f)
-                    RhythmCoverBox(
-                        enabled = fluidBeatSyncEnabled && beatSyncedArtworkEnabled,
-                        isPlaying = state.isPlaying,
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
@@ -975,9 +997,7 @@ internal fun FullPlayer(
                                 modifier = Modifier.fillMaxSize().then(lyricsArtBlurModifier),
                             )
                         } else {
-                            RhythmCoverBox(
-                                enabled = fluidBeatSyncEnabled && beatSyncedArtworkEnabled,
-                                isPlaying = state.isPlaying,
+                            Box(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
@@ -1624,18 +1644,12 @@ internal fun FullPlayer(
                                                 animationSpec = tween(600),
                                                 label = "artworkGlowAlpha",
                                             )
-                                            val isArtworkBeatActive = fluidBeatSyncEnabled && beatSyncedArtworkEnabled && state.isPlaying
                                             Box(
                                                 modifier = Modifier
                                                     .size(artworkSize + 28.dp)
                                                     .graphicsLayer {
-                                                        val r = if (isArtworkBeatActive) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-                                                        val beatGlowScale = 1.0f + r * 0.16f
-                                                        val beatGlowAlpha = (glowAlpha + r * 0.35f).coerceIn(0f, 1f)
                                                         translationX = shownArtworkX * 0.7f
-                                                        scaleX = beatGlowScale
-                                                        scaleY = beatGlowScale
-                                                        alpha = beatGlowAlpha * sleeveAlpha
+                                                        alpha = glowAlpha * sleeveAlpha
                                                     }
                                                     .background(
                                                         Brush.radialGradient(
@@ -1664,35 +1678,22 @@ internal fun FullPlayer(
                                                 modifier = Modifier
                                                     .size(artworkSize)
                                                     .graphicsLayer {
-                                                        val r = if (isArtworkBeatActive) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-                                                        val beatArtworkScale = artworkPlayingScale * (1.0f + r * 0.075f)
-                                                        scaleX = beatArtworkScale
-                                                        scaleY = beatArtworkScale
+                                                        scaleX = artworkPlayingScale
+                                                        scaleY = artworkPlayingScale
                                                         translationX = shownArtworkX
                                                         rotationZ = shownArtworkX / 80f
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                Box(modifier = Modifier.fillMaxSize()) {
-                                                    PlayerArtwork(
-                                                        track = track,
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        corner = 22.dp,
-                                                        canvas = if (showSleeveCanvas) canvas else null,
-                                                        isPlaying = state.isPlaying,
-                                                        pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                                        onAspectRatioChanged = { canvasAspect = it },
-                                                    )
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .fillMaxSize()
-                                                            .graphicsLayer {
-                                                                val r = if (isArtworkBeatActive) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-                                                                alpha = if (r > 0.02f) (r * 0.22f).coerceIn(0f, 0.25f) else 0f
-                                                            }
-                                                            .background(Color.White.copy(alpha = 0.18f))
-                                                    )
-                                                }
+                                                PlayerArtwork(
+                                                    track = track,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    corner = 22.dp,
+                                                    canvas = if (showSleeveCanvas) canvas else null,
+                                                    isPlaying = state.isPlaying,
+                                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                    onAspectRatioChanged = { canvasAspect = it },
+                                                )
                                             }
                                             }
                                         }
@@ -2116,36 +2117,4 @@ private fun lyricsAreaBlur(radius: Float, top: Float, bottom: Float, feather: Fl
     val sharp = android.graphics.RenderEffect.createOffsetEffect(0f, 0f)
     return android.graphics.RenderEffect.createBlendModeEffect(sharp, blurredBand, android.graphics.BlendMode.SRC_OVER)
         .asComposeRenderEffect()
-}
-
-@Composable
-private fun RhythmCoverBox(
-    enabled: Boolean,
-    isPlaying: Boolean,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    if (!enabled || !isPlaying) {
-        Box(modifier) { content() }
-        return
-    }
-    Box(
-        modifier = modifier.graphicsLayer {
-            val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
-            val scale = 1.0f + r * 0.075f
-            scaleX = scale
-            scaleY = scale
-        }
-    ) {
-        content()
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
-                    alpha = if (r > 0.02f) (r * 0.22f).coerceIn(0f, 0.25f) else 0f
-                }
-                .background(Color.White.copy(alpha = 0.18f))
-        )
-    }
 }
