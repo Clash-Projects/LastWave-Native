@@ -1569,7 +1569,6 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
                             )
                         }
-                        }
                     }
                 }
             }
