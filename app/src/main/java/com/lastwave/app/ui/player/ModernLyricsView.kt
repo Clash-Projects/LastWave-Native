@@ -171,6 +171,8 @@ fun ModernLyricsPanel(
     onOpenLyricsOffset: (() -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
     onLyricsFontScaleChange: (Float) -> Unit = {},
+    lyricsStyle: LyricsStyle = LocalLyricsStyleState.current.style,
+    onLyricsStyleChange: (LyricsStyle) -> Unit = LocalLyricsStyleState.current.onStyleChange ?: {},
     modifier: Modifier = Modifier,
     /** Manual sync correction (ms, + = lyrics earlier). Applies to lyric
      *  focus/highlight only â€” the seekbar below keeps true position. */
@@ -442,26 +444,29 @@ fun ModernLyricsPanel(
                             // whose Bold is a real weight.
                             val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != androidx.compose.ui.text.font.FontFamily.Default
                             val boldFont = com.lastwave.app.ui.theme.LocalUseBoldFont.current
-                            val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont, boldFont) {
-                                val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * effectiveFontScale
+                            val themeSpec = remember(lyricsStyle) { lyricsStyle.toThemeSpec() }
+                            val chosenLeadFont = themeSpec.fontFamily ?: if (useAppFont) com.lastwave.app.ui.theme.lyricsLeadFontFamily(boldFont) else androidx.compose.ui.text.font.FontFamily.Default
+                            val chosenBackingFont = themeSpec.fontFamily ?: if (useAppFont) com.lastwave.app.ui.theme.lyricsBackingFontFamily(boldFont) else androidx.compose.ui.text.font.FontFamily.Default
+                            val karaokeNormalStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont, boldFont, lyricsStyle) {
+                                val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * effectiveFontScale * themeSpec.fontSizeMultiplier
                                 currentTextStyle.copy(
-                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.lyricsLeadFontFamily(boldFont) else androidx.compose.ui.text.font.FontFamily.Default,
+                                    fontFamily = chosenLeadFont,
                                     fontSize = baseSize.sp,
-                                    lineHeight = (baseSize * 1.20f).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = (-0.6).sp,
+                                    lineHeight = (baseSize * themeSpec.lineHeightMultiplier).sp,
+                                    fontWeight = themeSpec.activeFontWeight,
+                                    letterSpacing = themeSpec.letterSpacing ?: (-0.6).sp,
                                     textMotion = TextMotion.Animated,
                                 )
                             }
-                            val karaokeAccompanimentStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont, boldFont) {
+                            val karaokeAccompanimentStyle = remember(currentTextStyle, isAppleMusic, isWordSynced, effectiveFontScale, useAppFont, boldFont, lyricsStyle) {
                                 // Backing vocals: 0.65x of the lead row.
-                                val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * 0.65f * effectiveFontScale
+                                val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * 0.65f * effectiveFontScale * themeSpec.fontSizeMultiplier
                                 currentTextStyle.copy(
-                                    fontFamily = if (useAppFont) com.lastwave.app.ui.theme.lyricsBackingFontFamily(boldFont) else androidx.compose.ui.text.font.FontFamily.Default,
+                                    fontFamily = chosenBackingFont,
                                     fontSize = baseSize.sp,
-                                    lineHeight = (baseSize * 1.22f).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = (-0.3).sp,
+                                    lineHeight = (baseSize * themeSpec.lineHeightMultiplier).sp,
+                                    fontWeight = themeSpec.inactiveFontWeight,
+                                    letterSpacing = themeSpec.letterSpacing ?: (-0.3).sp,
                                     textMotion = TextMotion.Animated,
                                 )
                             }
@@ -526,6 +531,7 @@ fun ModernLyricsPanel(
                                         state = state,
                                         player = player,
                                         lyricsOffsetMs = lyricsOffsetMs,
+                                        lyricsStyle = lyricsStyle,
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxWidth(),
@@ -566,6 +572,8 @@ fun ModernLyricsPanel(
             player = player,
             seekbarStyle = seekbarStyle,
             wavySeekbarEnabled = wavySeekbarEnabled,
+            lyricsStyle = lyricsStyle,
+            onLyricsStyleChange = onLyricsStyleChange,
             onToggleFullscreen = onToggleFullscreen,
             isFullscreen = isFullscreen,
             lyricsOffsetMs = lyricsOffsetMs,
