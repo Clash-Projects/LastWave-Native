@@ -221,6 +221,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -700,6 +701,7 @@ internal fun FullPlayer(
             val bgHeight = constraints.maxHeight.toFloat()
             val bgMaxDimension = maxOf(bgWidth, bgHeight, 1f)
             var heroBottomPx by remember { mutableFloatStateOf(0f) }
+            var heroTopPx by remember { mutableFloatStateOf(0f) }
 
             val isLyricsTab = currentTab == FullPlayerTab.LYRICS
             val showLyricsFluid = lyricsRotatingBackgroundEnabled && rotatingBackgroundEnabled
@@ -893,8 +895,9 @@ internal fun FullPlayer(
                         ),
                 )
                 if (showFullBleed) {
-                    // Player Lyrics over full-screen art: a light blur so the cover's
-                    // detail stops competing with the text. Read only in the layer.
+                    // Player Lyrics over full-screen art: a light blur, only where the
+                    // lyrics sit, so the cover stops competing with the text while the
+                    // art under the title and controls stays sharp. Read only in the layer.
                     val lyricsArtBlur = animateFloatAsState(
                         targetValue = if (playerLyricsActive && currentTab == FullPlayerTab.NOW_PLAYING) 1f else 0f,
                         animationSpec = tween(320),
@@ -902,8 +905,8 @@ internal fun FullPlayer(
                     )
                     val lyricsArtBlurModifier = Modifier.graphicsLayer {
                         val radius = 6.dp.toPx() * lyricsArtBlur.value
-                        renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && radius > 0.5f) {
-                            androidx.compose.ui.graphics.BlurEffect(radius, radius, androidx.compose.ui.graphics.TileMode.Clamp)
+                        renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && radius > 0.5f && heroBottomPx > heroTopPx) {
+                            lyricsAreaBlur(radius, heroTopPx, heroBottomPx, feather = 24.dp.toPx())
                         } else null
                     }
                     val isTallCanvas = remember(activeCanvas, canvasAspect, canvasGradientBlurEnabled) {
@@ -1455,6 +1458,7 @@ internal fun FullPlayer(
                                                 if (bottom > 0f && bottom != heroBottomPx) {
                                                     heroBottomPx = bottom
                                                 }
+                                                if (rootPos.y != heroTopPx) heroTopPx = rootPos.y
                                             }
                                             .pointerInput(track.videoId, track.title, isVideoActive, playerLyricsActive) {
                                                 // Lyric rows own taps in Player Lyrics: a double tap
@@ -2096,6 +2100,27 @@ internal fun FullPlayer(
         com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
     }
 }
+}
+
+/** Blurs only the [top, bottom] band, feathered inside its edges, over the
+ *  sharp source. One layer, so a canvas TextureView still plays under it. */
+@androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+private fun lyricsAreaBlur(radius: Float, top: Float, bottom: Float, feather: Float): androidx.compose.ui.graphics.RenderEffect {
+    val edge = (feather / (bottom - top)).coerceAtMost(0.5f)
+    val band = android.graphics.RenderEffect.createShaderEffect(
+        android.graphics.LinearGradient(
+            0f, top, 0f, bottom,
+            intArrayOf(0, android.graphics.Color.BLACK, android.graphics.Color.BLACK, 0),
+            floatArrayOf(0f, edge, 1f - edge, 1f),
+            android.graphics.Shader.TileMode.CLAMP,
+        ),
+    )
+    val blur = android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
+    val blurredBand = android.graphics.RenderEffect.createBlendModeEffect(blur, band, android.graphics.BlendMode.DST_IN)
+    // A zero offset is the untouched source: the sharp art around the band.
+    val sharp = android.graphics.RenderEffect.createOffsetEffect(0f, 0f)
+    return android.graphics.RenderEffect.createBlendModeEffect(sharp, blurredBand, android.graphics.BlendMode.SRC_OVER)
+        .asComposeRenderEffect()
 }
 
 @Composable
