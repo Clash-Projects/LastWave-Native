@@ -56,6 +56,7 @@ class FeedViewModelChipsAndPaginationTest {
     private val homeRepository: HomeRepository = mockk(relaxed = true)
     private val discoverRepository: DiscoverRepository = mockk(relaxed = true)
     private val genresRepository: GenresRepository = mockk(relaxed = true)
+    private val previewQueueRepository: com.lastwave.app.data.queue.PreviewQueueRepository = mockk(relaxed = true)
 
     private fun createShelf(title: String, videoId: String): HomeShelf {
         return HomeShelf(
@@ -108,6 +109,7 @@ class FeedViewModelChipsAndPaginationTest {
             homeRepository,
             discoverRepository,
             genresRepository,
+            previewQueueRepository,
         )
     }
 
