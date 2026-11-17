@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Mic
 import com.lastwave.app.data.music.toYouTubeMusicTrack
+import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PushPin
@@ -1038,7 +1039,7 @@ fun FeedScreen(
                                                                     artist = track.artist,
                                                                     artworkUrl = track.artworkUrl,
                                                                     sourceLabel = "Discover",
-                                                                    videoId = track.videoId.takeIf(String::isNotBlank),
+                                                                    videoId = track.youtubeVideoIdOrNull(),
                                                                     onPlay = {
                                                                         val queue = discoveryTracks.map { it.toPlayableTrack() }
                                                                         musicPlayer.playDiscoverQueue(queue, index)
@@ -1077,7 +1078,7 @@ fun FeedScreen(
                                                             title = pq.title,
                                                             subtitle = "${pq.tracks.size} songs",
                                                             artworkUrl = pq.artworkUrl,
-                                                            fallbackIcon = Icons.Filled.QueueMusic,
+                                                            fallbackIcon = Icons.AutoMirrored.Filled.QueueMusic,
                                                             badgeText = "QUEUE",
                                                             onClick = { viewModel.playPreviewQueue(pq) },
                                                             onPlayClick = { viewModel.playPreviewQueue(pq) },
