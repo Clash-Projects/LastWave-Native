@@ -908,7 +908,7 @@ internal fun FullPlayer(
                                     0f
                                 }
                                 alpha = (0.35f + r * 0.65f).coerceIn(0f, 1f)
-                                val pulseScale = 1.0f + r * 0.28f
+                                val pulseScale = 1.0f + r * 0.38f
                                 scaleX = pulseScale
                                 scaleY = pulseScale
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1.0f)
