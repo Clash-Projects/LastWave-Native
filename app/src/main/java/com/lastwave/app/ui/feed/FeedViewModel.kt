@@ -83,7 +83,14 @@ class FeedViewModel @Inject constructor(
     private val homeRepository: com.lastwave.app.data.repository.HomeRepository,
     private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
     private val genresRepository: com.lastwave.app.data.generate.GenresRepository,
+    private val previewQueueRepository: com.lastwave.app.data.queue.PreviewQueueRepository,
 ) : ViewModel() {
+
+    val previewQueues: StateFlow<List<com.lastwave.app.data.queue.PreviewQueue>> = previewQueueRepository.previewQueues
+
+    fun playPreviewQueue(queue: com.lastwave.app.data.queue.PreviewQueue) {
+        musicPlayer.playQueue(queue.tracks, 0, sourceLabel = queue.title)
+    }
 
     private val _uiState = MutableStateFlow(FeedUiState())
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()

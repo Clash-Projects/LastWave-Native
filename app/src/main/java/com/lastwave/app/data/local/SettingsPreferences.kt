@@ -312,6 +312,7 @@ val MiscSettings.musicHapticsConfig: MusicHapticsConfig
 val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "taste_strip",
     "discover_new_music",
+    "preview_queues",
     "quick_picks",
     "because_you_listen_to",
     "fresh_finds",

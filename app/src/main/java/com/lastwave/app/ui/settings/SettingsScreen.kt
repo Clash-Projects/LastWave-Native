@@ -317,7 +317,7 @@ enum class SettingsTab(
         subtitleRes = R.string.set_cat_spotify_sub,
         title = "Spotify",
         subtitle = "Account connection, Canvas, Playlist imports & Liked Songs sync",
-        icon = Icons.Filled.PlayCircle,
+        icon = QualityGlyphs.Spotify,
     ),
     LAST_FM(
         titleRes = R.string.set_cat_lfm,
@@ -516,7 +516,11 @@ fun SettingsScreen(
         ExpressiveHeader(
             modifier = headerModifier,
             backdrop = headerBackdrop,
-            title = if (searchQuery.isNotBlank()) stringResource(R.string.settings_search_title) else (activeTab?.title ?: stringResource(R.string.settings)),
+            title = if (searchQuery.isNotBlank()) {
+                stringResource(R.string.settings_search_title)
+            } else {
+                activeTab?.let { stringResource(it.titleRes) } ?: stringResource(R.string.settings)
+            },
             onBack = {
                 if (searchQuery.isNotBlank() || isSearchBarVisible) {
                     viewModel.clearSearch()
@@ -688,9 +692,9 @@ fun SettingsScreen(
                                             position = position,
                                         )
                                         else -> SettingsActionCard(
-                                            icon = Icons.Filled.PlayCircle,
-                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            icon = QualityGlyphs.Spotify,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.set_cat_spotify),
                                             subtitle = if (spotifyConnected) {
                                                 "Connected (sp_dc) • Canvas, playlist imports & Liked Songs sync"
@@ -867,7 +871,7 @@ fun SettingsScreen(
                         val hfSettings by viewModel.autoMixSettings.collectAsStateWithLifecycle()
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.Bolt,
+                                icon = QualityGlyphs.AutoMix,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = "AutoMix",
@@ -903,7 +907,7 @@ fun SettingsScreen(
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = "Music Haptics",
                                 subtitle = if (misc.musicHapticsEnabled) {
-                                    "${misc.musicHapticsMode.label} \u2022 ${misc.musicHapticsIntensity.label} intensity"
+                                    "Physical rhythm synchronization via phone's haptic motor (Active)"
                                 } else {
                                     "Physical rhythm synchronization via phone's haptic motor"
                                 },
@@ -912,20 +916,6 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.music_haptics"),
                             )
-                        }
-                        if (misc.musicHapticsEnabled) {
-                            add { position ->
-                                MusicHapticsControlsCard(
-                                    config = misc.musicHapticsConfig,
-                                    isHardwareAvailable = viewModel.isHardwareHapticGeneratorAvailable,
-                                    isUsbExclusiveActive = viewModel.isUsbExclusiveActive,
-                                    onModeChange = viewModel::setMusicHapticsMode,
-                                    onIntensityChange = viewModel::setMusicHapticsIntensity,
-                                    onEngineModeChange = viewModel::setMusicHapticsEngineMode,
-                                    onBatterySaverChange = viewModel::setMusicHapticsPauseOnBatterySaver,
-                                    position = position,
-                                )
-                            }
                         }
                         add { position ->
                             SettingsToggleCard(
@@ -1822,9 +1812,9 @@ fun SettingsScreen(
                                             )
                                         } else {
                                             SettingsActionCard(
-                                                icon = Icons.Filled.PlayCircle,
-                                                iconContainer = MaterialTheme.colorScheme.surfaceVariant,
-                                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                icon = QualityGlyphs.Spotify,
+                                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                 title = "Connect Spotify Account",
                                                 subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
                                                 onClick = onOpenSpotifyLogin,
@@ -2306,59 +2296,64 @@ fun SettingsScreen(
                         appIcon = theme?.appIcon ?: AppIcon.DEFAULT,
                     )
 
-                    SettingsActionCard(
-                        icon = Icons.Filled.CloudDownload,
-                        iconContainer = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer,
-                        title = if (updateInfo.isUpdateAvailable) "Update Ready (${updateInfo.latestVersion})" else "Check for Updates",
-                        subtitle = when {
-                            updateInfo.isChecking -> "Checking GitHub releases..."
-                            updateInfo.isUpdateAvailable -> {
-                                val fileName = updateInfo.downloadFileName
-                                if (!fileName.isNullOrBlank()) "Tap to download $fileName" else "Tap to download new version"
-                            }
-                            !updateInfo.message.isNullOrBlank() -> updateInfo.message.orEmpty()
-                            else -> "Current version: ${appVersionName(context)}"
-                        },
-                        onClick = {
-                            if (updateInfo.isUpdateAvailable) {
-                                viewModel.openUpdate(context)
-                            } else {
-                                viewModel.checkForUpdates()
-                            }
-                        },
-                        isHighlighted = (highlightedSettingId == "about.check_updates"),
-                    )
-
-                    SettingsActionCard(
-                        icon = Icons.Filled.Code,
-                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        title = stringResource(R.string.settings_source_code),
-                        subtitle = "github.com/Clash-Projects/LastWave-native",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-native"))
-                            if (!startActivitySafely(context, intent)) {
-                                viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
-                            }
-                        },
-                        isHighlighted = (highlightedSettingId == "about.source_code"),
-                    )
-
-                    SettingsActionCard(
-                        icon = Icons.Filled.Download,
-                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        title = stringResource(R.string.settings_desktop_app),
-                        subtitle = "github.com/Clash-Projects/LastWave-Desktop",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
-                            if (!startActivitySafely(context, intent)) {
-                                viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
-                            }
-                        },
-                        isHighlighted = (highlightedSettingId == "about.desktop_app"),
-                    )
+                    SettingsGroup(rowCount = 3) { index, position ->
+                        when (index) {
+                            0 -> SettingsActionCard(
+                                icon = Icons.Filled.CloudDownload,
+                                iconContainer = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = if (updateInfo.isUpdateAvailable) "Update Ready (${updateInfo.latestVersion})" else "Check for Updates",
+                                subtitle = when {
+                                    updateInfo.isChecking -> "Checking GitHub releases..."
+                                    updateInfo.isUpdateAvailable -> {
+                                        val fileName = updateInfo.downloadFileName
+                                        if (!fileName.isNullOrBlank()) "Tap to download $fileName" else "Tap to download new version"
+                                    }
+                                    !updateInfo.message.isNullOrBlank() -> updateInfo.message.orEmpty()
+                                    else -> "Current version: ${appVersionName(context)}"
+                                },
+                                onClick = {
+                                    if (updateInfo.isUpdateAvailable) {
+                                        viewModel.openUpdate(context)
+                                    } else {
+                                        viewModel.checkForUpdates()
+                                    }
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "about.check_updates"),
+                            )
+                            1 -> SettingsActionCard(
+                                icon = Icons.Filled.Code,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_source_code),
+                                subtitle = "github.com/Clash-Projects/LastWave-native",
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-native"))
+                                    if (!startActivitySafely(context, intent)) {
+                                        viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
+                                    }
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "about.source_code"),
+                            )
+                            else -> SettingsActionCard(
+                                icon = Icons.Filled.Download,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_desktop_app),
+                                subtitle = "github.com/Clash-Projects/LastWave-Desktop",
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                                    if (!startActivitySafely(context, intent)) {
+                                        viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
+                                    }
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "about.desktop_app"),
+                            )
+                        }
+                    }
 
                     Spacer(Modifier.height(14.dp))
                     SectionLabel("More from us")

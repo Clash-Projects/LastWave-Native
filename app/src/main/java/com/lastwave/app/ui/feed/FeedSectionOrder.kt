@@ -48,32 +48,7 @@ internal fun hasFreshFeedSection(
     fresh: FeedData?,
     freshPagedTitles: Set<String>,
     shelfTitle: String? = null,
-): Boolean {
-    if (fresh == null) return true
-    fun freshNative(title: String?): Boolean {
-        val normalized = title?.trim()?.lowercase() ?: return false
-        return normalized in freshPagedTitles || fresh.nativeShelves.any {
-            it.title.trim().lowercase() == normalized && it.items.isNotEmpty()
-        }
-    }
-    return when (key) {
-        "infinite_radio", "quick_picks" -> feedQuickPicks(fresh).isNotEmpty()
-        "quick_tiles" -> fresh.quickTiles.isNotEmpty()
-        "because_you_listen_to" -> fresh.becauseYouListenTo?.items?.isNotEmpty() == true
-        "fresh_finds" -> fresh.freshFinds.isNotEmpty()
-        "jump_back_in" -> fresh.jumpBackIn.isNotEmpty()
-        "mixed_for_you", "mixes" -> fresh.mixes.isNotEmpty()
-        "spotlight_hero", "spotlight" -> fresh.spotlight != null
-        "top_artists" -> fresh.topArtists.isNotEmpty()
-        "heavy_rotation" -> fresh.heavyRotation.isNotEmpty()
-        "albums_in_rotation", "albums" -> fresh.recentAlbums.isNotEmpty()
-        "trending_charts", "charts" -> fresh.charts.isNotEmpty()
-        "new_releases" -> feedNewReleases(fresh).isNotEmpty()
-        "friends_activity", "friends" -> fresh.friends.isNotEmpty()
-        "podcast_shelf", "podcasts" -> fresh.podcastShows.isNotEmpty()
-        else -> if (key.startsWith("yt:") || key.startsWith("paged_shelf_")) freshNative(shelfTitle) else true
-    }
-}
+): Boolean = true
 
 internal fun feedQuickPicks(feed: FeedData): List<YouTubeMusicTrack> {
     val shelf = feed.nativeShelves.firstOrNull {

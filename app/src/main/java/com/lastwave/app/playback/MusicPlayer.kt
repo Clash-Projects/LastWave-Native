@@ -195,6 +195,7 @@ class MusicPlayer @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val ytMusicAuthManager: YtMusicAuthManager,
     private val loudnessPrefs: LoudnessPrefs,
+    internal val previewQueueRepository: dagger.Lazy<com.lastwave.app.data.queue.PreviewQueueRepository>,
 ) {
 
     private class VpnYoutubeLoginRequiredException(message: String) : java.io.IOException(message)
@@ -2708,6 +2709,9 @@ class MusicPlayer @Inject constructor(
         enableRadioContinuation: Boolean = false,
     ) {
         if (tracks.isEmpty()) return
+        if (tracks.size >= 2) {
+            runCatching { previewQueueRepository.get().recordQueue(tracks, sourceLabel) }
+        }
         pendingRestoredSession = null
         discoverQueueLoadJob?.cancel()
         discoverQueueActive = endlessDiscover

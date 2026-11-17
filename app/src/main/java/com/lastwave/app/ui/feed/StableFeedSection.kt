@@ -34,38 +34,7 @@ internal fun StableFeedSection(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    var heightPx by rememberSaveable(configuration.screenWidthDp, density.density, density.fontScale) {
-        mutableIntStateOf(0)
-    }
-    Box(
-        modifier.fillMaxWidth().onSizeChanged { size ->
-            if (size.height > 0 && (!unavailable || heightPx == 0)) heightPx = size.height
-        },
-    ) {
-        if (!unavailable) {
-            content()
-        } else {
-            if (heightPx == 0) {
-                Box(Modifier.alpha(0f).clearAndSetSemantics { }) { content() }
-            } else {
-                Spacer(Modifier.height(with(density) { heightPx.toDp() }))
-            }
-            Box(
-                modifier = Modifier.matchParentSize().padding(horizontal = 16.dp).padding(bottom = 3.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .pointerInput(Unit) { detectTapGestures { } },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.feed_section_not_in_refresh),
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
+    Box(modifier.fillMaxWidth()) {
+        content()
     }
 }

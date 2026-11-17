@@ -18,6 +18,8 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.DisposableEffect
+import com.lastwave.app.ui.common.GroupPosition
+import com.lastwave.app.ui.common.groupShape
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -705,12 +707,18 @@ internal fun AddToPlaylistDialog(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().heightIn(max = playlistListMaxHeight),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     itemsIndexed(
                         sanitizedPlaylists,
                         key = { index, playlist -> "${playlist.id}_${playlist.remotePlaylistId ?: ""}_$index" },
-                    ) { _, playlist ->
+                    ) { index, playlist ->
+                        val position = when {
+                            sanitizedPlaylists.size == 1 -> GroupPosition.SINGLE
+                            index == 0 -> GroupPosition.TOP
+                            index == sanitizedPlaylists.lastIndex -> GroupPosition.BOTTOM
+                            else -> GroupPosition.MIDDLE
+                        }
                         val selected = playlist.id in selectedPlaylistIds
                         val alreadyAdded = playlist.id in knownDuplicatePlaylistIds ||
                             playlist.tracks.any {
@@ -741,7 +749,7 @@ internal fun AddToPlaylistDialog(
                                     selectedPlaylistIds + playlist.id
                                 }
                             },
-                            shape = RoundedCornerShape(18.dp),
+                            shape = groupShape(position),
                             color = rowColor,
                             modifier = Modifier.fillMaxWidth(),
                         ) {

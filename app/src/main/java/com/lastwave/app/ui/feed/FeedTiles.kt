@@ -413,12 +413,14 @@ internal fun TasteStrip(
     tags: List<String>,
     launching: String?,
     onTagClick: (String) -> Unit,
+    onActionClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         FeedSectionHeader(
             title = stringResource(R.string.feed_your_sound),
             subtitle = stringResource(R.string.feed_your_sound_sub),
+            onActionClick = onActionClick,
             onLongClick = onLongClick,
         )
         LazyRow(
@@ -433,10 +435,6 @@ internal fun TasteStrip(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
                     modifier = Modifier,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
-                    ),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),

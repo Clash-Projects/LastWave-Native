@@ -615,6 +615,13 @@ internal fun FullPlayer(
         label = "playerAmbientDeep",
     )
 
+    val isThemeLight = remember(ambientColor, ambientCompanion, ambientDeep) {
+        val lumPrimary = ambientColor.luminance()
+        val lumDeep = ambientDeep.luminance()
+        val lumComp = ambientCompanion.luminance()
+        lumPrimary > 0.65f || (lumPrimary > 0.5f && lumDeep > 0.5f) || (lumPrimary > 0.55f && lumComp > 0.55f)
+    }
+
     fun Modifier.playerVerticalSwipe(enabled: Boolean): Modifier = if (!enabled) this else pointerInput(track.videoId, track.title, currentTab) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -1182,8 +1189,8 @@ internal fun FullPlayer(
                                     }
                                 },
                                 shape = CircleShape,
-                                color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                contentColor = Color.White.copy(alpha = 0.94f),
+                                color = liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                contentColor = if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f),
                                 glassModifier = Modifier.liquidGlassChrome(
                                     CircleShape,
                                     LocalLiquidGlass.current,
@@ -1210,7 +1217,7 @@ internal fun FullPlayer(
                                         FullPlayerTab.QUEUE -> "PLAYING QUEUE"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White.copy(alpha = 0.95f),
+                                    color = if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.95f),
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.9.sp,
                                 )
@@ -1221,7 +1228,7 @@ internal fun FullPlayer(
                                         state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.70f),
+                                    color = if (isThemeLight) Color(0xFF444448) else Color.White.copy(alpha = 0.70f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -1236,8 +1243,8 @@ internal fun FullPlayer(
                                         onClick = hapticClick { showLyricsOffsetDialog = true },
                                         shape = CircleShape,
                                         color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                                        else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                        contentColor = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
+                                        else liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                        contentColor = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else (if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f)),
                                         glassModifier = Modifier.liquidGlassChrome(
                                             CircleShape,
                                             LocalLiquidGlass.current,
@@ -1252,11 +1259,35 @@ internal fun FullPlayer(
                                         )
                                     }
                                 }
+                                if (currentTab == FullPlayerTab.QUEUE) {
+                                    LiquidGlassSurface(
+                                        onClick = hapticClick {
+                                            isQueueLockedState = !isQueueLockedState
+                                        },
+                                        shape = CircleShape,
+                                        color = if (isQueueLockedState) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                        else liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                        contentColor = if (isQueueLockedState) MaterialTheme.colorScheme.primary
+                                        else (if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f)),
+                                        glassModifier = Modifier.liquidGlassChrome(
+                                            CircleShape,
+                                            LocalLiquidGlass.current,
+                                            LiquidGlassPreset.FloatingControls,
+                                        ),
+                                        modifier = Modifier.size(44.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isQueueLockedState) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                            contentDescription = if (isQueueLockedState) "Unlock queue" else "Lock queue",
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                }
                                 LiquidGlassSurface(
                                     onClick = hapticClick { showTrackMenu = true },
                                     shape = CircleShape,
-                                    color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                    contentColor = Color.White.copy(alpha = 0.94f),
+                                    color = liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                    contentColor = if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f),
                                     glassModifier = Modifier.liquidGlassChrome(
                                         CircleShape,
                                         LocalLiquidGlass.current,

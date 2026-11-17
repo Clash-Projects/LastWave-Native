@@ -355,7 +355,7 @@ internal fun SpotifyAccountRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconBadge(
-                Icons.Filled.PlayCircle,
+                QualityGlyphs.Spotify,
                 MaterialTheme.colorScheme.primaryContainer,
                 MaterialTheme.colorScheme.primary,
             )

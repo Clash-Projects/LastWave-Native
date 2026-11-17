@@ -196,6 +196,7 @@ fun FeedScreen(
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenDiscover: () -> Unit,
+    onOpenGenres: () -> Unit = {},
     onOpenFeedPlaylist: (String) -> Unit,
     onOpenPlaylist: (Long) -> Unit = {},
     onOpenGenerator: () -> Unit = {},
@@ -239,6 +240,7 @@ fun FeedScreen(
     var sectionMenuTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
     val podcastsEnabled by viewModel.podcastsEnabled.collectAsStateWithLifecycle()
     val topGenres by viewModel.topGenres.collectAsStateWithLifecycle()
+    val previewQueues by viewModel.previewQueues.collectAsStateWithLifecycle()
     fun isSectionVisible(section: HomeSection) = section.id !in hiddenSections
     val snackbarHostState = remember { SnackbarHostState() }
     val hasFeedContent = state.isChipActive || state.feedData.hasContent
@@ -610,6 +612,7 @@ fun FeedScreen(
                         key == "hero_greeting" || key == "infinite_radio" || key == "quick_tiles" -> false
                         key == "taste_strip" -> showSynthetic && displayTags.isNotEmpty()
                         key == "discover_new_music" -> showSynthetic && (discoveryTracks.isNotEmpty() || hasShownDiscovery)
+                        key == "preview_queues" -> showSynthetic && previewQueues.isNotEmpty()
                         key == "quick_picks" -> showSynthetic && combinedQuickPicks.isNotEmpty()
                         key == "because_you_listen_to" -> showSynthetic && state.feedData.becauseYouListenTo?.items?.isNotEmpty() == true
                         key == "fresh_finds" -> showSynthetic && state.feedData.freshFinds.isNotEmpty()
@@ -633,7 +636,7 @@ fun FeedScreen(
                     state.feedData.userName, state.feedData.ytAccountName, state.feedData.isYtConnected) { FeedSectionOrder() }
                 val (orderedFeedSections, ytShelfBySectionKey, hasPendingSections) = remember(
                     showSynthetic, allHiddenIds, pinnedHomeSections, homeSectionsOrder,
-                    quickTiles, podcastsEnabled, state.feedData.podcastShows, displayTags,
+                    quickTiles, podcastsEnabled, state.feedData.podcastShows, displayTags, previewQueues,
                     combinedQuickPicks, discoveryTracks, hasShownDiscovery, state.feedData.becauseYouListenTo,
                     state.feedData.freshFinds, state.feedData.jumpBackIn, state.feedData.mixes,
                     individualTopArtists, state.feedData.heavyRotation, state.feedData.recentAlbums,
@@ -990,6 +993,7 @@ fun FeedScreen(
                                                 tags = displayTags,
                                                 launching = state.launchingRadio,
                                                 onTagClick = { tag -> viewModel.playDiscoveryQuery(tag.displayName(), tag) },
+                                                onActionClick = onOpenGenres,
                                                 onLongClick = { sectionMenuTarget = "taste_strip" to "My genres" },
                                             )
                                         }
@@ -1028,10 +1032,55 @@ fun FeedScreen(
                                                                 val queue = discoveryTracks.map { it.toPlayableTrack() }
                                                                 musicPlayer.playDiscoverQueue(queue, index)
                                                             },
+                                                            onLongClick = {
+                                                                miniTrayTrack = TrackMiniTrayData(
+                                                                    title = track.name,
+                                                                    artist = track.artist,
+                                                                    artworkUrl = track.artworkUrl,
+                                                                    sourceLabel = "Discover",
+                                                                    videoId = track.videoId.takeIf(String::isNotBlank),
+                                                                    onPlay = {
+                                                                        val queue = discoveryTracks.map { it.toPlayableTrack() }
+                                                                        musicPlayer.playDiscoverQueue(queue, index)
+                                                                    },
+                                                                )
+                                                            },
                                                             onPlayClick = {
                                                                 val queue = discoveryTracks.map { it.toPlayableTrack() }
                                                                 musicPlayer.playDiscoverQueue(queue, index)
                                                             },
+                                                        )
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                                sectionKey == "preview_queues" -> {
+                                    feedSectionItem(unavailable = false, key = "preview_queues", contentType = "preview_queues") {
+                                        HomeContainerSection(
+                                            shape = getContainerShape("preview_queues"),
+                                        ) {
+                                            FeedSectionHeader(
+                                                title = "Preview Queues",
+                                                subtitle = "Your recent listening sessions",
+                                                onLongClick = { sectionMenuTarget = "preview_queues" to "Preview Queues" },
+                                            )
+                                            FeedMediaRow(
+                                                content = {
+                                                    items(
+                                                        previewQueues,
+                                                        key = { "pq_${it.id}" },
+                                                        contentType = { "preview_queue" },
+                                                    ) { pq ->
+                                                        FeedMediaCard(
+                                                            title = pq.title,
+                                                            subtitle = "${pq.tracks.size} songs",
+                                                            artworkUrl = pq.artworkUrl,
+                                                            fallbackIcon = Icons.Filled.QueueMusic,
+                                                            badgeText = "QUEUE",
+                                                            onClick = { viewModel.playPreviewQueue(pq) },
+                                                            onPlayClick = { viewModel.playPreviewQueue(pq) },
                                                         )
                                                     }
                                                 },

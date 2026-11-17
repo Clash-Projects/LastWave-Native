@@ -432,6 +432,7 @@ fun MainShell(
                             onOpenSettings = onOpenSettings,
                             onOpenSearch = onOpenSearch,
                             onOpenDiscover = onOpenDiscover,
+                            onOpenGenres = onOpenGenres,
                             onOpenPlaylist = onOpenPlaylist,
                             onOpenFeedPlaylist = onOpenFeedPlaylist,
                             onOpenGenerator = onOpenGenerator,

@@ -5,6 +5,8 @@
     <locale android:name="en" />
     <locale android:name="tr" />
     <locale android:name="zh-Hans" />
+    <locale android:name="zh-CN" />
+    <locale android:name="zh" />
     <!-- Wave 1 -->
     <locale android:name="ru" />
     <locale android:name="pt-BR" />

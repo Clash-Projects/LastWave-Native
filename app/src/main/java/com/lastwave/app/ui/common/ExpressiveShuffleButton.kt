@@ -9,8 +9,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -52,7 +53,7 @@ fun ExpressiveShuffleButton(
             onClick()
         },
         interactionSource = interactionSource,
-        shape = CircleShape,
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
         modifier = modifier
             .size(38.dp)
@@ -66,7 +67,7 @@ fun ExpressiveShuffleButton(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = Icons.Filled.Shuffle,
+                imageVector = Icons.Rounded.Shuffle,
                 contentDescription = contentDescription,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(18.dp),
