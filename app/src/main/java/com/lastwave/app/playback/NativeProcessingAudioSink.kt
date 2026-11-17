@@ -673,6 +673,7 @@ class NativeProcessingAudioSink(
             eqCopySource = null
             hapticsBuffer = null
             skipCheckedBuffer = null
+            rhythmPcmBuffer = null
         }
         return consumed
     }

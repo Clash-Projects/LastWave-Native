@@ -464,19 +464,14 @@ fun FluidArtworkBackground(
     var seconds by remember { mutableFloatStateOf(0f) }
     var cachedSigma by remember { mutableFloatStateOf(0f) }
     var cachedRenderEffect by remember { mutableStateOf<androidx.compose.ui.graphics.RenderEffect?>(null) }
-    val windowActive = rememberPlayerWindowActive()
-    val motionActive = isPlaying && windowActive
-
-    val rhythmFlow = com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm
-    val rhythmState by rhythmFlow.collectAsStateWithLifecycle()
-    val activeRhythm = if (fluidBeatSyncEnabled) rhythmState else 0f
+    val isForeground = rememberIsForeground()
+    val motionActive = isPlaying && isForeground
 
     LaunchedEffect(fluidBeatSyncEnabled) {
         com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled = fluidBeatSyncEnabled
     }
 
-    // Paused or obscured: hold the current pose. Animating the full-screen shader
-    // + blur while paused or under the shade used most of a CPU core.
+    // Runs while playing and foregrounded. Bound seconds to a periodic window to maintain 100% float precision.
     LaunchedEffect(motionActive, fluidBeatSyncEnabled) {
         if (!motionActive) {
             if (fluidBeatSyncEnabled) {
@@ -490,16 +485,15 @@ fun FluidArtworkBackground(
                 delay(FRAME_INTERVAL_MS)
             }
             val now = withFrameNanos { it }
-            val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
+            val dt = ((now - last) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
             last = now
 
             if (fluidBeatSyncEnabled) {
-                com.lastwave.app.playback.rhythm.FluidRhythmEngine.tick(dt, isPlaying)
-                val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
+                val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.tick(dt, isPlaying)
                 // Lyra Player: speed_boost = 1.8f
-                seconds += dt * (1.0f + r * 1.8f)
+                seconds = (seconds + dt * (1.0f + r * 1.8f)) % 62831.85f
             } else {
-                seconds += dt
+                seconds = (seconds + dt) % 62831.85f
             }
         }
     }
@@ -515,8 +509,6 @@ fun FluidArtworkBackground(
                     .fillMaxSize()
                     .graphicsLayer {
                         alpha = appear.value
-                        @Suppress("UNUSED_VARIABLE")
-                        val anim = seconds
                     }
                     .layout { measurable, constraints ->
                         val w = constraints.maxWidth

@@ -1624,15 +1624,14 @@ internal fun FullPlayer(
                                                 animationSpec = tween(600),
                                                 label = "artworkGlowAlpha",
                                             )
-                                            val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
                                             val isArtworkBeatActive = fluidBeatSyncEnabled && beatSyncedArtworkEnabled && state.isPlaying
-                                            val activeRhythm = if (isArtworkBeatActive) r else 0f
-                                            val beatGlowScale = if (isArtworkBeatActive) 1.0f + activeRhythm * 0.16f else 1.0f
-                                            val beatGlowAlpha = if (isArtworkBeatActive) (glowAlpha + activeRhythm * 0.35f).coerceIn(0f, 1f) else glowAlpha
                                             Box(
                                                 modifier = Modifier
                                                     .size(artworkSize + 28.dp)
                                                     .graphicsLayer {
+                                                        val r = if (isArtworkBeatActive) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
+                                                        val beatGlowScale = 1.0f + r * 0.16f
+                                                        val beatGlowAlpha = (glowAlpha + r * 0.35f).coerceIn(0f, 1f)
                                                         translationX = shownArtworkX * 0.7f
                                                         scaleX = beatGlowScale
                                                         scaleY = beatGlowScale
@@ -1656,20 +1655,17 @@ internal fun FullPlayer(
                                                 ),
                                                 label = "artworkPlayingScale",
                                             )
-                                            val beatArtworkScale = if (isArtworkBeatActive) artworkPlayingScale * (1.0f + activeRhythm * 0.075f) else artworkPlayingScale
 
                                             Surface(
                                                 shape = RoundedCornerShape(22.dp),
                                                 color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f * sleeveAlpha),
                                                 tonalElevation = 6.dp * sleeveAlpha,
-                                                shadowElevation = if (state.isPlaying) {
-                                                    if (isArtworkBeatActive) (28.dp + 12.dp * activeRhythm) * sleeveAlpha else 28.dp * sleeveAlpha
-                                                } else {
-                                                    12.dp * sleeveAlpha
-                                                },
+                                                shadowElevation = if (state.isPlaying) 28.dp * sleeveAlpha else 12.dp * sleeveAlpha,
                                                 modifier = Modifier
                                                     .size(artworkSize)
                                                     .graphicsLayer {
+                                                        val r = if (isArtworkBeatActive) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
+                                                        val beatArtworkScale = artworkPlayingScale * (1.0f + r * 0.075f)
                                                         scaleX = beatArtworkScale
                                                         scaleY = beatArtworkScale
                                                         translationX = shownArtworkX
@@ -1687,16 +1683,15 @@ internal fun FullPlayer(
                                                         pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
                                                         onAspectRatioChanged = { canvasAspect = it },
                                                     )
-                                                    if (activeRhythm > 0.02f) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .fillMaxSize()
-                                                                .graphicsLayer {
-                                                                    alpha = (activeRhythm * 0.22f).coerceIn(0f, 0.25f)
-                                                                }
-                                                                .background(Color.White.copy(alpha = 0.18f))
-                                                        )
-                                                    }
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .graphicsLayer {
+                                                                val r = if (isArtworkBeatActive) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
+                                                                alpha = if (r > 0.02f) (r * 0.22f).coerceIn(0f, 0.25f) else 0f
+                                                            }
+                                                            .background(Color.White.copy(alpha = 0.18f))
+                                                    )
                                                 }
                                             }
                                             }
@@ -2134,24 +2129,23 @@ private fun RhythmCoverBox(
         Box(modifier) { content() }
         return
     }
-    val r by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
     Box(
         modifier = modifier.graphicsLayer {
+            val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
             val scale = 1.0f + r * 0.075f
             scaleX = scale
             scaleY = scale
         }
     ) {
         content()
-        if (r > 0.02f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = (r * 0.22f).coerceIn(0f, 0.25f)
-                    }
-                    .background(Color.White.copy(alpha = 0.18f))
-            )
-        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
+                    alpha = if (r > 0.02f) (r * 0.22f).coerceIn(0f, 0.25f) else 0f
+                }
+                .background(Color.White.copy(alpha = 0.18f))
+        )
     }
 }
