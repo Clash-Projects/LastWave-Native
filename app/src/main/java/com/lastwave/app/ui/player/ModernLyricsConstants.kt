@@ -175,6 +175,13 @@ internal data class LyricsAlignment(
 
 internal val LocalLyricsAlignment = androidx.compose.runtime.compositionLocalOf { LyricsAlignment() }
 
+internal data class LyricsStyleState(
+    val style: LyricsStyle = LyricsStyle.DEFAULT,
+    val onStyleChange: ((LyricsStyle) -> Unit)? = null,
+)
+
+internal val LocalLyricsStyleState = androidx.compose.runtime.compositionLocalOf { LyricsStyleState() }
+
 /** Line falloff by distance from the active row: alpha and soften radius.
  *  Past the end of the array the last value holds, so distance never needs a
  *  branch. The active line's own scale (1.0) lives with the row code. */
@@ -212,8 +219,8 @@ internal const val LYRIC_IDLE_TEXT_ALPHA = 0.85f
 /** Unsung part of a lit word-synced row; matches an idle row one step away. */
 internal const val LYRIC_LIT_BASE_ALPHA = 0.42f
 
-/** How far a syllable rises while it is sung. */
-internal val LYRIC_LIFT = 3.dp
+/** How far a syllable rises while it is sung. Capped to 2.5.dp to prevent clipping preceding lines. */
+internal val LYRIC_LIFT = 2.5.dp
 
 /** Height of the instrumental-break dots row while it is open. */
 internal val LYRIC_INTERLUDE_HEIGHT = 44.dp
