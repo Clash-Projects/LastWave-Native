@@ -85,6 +85,20 @@ internal object TextMatch {
         return kotlin.math.abs(got - expected) > limitSec
     }
 
+    /**
+     * Same title and runtime within a few seconds identifies the recording even when
+     * the artist credit differs (composer vs singers). Needs both runtimes known.
+     */
+    fun isRuntimeConfirmedTitleMatch(candidateTitle: String, wantedTitle: String, expectedMs: Long?, candidateSec: Int?): Boolean {
+        val expected = expectedMs?.takeIf { it > 0 }?.div(1000L) ?: return false
+        val got = candidateSec?.takeIf { it > 0 } ?: return false
+        if (kotlin.math.abs(got - expected) > RUNTIME_CONFIRM_DRIFT_SEC) return false
+        val wanted = normalize(baseTitle(wantedTitle))
+        return wanted.isNotBlank() && wanted == normalize(baseTitle(candidateTitle))
+    }
+
+    const val RUNTIME_CONFIRM_DRIFT_SEC = 5
+
     val MATCH_NOISE_WORDS = setOf(
         "official", "audio", "video", "visualizer", "lyrics", "lyric", "hd", "hq", "4k", "track", "music",
         "ost", "soundtrack", "lyrical", "full"
