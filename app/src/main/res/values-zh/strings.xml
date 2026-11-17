@@ -1354,7 +1354,6 @@
     <string name="autoeq_row_on">已开启 • %1$s</string>
     <string name="autoeq_row_custom">已开启 • %1$s (自定义)</string>
     <string name="autoeq_manual">手动均衡器</string>
-    <string name="autoeq_no_profile = 'No headphone selected'">未选择耳机配置</string>
     <string name="autoeq_no_profile">未选择耳机配置</string>
     <string name="autoeq_custom">自定义</string>
     <string name="autoeq_custom_hint">已手动编辑。重新选择耳机型号可恢复 AutoEQ 官方曲线。</string>
