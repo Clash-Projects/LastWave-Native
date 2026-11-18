@@ -171,7 +171,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenDiscover: () -> Unit,
-    onOpenGenres: () -> Unit,
+    onOpenListeningStats: () -> Unit,
     onOpenFriends: () -> Unit,
     onOpenDownloads: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
@@ -199,7 +199,6 @@ fun HomeScreen(
                     modifier = Modifier.adaptiveContentWidth(maxWidth = 860.dp),
                     actions = {
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
-                        com.lastwave.app.ui.recognition.MusicRecognitionButton(key = "recognition_stats")
                         IconButton(onClick = onOpenSettings) {
                             ProfileAvatar(avatarUrl = uiState.stats?.avatarUrl, modifier = Modifier.size(38.dp))
                         }
@@ -275,7 +274,7 @@ fun HomeScreen(
                                 artistCount = stats.artistCount,
                                 albumCount = stats.albumCount,
                                 headlineLabel = headlineLabel,
-                                onOpenGenres = onOpenGenres,
+                                onOpenListeningStats = onOpenListeningStats,
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp),
                             )
                         }
@@ -288,7 +287,7 @@ fun HomeScreen(
                             albumCount = stats.albumCount,
                             headlineLabel = headlineLabel,
                             onExpand = statsCollapse::expand,
-                            onOpenGenres = onOpenGenres,
+                            onOpenListeningStats = onOpenListeningStats,
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
                     },

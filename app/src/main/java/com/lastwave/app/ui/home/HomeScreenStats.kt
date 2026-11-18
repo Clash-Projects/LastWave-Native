@@ -327,7 +327,7 @@ internal fun StatsCard(
     trackCount: Long,
     artistCount: Long,
     albumCount: Long,
-    onOpenGenres: () -> Unit,
+    onOpenListeningStats: () -> Unit,
     modifier: Modifier = Modifier,
     headlineLabel: String = "Scrobbles",
 ) {
@@ -375,10 +375,10 @@ internal fun StatsCard(
                             modifier = Modifier.size(46.dp).align(Alignment.CenterEnd),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                IconButton(onClick = onOpenGenres) {
+                                IconButton(onClick = onOpenListeningStats) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowForward,
-                                        contentDescription = stringResource(R.string.home_view_genres_cd),
+                                        contentDescription = "Listening Stats",
                                         tint = MaterialTheme.colorScheme.onPrimary,
                                     )
                                 }
@@ -450,7 +450,7 @@ internal fun StatsCompactRow(
     albumCount: Long,
     headlineLabel: String,
     onExpand: () -> Unit,
-    onOpenGenres: () -> Unit,
+    onOpenListeningStats: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -496,10 +496,10 @@ internal fun StatsCompactRow(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(44.dp),
             ) {
-                IconButton(onClick = onOpenGenres) {
+                IconButton(onClick = onOpenListeningStats) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = stringResource(R.string.home_view_genres_cd),
+                        contentDescription = "Listening Stats",
                         tint = MaterialTheme.colorScheme.onPrimary,
                     )
                 }

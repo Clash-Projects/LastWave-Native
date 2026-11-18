@@ -296,6 +296,7 @@ fun LastWaveNavHost(
                 onOpenSearch = { navController.navigate(Screen.Search.createRoute()) },
                 onOpenDiscover = { navController.navigate(Screen.Discover.route) },
                 onOpenGenres = { navController.navigate(Screen.Genres.route) },
+                onOpenListeningStats = { navController.navigate(Screen.ListeningStats.route) },
                 onOpenFriends = { navController.navigate(Screen.Friends.route) },
                 onOpenFriendProfile = { username, displayName, avatarUrl ->
                     navController.navigate(Screen.FriendProfile.createRoute(username, displayName, avatarUrl))
@@ -433,6 +434,14 @@ fun LastWaveNavHost(
                         // since MainShell always shows Playlists as one of its tabs
                         // and the user lands back wherever they left MainShell.
                     },
+                )
+            }
+        }
+
+        composable(Screen.ListeningStats.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.stats.ListeningStatsScreen(
+                    onBack = { navController.safePopBackStack(backStackEntry) },
                 )
             }
         }

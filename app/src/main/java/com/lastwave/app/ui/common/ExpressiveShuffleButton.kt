@@ -53,7 +53,7 @@ fun ExpressiveShuffleButton(
             onClick()
         },
         interactionSource = interactionSource,
-        shape = RoundedCornerShape(12.dp),
+        shape = CircleShape,
         color = MaterialTheme.colorScheme.primaryContainer,
         modifier = modifier
             .size(38.dp)

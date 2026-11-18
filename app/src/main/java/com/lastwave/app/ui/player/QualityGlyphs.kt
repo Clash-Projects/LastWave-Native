@@ -226,4 +226,40 @@ internal object QualityGlyphs {
             }
         }.build()
     }
+
+    /** Official Last.fm logo. */
+    val LastFm: ImageVector by lazy {
+        ImageVector.Builder("LastFm", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = ink) {
+                moveTo(10.584f, 17.21f)
+                lineTo(9.704f, 14.818f)
+                curveTo(9.704f, 14.818f, 8.274f, 16.412f, 6.131f, 16.412f)
+                curveTo(4.234f, 16.412f, 2.887f, 14.763f, 2.887f, 12.124f)
+                curveTo(2.887f, 8.742f, 4.591f, 7.533f, 6.268f, 7.533f)
+                curveTo(8.688f, 7.533f, 9.457f, 9.1f, 10.117f, 11.107f)
+                lineTo(10.997f, 13.856f)
+                curveTo(11.877f, 16.522f, 13.526f, 18.666f, 18.282f, 18.666f)
+                curveTo(21.691f, 18.666f, 24f, 17.622f, 24f, 14.873f)
+                curveTo(24f, 12.646f, 22.735f, 11.492f, 20.37f, 10.942f)
+                lineTo(18.612f, 10.557f)
+                curveTo(17.402f, 10.282f, 17.045f, 9.787f, 17.045f, 8.962f)
+                curveTo(17.045f, 8.028f, 17.787f, 7.478f, 18.997f, 7.478f)
+                curveTo(20.317f, 7.478f, 21.031f, 7.973f, 21.141f, 9.155f)
+                lineTo(23.89f, 8.825f)
+                curveTo(23.67f, 6.351f, 21.966f, 5.333f, 19.161f, 5.333f)
+                curveTo(16.687f, 5.333f, 14.268f, 6.268f, 14.268f, 9.265f)
+                curveTo(14.268f, 11.135f, 15.175f, 12.316f, 17.457f, 12.866f)
+                lineTo(19.327f, 13.306f)
+                curveTo(20.729f, 13.636f, 21.196f, 14.213f, 21.196f, 15.01f)
+                curveTo(21.196f, 16.027f, 20.206f, 16.44f, 18.336f, 16.44f)
+                curveTo(15.56f, 16.44f, 14.406f, 14.983f, 13.746f, 12.976f)
+                lineTo(12.839f, 10.226f)
+                curveTo(11.684f, 6.653f, 9.842f, 5.333f, 6.186f, 5.333f)
+                curveTo(2.144f, 5.333f, 0f, 7.89f, 0f, 12.233f)
+                curveTo(0f, 16.413f, 2.144f, 18.667f, 5.993f, 18.667f)
+                curveTo(9.099f, 18.667f, 10.584f, 17.21f, 10.584f, 17.21f)
+                close()
+            }
+        }.build()
+    }
 }
