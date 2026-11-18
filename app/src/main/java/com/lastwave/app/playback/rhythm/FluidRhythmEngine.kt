@@ -59,7 +59,7 @@ object FluidRhythmEngine {
         private set
 
     @Volatile
-    var isEnabled: Boolean = true
+    var isEnabled: Boolean = false
 
     @Volatile
     private var rawRhythmTarget: Float = 0f
