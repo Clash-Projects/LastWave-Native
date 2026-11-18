@@ -410,7 +410,7 @@ fun FluidArtworkBackground(
     extraBlur: Boolean = false,
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
-    fluidBeatSyncEnabled: Boolean = true,
+    fluidBeatSyncEnabled: Boolean = false,
     artworkViewModel: ArtworkViewModel = com.lastwave.app.ui.common.LocalArtworkViewModel.current ?: hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {

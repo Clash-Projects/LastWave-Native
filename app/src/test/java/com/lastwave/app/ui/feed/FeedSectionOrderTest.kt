@@ -14,28 +14,6 @@ class FeedSectionOrderTest {
     )
 
     @Test
-    fun waitsForEarlierSectionsBeforeRevealingLaterOnes() {
-        val order = listOf("genres", "discovery", "picks", "native", "albums")
-        val pending = setOf("discovery", "picks", "albums")
-
-        assertThat(readyFeedSections(order, setOf("genres", "native"), pending::contains))
-            .containsExactly("genres").inOrder()
-        assertThat(readyFeedSections(order, setOf("genres", "discovery", "picks", "native"), pending::contains))
-            .containsExactly("genres", "discovery", "picks", "native").inOrder()
-    }
-
-    @Test
-    fun keepsVisibleSectionsInPlaceWhenNewDataArrives() {
-        val order = FeedSectionOrder()
-        assertThat(order.update(listOf("genres", "native"), listOf("genres", "native")))
-            .containsExactly("genres", "native").inOrder()
-        assertThat(order.update(listOf("genres", "picks", "native"), listOf("genres", "picks", "native")))
-            .containsExactly("genres", "native", "picks").inOrder()
-        assertThat(order.update(listOf("genres", "picks"), listOf("genres", "picks")))
-            .containsExactly("genres", "picks").inOrder()
-    }
-
-    @Test
     fun refreshUpdatesMatchingShelvesWithoutRemovingOrReorderingExistingOnes() {
         val old = listOf(shelf("First", "first"), shelf("Second", "old"))
         val updatedSecond = shelf(" second ", "updated")
@@ -45,17 +23,6 @@ class FeedSectionOrderTest {
             .containsExactly(old[0], updatedSecond.copy(title = "Second"), added).inOrder()
         assertThat(mergeFeedShelves(old, listOf(HomeShelf("Second"))))
             .containsExactlyElementsIn(old).inOrder()
-    }
-
-    @Test
-    fun laterSectionsDoNotMoveAnExistingPagedShelf() {
-        val order = FeedSectionOrder()
-        order.update(listOf("genres", "paged_shelf_0"), listOf("genres", "paged_shelf_0"))
-
-        assertThat(order.update(
-            listOf("genres", "new_section", "paged_shelf_0"),
-            listOf("genres", "new_section", "paged_shelf_0"),
-        )).containsExactly("genres", "paged_shelf_0", "new_section").inOrder()
     }
 
     @Test
@@ -95,18 +62,6 @@ class FeedSectionOrderTest {
         val (visible, pages) = retainFeedSections(old, listOf(shelf("Page", "page")), fresh)
         assertThat(visible).isEqualTo(fresh)
         assertThat(pages).isEmpty()
-    }
-
-    @Test
-    fun freshnessUsesTheLatestFeedAndValidatedContinuationPages() {
-        val fresh = FeedData(nativeShelves = listOf(shelf("Returned", "fresh")))
-
-        assertThat(hasFreshFeedSection("yt:Old", fresh, emptySet(), "Old")).isFalse()
-        assertThat(hasFreshFeedSection("yt:Returned", fresh, emptySet(), "Returned")).isTrue()
-        assertThat(hasFreshFeedSection("paged_shelf_0_Page", fresh, emptySet(), "Page")).isFalse()
-        assertThat(hasFreshFeedSection("paged_shelf_0_Page", fresh, setOf("page"), "Page")).isTrue()
-        assertThat(hasFreshFeedSection("trending_charts", fresh, emptySet())).isFalse()
-        assertThat(hasFreshFeedSection("taste_strip", fresh, emptySet())).isTrue()
     }
 
     @Test

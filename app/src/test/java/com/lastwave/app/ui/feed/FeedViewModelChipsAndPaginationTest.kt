@@ -212,7 +212,6 @@ class FeedViewModelChipsAndPaginationTest {
         finalResult.complete(partial)
         assertThat(vm.uiState.value.feedData.nativeShelves).containsExactly(first, second, added).inOrder()
         assertThat(vm.uiState.value.lastCompletedFeed).isEqualTo(partial)
-        assertThat(hasFreshFeedSection("yt:First", vm.uiState.value.lastCompletedFeed, emptySet(), "First")).isFalse()
     }
 
     @Test
@@ -234,14 +233,10 @@ class FeedViewModelChipsAndPaginationTest {
 
         coEvery { feedRepository.loadFeed(any(), any()) } returns refreshed
         vm.refresh()
-        assertThat(hasFreshFeedSection("paged_shelf_0_Paged", vm.uiState.value.lastCompletedFeed,
-            vm.uiState.value.freshPagedShelfTitles, "Paged")).isFalse()
 
         vm.loadMoreHomeShelves()
         waitFor { !vm.uiState.value.isLoadingMore }
         assertThat(vm.uiState.value.pagedShelves).containsExactly(newPage)
-        assertThat(hasFreshFeedSection("paged_shelf_0_Paged", vm.uiState.value.lastCompletedFeed,
-            vm.uiState.value.freshPagedShelfTitles, "Paged")).isTrue()
         vm.loadMoreHomeShelves()
         coVerify(exactly = 1) { innerTube.fetchHomeContinuation("new-token") }
     }

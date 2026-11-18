@@ -1278,7 +1278,6 @@
     <string name="playlist_rearrange_songs">调整歌曲顺序</string>
     <string name="playlist_rearrange_clear_search">清除搜索后可调整顺序</string>
     <string name="feed_discover_empty">暂无推荐</string>
-    <string name="feed_section_not_in_refresh">未在本次刷新中</string>
     <string name="search_voice_cd">语音搜索</string>
     <string name="search_voice_prompt">说出歌曲、歌手或专辑以搜索</string>
     <string name="search_voice_unavailable">此设备暂不支持语音搜索。</string>

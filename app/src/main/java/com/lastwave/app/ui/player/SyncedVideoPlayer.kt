@@ -779,60 +779,6 @@ fun SyncedCoverVideoPlayer(
             }
         }
 
-        // Persistent close button in top-right when top controls bar is hidden
-        AnimatedVisibility(
-            visible = !controlsVisible,
-            enter = fadeIn(tween(150)),
-            exit = fadeOut(tween(150)),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(8.dp),
-        ) {
-            Surface(
-                onClick = { viewModel.openVideoPicker(track.title, track.artist, track.videoId, track.durationMs) },
-                shape = RoundedCornerShape(50),
-                color = Color.Black.copy(alpha = 0.60f),
-                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f)),
-                modifier = Modifier.height(34.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 10.dp),
-                ) {
-                    Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Choose video", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            }
-        }
-
-        // Persistent close button in top-right when top controls are hidden.
-        AnimatedVisibility(
-            visible = !controlsVisible,
-            enter = fadeIn(tween(150)),
-            exit = fadeOut(tween(150)),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp),
-        ) {
-            Surface(
-                onClick = onCloseVideo,
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.60f),
-                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f)),
-                modifier = Modifier.size(34.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = "Close video, show album art",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-        }
-
         // Center play indicator when paused
         if (!playerState.isPlaying) {
             Surface(
