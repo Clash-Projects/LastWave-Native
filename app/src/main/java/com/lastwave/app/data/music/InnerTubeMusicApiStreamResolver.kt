@@ -1261,6 +1261,11 @@ internal suspend fun InnerTubeMusicApi.isPlayableImpl(title: String, artist: Str
 internal suspend fun InnerTubeMusicApi.preWarmPlaybackImpl() {
         val config = runCatching { getWebConfig() }.getOrNull()
         val visitor = config?.visitorData?.takeIf { isValidVisitorData(it) } ?: FALLBACK_TOKEN_SESSION
+        // BotGuard builds its WebView on the main thread (~85 ms on the OnePlus Pad);
+        // started 0.8 s after launch it landed in the feed's first frames.
+        delay(BOTGUARD_PREWARM_DELAY_MS)
         runCatching { BotGuardTokenGenerator.preWarm(visitor) }
     }
+
+private const val BOTGUARD_PREWARM_DELAY_MS = 4_000L
 

@@ -257,9 +257,11 @@ class SyncedVideoViewModel @Inject constructor(
         durationMs: Long?,
         state: SyncedVideoUiState,
     ): Boolean {
+        // Runs on every FullPlayer recomposition; the key costs two Unicode
+        // normalizations and a prefs read, so only build it when it can matter.
+        if ((state as? SyncedVideoUiState.Error)?.noMatchingVideo != true) return false
         val selectedVideoId = savedVideoOverride(title, artist)
-        val key = videoRequestKey(title, artist, videoId, durationMs, selectedVideoId)
-        return currentKey == key && (state as? SyncedVideoUiState.Error)?.noMatchingVideo == true
+        return currentKey == videoRequestKey(title, artist, videoId, durationMs, selectedVideoId)
     }
 
     /** Readies the video before the tap, only for people likely to want one. */

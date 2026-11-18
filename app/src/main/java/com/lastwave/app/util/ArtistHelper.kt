@@ -20,6 +20,9 @@ object ArtistHelper {
     )
 
     private val NUMBER_PREFIX = Regex("""^[\d.,\s]+(?:(?:mln|mil|mn|ml)|[kKmMbBtT])?$""")
+    private val WHITESPACE_RUN = Regex("\\s+")
+    private val DURATION = Regex("""^\d{1,3}:\d{2}(?::\d{2})?$""")
+    val YEAR = Regex("""^(19|20)\d{2}$""")
 
     // "Track 16" / "Song 5" / "Side A - Track 3" style labels that InnerTube
     // sometimes exposes in the artist flex column for album tracks.
@@ -41,7 +44,7 @@ object ArtistHelper {
             .replace('\u00A0', ' ')
             .replace('\u202F', ' ')
             .replace('\u2009', ' ')
-            .replace(Regex("\\s+"), " ")
+            .replace(WHITESPACE_RUN, " ")
             .trim().trim('\u2022', '\u00B7', '-', '\u2013', '\u2014', ',').trim()
         if (normalized.isBlank()) return false
         val trimmed = normalized
@@ -81,7 +84,7 @@ object ArtistHelper {
                 }
                 if (prefixCandidate.matches(NUMBER_PREFIX)) return true
                 if (prefixCandidate.firstOrNull()?.isDigit() == true &&
-                    prefixCandidate.split(' ', '\u00A0').any { it.matches(Regex("""(?i)^\d.*""")) }
+                    prefixCandidate.split(' ', '\u00A0').any { it.firstOrNull() in '0'..'9' }
                 ) {
                     return true
                 }
@@ -92,8 +95,8 @@ object ArtistHelper {
             }
         }
         // Durations ("3:45") and years ("2024") are never artists here.
-        if (trimmed.matches(Regex("""^\d{1,3}:\d{2}(?::\d{2})?$"""))) return true
-        if (trimmed.matches(Regex("""^(19|20)\d{2}$"""))) return true
+        if (trimmed.matches(DURATION)) return true
+        if (trimmed.matches(YEAR)) return true
         return false
     }
 
