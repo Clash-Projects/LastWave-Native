@@ -568,7 +568,7 @@ internal fun LyricGroupRow(
                 tween(
                     durationMillis = themeSpec.scaleDurationMs ?: themeSpec.transitionDurationMs,
                     delayMillis = if (isPreviousLine) themeSpec.transitionDelayMs else 0,
-                    easing = themeSpec.transitionEasing,
+                    easing = themeSpec.scaleEasing ?: themeSpec.transitionEasing,
                 )
             },
             label = "lyricScale",
@@ -622,10 +622,23 @@ internal fun LyricGroupRow(
             else -> null
         }
 
+        val collapseModifier = if (themeSpec.collapseInactiveLineHeight) {
+            Modifier.layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val currentScale = animatedScale.coerceIn(0.1f, 2f)
+                val scaledHeight = (placeable.height * currentScale).roundToInt()
+                layout(placeable.width, scaledHeight) {
+                    val yOffset = (scaledHeight - placeable.height) / 2
+                    placeable.placeRelative(0, yOffset)
+                }
+            }
+        } else Modifier
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = if (group.stanzaGapAfter) LYRIC_STANZA_GAP else LYRIC_LINE_GAP)
+                .then(collapseModifier)
                 .lyricsBlurEffect(animatedBlurRadius)
                 .graphicsLayer {
                     alpha = animatedAlpha
@@ -681,6 +694,7 @@ internal fun LyricGroupRow(
                         reveal = subReveal,
                         textAlign = textAlign,
                         themeSpec = themeSpec,
+                        parentStyle = normalStyle,
                     )
                 }
             }
@@ -951,6 +965,7 @@ internal fun LyricSubLine(
     reveal: () -> Float,
     textAlign: TextAlign = TextAlign.Start,
     themeSpec: LyricsThemeSpec? = null,
+    parentStyle: TextStyle? = null,
 ) {
     Box(
         modifier = Modifier
@@ -970,9 +985,19 @@ internal fun LyricSubLine(
         val baseStyle = if (themeSpec?.romanizedFontStyle != null) {
             style.copy(fontStyle = themeSpec.romanizedFontStyle)
         } else style
-        val resolvedStyle = if (themeSpec?.smallerTranslatedSize == true && style.fontSize.isSpecified) {
-            baseStyle.copy(fontSize = style.fontSize * 0.9f)
-        } else baseStyle
+        val resolvedStyle = when {
+            themeSpec?.subLineScaleMultiplier != null && parentStyle?.fontSize?.isSpecified == true -> {
+                val size = parentStyle.fontSize * themeSpec.subLineScaleMultiplier
+                baseStyle.copy(
+                    fontSize = size,
+                    lineHeight = size * themeSpec.lineHeightMultiplier,
+                )
+            }
+            themeSpec?.smallerTranslatedSize == true && style.fontSize.isSpecified -> {
+                baseStyle.copy(fontSize = style.fontSize * 0.9f)
+            }
+            else -> baseStyle
+        }
         Text(
             text = text,
             style = resolvedStyle,
