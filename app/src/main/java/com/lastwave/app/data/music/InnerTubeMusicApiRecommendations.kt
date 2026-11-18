@@ -1,6 +1,7 @@
 package com.lastwave.app.data.music
 
 import com.lastwave.app.data.ytmusic.YtConnection
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -65,9 +66,13 @@ internal suspend fun InnerTubeMusicApi.markNotInterested(
         authenticated = true,
         authenticatedAccount = account,
     )
-    val next = request("next", "videoId", JsonPrimitive(videoId))
+    val next = try {
+        request("next", "videoId", JsonPrimitive(videoId))
+    } catch (_: IOException) {
+        null
+    }
     // Home recommendations can supply this action even when the player's queue cannot.
-    val token = notInterestedToken(next, videoId)
+    val token = next?.let { notInterestedToken(it, videoId) }
         ?: notInterestedToken(request("browse", "browseId", JsonPrimitive("FEmusic_home")), videoId)
         ?: return@withContext false
     if (ytAuth.connection.value != account) return@withContext false

@@ -112,6 +112,26 @@ class PureRadioQueueTest {
     }
 
     @Test
+    fun explicitExclusionsKeepAudioAndVideoCounterpartsOutWhenHistoryIsRelaxed() {
+        val excluded = PureRadioQueue.normalizedSongKey(" Smooth  Operator ", " SADE ")
+        val incoming = listOf(
+            createTrack("first", "First", "Artist"),
+            createTrack("audio", "Smooth Operator", "Sade"),
+            createTrack("video", "SMOOTH\tOPERATOR", "sade"),
+            createTrack("last", "Last", "Artist"),
+        )
+        val filtered = PureRadioQueue.filterStrictYtmRadioBatch(
+            incomingTracks = incoming,
+            existingVideoIds = emptySet(),
+            existingKeys = emptySet(),
+            recentVideoIds = emptySet(),
+            recentKeys = emptySet(),
+            excludedSongKeys = setOf(excluded),
+        )
+        assertEquals(listOf("first", "last"), filtered.map { it.videoId })
+    }
+
+    @Test
     fun continuationAppend_maintainsStrictOrder() {
         val page1 = listOf(createTrack("p1_1"), createTrack("p1_2"), createTrack("p1_3"))
         val page2 = listOf(createTrack("p2_1"), createTrack("p2_2"), createTrack("p2_3"))

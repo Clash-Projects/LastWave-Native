@@ -4772,6 +4772,7 @@ class MusicPlayer @Inject constructor(
                 durationSeconds = candidateTrack.durationMs?.let { (it / 1000L).toInt() },
             )
             return PureRadioQueue.filterStrictYtmRadioBatch(
+                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                 incomingTracks = seeded.map { it.toPlayableTrack() },
                 existingVideoIds = knownVideoIds,
                 existingKeys = knownKeys,
@@ -4788,6 +4789,7 @@ class MusicPlayer @Inject constructor(
             currentRadioContinuationToken = reseedResult.continuationToken
             currentRadioAutomixPlaylistId = reseedResult.automixPlaylistId
             val filtered = PureRadioQueue.filterStrictYtmRadioBatch(
+                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                 incomingTracks = reseedResult.tracks.map { it.toPlayableTrack() },
                 existingVideoIds = knownVideoIds,
                 existingKeys = knownKeys,
@@ -4799,6 +4801,7 @@ class MusicPlayer @Inject constructor(
             )
             if (filtered.isEmpty()) {
                 PureRadioQueue.filterStrictYtmRadioBatch(
+                    excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                     incomingTracks = reseedResult.tracks.map { it.toPlayableTrack() },
                     existingVideoIds = knownVideoIds,
                     existingKeys = knownKeys,
@@ -4862,6 +4865,7 @@ class MusicPlayer @Inject constructor(
                         )
                         if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@withLock
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = seeded.map { it.toPlayableTrack() },
                             existingVideoIds = existingVideoIds,
                             existingKeys = existingKeys,
@@ -4879,6 +4883,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioContinuationToken = radioResult.continuationToken
                             currentRadioAutomixPlaylistId = radioResult.automixPlaylistId
                             PureRadioQueue.filterStrictYtmRadioBatch(
+                                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                                 incomingTracks = radioResult.tracks.map { it.toPlayableTrack() },
                                 existingVideoIds = existingVideoIds,
                                 existingKeys = existingKeys,
@@ -4897,6 +4902,7 @@ class MusicPlayer @Inject constructor(
                                 currentRadioContinuationToken = automixResult.continuationToken
                                 currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                                 PureRadioQueue.filterStrictYtmRadioBatch(
+                                    excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                                     incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
                                     existingVideoIds = existingVideoIds,
                                     existingKeys = existingKeys,
@@ -4916,6 +4922,7 @@ class MusicPlayer @Inject constructor(
                         val artistTracks = retryRadioRequest { innerTube.searchSongs(seed.artist, limit = 25) }
                         if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@withLock
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = (artistTracks ?: emptyList()).map { it.toPlayableTrack() },
                             existingVideoIds = existingVideoIds,
                             existingKeys = existingKeys,
@@ -5013,6 +5020,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioAutomixPlaylistId = result.automixPlaylistId
                         }
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = result.tracks.map { it.toPlayableTrack() },
                             existingVideoIds = knownVideoIds,
                             existingKeys = knownKeys,
@@ -5034,6 +5042,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioContinuationToken = automixResult.continuationToken
                             currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                             PureRadioQueue.filterStrictYtmRadioBatch(
+                                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                                 incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
                                 existingVideoIds = knownVideoIds,
                                 existingKeys = knownKeys,
@@ -5061,6 +5070,7 @@ class MusicPlayer @Inject constructor(
                         currentRadioContinuationToken = automixResult.continuationToken
                         currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
                             existingVideoIds = knownVideoIds,
                             existingKeys = knownKeys,

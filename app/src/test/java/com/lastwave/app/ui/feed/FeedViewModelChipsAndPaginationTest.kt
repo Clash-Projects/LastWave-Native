@@ -3,8 +3,11 @@ package com.lastwave.app.ui.feed
 import com.google.common.truth.Truth.assertThat
 import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.feed.FeedData
+import com.lastwave.app.data.feed.FeedMix
 import com.lastwave.app.data.feed.FeedRepository
+import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.GenresRepository
+import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.data.local.SessionData
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.SettingsPreferences
@@ -83,6 +86,7 @@ class FeedViewModelChipsAndPaginationTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        coEvery { discoverRepository.observeRecommendationExclusions() } returns MutableStateFlow(emptyList<RecommendationExclusionEntity>())
         coEvery { ytAuth.connection } returns MutableStateFlow(YtConnection())
         coEvery { ytAuth.awaitLoadedConnection() } returns YtConnection()
         coEvery { sessionPreferences.session } returns MutableStateFlow(SessionData(username = "test_user"))
@@ -141,6 +145,80 @@ class FeedViewModelChipsAndPaginationTest {
         assertThat(vm.uiState.value.isLoading).isFalse()
         coVerify(exactly = 1) { feedRepository.loadFeed(any(), any()) }
         pending.complete(cached)
+    }
+
+    @Test
+    fun cachedRecommendationsReactToExclusionsAndRestoreWithoutRefetching() {
+        val blocked = YouTubeMusicTrack("blocked", "Excluded Song", "Artist")
+        val allowed = YouTubeMusicTrack("allowed", "Allowed Song", "Artist")
+        val shelf = HomeShelf("For you", items = listOf(HomeShelfItem.Track(blocked), HomeShelfItem.Track(allowed)))
+        val cached = FeedData(
+            nativeShelves = listOf(shelf),
+            quickPicks = listOf(blocked, allowed),
+            mixes = listOf(FeedMix("Excluded mix", blocked), FeedMix("Allowed mix", allowed)),
+            ytLikedSongs = listOf(blocked),
+            ytRecentSongs = listOf(blocked),
+        )
+        val exclusions = MutableStateFlow(emptyList<RecommendationExclusionEntity>())
+        val pending = CompletableDeferred<FeedData>()
+        coEvery { discoverRepository.observeRecommendationExclusions() } returns exclusions
+        coEvery { feedRepository.getCachedFeed(any(), any()) } returns cached
+        coEvery { feedRepository.loadFeed(any(), any()) } coAnswers { pending.await() }
+        val vm = createViewModel()
+        assertThat(vm.uiState.value.feedData).isEqualTo(cached)
+
+        exclusions.value = listOf(RecommendationExclusionEntity(GeneratedTrack(blocked.title, blocked.artist).key, 1))
+        assertThat(vm.uiState.value.feedData.quickPicks).containsExactly(allowed)
+        assertThat(vm.uiState.value.feedData.mixes.map { it.seed }).containsExactly(allowed)
+        assertThat(vm.uiState.value.feedData.nativeShelves.single().items).containsExactly(HomeShelfItem.Track(allowed))
+        assertThat(vm.uiState.value.lastCompletedFeed?.quickPicks).containsExactly(allowed)
+        assertThat(vm.uiState.value.feedData.ytLikedSongs).containsExactly(blocked)
+        assertThat(vm.uiState.value.feedData.ytRecentSongs).containsExactly(blocked)
+
+        exclusions.value = emptyList()
+        assertThat(vm.uiState.value.feedData).isEqualTo(cached)
+        coVerify(exactly = 1) { feedRepository.loadFeed(any(), any()) }
+        pending.complete(cached)
+    }
+
+    @Test
+    fun infiniteRadioDoesNotSelectAnExcludedLikedSongAsItsSeed() {
+        val blocked = YouTubeMusicTrack("blocked", "Excluded Song", "Artist")
+        val key = GeneratedTrack(blocked.title, blocked.artist).key
+        coEvery { discoverRepository.observeRecommendationExclusions() } returns
+            MutableStateFlow(listOf(RecommendationExclusionEntity(key, 1)))
+        coEvery { feedRepository.loadFeed(any(), any()) } returns FeedData(ytLikedSongs = listOf(blocked))
+        val vm = createViewModel()
+        vm.playInfiniteRadio()
+        assertThat(vm.uiState.value.feedData.ytLikedSongs).containsExactly(blocked)
+        coVerify(exactly = 0) { musicPlayer.play(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun newChipAndContinuationPagesCannotBringExcludedSongsBack() {
+        val blocked = YouTubeMusicTrack("blocked", "Excluded Song", "Artist")
+        val allowed = YouTubeMusicTrack("allowed", "Allowed Song", "Artist")
+        val mixed = HomeShelf("Recommendations", items = listOf(HomeShelfItem.Track(blocked), HomeShelfItem.Track(allowed)))
+        val key = GeneratedTrack(blocked.title, blocked.artist).key
+        coEvery { discoverRepository.observeRecommendationExclusions() } returns
+            MutableStateFlow(listOf(RecommendationExclusionEntity(key, 1)))
+        coEvery { feedRepository.loadFeed(any(), any()) } returns FeedData(homeContinuationToken = "page")
+        coEvery { innerTube.fetchHomeContinuation("page") } returns HomePage(shelves = listOf(mixed))
+        val vm = createViewModel()
+        vm.loadMoreHomeShelves()
+        waitFor { !vm.uiState.value.isLoadingMore }
+        assertThat(vm.uiState.value.pagedShelves.single().items).containsExactly(HomeShelfItem.Track(allowed))
+
+        val chip = HomeChip("Focus", "focus")
+        coEvery { innerTube.fetchHomeChip(chip) } returns HomePage(shelves = listOf(mixed), continuationToken = "chip-next")
+        coEvery { innerTube.fetchHomeContinuation("chip-next") } returns
+            HomePage(shelves = listOf(mixed.copy(title = "More recommendations")))
+        vm.selectChip(chip)
+        waitFor { !vm.uiState.value.isChipLoading }
+        vm.loadMoreHomeShelves()
+        waitFor { !vm.uiState.value.isLoadingMore }
+        assertThat(vm.uiState.value.chipShelves.flatMap { it.items })
+            .containsExactly(HomeShelfItem.Track(allowed), HomeShelfItem.Track(allowed))
     }
 
     @Test
