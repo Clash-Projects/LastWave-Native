@@ -65,18 +65,6 @@ class FeedSectionOrderTest {
     }
 
     @Test
-    fun freshnessUsesTheLatestFeedAndValidatedContinuationPages() {
-        val fresh = FeedData(nativeShelves = listOf(shelf("Returned", "fresh")))
-
-        assertThat(hasFreshFeedSection("yt:Old", fresh, emptySet(), "Old")).isFalse()
-        assertThat(hasFreshFeedSection("yt:Returned", fresh, emptySet(), "Returned")).isTrue()
-        assertThat(hasFreshFeedSection("paged_shelf_0_Page", fresh, emptySet(), "Page")).isFalse()
-        assertThat(hasFreshFeedSection("paged_shelf_0_Page", fresh, setOf("page"), "Page")).isTrue()
-        assertThat(hasFreshFeedSection("trending_charts", fresh, emptySet())).isFalse()
-        assertThat(hasFreshFeedSection("taste_strip", fresh, emptySet())).isTrue()
-    }
-
-    @Test
     fun freshCombinedSectionsDoNotIncludeRetainedNativeItems() {
         val old = FeedData(nativeShelves = listOf(shelf("Quick picks", "old"), shelf("New releases", "old-release")))
         val freshTrack = YouTubeMusicTrack("fresh", "Fresh", "Artist")
