@@ -201,8 +201,9 @@ internal fun HomeShelfCard(
     modifier: Modifier = Modifier,
 ) {
     if (shelf.items.isEmpty()) return
-    // One card shape per row: a 16:9 video or a tall community card next to
-    // square songs left a blank band under the short cards.
+    // A tall community card (cover + 3 song rows) among other cards left a blank
+    // band under the short ones, so a mixed row shows it as a square card.
+    // Videos keep their 16:9 card.
     val mixedCards = remember(shelf.items) {
         shelf.items.map { com.lastwave.app.ui.feed.cards.selectCardVariant(it) }.distinct().size > 1
     }
@@ -287,7 +288,7 @@ internal fun HomeShelfCard(
                                 onOpenPodcastShow = onOpenPodcastShow,
                                 onTrackMenu = onTrackMenu,
                                 onPlayPodcastEpisode = { ep -> onPlayPodcastEpisode(ep, episodesInShelf, shelf.title) },
-                                squareOnly = mixedCards,
+                                squareCommunity = mixedCards,
                             )
                         }
                     }
@@ -307,11 +308,10 @@ internal fun NativeShelfItemCard(
     onOpenPodcastShow: (String) -> Unit = {},
     onTrackMenu: (YouTubeMusicTrack) -> Unit = {},
     onPlayPodcastEpisode: ((HomeShelfItem.PodcastEpisode) -> Unit)? = null,
-    squareOnly: Boolean = false,
+    squareCommunity: Boolean = false,
 ) {
     val variant = com.lastwave.app.ui.feed.cards.selectCardVariant(shelfItem).let {
-        // The square card has no episode layout, so episodes keep their own.
-        if (squareOnly && it != com.lastwave.app.ui.feed.cards.HomeCardVariant.PODCAST_EPISODE) {
+        if (squareCommunity && it == com.lastwave.app.ui.feed.cards.HomeCardVariant.COMMUNITY) {
             com.lastwave.app.ui.feed.cards.HomeCardVariant.SQUARE
         } else it
     }

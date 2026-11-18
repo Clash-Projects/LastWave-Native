@@ -302,8 +302,8 @@ fun FeedScreen(
             total > 0 && last >= total - 3
         }
     }
-    LaunchedEffect(shouldLoadMore, state.pagedShelves.size, state.chipShelves.size, state.isFeedUpdating, state.isChipActive) {
-        if (shouldLoadMore && (!state.isFeedUpdating || state.isChipActive) && !state.isLoading && !state.isLoadingMore && !state.isRefreshing && !state.isChipLoading) {
+    LaunchedEffect(shouldLoadMore, state.pagedShelves.size, state.chipShelves.size, state.isChipActive) {
+        if (shouldLoadMore && !state.isLoading && !state.isLoadingMore && !state.isRefreshing && !state.isChipLoading) {
             viewModel.loadMoreHomeShelves()
         }
     }

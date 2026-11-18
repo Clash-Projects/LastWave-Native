@@ -1210,8 +1210,25 @@ internal fun FullPlayer(
                                     modifier = Modifier.size(26.dp),
                                 )
                             }
+                            // The Now Playing label fades after 10 s so the artwork stays clean;
+                            // a new song or tab brings it back.
+                            var headerLabelShown by remember(track.videoId, currentTab) { mutableStateOf(true) }
+                            if (currentTab == FullPlayerTab.NOW_PLAYING) {
+                                LaunchedEffect(track.videoId) {
+                                    delay(10_000L)
+                                    headerLabelShown = false
+                                }
+                            }
+                            val headerLabelAlpha by animateFloatAsState(
+                                targetValue = if (headerLabelShown) 1f else 0f,
+                                animationSpec = tween(400),
+                                label = "headerLabelAlpha",
+                            )
                             Column(
-                                Modifier.align(Alignment.Center).padding(horizontal = 96.dp),
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 96.dp)
+                                    .graphicsLayer { alpha = headerLabelAlpha },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Text(
