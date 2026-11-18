@@ -442,6 +442,12 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    fun setLyricsStyle(style: LyricsStyle) {
+        viewModelScope.launch {
+            settingsPreferences.setLyricsStyle(style)
+        }
+    }
+
     private val _lyricsState = MutableStateFlow<LyricsUiState>(LyricsUiState.Idle)
     val lyricsState = _lyricsState.asStateFlow()
 

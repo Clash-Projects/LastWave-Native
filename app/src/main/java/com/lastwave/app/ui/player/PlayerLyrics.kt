@@ -233,25 +233,29 @@ internal fun PlayerInlineLyrics(
                     val currentTextStyle = LocalTextStyle.current
                     val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != FontFamily.Default
                     val boldFont = LocalUseBoldFont.current
-                    val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * fontScale
-                    val normalStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont) {
+                    val lyricsStyle = LocalLyricsStyleState.current.style
+                    val themeSpec = remember(lyricsStyle) { lyricsStyle.toThemeSpec() }
+                    val chosenLeadFont = themeSpec.fontFamily ?: if (useAppFont) lyricsLeadFontFamily(boldFont) else FontFamily.Default
+                    val chosenBackingFont = themeSpec.fontFamily ?: if (useAppFont) lyricsBackingFontFamily(boldFont) else FontFamily.Default
+                    val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * fontScale * themeSpec.fontSizeMultiplier
+                    val normalStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont, lyricsStyle) {
                         currentTextStyle.copy(
-                            fontFamily = if (useAppFont) lyricsLeadFontFamily(boldFont) else FontFamily.Default,
+                            fontFamily = chosenLeadFont,
                             fontSize = baseSize.sp,
-                            lineHeight = (baseSize * 1.20f).sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.6).sp,
+                            lineHeight = (baseSize * themeSpec.lineHeightMultiplier).sp,
+                            fontWeight = themeSpec.activeFontWeight,
+                            letterSpacing = themeSpec.letterSpacing ?: (-0.6).sp,
                             textMotion = TextMotion.Animated,
                         )
                     }
-                    val accompanimentStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont) {
+                    val accompanimentStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont, lyricsStyle) {
                         val size = baseSize * 0.65f
                         currentTextStyle.copy(
-                            fontFamily = if (useAppFont) lyricsBackingFontFamily(boldFont) else FontFamily.Default,
+                            fontFamily = chosenBackingFont,
                             fontSize = size.sp,
-                            lineHeight = (size * 1.22f).sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.3).sp,
+                            lineHeight = (size * themeSpec.lineHeightMultiplier).sp,
+                            fontWeight = themeSpec.inactiveFontWeight,
+                            letterSpacing = themeSpec.letterSpacing ?: (-0.3).sp,
                             textMotion = TextMotion.Animated,
                         )
                     }
@@ -282,6 +286,7 @@ internal fun PlayerInlineLyrics(
                             state = state,
                             player = player,
                             lyricsOffsetMs = lyricsOffsetMs,
+                            lyricsStyle = lyricsStyle,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

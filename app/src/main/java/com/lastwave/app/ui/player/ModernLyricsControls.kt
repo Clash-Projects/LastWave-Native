@@ -65,6 +65,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MusicNote
@@ -176,6 +177,7 @@ internal fun SyncedLyricsProgressHost(
     subReveal: () -> Float = { 0f },
     subLineStyle: TextStyle? = null,
     displayMode: LyricsDisplayMode = LyricsDisplayMode.Original,
+    lyricsStyle: LyricsStyle = LocalLyricsStyleState.current.style,
     modifier: Modifier = Modifier,
 ) {
     // The ~60ms playhead samples are kept in a state that is only read from
@@ -268,6 +270,7 @@ internal fun SyncedLyricsProgressHost(
         subReveal = subReveal,
         subLineStyle = subLineStyle,
         displayMode = displayMode,
+        lyricsStyle = lyricsStyle,
         modifier = modifier,
     )
 }
@@ -307,6 +310,8 @@ internal fun ModernLyricsControlsHost(
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     canShareLyrics: Boolean = false,
     onShareLyrics: () -> Unit = {},
+    lyricsStyle: LyricsStyle = LocalLyricsStyleState.current.style,
+    onLyricsStyleChange: (LyricsStyle) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val progress by progressFlow.collectAsStateWithLifecycle(initialValue = progressInitial)
@@ -339,6 +344,8 @@ internal fun ModernLyricsControlsHost(
         tertiaryColor = tertiaryColor,
         canShareLyrics = canShareLyrics,
         onShareLyrics = onShareLyrics,
+        lyricsStyle = lyricsStyle,
+        onLyricsStyleChange = onLyricsStyleChange,
         modifier = modifier,
     )
 }
@@ -374,6 +381,8 @@ internal fun ModernLyricsControls(
     tertiaryColor: Color = MaterialTheme.colorScheme.tertiary,
     canShareLyrics: Boolean = false,
     onShareLyrics: () -> Unit = {},
+    lyricsStyle: LyricsStyle = LocalLyricsStyleState.current.style,
+    onLyricsStyleChange: (LyricsStyle) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var sliderPosition by remember(lyricsFontScale) { mutableFloatStateOf(lyricsFontScale) }
@@ -555,6 +564,8 @@ internal fun ModernLyricsControls(
             LyricsOptionsMenuDialog(
                 onDismiss = { showLyricsOptions = false },
                 onOpenLyricsSource = onOpenLyricsSource,
+                lyricsStyle = lyricsStyle,
+                onLyricsStyleChange = onLyricsStyleChange,
                 canShareLyrics = canShareLyrics,
                 onShareLyrics = onShareLyrics,
                 lyricsFontScale = lyricsFontScale,
@@ -745,6 +756,8 @@ internal fun LyricsOptionsMenuDialog(
     onToggleRomanization: () -> Unit,
     lyricsOffsetMs: Long,
     onOpenLyricsOffset: (() -> Unit)?,
+    lyricsStyle: LyricsStyle = LocalLyricsStyleState.current.style,
+    onLyricsStyleChange: (LyricsStyle) -> Unit = LocalLyricsStyleState.current.onStyleChange ?: {},
 ) {
     val onOpenLyricsSource = onOpenLyricsSource?.let { hapticClick(action = it) }
     val onShareLyrics = hapticClick(action = onShareLyrics)
@@ -907,6 +920,38 @@ internal fun LyricsOptionsMenuDialog(
                             }
                         }
                     }
+                }
+
+                var showStyleDialog by rememberSaveable { mutableStateOf(false) }
+
+                LyricsOptionsRow(
+                    Icons.Filled.Palette,
+                    "Lyrics style",
+                    onClick = { showStyleDialog = true },
+                ) {
+                    Text(
+                        lyricsStyle.displayName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+
+                if (showStyleDialog) {
+                    LyricsStyleDialog(
+                        currentStyle = lyricsStyle,
+                        onSelectStyle = { selectedStyle ->
+                            onLyricsStyleChange(selectedStyle)
+                            showStyleDialog = false
+                        },
+                        onDismiss = { showStyleDialog = false },
+                    )
                 }
 
                 if (translationAvailable) {

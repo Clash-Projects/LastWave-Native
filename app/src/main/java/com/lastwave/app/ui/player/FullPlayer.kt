@@ -348,6 +348,8 @@ internal fun FullPlayer(
     progressState: StateFlow<PlaybackProgressState>,
     player: MusicPlayer,
     lyricsState: LyricsUiState,
+    lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
+    onSetLyricsStyle: ((LyricsStyle) -> Unit)? = null,
     seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
     wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     rotatingBackgroundEnabled: Boolean = true,
@@ -689,6 +691,7 @@ internal fun FullPlayer(
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalIsDarkTheme provides true,
         LocalLyricsAlignment provides LyricsAlignment(lyricsCentered, onSetLyricsCentered),
+        LocalLyricsStyleState provides LyricsStyleState(lyricsStyle, onSetLyricsStyle),
     ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -1408,6 +1411,8 @@ internal fun FullPlayer(
                                     progressState = progressState,
                                     seekbarStyle = seekbarStyle,
                                     wavySeekbarEnabled = wavySeekbarEnabled,
+                                    lyricsStyle = lyricsStyle,
+                                    onLyricsStyleChange = onSetLyricsStyle ?: {},
                                     lyricsOffsetMs = lyricsOffsetMs,
                                     lyricsFontScale = lyricsFontScale,
                                     onLyricsFontScaleChange = onSetLyricsFontScale ?: {},

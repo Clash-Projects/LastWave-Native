@@ -15,6 +15,7 @@ import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
 import com.lastwave.app.playback.haptics.MusicHapticsIntensity
 import com.lastwave.app.playback.haptics.MusicHapticsMode
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.lastwave.app.ui.player.LyricsStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -209,6 +210,7 @@ data class MiscSettings(
     /** Crossfade length in seconds; kept within the native settings slider range. */
     val crossfadeSeconds: Int = 5,
     /** Player seekbar visual style (Default, Wavy, Waveform). */
+    val lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
     val seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
     /** Animated wavy seekbar in the player (kept for backward compatibility). */
     val wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
@@ -465,6 +467,7 @@ class SettingsPreferences @Inject constructor(
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val AUTOPLAY_SIMILAR_ENABLED = booleanPreferencesKey("lw_autoplay_similar_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
+        val LYRICS_STYLE = stringPreferencesKey("lw_lyrics_style")
         val SEEKBAR_STYLE = stringPreferencesKey("lw_seekbar_style")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
@@ -583,6 +586,7 @@ class SettingsPreferences @Inject constructor(
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 autoplaySimilarEnabled = p.readSafely(Keys.AUTOPLAY_SIMILAR_ENABLED) ?: true,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
+                lyricsStyle = LyricsStyle.fromId(p.readSafely(Keys.LYRICS_STYLE)),
                 seekbarStyle = SeekbarStyle.fromId(p.readSafely(Keys.SEEKBAR_STYLE), p.readSafely(Keys.WAVY_SEEKBAR_ENABLED)),
                 wavySeekbarEnabled = SeekbarStyle.fromId(p.readSafely(Keys.SEEKBAR_STYLE), p.readSafely(Keys.WAVY_SEEKBAR_ENABLED)) == SeekbarStyle.WAVY,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
@@ -1017,6 +1021,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setCrossfadeSeconds(seconds: Int) {
         dataStore.edit { it[Keys.CROSSFADE_SECONDS] = seconds.coerceIn(1, 12) }
+    }
+
+    suspend fun setLyricsStyle(style: LyricsStyle) {
+        dataStore.edit { it[Keys.LYRICS_STYLE] = style.id }
     }
 
     suspend fun setSeekbarStyle(style: SeekbarStyle) {
