@@ -13,13 +13,6 @@ internal fun mergeFeedShelves(previous: List<HomeShelf>, fresh: List<HomeShelf>)
         fresh.filter { it.items.isNotEmpty() && it.title.trim().lowercase() !in previousTitles }
 }
 
-internal fun hasFreshFeedSection(
-    key: String,
-    fresh: FeedData?,
-    freshPagedTitles: Set<String>,
-    shelfTitle: String? = null,
-): Boolean = true
-
 internal fun feedQuickPicks(feed: FeedData): List<YouTubeMusicTrack> {
     val shelf = feed.nativeShelves.firstOrNull {
         it.title.contains("quick pick", ignoreCase = true) || it.title.contains("picked for you", ignoreCase = true)
