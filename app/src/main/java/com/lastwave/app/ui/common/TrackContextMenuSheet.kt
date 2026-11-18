@@ -2,7 +2,7 @@ package com.lastwave.app.ui.common
 
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Close
 
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -12,6 +12,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.text.style.TextAlign
+
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.MotionScheme
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CoroutineStart
 
 import android.content.Context
 import android.content.Intent
@@ -34,27 +40,27 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.PlaylistAdd
-import androidx.compose.material.icons.filled.QueueMusic
-import androidx.compose.material.icons.filled.QueuePlayNext
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Sell
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.SmartDisplay
-import androidx.compose.material.icons.filled.ThumbDown
-import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.PlaylistAdd
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.outlined.QueuePlayNext
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Sell
+import androidx.compose.material.icons.outlined.Shuffle
+import androidx.compose.material.icons.outlined.SmartDisplay
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -76,7 +82,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -373,10 +378,23 @@ fun TrackContextMenuSheet(
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
     trackLinkViewModel: TrackLinkViewModel = hiltViewModel(),
     exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
-) {
+) = MaterialTheme(motionScheme = TrackMenuMotionScheme) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    var dismissing by remember { mutableStateOf(false) }
+    fun dismissMenu() {
+        if (dismissing) return
+        dismissing = true
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                sheetState.hide()
+            } finally {
+                onDismiss()
+            }
+        }
+    }
     val musicPlayer = LocalMusicPlayer.current
     val addToPlaylist = LocalAddToPlaylist.current
     var showDetailsSheet by remember { mutableStateOf(false) }
@@ -429,7 +447,7 @@ fun TrackContextMenuSheet(
                 onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
             },
         )
-        return
+        return@MaterialTheme
     }
 
     if (showSyncedVideoDialog && target is TrackMenuTarget.Track) {
@@ -442,7 +460,7 @@ fun TrackContextMenuSheet(
                 onDismiss()
             },
         )
-        return
+        return@MaterialTheme
     }
 
     if (showJamSheet) {
@@ -452,7 +470,7 @@ fun TrackContextMenuSheet(
                 onDismiss()
             },
         )
-        return
+        return@MaterialTheme
     }
 
     if (showTimerDialog) {
@@ -571,8 +589,8 @@ fun TrackContextMenuSheet(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Filled.Close, stringResource(R.string.common_close))
+                    IconButton(onClick = ::dismissMenu, enabled = !dismissing) {
+                        Icon(Icons.Outlined.Close, stringResource(R.string.common_close))
                     }
                 }
                 FlowRow(
@@ -581,15 +599,15 @@ fun TrackContextMenuSheet(
                 ) {
                     if (isSong) {
                         com.lastwave.app.util.ArtistHelper.splitArtists(t.artist).forEach { artist ->
-                            MenuMetadataAction(Icons.Filled.Person, artist) {
+                            MenuMetadataAction(Icons.Outlined.Person, artist, menuEnabled = !dismissing) {
                                 artistAlbumViewModel.openArtist(artist)
-                                onDismiss()
+                                dismissMenu()
                             }
                         }
                         playable.album?.takeIf { it.isNotBlank() }?.let { album ->
-                            MenuMetadataAction(Icons.Filled.Album, album) {
+                            MenuMetadataAction(Icons.Outlined.Album, album, menuEnabled = !dismissing) {
                                 artistAlbumViewModel.openAlbum(album, playable.artist.ifBlank { t.artist })
-                                onDismiss()
+                                dismissMenu()
                             }
                         }
                     }
@@ -597,25 +615,27 @@ fun TrackContextMenuSheet(
                     val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
                     if (resolvingGenre || hasGenre) {
                         MenuMetadataAction(
-                            icon = Icons.Filled.Sell,
+                            icon = Icons.Outlined.Sell,
                             label = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else genre!!,
                             loading = resolvingGenre,
                             enabled = !resolvingGenre && hasGenre,
+                            menuEnabled = !dismissing,
                         ) {
                             exploreGenre(genre!!)
-                            onDismiss()
+                            dismissMenu()
                         }
                     }
                 }
-                if (isSong) StartMixCard {
+                if (isSong) StartMixCard(enabled = !dismissing) {
                     if (onStartMix != null) onStartMix(t.name, t.artist)
                     else startMixViewModel.startMix(t.name, t.artist, playable.videoId)
-                    onDismiss()
+                    dismissMenu()
                 }
                 QuickActionsRow(
-                    onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
-                    onAddToPlaylist = { addToPlaylist(playable); onDismiss() },
-                    onAddToQueue = { musicPlayer.addToQueue(playable); onDismiss() },
+                    enabled = !dismissing,
+                    onPlayNext = { musicPlayer.playNext(playable); dismissMenu() },
+                    onAddToPlaylist = { addToPlaylist(playable); dismissMenu() },
+                    onAddToQueue = { musicPlayer.addToQueue(playable); dismissMenu() },
                 )
                 val actions = buildList<@Composable () -> Unit> {
                     val downloadKey = com.lastwave.app.data.download.TrackDownloadManager.makeDownloadKey(t.name, t.artist)
@@ -624,68 +644,71 @@ fun TrackContextMenuSheet(
                         when {
                             isDownloaded -> MenuActionRow(
                                 Icons.Filled.CheckCircle, stringResource(R.string.menu_downloaded),
+                                enabled = !dismissing,
                             ) {
                                 android.widget.Toast.makeText(context, context.getString(R.string.menu_already_downloaded),
                                     android.widget.Toast.LENGTH_SHORT).show()
-                                onDismiss()
+                                dismissMenu()
                             }
                             isDownloading -> MenuActionRow(
-                                Icons.Filled.Download, stringResource(R.string.menu_downloading),
+                                Icons.Outlined.Download, stringResource(R.string.menu_downloading),
+                                enabled = !dismissing,
                             ) {
                                 android.widget.Toast.makeText(context, context.getString(R.string.menu_download_progress),
                                     android.widget.Toast.LENGTH_SHORT).show()
-                                onDismiss()
+                                dismissMenu()
                             }
                             else -> MenuActionRow(
-                                Icons.Filled.Download, stringResource(R.string.details_download),
+                                Icons.Outlined.Download, stringResource(R.string.details_download),
                                 supportingText = downloadTier,
+                                enabled = !dismissing,
                             ) {
                                 downloadViewModel.download(
                                     title = t.name, artist = t.artist, album = playable.album,
                                     artworkUrl = playable.artworkUrl, videoId = playable.videoId,
                                     durationMs = playable.durationMs,
                                 )
-                                onDismiss()
+                                dismissMenu()
                             }
                         }
                     }
                     if (isSong && musicVideoEnabled && canWatchVideo) add {
-                        MenuActionRow(Icons.Filled.SmartDisplay, stringResource(R.string.menu_watch_video)) {
+                        MenuActionRow(Icons.Outlined.SmartDisplay, stringResource(R.string.menu_watch_video), enabled = !dismissing) {
                             if (onWatchVideo != null) {
                                 onWatchVideo()
-                                onDismiss()
+                                dismissMenu()
                             } else {
                                 showSyncedVideoDialog = true
                             }
                         }
                     }
                     add {
-                        MenuActionRow(Icons.Filled.Timer, stringResource(R.string.menu_sleep_timer)) {
+                        MenuActionRow(Icons.Outlined.Timer, stringResource(R.string.menu_sleep_timer), enabled = !dismissing) {
                             showTimerDialog = true
                         }
                     }
-                    add { PlayerCastMenuRow(musicPlayer) }
+                    add { PlayerCastMenuRow(musicPlayer, enabled = !dismissing) }
                     add {
-                        MenuActionRow(Icons.Filled.Group, stringResource(R.string.menu_quick_jam)) {
+                        MenuActionRow(Icons.Outlined.Group, stringResource(R.string.menu_quick_jam), enabled = !dismissing) {
                             showJamSheet = true
                         }
                     }
                     add {
-                        MenuActionRow(Icons.Filled.Info, stringResource(R.string.menu_audio_details)) {
+                        MenuActionRow(Icons.Outlined.Info, stringResource(R.string.menu_audio_details), enabled = !dismissing) {
                             showDetailsSheet = true
                         }
                     }
                     if (capabilities.showPlayAction) add {
-                        MenuActionRow(Icons.Filled.PlayCircle, stringResource(R.string.menu_quick_play)) {
+                        MenuActionRow(Icons.Outlined.PlayCircle, stringResource(R.string.menu_quick_play), enabled = !dismissing) {
                             onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
-                            onDismiss()
+                            dismissMenu()
                         }
                     }
                 }
                 MenuActionGrid(actions)
                 val copyActions = buildList<@Composable () -> Unit> {
                     add {
-                        MenuActionRow(Icons.Filled.Link, stringResource(R.string.menu_copy_link), quiet = true) {
+                        MenuActionRow(Icons.Outlined.Link, stringResource(R.string.menu_copy_link), quiet = true, enabled = !dismissing) {
                             val directId = playable.videoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(t.url)
                             if (directId != null) {
                                 val link = "https://www.youtube.com/watch?v=$directId"
@@ -694,64 +717,64 @@ fun TrackContextMenuSheet(
                             } else {
                                 trackLinkViewModel.copyYouTubeLink(t.name, t.artist, playable.videoId, t.url)
                             }
-                            onDismiss()
+                            dismissMenu()
                         }
                     }
                     if (capabilities.showCopyActions) add {
-                        MenuActionRow(Icons.Filled.ContentCopy, stringResource(R.string.menu_copy_song), quiet = true) {
+                        MenuActionRow(Icons.Outlined.ContentCopy, stringResource(R.string.menu_copy_song), quiet = true, enabled = !dismissing) {
                             clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
-                            onDismiss()
+                            dismissMenu()
                         }
                     }
                 }
                 MenuActionGrid(copyActions, tonal = false)
                 if (onRefreshArtwork != null) {
-                    MenuActionRow(Icons.Filled.Refresh, stringResource(R.string.menu_refresh_artwork), quiet = true) {
+                    MenuActionRow(Icons.Outlined.Refresh, stringResource(R.string.menu_refresh_artwork), quiet = true, enabled = !dismissing) {
                         onRefreshArtwork()
-                        onDismiss()
+                        dismissMenu()
                     }
                 }
                 if (capabilities.showRecommendationExclusion && !isLocalFile && isSong) {
-                    MenuActionRow(Icons.Filled.ThumbDown, stringResource(R.string.menu_dont_recommend), quiet = true) {
+                    MenuActionRow(Icons.Outlined.ThumbDown, stringResource(R.string.menu_dont_recommend), quiet = true, enabled = !dismissing) {
                         exclusionViewModel.exclude(playable)
-                        onDismiss()
+                        dismissMenu()
                     }
                 }
                 if (onRemoveFromPlaylist != null) {
-                    MenuActionRow(Icons.Filled.Delete, stringResource(R.string.menu_remove_from_playlist), danger = true) {
+                    MenuActionRow(Icons.Outlined.Delete, stringResource(R.string.menu_remove_from_playlist), danger = true, enabled = !dismissing) {
                         onRemoveFromPlaylist()
-                        onDismiss()
+                        dismissMenu()
                     }
                 }
                 if (onRemoveFromQueue != null) {
-                    MenuActionRow(Icons.Filled.Delete, stringResource(R.string.menu_remove_from_queue), danger = true) {
+                    MenuActionRow(Icons.Outlined.Delete, stringResource(R.string.menu_remove_from_queue), danger = true, enabled = !dismissing) {
                         onRemoveFromQueue()
-                        onDismiss()
+                        dismissMenu()
                     }
                 }
             } else if (target is TrackMenuTarget.Artist) {
-                MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_view_artist)) {
+                MenuActionRow(Icons.Outlined.Person, stringResource(R.string.menu_view_artist), enabled = !dismissing) {
                     artistAlbumViewModel.openArtist(target.name)
-                    onDismiss()
+                    dismissMenu()
                 }
-                MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm)) {
+                MenuActionRow(Icons.Outlined.Language, stringResource(R.string.menu_open_lastfm), enabled = !dismissing) {
                     openUrl(context, buildLastFmUrl(target))
-                    onDismiss()
+                    dismissMenu()
                 }
             } else if (target is TrackMenuTarget.Album) {
-                MenuActionRow(Icons.Filled.Album, stringResource(R.string.menu_view_album)) {
+                MenuActionRow(Icons.Outlined.Album, stringResource(R.string.menu_view_album), enabled = !dismissing) {
                     artistAlbumViewModel.openAlbum(target.name, target.artist)
-                    onDismiss()
+                    dismissMenu()
                 }
                 if (target.artist.isNotBlank()) {
-                    MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_view_artist_name, target.artist)) {
+                    MenuActionRow(Icons.Outlined.Person, stringResource(R.string.menu_view_artist_name, target.artist), enabled = !dismissing) {
                         artistAlbumViewModel.openArtist(target.artist)
-                        onDismiss()
+                        dismissMenu()
                     }
                 }
-                MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm)) {
+                MenuActionRow(Icons.Outlined.Language, stringResource(R.string.menu_open_lastfm), enabled = !dismissing) {
                     openUrl(context, buildLastFmUrl(target))
-                    onDismiss()
+                    dismissMenu()
                 }
             }
         }
@@ -759,56 +782,62 @@ fun TrackContextMenuSheet(
 }
 
 @Composable
-private fun StartMixCard(onClick: () -> Unit) {
+private fun StartMixCard(enabled: Boolean, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
-    val scale = rememberGroupPressScale(interactionSource)
     Surface(
         onClick = onClick,
+        enabled = enabled,
         color = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,
         shape = CircleShape,
         interactionSource = interactionSource,
-        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale },
+        modifier = Modifier.fillMaxWidth().expressivePressScale(interactionSource, targetScale = 0.98f),
     ) {
         Row(
             Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(Icons.Filled.Shuffle, null, Modifier.size(24.dp))
+            Icon(Icons.Outlined.Shuffle, null, Modifier.size(24.dp))
             Text(stringResource(R.string.menu_start_mix_short), style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, Modifier.size(16.dp))
+            Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(16.dp))
         }
     }
 }
 
 @Composable
 private fun QuickActionsRow(
+    enabled: Boolean,
     onPlayNext: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onAddToQueue: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        QuickActionCard(Icons.Filled.QueuePlayNext, stringResource(R.string.menu_quick_play_next), Modifier.weight(1f), onPlayNext)
-        QuickActionCard(Icons.Filled.PlaylistAdd, stringResource(R.string.menu_quick_add_playlist), Modifier.weight(1f), onAddToPlaylist)
-        QuickActionCard(Icons.Filled.QueueMusic, stringResource(R.string.menu_add_queue), Modifier.weight(1f), onAddToQueue)
+        QuickActionCard(Icons.Outlined.QueuePlayNext, stringResource(R.string.menu_quick_play_next), Modifier.weight(1f), enabled, onPlayNext)
+        QuickActionCard(Icons.Outlined.PlaylistAdd, stringResource(R.string.menu_quick_add_playlist), Modifier.weight(1f), enabled, onAddToPlaylist)
+        QuickActionCard(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(R.string.menu_add_queue), Modifier.weight(1f), enabled, onAddToQueue)
     }
 }
 
 @Composable
-private fun QuickActionCard(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+private fun QuickActionCard(icon: ImageVector, label: String, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
-    val scale = rememberGroupPressScale(interactionSource)
+    val pressed by interactionSource.collectIsPressedAsState()
+    val iconCorner by animateDpAsState(
+        targetValue = if (pressed) 16.dp else 24.dp,
+        animationSpec = ExpressiveMotion.spatialFast(),
+        label = "menuShortcutShape",
+    )
     Column(
         modifier.clip(MaterialTheme.shapes.large)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .expressivePressScale(interactionSource, targetScale = 0.98f)
+            .clickable(enabled = enabled, interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Surface(shape = RoundedCornerShape(iconCorner), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Icon(icon, null, Modifier.size(48.dp).padding(12.dp), tint = MaterialTheme.colorScheme.onSurface)
         }
         Text(label, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
@@ -844,10 +873,10 @@ private fun MenuActionRow(
     danger: Boolean = false,
     supportingText: String? = null,
     quiet: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val scale = rememberGroupPressScale(interactionSource)
     val contentColor = when {
         danger -> MaterialTheme.colorScheme.error
         quiet -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -855,11 +884,12 @@ private fun MenuActionRow(
     }
     Surface(
         onClick = onClick,
+        enabled = enabled,
         shape = MaterialTheme.shapes.medium,
         color = Color.Transparent,
         contentColor = contentColor,
         interactionSource = interactionSource,
-        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale },
+        modifier = Modifier.fillMaxWidth().expressivePressScale(interactionSource, targetScale = 0.98f),
     ) {
         Row(
             Modifier.heightIn(min = if (quiet) 48.dp else 56.dp).padding(horizontal = 12.dp, vertical = 8.dp),
@@ -886,11 +916,12 @@ private fun MenuMetadataAction(
     label: String,
     loading: Boolean = false,
     enabled: Boolean = true,
+    menuEnabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     TextButton(
         onClick = onClick,
-        enabled = enabled,
+        enabled = enabled && menuEnabled,
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
         modifier = Modifier.heightIn(min = 48.dp),
     ) {
@@ -904,4 +935,13 @@ private fun MenuMetadataAction(
             ExpressiveInlineLoadingIndicator(size = 14.dp)
         }
     }
+}
+
+private object TrackMenuMotionScheme : MotionScheme {
+    override fun <T> defaultSpatialSpec() = ExpressiveMotion.spatialDefault<T>()
+    override fun <T> fastSpatialSpec() = ExpressiveMotion.spatialFast<T>()
+    override fun <T> slowSpatialSpec() = ExpressiveMotion.spatialSlow<T>()
+    override fun <T> defaultEffectsSpec() = ExpressiveMotion.effectsDefault<T>()
+    override fun <T> fastEffectsSpec() = ExpressiveMotion.effectsFast<T>()
+    override fun <T> slowEffectsSpec() = ExpressiveMotion.effectsSlow<T>()
 }

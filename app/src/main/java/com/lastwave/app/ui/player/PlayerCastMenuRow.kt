@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,7 +36,7 @@ import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.ui.common.expressivePressScale
 
 @Composable
-internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifier) {
+internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val context = LocalContext.current
     val available = remember(player) { player.initializeCast() }
     var routeButton by remember { mutableStateOf<MediaRouteButton?>(null) }
@@ -45,9 +45,10 @@ internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifie
         modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .expressivePressScale(interactionSource)
+            .expressivePressScale(interactionSource, targetScale = 0.98f)
             .clip(MaterialTheme.shapes.medium)
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = ripple(),
                 onClick = hapticClick {
@@ -61,6 +62,7 @@ internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifie
         if (available) {
             AndroidView(
                 modifier = Modifier.size(24.dp),
+                update = { it.isEnabled = enabled },
                 factory = { viewContext ->
                     MediaRouteButton(viewContext).apply {
                         background = null
@@ -72,7 +74,7 @@ internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifie
             )
         } else {
             Icon(
-                Icons.Filled.Cast,
+                Icons.Outlined.Cast,
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
