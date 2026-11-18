@@ -201,8 +201,14 @@ internal fun HomeShelfCard(
     modifier: Modifier = Modifier,
 ) {
     if (shelf.items.isEmpty()) return
+    // A tall community card (cover + 3 song rows) among other cards left a blank
+    // band under the short ones, so a mixed row shows it as a square card.
+    // Videos keep their 16:9 card.
+    val mixedCards = remember(shelf.items) {
+        shelf.items.map { com.lastwave.app.ui.feed.cards.selectCardVariant(it) }.distinct().size > 1
+    }
     if (com.lastwave.app.data.music.isDailyDiscoverShelf(shelf) ||
-        shelf.items.any { com.lastwave.app.data.music.isCommunityPlaylistItem(it) }) {
+        (!mixedCards && shelf.items.any { com.lastwave.app.data.music.isCommunityPlaylistItem(it) })) {
         CommunityDiscoverShelf(
             shelf = shelf, onPlayTrack = onPlayTrack, onPlayTracksQueue = onPlayTracksQueue,
             onPlayPlaylist = onPlayPlaylist, onOpenPlaylist = onOpenFeedPlaylist,
@@ -282,6 +288,7 @@ internal fun HomeShelfCard(
                                 onOpenPodcastShow = onOpenPodcastShow,
                                 onTrackMenu = onTrackMenu,
                                 onPlayPodcastEpisode = { ep -> onPlayPodcastEpisode(ep, episodesInShelf, shelf.title) },
+                                squareCommunity = mixedCards,
                             )
                         }
                     }
@@ -301,8 +308,14 @@ internal fun NativeShelfItemCard(
     onOpenPodcastShow: (String) -> Unit = {},
     onTrackMenu: (YouTubeMusicTrack) -> Unit = {},
     onPlayPodcastEpisode: ((HomeShelfItem.PodcastEpisode) -> Unit)? = null,
+    squareCommunity: Boolean = false,
 ) {
-    when (val variant = com.lastwave.app.ui.feed.cards.selectCardVariant(shelfItem)) {
+    val variant = com.lastwave.app.ui.feed.cards.selectCardVariant(shelfItem).let {
+        if (squareCommunity && it == com.lastwave.app.ui.feed.cards.HomeCardVariant.COMMUNITY) {
+            com.lastwave.app.ui.feed.cards.HomeCardVariant.SQUARE
+        } else it
+    }
+    when (variant) {
         com.lastwave.app.ui.feed.cards.HomeCardVariant.PODCAST_EPISODE -> PodcastEpisodeItemCard(
             shelfItem = shelfItem,
             shelfTitle = shelfTitle,

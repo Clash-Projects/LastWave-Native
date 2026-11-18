@@ -70,6 +70,12 @@ data class FeedUiState(
     val homeChips: List<HomeChip> get() = feedData.homeChips
 }
 
+// Paging starts with the first shelves, while the rest of the feed is still
+// loading (waiting for all of it left the list ending for 10 s+). Once paging
+// has moved past page 1, a later feed update must not rewind the token.
+private fun FeedUiState.continuationAfterUpdate(fresh: String?): String? =
+    if (pagedShelves.isNotEmpty() && defaultContinuationToken != null) defaultContinuationToken else fresh
+
 @HiltViewModel
 class FeedViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
@@ -83,7 +89,15 @@ class FeedViewModel @Inject constructor(
     private val homeRepository: com.lastwave.app.data.repository.HomeRepository,
     private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
     private val genresRepository: com.lastwave.app.data.generate.GenresRepository,
+    private val previewQueueRepository: com.lastwave.app.data.queue.PreviewQueueRepository? = null,
 ) : ViewModel() {
+
+    val previewQueues: StateFlow<List<com.lastwave.app.data.queue.PreviewQueue>> =
+        previewQueueRepository?.previewQueues ?: MutableStateFlow(emptyList())
+
+    fun playPreviewQueue(queue: com.lastwave.app.data.queue.PreviewQueue) {
+        musicPlayer.playQueue(queue.tracks, 0, sourceLabel = queue.title)
+    }
 
     private val _uiState = MutableStateFlow(FeedUiState())
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
@@ -284,7 +298,7 @@ class FeedViewModel @Inject constructor(
                             it.copy(
                                 feedData = visible,
                                 pagedShelves = pages,
-                                defaultContinuationToken = visible.homeContinuationToken ?: it.defaultContinuationToken,
+                                defaultContinuationToken = it.continuationAfterUpdate(visible.homeContinuationToken ?: it.defaultContinuationToken),
                                 isLoading = false,
                                 isRefreshIndicatorVisible = false,
                             )
@@ -306,7 +320,7 @@ class FeedViewModel @Inject constructor(
                         pagedShelves = pages,
                         lastCompletedFeed = data,
                         freshPagedShelfTitles = emptySet(),
-                        defaultContinuationToken = data.homeContinuationToken,
+                        defaultContinuationToken = it.continuationAfterUpdate(data.homeContinuationToken),
                         error = null,
                     )
                 }
@@ -416,7 +430,7 @@ class FeedViewModel @Inject constructor(
      */
     fun loadMoreHomeShelves() {
         val state = _uiState.value
-        if ((!state.isChipActive && state.isFeedUpdating) || state.isLoadingMore || state.isChipLoading || state.isLoading || state.isRefreshing) return
+        if (state.isLoadingMore || state.isChipLoading || state.isLoading || state.isRefreshing) return
 
         val isChipActive = state.selectedChip != null
         val token = if (isChipActive) {

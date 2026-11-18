@@ -176,9 +176,6 @@
     <string name="settings_fluid_beat_sync">Beat-Synced Fluid Motion</string>
     <string name="settings_fluid_beat_sync_on">Fluid artwork pulses and swirls in sync with musical beats</string>
     <string name="settings_fluid_beat_sync_off">Fluid artwork moves at a steady constant speed</string>
-    <string name="settings_beat_synced_artwork">Beat-Synced Album Art</string>
-    <string name="settings_beat_synced_artwork_on">Album cover punches and glows in sync with musical beats</string>
-    <string name="settings_beat_synced_artwork_off">Album cover stays static while background fluid pulses</string>
     <string name="settings_studio_clarity">Studio Master Clarity</string>
     <string name="settings_studio_clarity_on">Crystal-clear open sound • airy detail • deep clean separation</string>
     <string name="settings_studio_clarity_off">Original unshaped output</string>
@@ -304,6 +301,8 @@
     <string name="home_section_taste_strip_sub">Genre and mood quick radio</string>
     <string name="home_section_discover_title">Discover new music</string>
     <string name="home_section_discover_sub">Rotates fresh songs on refresh</string>
+    <string name="home_section_preview_queues_title">Preview queues</string>
+    <string name="home_section_preview_queues_sub">Previous played queues</string>
     <string name="home_section_quick_picks_title">Quick picks</string>
     <string name="home_section_quick_picks_sub">Quick picks matched to your taste</string>
     <string name="home_section_because_title">Because you listen to</string>
@@ -794,7 +793,6 @@
     <string name="feed_discover">Discover New Music</string>
     <string name="feed_discover_sub">Handpicked tracks matched to your taste</string>
     <string name="feed_discover_empty">No recommendations available</string>
-    <string name="feed_section_not_in_refresh">Not in the latest refresh</string>
     <string name="feed_fresh">Fresh finds</string>
     <string name="feed_fresh_sub">New tracks beyond your usual rotation</string>
     <string name="feed_jump">Jump back in</string>

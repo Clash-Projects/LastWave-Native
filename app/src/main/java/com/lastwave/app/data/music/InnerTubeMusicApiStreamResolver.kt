@@ -1149,9 +1149,6 @@ internal suspend fun InnerTubeMusicApi.findBestMatchImpl(
             limit = 30,
             prefetchStreams = prefetchStreams,
         )
-        val validCandidates = results.filter {
-            it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds
-        }
         val isCandidateMatch: (YouTubeMusicTrack) -> Boolean = { candidate ->
             // Hard vetoes first: a different take (live/remix/cover/sped up…)
             // or a runtime far from the catalog's is never the same recording,
@@ -1167,23 +1164,24 @@ internal suspend fun InnerTubeMusicApi.findBestMatchImpl(
                     similarity(candidate.artist, cleanArtist) >= 35 ||
                     normalize(candidate.artist).contains(normalize(cleanArtist)) ||
                     normalize(cleanArtist).contains(normalize(candidate.artist)) ||
-                    normalize(candidate.title).contains(normalize(cleanArtist)))
+                    normalize(candidate.title).contains(normalize(cleanArtist)) ||
+                    // Sources often credit the composer while YTM credits the singers.
+                    TextMatch.isRuntimeConfirmedTitleMatch(candidate.title, title, expectedDurationMs, candidate.durationSeconds))
         }
-        val best = validCandidates.asSequence()
+        fun pick(found: List<YouTubeMusicTrack>): YouTubeMusicTrack? = found.asSequence()
+            .filter { it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds }
             .filter(isCandidateMatch)
             .maxByOrNull { candidate -> TextMatch.matchScore(candidate, title, cleanArtist, expectedDurationMs) }
-            ?: (if (searchTitle != title.trim()) {
-                val fallbackResults = searchSongs(
-                    query = listOf(title.trim(), cleanArtist).filter { it.isNotBlank() }.joinToString(" "),
-                    limit = 30,
-                    prefetchStreams = prefetchStreams,
-                )
-                fallbackResults.filter {
-                    it.videoId.isNotBlank() && it.videoId != excludedVideoId && it.videoId !in excludedVideoIds
-                }.asSequence()
-                    .filter(isCandidateMatch)
-                    .maxByOrNull { candidate -> TextMatch.matchScore(candidate, title, cleanArtist, expectedDurationMs) }
-            } else null)
+        // Like other YTM clients, retry with looser queries: the full title, then the
+        // title alone (a wrong artist credit in the query can push the song out of the results).
+        val fallbackQueries = listOf(
+            listOf(title.trim(), cleanArtist).filter { it.isNotBlank() }.joinToString(" "),
+            searchTitle,
+        ).distinct().filter { it != query }
+        val best = pick(results)
+            ?: fallbackQueries.firstNotNullOfOrNull { fallback ->
+                pick(searchSongs(query = fallback, limit = 30, prefetchStreams = prefetchStreams))
+            }
             ?: throw IOException("No reliable YouTube Music match found for $title by $artist")
         return best.also {
             if (matchCache.size > MAX_MATCH_CACHE_ENTRIES) matchCache.clear()

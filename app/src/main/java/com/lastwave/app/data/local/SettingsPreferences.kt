@@ -220,10 +220,7 @@ data class MiscSettings(
     val lyricsRotatingBackgroundEnabled: Boolean = false,
     /** When true (default), fluid background motion dynamically surges and pulses to musical beats.
      *  When false, fluid background moves at a steady constant speed. */
-    val fluidBeatSyncEnabled: Boolean = true,
-    /** When true (default), album artwork card punches and glows in sync with musical beats.
-     *  When false, only background fluid motion reacts to beats while album artwork remains steady. */
-    val beatSyncedArtworkEnabled: Boolean = true,
+    val fluidBeatSyncEnabled: Boolean = false,
     /** When true, keeps the screen from turning off when the user has the lyrics view open. */
     val keepLyricsScreenAwake: Boolean = false,
     /** Seconds of inactivity before the floating lyrics buttons (font size,
@@ -317,6 +314,7 @@ val MiscSettings.musicHapticsConfig: MusicHapticsConfig
 val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "taste_strip",
     "discover_new_music",
+    "preview_queues",
     "quick_picks",
     "because_you_listen_to",
     "fresh_finds",
@@ -475,7 +473,6 @@ class SettingsPreferences @Inject constructor(
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val LYRICS_ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_lyrics_rotating_background_enabled")
         val FLUID_BEAT_SYNC_ENABLED = booleanPreferencesKey("lw_fluid_beat_sync_enabled")
-        val BEAT_SYNCED_ARTWORK_ENABLED = booleanPreferencesKey("lw_beat_synced_artwork_enabled")
         val KEEP_LYRICS_SCREEN_AWAKE = booleanPreferencesKey("lw_keep_lyrics_screen_awake")
         val LYRICS_BUTTONS_AUTO_HIDE_SECONDS = intPreferencesKey("lw_lyrics_buttons_auto_hide_seconds")
         val TRANSLATION_LANGUAGE = stringPreferencesKey("lw_translation_language")
@@ -594,8 +591,7 @@ class SettingsPreferences @Inject constructor(
                 wavySeekbarEnabled = SeekbarStyle.fromId(p.readSafely(Keys.SEEKBAR_STYLE), p.readSafely(Keys.WAVY_SEEKBAR_ENABLED)) == SeekbarStyle.WAVY,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: false,
-                fluidBeatSyncEnabled = p.readSafely(Keys.FLUID_BEAT_SYNC_ENABLED) ?: true,
-                beatSyncedArtworkEnabled = p.readSafely(Keys.BEAT_SYNCED_ARTWORK_ENABLED) ?: true,
+                fluidBeatSyncEnabled = p.readSafely(Keys.FLUID_BEAT_SYNC_ENABLED) ?: false,
                 keepLyricsScreenAwake = p.readSafely(Keys.KEEP_LYRICS_SCREEN_AWAKE) ?: false,
                 lyricsButtonsAutoHideSeconds =
                     sanitizeLyricsButtonsAutoHideSeconds(p.readSafely(Keys.LYRICS_BUTTONS_AUTO_HIDE_SECONDS)),
@@ -1052,10 +1048,6 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setFluidBeatSyncEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.FLUID_BEAT_SYNC_ENABLED] = enabled }
-    }
-
-    suspend fun setBeatSyncedArtworkEnabled(enabled: Boolean) {
-        dataStore.edit { it[Keys.BEAT_SYNCED_ARTWORK_ENABLED] = enabled }
     }
 
     suspend fun setKeepLyricsScreenAwake(enabled: Boolean) {

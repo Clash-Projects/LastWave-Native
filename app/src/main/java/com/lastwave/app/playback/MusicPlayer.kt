@@ -195,6 +195,7 @@ class MusicPlayer @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val ytMusicAuthManager: YtMusicAuthManager,
     private val loudnessPrefs: LoudnessPrefs,
+    internal val previewQueueRepository: dagger.Lazy<com.lastwave.app.data.queue.PreviewQueueRepository>,
 ) {
 
     private class VpnYoutubeLoginRequiredException(message: String) : java.io.IOException(message)
@@ -1093,6 +1094,14 @@ class MusicPlayer @Inject constructor(
             // paths don't record â€” manual seeks arrive as SEEK, not AUTO.
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                 recordHistory(_state.value.current?.mediaIdKey())
+                // Repeat-all + shuffle wrapped to the first shuffled song: deal a
+                // new order, or every round replays the same "shuffled" sequence.
+                if (player.shuffleModeEnabled && player.repeatMode == Player.REPEAT_MODE_ALL &&
+                    player.mediaItemCount > 2 &&
+                    player.currentMediaItemIndex == player.currentTimeline.getFirstWindowIndex(true)
+                ) {
+                    reshuffleFrom(player.currentMediaItemIndex)
+                }
             }
             losslessBypassMediaIds.retainAll(setOf(mediaItem.mediaId))
             silentRecoveries.remove(mediaItem.mediaId)
@@ -2700,6 +2709,9 @@ class MusicPlayer @Inject constructor(
         enableRadioContinuation: Boolean = false,
     ) {
         if (tracks.isEmpty()) return
+        if (tracks.size >= 2) {
+            runCatching { previewQueueRepository.get().recordQueue(tracks, sourceLabel) }
+        }
         pendingRestoredSession = null
         discoverQueueLoadJob?.cancel()
         discoverQueueActive = endlessDiscover
@@ -3862,15 +3874,18 @@ class MusicPlayer @Inject constructor(
         if (player.shuffleModeEnabled == enabled && _state.value.shuffleEnabled == enabled) return@onMain
         cancelCrossfade()
         if (enabled && player.mediaItemCount > 1) {
-            val current = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0
-            val rest = shuffledUnplayedFirst((0 until player.mediaItemCount).filter { it != current }) { player.getMediaItemAt(it).mediaId }
-            val order = (listOf(current) + rest).toIntArray()
-            player.setShuffleOrder(DefaultShuffleOrder(order, Random.nextLong()))
+            reshuffleFrom(player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0)
         }
         player.shuffleModeEnabled = enabled
         preloadNextQueueItem(player.currentMediaItemIndex)
         _state.update { it.copy(shuffleEnabled = enabled) }
         persistPlaybackSession()
+    }
+
+    /** A fresh shuffle order that keeps [current] playing first. */
+    private fun reshuffleFrom(current: Int) {
+        val rest = shuffledUnplayedFirst((0 until player.mediaItemCount).filter { it != current }) { player.getMediaItemAt(it).mediaId }
+        player.setShuffleOrder(DefaultShuffleOrder((listOf(current) + rest).toIntArray(), Random.nextLong()))
     }
 
     fun cycleRepeatMode() = setRepeatMode(
@@ -5199,7 +5214,8 @@ class MusicPlayer @Inject constructor(
                 return
             } else if (isRepeatAll && player.mediaItemCount > 0) {
                 nextIndex = if (player.shuffleModeEnabled) {
-                    timeline.getFirstWindowIndex(true).takeIf { it != C.INDEX_UNSET } ?: 0
+                    (timeline.getFirstWindowIndex(true).takeIf { it != C.INDEX_UNSET } ?: 0)
+                        .also { if (player.mediaItemCount > 2) reshuffleFrom(it) }
                 } else {
                     0
                 }
@@ -5696,7 +5712,7 @@ class MusicPlayer @Inject constructor(
             unavailableMediaIds += failedMediaId
             if (!hasTimeline) {
                 unavailableSkipJob = null
-                val nextIndex = nextQueueIndex(snapshot)
+                val nextIndex = nextQueueIndex(snapshot, wrap = snapshot.repeatMode == Player.REPEAT_MODE_ALL)
                 if (nextIndex == C.INDEX_UNSET) {
                     player.pause()
                     player.stop()
@@ -5720,7 +5736,9 @@ class MusicPlayer @Inject constructor(
                 visited++
             }
             if (visited >= player.mediaItemCount) nextIndex = C.INDEX_UNSET
-            if (nextIndex == C.INDEX_UNSET && player.mediaItemCount > 1) {
+            // Wrap past the end only on repeat-all: a failed last song used to
+            // restart the playlist from the top even with repeat off.
+            if (nextIndex == C.INDEX_UNSET && player.mediaItemCount > 1 && repeatMode == Player.REPEAT_MODE_ALL) {
                 val candidateIndices = if (player.shuffleModeEnabled) {
                     shuffledUnplayedFirst((0 until player.mediaItemCount).toList()) { player.getMediaItemAt(it).mediaId }
                 } else {

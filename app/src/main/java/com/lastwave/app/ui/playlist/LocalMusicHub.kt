@@ -172,8 +172,31 @@ internal enum class LocalSortMode(val labelRes: Int) {
     ARTIST(R.string.local_sort_artist),
     ALBUM(R.string.local_sort_album),
     TRACK_NUMBER(R.string.local_sort_track_number),
+    DURATION(R.string.pd_sort_playtime),
     ADDED(R.string.local_sort_added),
     FORMAT(R.string.local_sort_format),
+}
+
+internal object LocalSortMemory {
+    private const val PREFS = "local_music_sort_prefs"
+    private const val KEY_MODE = "sort_mode"
+    private const val KEY_ASCENDING = "sort_ascending"
+
+    fun load(context: Context): Pair<LocalSortMode, Boolean> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val modeName = prefs.getString(KEY_MODE, null)
+        val mode = LocalSortMode.entries.firstOrNull { it.name == modeName } ?: LocalSortMode.TITLE
+        val asc = prefs.getBoolean(KEY_ASCENDING, true)
+        return mode to asc
+    }
+
+    fun save(context: Context, mode: LocalSortMode, ascending: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_MODE, mode.name)
+            .putBoolean(KEY_ASCENDING, ascending)
+            .apply()
+    }
 }
 
 internal sealed interface LocalDetailRoute {
@@ -353,8 +376,9 @@ fun LocalMusicHub(
     val playbackState by viewModel.musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
 
     var activeTab by rememberSaveable(playlist.id) { mutableStateOf(LocalHubTab.SONGS) }
-    var sortMode by rememberSaveable(playlist.id) { mutableStateOf(LocalSortMode.TITLE) }
-    var sortAscending by rememberSaveable(playlist.id) { mutableStateOf(true) }
+    val initialSort = remember { LocalSortMemory.load(context) }
+    var sortMode by rememberSaveable(playlist.id) { mutableStateOf(initialSort.first) }
+    var sortAscending by rememberSaveable(playlist.id) { mutableStateOf(initialSort.second) }
     var isGridView by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var isSearchActive by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var searchQuery by rememberSaveable(playlist.id) { mutableStateOf("") }
@@ -842,6 +866,7 @@ fun LocalMusicHub(
                                                 sortMode = mode
                                                 sortAscending = true
                                             }
+                                            LocalSortMemory.save(context, sortMode, sortAscending)
                                             showSortMenu = false
                                         },
                                     )
@@ -2642,6 +2667,7 @@ private fun sortLocalTracks(
             { it.track.trackNumber ?: Int.MAX_VALUE },
             { it.name },
         )
+        LocalSortMode.DURATION -> compareBy<LocalSortKey> { it.track.durationMs ?: 0L }
         LocalSortMode.ADDED -> return if (ascending) tracks else tracks.reversed()
         LocalSortMode.FORMAT -> compareBy<LocalSortKey>({ it.format }, { it.name })
     }

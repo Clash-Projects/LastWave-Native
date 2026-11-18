@@ -812,22 +812,27 @@ class PlayerViewModel @Inject constructor(
     ) {
         if (playlistIds.isEmpty()) return
         viewModelScope.launch {
-            runCatching {
+            try {
                 val generatedTrack = track.toGeneratedTrack()
                 var remoteChanged = false
                 var anyAdded = false
                 playlistIds.forEach { playlistId ->
                     val allowDuplicate = playlistId in duplicatePlaylistIds
-                    if (playlistId < 0L) {
-                        val added = ytMusicLibraryManager.addTrack(playlistId, generatedTrack, allowDuplicate)
-                        remoteChanged = remoteChanged || added
-                        anyAdded = anyAdded || added
-                    } else {
-                        anyAdded = playlistRepository.addTrack(
-                            id = playlistId,
-                            track = generatedTrack,
-                            allowDuplicate = allowDuplicate,
-                        ) != null || anyAdded
+                    try {
+                        if (playlistId < 0L) {
+                            val added = ytMusicLibraryManager.addTrack(playlistId, generatedTrack, allowDuplicate)
+                            remoteChanged = remoteChanged || added
+                            anyAdded = anyAdded || added
+                        } else {
+                            val res = playlistRepository.addTrack(
+                                id = playlistId,
+                                track = generatedTrack,
+                                allowDuplicate = allowDuplicate,
+                            )
+                            anyAdded = res != null || anyAdded
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("PlayerViewModel", "Failed adding track to playlist $playlistId", e)
                     }
                 }
                 if (remoteChanged) {
@@ -835,6 +840,9 @@ class PlayerViewModel @Inject constructor(
                     refreshCustomPlaylists()
                 }
                 _toastMessage.emit(if (anyAdded) "Added to playlist" else "Couldn't add to playlist")
+            } catch (e: Exception) {
+                android.util.Log.e("PlayerViewModel", "Error adding track to playlists", e)
+                _toastMessage.emit("Couldn't add to playlist")
             }
         }
     }

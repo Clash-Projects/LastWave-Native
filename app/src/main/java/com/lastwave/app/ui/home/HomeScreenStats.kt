@@ -327,7 +327,7 @@ internal fun StatsCard(
     trackCount: Long,
     artistCount: Long,
     albumCount: Long,
-    onOpenGenres: () -> Unit,
+    onOpenListeningStats: () -> Unit,
     modifier: Modifier = Modifier,
     headlineLabel: String = "Scrobbles",
 ) {
@@ -375,10 +375,10 @@ internal fun StatsCard(
                             modifier = Modifier.size(46.dp).align(Alignment.CenterEnd),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                IconButton(onClick = onOpenGenres) {
+                                IconButton(onClick = onOpenListeningStats) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowForward,
-                                        contentDescription = stringResource(R.string.home_view_genres_cd),
+                                        contentDescription = "Listening Stats",
                                         tint = MaterialTheme.colorScheme.onPrimary,
                                     )
                                 }
@@ -434,6 +434,96 @@ internal fun StatPill(label: String, value: Long, modifier: Modifier = Modifier)
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
             )
         }
+    }
+}
+
+/**
+ * The stats card condensed to one row while the list scrolls: the headline
+ * number keeps its tonal pill, the three counts sit beside it and the genres
+ * arrow stays in reach. Tapping the row opens the full card again.
+ */
+@Composable
+internal fun StatsCompactRow(
+    scrobbles: Long,
+    trackCount: Long,
+    artistCount: Long,
+    albumCount: Long,
+    headlineLabel: String,
+    onExpand: () -> Unit,
+    onOpenListeningStats: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onExpand,
+        shape = ExpressiveHeroShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 2.dp,
+        modifier = modifier.fillMaxWidth().height(StatsCompactHeight),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.fillMaxHeight(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        formatCount(scrobbles),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1,
+                    )
+                    Text(
+                        headlineLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                        maxLines = 1,
+                    )
+                }
+            }
+            CompactStat("Tracks", trackCount, Modifier.weight(1f))
+            CompactStat("Artists", artistCount, Modifier.weight(1f))
+            CompactStat("Albums", albumCount, Modifier.weight(1f))
+            Surface(
+                shape = ExpressivePillShape,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(44.dp),
+            ) {
+                IconButton(onClick = onOpenListeningStats) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Listening Stats",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactStat(label: String, value: Long, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            formatCount(value),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 

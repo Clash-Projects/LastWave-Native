@@ -129,6 +129,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -457,27 +458,6 @@ internal fun QueuePanel(
             }
             IconButton(
                 onClick = {
-                    isQueueLockedState = !isQueueLockedState
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                },
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        if (isQueueLocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                        else Color.White.copy(alpha = 0.14f)
-                    ),
-            ) {
-                Icon(
-                    imageVector = if (isQueueLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                    contentDescription = if (isQueueLocked) "Unlock queue" else "Lock queue",
-                    tint = if (isQueueLocked) MaterialTheme.colorScheme.primary
-                    else Color.White.copy(alpha = 0.90f),
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            IconButton(
-                onClick = {
                     userScrollHoldUntil = 0L
                     scope.launch { listState.animateScrollToItem(state.currentIndex.coerceAtLeast(0)) }
                 },
@@ -506,7 +486,7 @@ internal fun QueuePanel(
                     .background(Color.White.copy(alpha = 0.14f)),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.ClearAll,
+                    imageVector = Icons.Filled.Delete,
                     contentDescription = "Clear queue except playing song",
                     tint = if (state.queue.size > 1 && !isQueueLocked) Color.White.copy(alpha = 0.90f) else Color.White.copy(alpha = 0.35f),
                 )

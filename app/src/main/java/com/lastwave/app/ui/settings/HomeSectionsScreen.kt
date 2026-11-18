@@ -149,8 +149,10 @@ data class UniversalSectionItem(
 )
 
 val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
+    UniversalSectionItem("quick_tiles", titleRes = R.string.home_section_quick_tiles_title, subtitleRes = R.string.home_section_quick_tiles_sub, isYouTube = false, icon = Icons.Filled.Dashboard),
     UniversalSectionItem("taste_strip", titleRes = R.string.home_section_taste_strip_title, subtitleRes = R.string.home_section_taste_strip_sub, isYouTube = false, icon = Icons.Filled.Sell),
-    UniversalSectionItem("discover_new_music", rawTitle = "Discover new music", rawSubtitle = "Rotates fresh songs on refresh", isYouTube = false, icon = Icons.Filled.Explore),
+    UniversalSectionItem("discover_new_music", titleRes = R.string.home_section_discover_title, subtitleRes = R.string.home_section_discover_sub, isYouTube = false, icon = Icons.Filled.Explore),
+    UniversalSectionItem("preview_queues", titleRes = R.string.home_section_preview_queues_title, subtitleRes = R.string.home_section_preview_queues_sub, isYouTube = false, icon = Icons.Filled.QueueMusic),
     UniversalSectionItem("quick_picks", titleRes = R.string.home_section_quick_picks_title, subtitleRes = R.string.home_section_quick_picks_sub, isYouTube = false, icon = Icons.Filled.Bolt),
     UniversalSectionItem("because_you_listen_to", titleRes = R.string.home_section_because_title, subtitleRes = R.string.home_section_because_sub, isYouTube = false, icon = Icons.Filled.History),
     UniversalSectionItem("fresh_finds", titleRes = R.string.home_section_fresh_title, subtitleRes = R.string.home_section_fresh_sub, isYouTube = false, icon = Icons.Filled.Whatshot),
@@ -226,7 +228,7 @@ class HomeSectionsViewModel @Inject constructor(
             } else {
                 val itemMap = defaultList.associateBy { it.id }
                 val list = storedOrder
-                    .filter { it != "hero_greeting" && it != "infinite_radio" && it != "quick_tiles" }
+                    .filter { it != "hero_greeting" && it != "infinite_radio" }
                     .mapNotNull { itemMap[it] }
                     .toMutableList()
                 for (defaultItem in defaultList) {

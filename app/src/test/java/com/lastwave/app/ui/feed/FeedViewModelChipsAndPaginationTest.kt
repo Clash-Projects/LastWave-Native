@@ -56,6 +56,7 @@ class FeedViewModelChipsAndPaginationTest {
     private val homeRepository: HomeRepository = mockk(relaxed = true)
     private val discoverRepository: DiscoverRepository = mockk(relaxed = true)
     private val genresRepository: GenresRepository = mockk(relaxed = true)
+    private val previewQueueRepository: com.lastwave.app.data.queue.PreviewQueueRepository = mockk(relaxed = true)
 
     private fun createShelf(title: String, videoId: String): HomeShelf {
         return HomeShelf(
@@ -108,6 +109,7 @@ class FeedViewModelChipsAndPaginationTest {
             homeRepository,
             discoverRepository,
             genresRepository,
+            previewQueueRepository,
         )
     }
 
@@ -142,23 +144,24 @@ class FeedViewModelChipsAndPaginationTest {
     }
 
     @Test
-    fun defaultPaginationWaitsForInitialFeedToFinish() {
+    fun defaultPaginationStartsWithFirstShelvesAndKeepsItsPlaceWhenTheFeedFinishes() {
         val feed = FeedData(nativeShelves = listOf(createShelf("Home", "video")), homeContinuationToken = "next")
         val pending = CompletableDeferred<FeedData>()
         coEvery { feedRepository.loadFeed(any(), any()) } coAnswers {
             secondArg<(FeedData) -> Unit>()(feed)
             pending.await()
         }
-        coEvery { innerTube.fetchHomeContinuation("next") } returns HomePage()
+        coEvery { innerTube.fetchHomeContinuation("next") } returns
+            HomePage(shelves = listOf(createShelf("Page two", "two")), continuationToken = "after")
 
         val vm = createViewModel()
         vm.loadMoreHomeShelves()
-        coVerify(exactly = 0) { innerTube.fetchHomeContinuation(any()) }
+        waitFor { vm.uiState.value.defaultContinuationToken == "after" }
+        coVerify(exactly = 1) { innerTube.fetchHomeContinuation("next") }
 
         pending.complete(feed)
-        vm.loadMoreHomeShelves()
-        waitFor { !vm.uiState.value.isLoadingMore }
-        coVerify(exactly = 1) { innerTube.fetchHomeContinuation("next") }
+        waitFor { !vm.uiState.value.isFeedUpdating }
+        assertThat(vm.uiState.value.defaultContinuationToken).isEqualTo("after")
     }
 
     @Test
@@ -210,7 +213,6 @@ class FeedViewModelChipsAndPaginationTest {
         finalResult.complete(partial)
         assertThat(vm.uiState.value.feedData.nativeShelves).containsExactly(first, second, added).inOrder()
         assertThat(vm.uiState.value.lastCompletedFeed).isEqualTo(partial)
-        assertThat(hasFreshFeedSection("yt:First", vm.uiState.value.lastCompletedFeed, emptySet(), "First")).isFalse()
     }
 
     @Test
@@ -232,14 +234,10 @@ class FeedViewModelChipsAndPaginationTest {
 
         coEvery { feedRepository.loadFeed(any(), any()) } returns refreshed
         vm.refresh()
-        assertThat(hasFreshFeedSection("paged_shelf_0_Paged", vm.uiState.value.lastCompletedFeed,
-            vm.uiState.value.freshPagedShelfTitles, "Paged")).isFalse()
 
         vm.loadMoreHomeShelves()
         waitFor { !vm.uiState.value.isLoadingMore }
         assertThat(vm.uiState.value.pagedShelves).containsExactly(newPage)
-        assertThat(hasFreshFeedSection("paged_shelf_0_Paged", vm.uiState.value.lastCompletedFeed,
-            vm.uiState.value.freshPagedShelfTitles, "Paged")).isTrue()
         vm.loadMoreHomeShelves()
         coVerify(exactly = 1) { innerTube.fetchHomeContinuation("new-token") }
     }

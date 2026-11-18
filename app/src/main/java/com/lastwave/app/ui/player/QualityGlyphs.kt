@@ -184,4 +184,82 @@ internal object QualityGlyphs {
             }
         }.build()
     }
+
+    /** Official Spotify logo with soundwave curves. */
+    val Spotify: ImageVector by lazy {
+        ImageVector.Builder("Spotify", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = ink) {
+                // Circle
+                moveTo(12f, 2f)
+                curveTo(6.477f, 2f, 2f, 6.477f, 2f, 12f)
+                curveTo(2f, 17.523f, 6.477f, 22f, 12f, 22f)
+                curveTo(17.523f, 22f, 22f, 17.523f, 22f, 12f)
+                curveTo(22f, 6.477f, 17.523f, 2f, 12f, 2f)
+                close()
+                // Arc 3 (bottom)
+                moveTo(16.562f, 16.425f)
+                curveTo(16.382f, 16.72f, 16f, 16.812f, 15.705f, 16.632f)
+                curveTo(13.357f, 15.197f, 10.402f, 14.872f, 6.921f, 15.669f)
+                curveTo(6.584f, 15.746f, 6.248f, 15.536f, 6.171f, 15.199f)
+                curveTo(6.094f, 14.862f, 6.304f, 14.526f, 6.641f, 14.449f)
+                curveTo(10.45f, 13.578f, 13.719f, 13.944f, 16.355f, 15.567f)
+                curveTo(16.65f, 15.747f, 16.742f, 16.13f, 16.562f, 16.425f)
+                close()
+                // Arc 2 (middle)
+                moveTo(17.813f, 13.332f)
+                curveTo(17.586f, 13.7f, 17.103f, 13.815f, 16.735f, 13.589f)
+                curveTo(14.048f, 11.937f, 9.95f, 11.458f, 6.771f, 12.423f)
+                curveTo(6.358f, 12.548f, 5.921f, 12.315f, 5.796f, 11.903f)
+                curveTo(5.671f, 11.49f, 5.904f, 11.053f, 6.316f, 10.928f)
+                curveTo(9.949f, 9.825f, 14.459f, 10.358f, 17.556f, 12.262f)
+                curveTo(17.924f, 12.488f, 18.039f, 12.972f, 17.813f, 13.332f)
+                close()
+                // Arc 1 (top)
+                moveTo(17.928f, 10.155f)
+                curveTo(14.73f, 8.256f, 9.458f, 8.081f, 6.408f, 9.007f)
+                curveTo(5.918f, 9.155f, 5.398f, 8.878f, 5.25f, 8.388f)
+                curveTo(5.102f, 7.898f, 5.378f, 7.378f, 5.868f, 7.23f)
+                curveTo(9.382f, 6.163f, 15.207f, 6.368f, 18.892f, 8.556f)
+                curveTo(19.335f, 8.819f, 19.48f, 9.394f, 19.217f, 9.836f)
+                curveTo(18.955f, 10.279f, 18.38f, 10.424f, 17.928f, 10.155f)
+                close()
+            }
+        }.build()
+    }
+
+    /** Official Last.fm logo. */
+    val LastFm: ImageVector by lazy {
+        ImageVector.Builder("LastFm", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = ink) {
+                moveTo(10.584f, 17.21f)
+                lineTo(9.704f, 14.818f)
+                curveTo(9.704f, 14.818f, 8.274f, 16.412f, 6.131f, 16.412f)
+                curveTo(4.234f, 16.412f, 2.887f, 14.763f, 2.887f, 12.124f)
+                curveTo(2.887f, 8.742f, 4.591f, 7.533f, 6.268f, 7.533f)
+                curveTo(8.688f, 7.533f, 9.457f, 9.1f, 10.117f, 11.107f)
+                lineTo(10.997f, 13.856f)
+                curveTo(11.877f, 16.522f, 13.526f, 18.666f, 18.282f, 18.666f)
+                curveTo(21.691f, 18.666f, 24f, 17.622f, 24f, 14.873f)
+                curveTo(24f, 12.646f, 22.735f, 11.492f, 20.37f, 10.942f)
+                lineTo(18.612f, 10.557f)
+                curveTo(17.402f, 10.282f, 17.045f, 9.787f, 17.045f, 8.962f)
+                curveTo(17.045f, 8.028f, 17.787f, 7.478f, 18.997f, 7.478f)
+                curveTo(20.317f, 7.478f, 21.031f, 7.973f, 21.141f, 9.155f)
+                lineTo(23.89f, 8.825f)
+                curveTo(23.67f, 6.351f, 21.966f, 5.333f, 19.161f, 5.333f)
+                curveTo(16.687f, 5.333f, 14.268f, 6.268f, 14.268f, 9.265f)
+                curveTo(14.268f, 11.135f, 15.175f, 12.316f, 17.457f, 12.866f)
+                lineTo(19.327f, 13.306f)
+                curveTo(20.729f, 13.636f, 21.196f, 14.213f, 21.196f, 15.01f)
+                curveTo(21.196f, 16.027f, 20.206f, 16.44f, 18.336f, 16.44f)
+                curveTo(15.56f, 16.44f, 14.406f, 14.983f, 13.746f, 12.976f)
+                lineTo(12.839f, 10.226f)
+                curveTo(11.684f, 6.653f, 9.842f, 5.333f, 6.186f, 5.333f)
+                curveTo(2.144f, 5.333f, 0f, 7.89f, 0f, 12.233f)
+                curveTo(0f, 16.413f, 2.144f, 18.667f, 5.993f, 18.667f)
+                curveTo(9.099f, 18.667f, 10.584f, 17.21f, 10.584f, 17.21f)
+                close()
+            }
+        }.build()
+    }
 }

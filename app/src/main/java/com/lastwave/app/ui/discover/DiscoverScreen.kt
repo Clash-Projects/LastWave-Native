@@ -43,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -58,6 +59,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import com.lastwave.app.ui.common.TrackMiniTrayData
+import com.lastwave.app.ui.common.TrackMiniTraySheet
 import androidx.compose.ui.unit.dp
 import com.lastwave.app.R
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -125,6 +128,7 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
     val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var menuTrack by remember { mutableStateOf<GeneratedTrack?>(null) }
+    var miniTrayTrack by remember { mutableStateOf<TrackMiniTrayData?>(null) }
     val playbackQueue = remember(state.tracks) { state.tracks.map(GeneratedTrack::toPlayableTrack) }
     val playFromDiscover: (GeneratedTrack) -> Unit = { track ->
         val index = state.tracks.indexOfFirst { it.key == track.key }.coerceAtLeast(0)
@@ -236,6 +240,17 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
                                 isPlaying = isPlayingThisSong,
                                 onPlay = { playFromDiscover(track) },
                                 onMenu = { menuTrack = track },
+                                onLongClick = {
+                                    miniTrayTrack = TrackMiniTrayData(
+                                        title = track.name,
+                                        artist = track.artist,
+                                        artworkUrl = track.artworkUrl,
+                                        sourceLabel = "Discover",
+                                        videoId = track.youtubeVideoIdOrNull(),
+                                        durationMs = track.durationMs,
+                                        onPlay = { playFromDiscover(track) },
+                                    )
+                                },
                                 modifier = Modifier,
                             )
                         }
@@ -272,6 +287,13 @@ fun DiscoverScreen(onBack: () -> Unit = {}, viewModel: DiscoverViewModel = hiltV
             onDismiss = { menuTrack = null },
         )
     }
+
+    miniTrayTrack?.let { tray ->
+        TrackMiniTraySheet(
+            data = tray,
+            onDismiss = { miniTrayTrack = null },
+        )
+    }
 }
 
 @Composable
@@ -281,6 +303,7 @@ private fun DiscoverCard(
     isPlaying: Boolean,
     onPlay: () -> Unit,
     onMenu: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     com.lastwave.app.ui.common.ExpressiveGroupTrackRow(
@@ -289,6 +312,7 @@ private fun DiscoverCard(
         position = position,
         isPlaying = isPlaying,
         onClick = onPlay,
+        onLongClick = onLongClick,
         modifier = modifier,
         leading = {
             Box(modifier = Modifier.size(52.dp)) {
