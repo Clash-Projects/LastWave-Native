@@ -721,47 +721,49 @@ internal fun FullPlayer(
                 animationSpec = tween(350),
                 label = "lyricsVeil",
             )
-            // Base vibrant ambient gradients: ALWAYS underneath everything so the background
-            // is NEVER pitch black, even before the fluid texture loads or during track transitions.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            0f to ambientColor.copy(alpha = 0.58f),
-                            0.45f to ambientColor.copy(alpha = 0.22f),
-                            1f to Color.Transparent,
-                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
-                            radius = bgMaxDimension * 0.85f,
+            // Beat sync only: its black-screen guard. The default background never
+            // needed these layers, and drawing them is extra overdraw every frame.
+            if (fluidBeatSyncEnabled) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to ambientColor.copy(alpha = 0.58f),
+                                0.45f to ambientColor.copy(alpha = 0.22f),
+                                1f to Color.Transparent,
+                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                                radius = bgMaxDimension * 0.85f,
+                            )
                         )
-                    )
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            0f to ambientCompanion.copy(alpha = 0.52f),
-                            0.50f to ambientCompanion.copy(alpha = 0.20f),
-                            1f to Color.Transparent,
-                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
-                            radius = bgMaxDimension * 0.78f,
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to ambientCompanion.copy(alpha = 0.52f),
+                                0.50f to ambientCompanion.copy(alpha = 0.20f),
+                                1f to Color.Transparent,
+                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                                radius = bgMaxDimension * 0.78f,
+                            )
                         )
-                    )
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            0f to ambientDeep.copy(alpha = 0.42f),
-                            0.55f to ambientDeep.copy(alpha = 0.14f),
-                            1f to Color.Transparent,
-                            center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
-                            radius = bgMaxDimension * 0.70f,
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to ambientDeep.copy(alpha = 0.42f),
+                                0.55f to ambientDeep.copy(alpha = 0.14f),
+                                1f to Color.Transparent,
+                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                                radius = bgMaxDimension * 0.70f,
+                            )
                         )
-                    )
-            )
+                )
+            }
             // Kept out of the glass capture: every motion step re-blurred each glass
             // control (~2x frame cost). The fluid is already blurred, so it shows through.
             FluidArtworkBackground(
@@ -871,16 +873,18 @@ internal fun FullPlayer(
                         bgMaxDimension = bgMaxDimension,
                     )
                 }
-                // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors)
+                // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors).
+                // The lighter variant is beat sync's; the default keeps the original scrim.
+                val beatScrim = showFullBleed && fluidBeatSyncEnabled
                 Box(
                     Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                0.00f to Color.Black.copy(alpha = if (showFullBleed) 0.18f else 0.35f),
-                                0.28f to Color.Black.copy(alpha = if (showFullBleed) 0.05f else 0.15f),
-                                0.60f to Color.Black.copy(alpha = if (showFullBleed) 0.12f else 0.40f),
-                                1.00f to Color.Black.copy(alpha = if (showFullBleed) 0.32f else 0.72f),
+                                0.00f to Color.Black.copy(alpha = if (beatScrim) 0.18f else 0.35f),
+                                0.28f to Color.Black.copy(alpha = if (beatScrim) 0.05f else 0.15f),
+                                (if (beatScrim) 0.60f else 0.65f) to Color.Black.copy(alpha = if (beatScrim) 0.12f else 0.40f),
+                                1.00f to Color.Black.copy(alpha = if (beatScrim) 0.32f else 0.72f),
                             )
                         )
                 )

@@ -16,11 +16,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,9 +46,6 @@ import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.data.artwork.ArtworkNormalizer
 import com.lastwave.app.ui.common.ArtworkViewModel
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -141,51 +136,22 @@ internal data class FluidCopy(
     val angle: Float,
 )
 
-internal fun fluidCopies(
-    width: Float,
-    height: Float,
-    seconds: Float,
-    seed: Int,
-    rhythm: Float = 0f,
-    beatSync: Boolean = false,
-): List<FluidCopy> {
-    if (!beatSync) {
-        // Original LastWave fluid copy calculation (smooth, gentle ambient flow)
-        val longest = maxOf(width, height)
-        val t = seconds * FLOW_SPEED_ORIGINAL
-        val cx = width / 2f
-        val cy = height / 2f
-        val orbit = { rate: Float, radius: Float, phase: Float ->
-            val a = rate * t + phase
-            cx + width * radius * cos(a) to cy + width * radius * sin(a)
-        }
-        val (x3, y3) = orbit(ORBIT_RATE_MID, ORBIT_RADIUS_MID, startPhase(seed, 4))
-        val (x4, y4) = orbit(ORBIT_RATE_SMALL, ORBIT_RADIUS_SMALL, startPhase(seed, 5))
-        return listOf(
-            FluidCopy(cx, cy, longest * SQRT_2, startPhase(seed, 0) + ROTATION_ORIGINAL[0] * t),
-            FluidCopy(width / 2.5f, height / 2.5f, longest * 0.8f, startPhase(seed, 1) + ROTATION_ORIGINAL[1] * t),
-            FluidCopy(x3, y3, longest * 0.5f, startPhase(seed, 2) + ROTATION_ORIGINAL[2] * t),
-            FluidCopy(x4, y4, longest * 0.25f, startPhase(seed, 3) + ROTATION_ORIGINAL[3] * t),
-        )
-    }
-
-    // Beat-synced fluid copies (Lyra-spec: dynamic lobe dilation & orbit expansion)
-    val longest = maxOf(width, height) * (1.0f + rhythm * 0.32f)
-    val t = seconds * FLOW_SPEED_ORIGINAL
+internal fun fluidCopies(width: Float, height: Float, seconds: Float, seed: Int): List<FluidCopy> {
+    val longest = maxOf(width, height)
+    val t = seconds * FLOW_SPEED
     val cx = width / 2f
     val cy = height / 2f
     val orbit = { rate: Float, radius: Float, phase: Float ->
         val a = rate * t + phase
-        val r = radius * (1.0f + rhythm * 0.38f)
-        cx + width * r * cos(a) to cy + width * r * sin(a)
+        cx + width * radius * cos(a) to cy + width * radius * sin(a)
     }
     val (x3, y3) = orbit(ORBIT_RATE_MID, ORBIT_RADIUS_MID, startPhase(seed, 4))
     val (x4, y4) = orbit(ORBIT_RATE_SMALL, ORBIT_RADIUS_SMALL, startPhase(seed, 5))
     return listOf(
-        FluidCopy(cx, cy, longest * SQRT_2 * (1.0f + rhythm * 0.15f), startPhase(seed, 0) + ROTATION_ORIGINAL[0] * t),
-        FluidCopy(width / 2.5f, height / 2.5f, longest * 0.8f * (1.0f + rhythm * 0.28f), startPhase(seed, 1) + ROTATION_ORIGINAL[1] * t),
-        FluidCopy(x3, y3, longest * 0.5f * (1.0f + rhythm * 0.45f), startPhase(seed, 2) + ROTATION_ORIGINAL[2] * t),
-        FluidCopy(x4, y4, longest * 0.25f * (1.0f + rhythm * 0.65f), startPhase(seed, 3) + ROTATION_ORIGINAL[3] * t),
+        FluidCopy(cx, cy, longest * SQRT_2, startPhase(seed, 0) + ROTATION[0] * t),
+        FluidCopy(width / 2.5f, height / 2.5f, longest * 0.8f, startPhase(seed, 1) + ROTATION[1] * t),
+        FluidCopy(x3, y3, longest * 0.5f, startPhase(seed, 2) + ROTATION[2] * t),
+        FluidCopy(x4, y4, longest * 0.25f, startPhase(seed, 3) + ROTATION[3] * t),
     )
 }
 
@@ -195,24 +161,13 @@ private fun startPhase(seed: Int, index: Int): Float =
 private const val TWO_PI = 6.2831855f
 private val SQRT_2 = sqrt(2f)
 
-// Original LastWave fluid motion constants (steady, smooth, gentle drift)
-private val ROTATION_ORIGINAL = floatArrayOf(0.06f, -0.12f, 0.06f, -0.08f)
-private const val FLOW_SPEED_ORIGINAL = 2.5f
-private const val BLUR_FRACTION_ORIGINAL = 0.18f
-private const val BLUR_SIGMA_MIN_ORIGINAL = 80f
-private const val BLUR_SIGMA_MAX_ORIGINAL = 360f
-
-// Beat-synced fluid motion constants (Lyra-spec: crisp contours, punchy surge)
-private val ROTATION_BEAT = floatArrayOf(0.24f, -0.32f, 0.20f, -0.18f)
-private const val FLOW_SPEED_BEAT = 3.6f
-private const val BLUR_FRACTION_BEAT = 0.065f
-private const val BLUR_SIGMA_MIN_BEAT = 45f
-private const val BLUR_SIGMA_MAX_BEAT = 85f
+private val ROTATION = floatArrayOf(0.06f, -0.12f, 0.06f, -0.08f)
 
 private const val ORBIT_RADIUS_MID = 0.25f
 private const val ORBIT_RADIUS_SMALL = 0.10f
 private const val ORBIT_RATE_MID = 0.045f
 private const val ORBIT_RATE_SMALL = 0.09f
+private const val FLOW_SPEED = 2.5f
 
 private const val SATURATION = 1.9f
 private const val BRIGHTNESS = 0.52f
@@ -221,6 +176,10 @@ private const val CONTRAST = 0.3f
 
 private const val TWIST_ANGLE = 1.6f
 private const val TWIST_REACH = 1.0f
+
+private const val BLUR_FRACTION = 0.18f
+private const val BLUR_SIGMA_MIN = 80f
+private const val BLUR_SIGMA_MAX = 360f
 private const val FLUID_RENDER_SCALE = 4
 
 private const val TEXTURE_PX = 256
@@ -234,17 +193,8 @@ private val textureCache = LinkedHashMap<String, Bitmap>()
 private suspend fun loadTexture(context: Context, url: String, preBlur: Boolean = false): Bitmap? = withContext(Dispatchers.IO) {
     val cacheKey = if (preBlur) "$url-preblurred" else url
     synchronized(textureCache) {
-        val cached = textureCache[cacheKey]
-        if (cached != null) {
-            if (!cached.isRecycled) {
-                textureCache.remove(cacheKey)
-                textureCache[cacheKey] = cached
-                return@withContext cached
-            } else {
-                textureCache.remove(cacheKey)
-            }
-        }
-    }
+        textureCache.remove(cacheKey)?.also { textureCache[cacheKey] = it }
+    }?.let { return@withContext it }
 
     val request = ImageRequest.Builder(context)
         .data(url)
@@ -260,34 +210,19 @@ private suspend fun loadTexture(context: Context, url: String, preBlur: Boolean 
     }
 
     synchronized(textureCache) {
-        if (!bitmap.isRecycled) {
-            textureCache[cacheKey] = bitmap
-            while (textureCache.size > TEXTURE_CACHE) {
-                textureCache.remove(textureCache.keys.first())
-            }
+        textureCache[cacheKey] = bitmap
+        while (textureCache.size > TEXTURE_CACHE) {
+            textureCache.remove(textureCache.keys.first())
         }
     }
     bitmap
 }
 
-internal fun fluidBlurSigma(
-    width: Float,
-    height: Float,
-    extraBlur: Boolean = false,
-    beatSync: Boolean = false,
-): Float {
-    return if (beatSync) {
-        (minOf(width, height) * (if (extraBlur) 0.08f else BLUR_FRACTION_BEAT)).coerceIn(
-            if (extraBlur) 70f else BLUR_SIGMA_MIN_BEAT,
-            if (extraBlur) 110f else BLUR_SIGMA_MAX_BEAT,
-        )
-    } else {
-        (minOf(width, height) * (if (extraBlur) 0.50f else BLUR_FRACTION_ORIGINAL)).coerceIn(
-            if (extraBlur) 280f else BLUR_SIGMA_MIN_ORIGINAL,
-            if (extraBlur) 720f else BLUR_SIGMA_MAX_ORIGINAL,
-        )
-    }
-}
+internal fun fluidBlurSigma(width: Float, height: Float, extraBlur: Boolean = false): Float =
+    (minOf(width, height) * (if (extraBlur) 0.50f else BLUR_FRACTION)).coerceIn(
+        if (extraBlur) 280f else BLUR_SIGMA_MIN,
+        if (extraBlur) 720f else BLUR_SIGMA_MAX
+    )
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private class AgslFluidRenderer {
@@ -297,13 +232,6 @@ private class AgslFluidRenderer {
     private var lastCurShader: BitmapShader? = null
     private var lastPrev: Bitmap? = null
     private var lastPrevShader: BitmapShader? = null
-
-    fun invalidateShaders() {
-        lastCur = null
-        lastCurShader = null
-        lastPrev = null
-        lastPrevShader = null
-    }
 
     fun render(
         canvas: android.graphics.Canvas,
@@ -315,15 +243,8 @@ private class AgslFluidRenderer {
         previous: Bitmap,
         fade: Float,
         extraBlur: Boolean = false,
-        rhythm: Float = 0f,
-        beatSync: Boolean = false,
     ) {
-        if (current.isRecycled || previous.isRecycled) {
-            invalidateShaders()
-            return
-        }
-
-        val copies = fluidCopies(width, height, seconds, seed, rhythm, beatSync)
+        val copies = fluidCopies(width, height, seconds, seed)
         val curShader = if (current === lastCur && lastCurShader != null) {
             lastCurShader!!
         } else {
@@ -349,24 +270,11 @@ private class AgslFluidRenderer {
         shader.setFloatUniform("centre3", copies[3].centreX, copies[3].centreY)
         shader.setFloatUniform("twistA", width * 0.25f, height)
         shader.setFloatUniform("twistB", width * 0.75f, 0f)
-
-        val twistRadius = (maxOf(width, height) + minOf(width, height)) / 2f * TWIST_REACH *
-            (if (beatSync) (1.0f + rhythm * 0.25f) else 1.0f)
-        shader.setFloatUniform("twistRadius", twistRadius)
-
-        val twistAngle = if (beatSync) TWIST_ANGLE * (1.0f + rhythm * 0.85f) else TWIST_ANGLE
-        shader.setFloatUniform("twistAngle", twistAngle)
-
-        val sat = if (beatSync) SATURATION + rhythm * 0.45f else SATURATION
-        shader.setFloatUniform("saturation", sat)
-
-        val baseBrightness = if (extraBlur) LYRICS_BRIGHTNESS else BRIGHTNESS
-        val brightness = if (beatSync) (baseBrightness + rhythm * 0.22f).coerceIn(0.42f, 0.85f) else baseBrightness
-        shader.setFloatUniform("brightness", brightness)
-
-        val contrast = if (beatSync) (CONTRAST + rhythm * 0.20f).coerceIn(0.20f, 0.55f) else CONTRAST
-        shader.setFloatUniform("contrast", contrast)
-
+        shader.setFloatUniform("twistRadius", (maxOf(width, height) + minOf(width, height)) / 2f * TWIST_REACH)
+        shader.setFloatUniform("twistAngle", TWIST_ANGLE)
+        shader.setFloatUniform("saturation", SATURATION)
+        shader.setFloatUniform("brightness", if (extraBlur) LYRICS_BRIGHTNESS else BRIGHTNESS)
+        shader.setFloatUniform("contrast", CONTRAST)
         paint.shader = shader
         canvas.drawRect(0f, 0f, width, height, paint)
     }
@@ -414,6 +322,25 @@ fun FluidArtworkBackground(
     artworkViewModel: ArtworkViewModel = com.lastwave.app.ui.common.LocalArtworkViewModel.current ?: hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {
+    // Also switches the analyser off when the setting is turned off: the
+    // beat-sync background that would reset it has left composition by then.
+    LaunchedEffect(fluidBeatSyncEnabled) {
+        com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled = fluidBeatSyncEnabled
+    }
+    if (fluidBeatSyncEnabled) {
+        BeatSyncFluidArtworkBackground(
+            track = track,
+            isPlaying = isPlaying,
+            modifier = modifier,
+            extraBlur = extraBlur,
+            rotatingBackgroundEnabled = rotatingBackgroundEnabled,
+            lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
+            fluidBeatSyncEnabled = true,
+            artworkViewModel = artworkViewModel,
+            fallback = fallback,
+        )
+        return
+    }
     val fluidSupported = isFluidSupported()
     val isEnabled = if (extraBlur) lyricsRotatingBackgroundEnabled && rotatingBackgroundEnabled else rotatingBackgroundEnabled
     if (!isEnabled || !fluidSupported) {
@@ -484,14 +411,6 @@ fun FluidArtworkBackground(
         }
     }
 
-    LaunchedEffect(current?.isRecycled, artworkUrl) {
-        if (current?.isRecycled == true) {
-            current = null
-            val url = artworkUrl?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-            current = loadTexture(context, url, preBlur = (agslRenderer == null))
-        }
-    }
-
     LaunchedEffect(current != null) {
         if (current != null) appear.animateTo(1f, tween(APPEAR_MS))
     }
@@ -499,84 +418,34 @@ fun FluidArtworkBackground(
     var seconds by remember { mutableFloatStateOf(0f) }
     var cachedSigma by remember { mutableFloatStateOf(0f) }
     var cachedRenderEffect by remember { mutableStateOf<androidx.compose.ui.graphics.RenderEffect?>(null) }
-    var renderEffectRevision by remember { mutableIntStateOf(0) }
-    val isForeground = rememberIsForeground()
-    val motionActive = isPlaying && isForeground
-    val rhythmState by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
-    val activeRhythm = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
-                agslRenderer?.invalidateShaders()
-                cachedRenderEffect = null
-                cachedSigma = 0f
-                renderEffectRevision++
-                com.lastwave.app.playback.rhythm.FluidRhythmEngine.onForegroundResume()
-            } else if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
-                agslRenderer?.invalidateShaders()
-                cachedRenderEffect = null
-                cachedSigma = 0f
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            agslRenderer?.invalidateShaders()
-            cachedRenderEffect = null
-        }
-    }
-
-    LaunchedEffect(fluidBeatSyncEnabled) {
-        com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled = fluidBeatSyncEnabled
-    }
-
-    // Runs while playing and foregrounded. Bound seconds to a periodic window to maintain 100% float precision.
-    LaunchedEffect(motionActive, fluidBeatSyncEnabled) {
-        if (!motionActive) {
-            if (fluidBeatSyncEnabled) {
-                com.lastwave.app.playback.rhythm.FluidRhythmEngine.tick(0.016f, false)
-            }
-            return@LaunchedEffect
-        }
-        if (fluidBeatSyncEnabled) {
-            com.lastwave.app.playback.rhythm.FluidRhythmEngine.onForegroundResume()
-        }
+    val windowActive = rememberPlayerWindowActive()
+    val motionActive = isPlaying && windowActive
+    // Paused or obscured: hold the current pose. Animating the full-screen shader
+    // + blur while paused or under the shade used most of a CPU core.
+    LaunchedEffect(motionActive) {
+        if (!motionActive) return@LaunchedEffect
+        // Each step redraws the whole blurred screen and the 60 ms seek-bar
+        // ticker adds its own frames, so 30 Hz kept the full player at every
+        // vsync. Steps at 15 Hz move < 30 px under an 80+ px blur: no visible change.
         var last = withFrameNanos { it }
         while (true) {
-            if (!fluidBeatSyncEnabled) {
-                delay(FRAME_INTERVAL_MS)
-            }
+            delay(FRAME_INTERVAL_MS)
             val now = withFrameNanos { it }
-            val dt = ((now - last) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
+            seconds += ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
             last = now
-
-            if (fluidBeatSyncEnabled) {
-                val r = com.lastwave.app.playback.rhythm.FluidRhythmEngine.tick(dt, isPlaying)
-                // Lyra Player: speed_boost = 1.8f
-                seconds = (seconds + dt * (1.0f + r * 1.8f)) % 6283.185f
-            } else {
-                seconds = (seconds + dt) % 6283.185f
-            }
         }
     }
 
     Box(modifier) {
-        // Fallback is ALWAYS rendered at the base layer so the player background
-        // can never flash black or be unshaded during transitions, minimize/resume, or asset loads.
-        fallback()
+        if (appear.value < 1f || current == null) {
+            fallback()
+        }
 
-        val curBitmap = current
-        if (curBitmap != null && !curBitmap.isRecycled) {
+        if (current != null) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = appear.value
-                        @Suppress("UNUSED_VARIABLE")
-                        val anim = seconds
-                    }
+                    .graphicsLayer { alpha = appear.value }
                     .layout { measurable, constraints ->
                         val w = constraints.maxWidth
                         val h = constraints.maxHeight
@@ -589,10 +458,8 @@ fun FluidArtworkBackground(
                                 scaleY = h.toFloat() / sh
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    @Suppress("UNUSED_VARIABLE")
-                                    val rev = renderEffectRevision
-                                    // Sigma from the FULL size, then scaled, so the blur matches the look.
-                                    val sigma = fluidBlurSigma(w.toFloat(), h.toFloat(), extraBlur, beatSync = fluidBeatSyncEnabled) / FLUID_RENDER_SCALE
+                                    // Sigma from the FULL size, then scaled, so the blur matches the old look.
+                                    val sigma = fluidBlurSigma(w.toFloat(), h.toFloat(), extraBlur) / FLUID_RENDER_SCALE
                                     if (sigma != cachedSigma || cachedRenderEffect == null) {
                                         cachedSigma = sigma
                                         cachedRenderEffect = runCatching {
@@ -605,39 +472,30 @@ fun FluidArtworkBackground(
                         }
                     }
                     .drawBehind {
-                        val cur = current?.takeIf { !it.isRecycled } ?: return@drawBehind
-                        val prv = previous?.takeIf { !it.isRecycled } ?: cur
-                        val r = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
-                        @Suppress("UNUSED_VARIABLE")
-                        val rev = renderEffectRevision
+                        val cur = current ?: return@drawBehind
+                        val prv = previous ?: cur
 
                         if (agslRenderer != null) {
                             drawIntoCanvas { canvas ->
-                                runCatching {
-                                    agslRenderer.render(
-                                        canvas = canvas.nativeCanvas,
-                                        width = size.width,
-                                        height = size.height,
-                                        seconds = seconds,
-                                        seed = seed,
-                                        current = cur,
-                                        previous = prv,
-                                        fade = crossfade.value,
-                                        extraBlur = extraBlur,
-                                        rhythm = r,
-                                        beatSync = fluidBeatSyncEnabled,
-                                    )
-                                }.onFailure {
-                                    agslRenderer.invalidateShaders()
-                                }
+                                agslRenderer.render(
+                                    canvas = canvas.nativeCanvas,
+                                    width = size.width,
+                                    height = size.height,
+                                    seconds = seconds,
+                                    seed = seed,
+                                    current = cur,
+                                    previous = prv,
+                                    fade = crossfade.value,
+                                    extraBlur = extraBlur,
+                                )
                             }
                         } else {
-                            val copies = fluidCopies(size.width, size.height, seconds, seed, r, beatSync = fluidBeatSyncEnabled)
+                            val copies = fluidCopies(size.width, size.height, seconds, seed)
                             val curImg = cur.asImageBitmap()
                             for (copy in copies) {
                                 rotate(
                                     degrees = Math.toDegrees(copy.angle.toDouble()).toFloat(),
-                                    pivot = Offset(copy.centreX, copy.centreY)
+                                    pivot = Offset(copy.centreX, copy.copy(angle = copy.angle).centreY)
                                 ) {
                                     drawImage(
                                         image = curImg,
