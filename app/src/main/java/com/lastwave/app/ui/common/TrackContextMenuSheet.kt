@@ -4,25 +4,29 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.text.style.TextAlign
+
 import android.content.Context
 import android.content.Intent
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
@@ -40,7 +44,6 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.PlaylistAdd
@@ -56,8 +59,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +81,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import com.lastwave.app.R
@@ -91,9 +93,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lastwave.app.ui.generate.MixLauncher
-import com.lastwave.app.ui.theme.LocalLiquidGlass
-import com.lastwave.app.ui.theme.liquidGlassChrome
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
@@ -114,6 +113,7 @@ data class TrackMenuCapabilities(
     val showCopyActions: Boolean = true,
     val showDeleteScrobble: Boolean = true,
     val showRecommendationExclusion: Boolean = false,
+    val showPlayAction: Boolean = true,
 )
 
 sealed interface TrackMenuTarget {
@@ -220,7 +220,10 @@ class DownloadMenuViewModel @Inject constructor(
 
 /** Short label for the configured download tier — must stay in sync with the
  *  Download Quality tiers in SettingsScreen (28/27/7/6/5/4/-1). */
-fun downloadLabelForQuality(context: android.content.Context, quality: Int): String {
+fun downloadLabelForQuality(context: android.content.Context, quality: Int): String =
+    context.getString(R.string.menu_download_tier, downloadTierForQuality(context, quality))
+
+private fun downloadTierForQuality(context: android.content.Context, quality: Int): String {
     val tier = when (quality) {
         28 -> context.getString(R.string.menu_quality_atmos)
         27, 7 -> context.getString(R.string.menu_quality_hires)
@@ -230,7 +233,7 @@ fun downloadLabelForQuality(context: android.content.Context, quality: Int): Str
         -1 -> context.getString(R.string.menu_quality_youtube)
         else -> context.getString(R.string.menu_quality_hires)
     }
-    return context.getString(R.string.menu_download_tier, tier)
+    return tier
 }
 
 /** Same idea, for the Genre row — every caller (Home, Discover, Playlist,
@@ -345,30 +348,8 @@ private fun buildLastFmUrl(target: TrackMenuTarget): String {
     }
 }
 
-/**
- * Faithful port of the shared track/artist/album 3-dot menu used across
- * Home, Playlist, Search, Discover, and Genre Detail (§1.7 / §6.5). One
- * component, capability-gated per screen rather than duplicated per screen.
- *
- * The sheet's own surface and every row here are tinted from the live app
- * accent (MaterialTheme.colorScheme) rather than a fixed neutral color —
- * see accentTint() below — so switching accent (a preset, Monochrome,
- * wallpaper Dynamic Color, or Dynamic Now Playing) restyles this popup the
- * same way it restyles the rest of the app, with no extra wiring needed
- * here: colorScheme.primary/primaryContainer already reflect whichever
- * source is currently driving the theme.
- *
- * [onStartMix] defaults to routing through MixLauncher (which
- * GenerateViewModel and MainShell both listen to) rather than requiring
- * every call site to wire it — "Start Mix with this Song" now works
- * everywhere this sheet is used with zero per-screen changes. A caller can
- * still pass its own [onStartMix] to override that default if a screen
- * ever needs different behavior.
- *
- * [onExploreGenre] / [onDeleteScrobble] remain caller-supplied: those need
- * screen-specific navigation / API side effects this component doesn't own.
- */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Shared overflow sheet; callbacks keep playback and navigation owned by the caller. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TrackContextMenuSheet(
     target: TrackMenuTarget,
@@ -407,7 +388,7 @@ fun TrackContextMenuSheet(
     var resolvingGenre by remember(target) { mutableStateOf(false) }
     val activeDownloads by downloadViewModel.activeDownloads.collectAsStateWithLifecycle()
     val downloadQuality by downloadViewModel.downloadQuality.collectAsStateWithLifecycle()
-    val downloadLabel = remember(downloadQuality) { downloadLabelForQuality(context, downloadQuality) }
+    val downloadTier = downloadTierForQuality(context, downloadQuality)
     var isDownloaded by remember(target) { mutableStateOf(false) }
 
     LaunchedEffect(target, activeDownloads) {
@@ -475,7 +456,6 @@ fun TrackContextMenuSheet(
     }
 
     if (showTimerDialog) {
-        var isExpanded by remember { mutableStateOf(false) }
         var customMinutes by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
         val customDuration = customMinutes.toIntOrNull()?.takeIf { it > 0 }
         var showCustomDialog by remember { mutableStateOf(false) }
@@ -550,23 +530,11 @@ fun TrackContextMenuSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        modifier = Modifier.liquidGlassChrome(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), true),
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        // The background behind is smoothly blurred by EdgeToEdgeDialogWindow.
-        // A translucent/transparent container lets the soft blur shine through
-        // while the individual action cards float with clean contrast on top.
-        containerColor = Color.Transparent,
-        scrimColor = Color.Black.copy(alpha = 0.32f),
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
-        dragHandle = {
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                modifier = Modifier
-                    .padding(top = 12.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp),
-            ) {}
-        },
+        dragHandle = { BottomSheetDefaults.DragHandle() },
     ) {
         EdgeToEdgeDialogWindow()
         Column(
@@ -574,164 +542,150 @@ fun TrackContextMenuSheet(
                 .fillMaxWidth()
                 .adaptiveContentWidth(maxWidth = 600.dp)
                 .align(Alignment.CenterHorizontally)
-                .padding(horizontal = 14.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp + safeDrawingBottomPadding()),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 16.dp + safeDrawingBottomPadding()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (target is TrackMenuTarget.Track) {
-                val playable = playableTrack ?: PlayableTrack(title = target.name, artist = target.artist)
+                val t = target
+                val playable = playableTrack ?: PlayableTrack(title = t.name, artist = t.artist)
                 val isSong = playable.mediaType == com.lastwave.app.playback.MediaType.SONG
-                if (isSong) StartMixCard {
-                    if (onStartMix != null) onStartMix(target.name, target.artist)
-                    else startMixViewModel.startMix(target.name, target.artist, playable.videoId)
-                    onDismiss()
+                val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats
+                    .importedPathOrNull(playable.playbackUrl) != null
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    ArtworkImage(
+                        name = t.name,
+                        artist = t.artist,
+                        embeddedUrl = playable.artworkUrl,
+                        fallbackIcon = Icons.Filled.MusicNote,
+                        modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.medium),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(t.name, style = MaterialTheme.typography.titleMedium, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis)
+                        if (!isSong && t.artist.isNotBlank()) {
+                            Text(t.artist, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, stringResource(R.string.common_close))
+                    }
                 }
-                QuickActionsRow(
-                    onJam = { showJamSheet = true },
-                    onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
-                    onAddToPlaylist = { addToPlaylist(playable); onDismiss() },
-                )
-                // Local songs: imported files get an explicit row.
-                val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playable.playbackUrl) != null
-                val rows = buildList<@Composable (GroupPosition) -> Unit> {
-                    // 1. Genres at top of menu ONLY if available (completely hide if unknown/unavailable)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (isSong) {
+                        com.lastwave.app.util.ArtistHelper.splitArtists(t.artist).forEach { artist ->
+                            MenuMetadataAction(Icons.Filled.Person, artist) {
+                                artistAlbumViewModel.openArtist(artist)
+                                onDismiss()
+                            }
+                        }
+                        playable.album?.takeIf { it.isNotBlank() }?.let { album ->
+                            MenuMetadataAction(Icons.Filled.Album, album) {
+                                artistAlbumViewModel.openAlbum(album, playable.artist.ifBlank { t.artist })
+                                onDismiss()
+                            }
+                        }
+                    }
                     val genre = resolvedGenre?.trim()
                     val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
                     if (resolvingGenre || hasGenre) {
-                        add { pos ->
-                            MenuInfoRow(
-                                icon = Icons.Filled.Sell,
-                                text = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else stringResource(
-                                    R.string.menu_genre_value,
-                                    genre ?: "",
-                                ),
-                                loading = resolvingGenre,
-                                position = pos,
-                                onClick = if (!resolvingGenre && hasGenre) {
-                                    { exploreGenre(genre!!); onDismiss() }
-                                } else null,
-                            )
+                        MenuMetadataAction(
+                            icon = Icons.Filled.Sell,
+                            label = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else genre!!,
+                            loading = resolvingGenre,
+                            enabled = !resolvingGenre && hasGenre,
+                        ) {
+                            exploreGenre(genre!!)
+                            onDismiss()
                         }
                     }
-
-                    if (isSong && musicVideoEnabled && canWatchVideo) {
-                        add { pos ->
-                            MenuActionRow(
-                                icon = Icons.Filled.SmartDisplay,
-                                label = stringResource(R.string.menu_watch_video),
-                                position = pos,
-                            ) {
-                                if (onWatchVideo != null) {
-                                    onWatchVideo()
-                                    onDismiss()
-                                } else {
-                                    showSyncedVideoDialog = true
-                                }
-                            }
-                        }
-                    }
-                    val t = target
-                    if (isLocalFile) {
-                        add { pos ->
-                            MenuActionRow(
-                                Icons.Filled.PlaylistAdd,
-                                androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.local_add_to_playlist),
-                                position = pos,
-                            ) {
-                                addToPlaylist(playable)
-                                onDismiss()
-                            }
-                        }
-                    }
-                    add { pos -> MenuActionRow(Icons.Filled.Timer, stringResource(R.string.menu_sleep_timer), position = pos) { showTimerDialog = true } }
-                    val splitArtists = com.lastwave.app.util.ArtistHelper.splitArtists(t.artist)
-                    for (art in if (isSong) splitArtists else emptyList()) {
-                        add { pos ->
-                            MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_go_artist, art), position = pos) {
-                                artistAlbumViewModel.openArtist(art)
-                                onDismiss()
-                            }
-                        }
-                    }
-                    if (isSong && !playable.album.isNullOrBlank()) {
-                        add { pos ->
-                            val albumArtist = playable.artist.ifBlank { t.artist }
-                            val album = playable.album
-                            if (album.isNullOrBlank()) return@add
-                            MenuActionRow(Icons.Filled.Album, stringResource(R.string.menu_go_album, album), position = pos) {
-                                artistAlbumViewModel.openAlbum(album, albumArtist)
-                                onDismiss()
-                            }
-                        }
-                    }
+                }
+                if (isSong) StartMixCard {
+                    if (onStartMix != null) onStartMix(t.name, t.artist)
+                    else startMixViewModel.startMix(t.name, t.artist, playable.videoId)
+                    onDismiss()
+                }
+                QuickActionsRow(
+                    onPlayNext = { musicPlayer.playNext(playable); onDismiss() },
+                    onAddToPlaylist = { addToPlaylist(playable); onDismiss() },
+                    onAddToQueue = { musicPlayer.addToQueue(playable); onDismiss() },
+                )
+                val actions = buildList<@Composable () -> Unit> {
                     val downloadKey = com.lastwave.app.data.download.TrackDownloadManager.makeDownloadKey(t.name, t.artist)
                     val isDownloading = activeDownloads[downloadKey]?.let { !it.isFinished } == true
-                    // The file is already on the device; no streaming download.
-                    if (!isLocalFile) add { pos ->
+                    if (!isLocalFile) add {
                         when {
-                            isDownloaded -> {
-                                MenuActionRow(Icons.Filled.CheckCircle, stringResource(R.string.menu_downloaded), position = pos) {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        context.getString(R.string.menu_already_downloaded),
-                                        android.widget.Toast.LENGTH_SHORT,
-                                    ).show()
-                                    onDismiss()
-                                }
+                            isDownloaded -> MenuActionRow(
+                                Icons.Filled.CheckCircle, stringResource(R.string.menu_downloaded),
+                            ) {
+                                android.widget.Toast.makeText(context, context.getString(R.string.menu_already_downloaded),
+                                    android.widget.Toast.LENGTH_SHORT).show()
+                                onDismiss()
                             }
-                            isDownloading -> {
-                                MenuActionRow(Icons.Filled.Download, stringResource(R.string.menu_downloading), position = pos) {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        context.getString(R.string.menu_download_progress),
-                                        android.widget.Toast.LENGTH_SHORT,
-                                    ).show()
-                                    onDismiss()
-                                }
+                            isDownloading -> MenuActionRow(
+                                Icons.Filled.Download, stringResource(R.string.menu_downloading),
+                            ) {
+                                android.widget.Toast.makeText(context, context.getString(R.string.menu_download_progress),
+                                    android.widget.Toast.LENGTH_SHORT).show()
+                                onDismiss()
                             }
-                            else -> {
-                                MenuActionRow(Icons.Filled.Download, downloadLabel, position = pos) {
-                                    downloadViewModel.download(
-                                        title = t.name,
-                                        artist = t.artist,
-                                        album = playable.album,
-                                        artworkUrl = playable.artworkUrl,
-                                        videoId = playable.videoId,
-                                        durationMs = playable.durationMs,
-                                    )
-                                    onDismiss()
-                                }
+                            else -> MenuActionRow(
+                                Icons.Filled.Download, stringResource(R.string.details_download),
+                                supportingText = downloadTier,
+                            ) {
+                                downloadViewModel.download(
+                                    title = t.name, artist = t.artist, album = playable.album,
+                                    artworkUrl = playable.artworkUrl, videoId = playable.videoId,
+                                    durationMs = playable.durationMs,
+                                )
+                                onDismiss()
                             }
                         }
                     }
-                    add { pos ->
-                        MenuActionRow(
-                            icon = Icons.Filled.PlayCircle,
-                            label = stringResource(R.string.menu_quick_play),
-                            position = pos,
-                        ) {
+                    if (isSong && musicVideoEnabled && canWatchVideo) add {
+                        MenuActionRow(Icons.Filled.SmartDisplay, stringResource(R.string.menu_watch_video)) {
+                            if (onWatchVideo != null) {
+                                onWatchVideo()
+                                onDismiss()
+                            } else {
+                                showSyncedVideoDialog = true
+                            }
+                        }
+                    }
+                    add {
+                        MenuActionRow(Icons.Filled.Timer, stringResource(R.string.menu_sleep_timer)) {
+                            showTimerDialog = true
+                        }
+                    }
+                    add { PlayerCastMenuRow(musicPlayer) }
+                    add {
+                        MenuActionRow(Icons.Filled.Group, stringResource(R.string.menu_quick_jam)) {
+                            showJamSheet = true
+                        }
+                    }
+                    add {
+                        MenuActionRow(Icons.Filled.Info, stringResource(R.string.menu_audio_details)) {
+                            showDetailsSheet = true
+                        }
+                    }
+                    if (capabilities.showPlayAction) add {
+                        MenuActionRow(Icons.Filled.PlayCircle, stringResource(R.string.menu_quick_play)) {
                             onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
                             onDismiss()
                         }
                     }
-                    add { pos -> MenuActionRow(Icons.Filled.QueueMusic, stringResource(R.string.menu_add_queue), position = pos) { musicPlayer.addToQueue(playable); onDismiss() } }
-                    add { pos ->
-                        Card(
-                            shape = groupShape(pos),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            PlayerCastMenuRow(musicPlayer)
-                        }
-                    }
-                    add { pos ->
-                        MenuActionRow(
-                            icon = Icons.Filled.Link,
-                            label = stringResource(R.string.menu_copy_link),
-                            position = pos,
-                        ) {
+                }
+                MenuActionGrid(actions)
+                val copyActions = buildList<@Composable () -> Unit> {
+                    add {
+                        MenuActionRow(Icons.Filled.Link, stringResource(R.string.menu_copy_link), quiet = true) {
                             val directId = playable.videoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(t.url)
                             if (directId != null) {
                                 val link = "https://www.youtube.com/watch?v=$directId"
@@ -743,381 +697,211 @@ fun TrackContextMenuSheet(
                             onDismiss()
                         }
                     }
-                    if (onRefreshArtwork != null) {
-                        add { pos -> MenuActionRow(Icons.Filled.Refresh, stringResource(R.string.menu_refresh_artwork), position = pos) { onRefreshArtwork(); onDismiss() } }
-                    }
-                    if (capabilities.showCopyActions) {
-                        add { pos -> MenuActionRow(Icons.Filled.ContentCopy, stringResource(R.string.menu_copy_song), position = pos) { clipboard.setText(AnnotatedString("${t.name} \u2014 ${t.artist}")); onDismiss() } }
-                    }
-                    add { pos ->
-                        MenuActionRow(Icons.Filled.Info, stringResource(R.string.menu_details_specs), position = pos) {
-                            showDetailsSheet = true
-                        }
-                    }
-                    if (capabilities.showRecommendationExclusion && !isLocalFile &&
-                        playable.mediaType == com.lastwave.app.playback.MediaType.SONG) {
-                        add { pos ->
-                            MenuActionRow(Icons.Filled.ThumbDown, stringResource(R.string.menu_dont_recommend), position = pos) {
-                                exclusionViewModel.exclude(playable)
-                                onDismiss()
-                            }
-                        }
-                    }
-                    if (onRemoveFromPlaylist != null) {
-                        add { pos ->
-                            MenuActionRow(Icons.Filled.Delete, stringResource(R.string.menu_remove_from_playlist), danger = true, position = pos) {
-                                onRemoveFromPlaylist()
-                                onDismiss()
-                            }
-                        }
-                    }
-                    if (onRemoveFromQueue != null) {
-                        add { pos ->
-                            MenuActionRow(Icons.Filled.Delete, stringResource(R.string.menu_remove_from_queue), danger = true, position = pos) {
-                                onRemoveFromQueue()
-                                onDismiss()
-                            }
+                    if (capabilities.showCopyActions) add {
+                        MenuActionRow(Icons.Filled.ContentCopy, stringResource(R.string.menu_copy_song), quiet = true) {
+                            clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
+                            onDismiss()
                         }
                     }
                 }
-                ExpressiveGroup(rowCount = rows.size) { index, position -> rows[index](position) }
+                MenuActionGrid(copyActions, tonal = false)
+                if (onRefreshArtwork != null) {
+                    MenuActionRow(Icons.Filled.Refresh, stringResource(R.string.menu_refresh_artwork), quiet = true) {
+                        onRefreshArtwork()
+                        onDismiss()
+                    }
+                }
+                if (capabilities.showRecommendationExclusion && !isLocalFile && isSong) {
+                    MenuActionRow(Icons.Filled.ThumbDown, stringResource(R.string.menu_dont_recommend), quiet = true) {
+                        exclusionViewModel.exclude(playable)
+                        onDismiss()
+                    }
+                }
+                if (onRemoveFromPlaylist != null) {
+                    MenuActionRow(Icons.Filled.Delete, stringResource(R.string.menu_remove_from_playlist), danger = true) {
+                        onRemoveFromPlaylist()
+                        onDismiss()
+                    }
+                }
+                if (onRemoveFromQueue != null) {
+                    MenuActionRow(Icons.Filled.Delete, stringResource(R.string.menu_remove_from_queue), danger = true) {
+                        onRemoveFromQueue()
+                        onDismiss()
+                    }
+                }
             } else if (target is TrackMenuTarget.Artist) {
-                val rows = buildList<@Composable (GroupPosition) -> Unit> {
-                    add { pos ->
-                        MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_view_artist), position = pos) {
-                            artistAlbumViewModel.openArtist(target.name)
-                            onDismiss()
-                        }
-                    }
-                    add { pos ->
-                        MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm), position = pos) {
-                            openUrl(context, buildLastFmUrl(target))
-                            onDismiss()
-                        }
-                    }
+                MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_view_artist)) {
+                    artistAlbumViewModel.openArtist(target.name)
+                    onDismiss()
                 }
-                ExpressiveGroup(rowCount = rows.size) { index, position -> rows[index](position) }
+                MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm)) {
+                    openUrl(context, buildLastFmUrl(target))
+                    onDismiss()
+                }
             } else if (target is TrackMenuTarget.Album) {
-                val rows = buildList<@Composable (GroupPosition) -> Unit> {
-                    add { pos ->
-                        MenuActionRow(Icons.Filled.Album, stringResource(R.string.menu_view_album), position = pos) {
-                            artistAlbumViewModel.openAlbum(target.name, target.artist)
-                            onDismiss()
-                        }
-                    }
-                    if (target.artist.isNotBlank()) {
-                        add { pos ->
-                            MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_view_artist_name, target.artist), position = pos) {
-                                artistAlbumViewModel.openArtist(target.artist)
-                                onDismiss()
-                            }
-                        }
-                    }
-                    add { pos ->
-                        MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm), position = pos) {
-                            openUrl(context, buildLastFmUrl(target))
-                            onDismiss()
-                        }
+                MenuActionRow(Icons.Filled.Album, stringResource(R.string.menu_view_album)) {
+                    artistAlbumViewModel.openAlbum(target.name, target.artist)
+                    onDismiss()
+                }
+                if (target.artist.isNotBlank()) {
+                    MenuActionRow(Icons.Filled.Person, stringResource(R.string.menu_view_artist_name, target.artist)) {
+                        artistAlbumViewModel.openArtist(target.artist)
+                        onDismiss()
                     }
                 }
-                ExpressiveGroup(rowCount = rows.size) { index, position -> rows[index](position) }
+                MenuActionRow(Icons.Filled.Language, stringResource(R.string.menu_open_lastfm)) {
+                    openUrl(context, buildLastFmUrl(target))
+                    onDismiss()
+                }
             }
         }
     }
 }
 
-/**
- * "Start Mix with this Song" (§6) — a featured card rather than a plain
- * text row, so it reads as the primary action in the sheet. Colored with
- * the app's live accent (MaterialTheme.colorScheme.primary), which already
- * reflects whichever source is currently driving the theme — a manual
- * preset, Monochrome, wallpaper Dynamic Color, or (when active) the
- * Dynamic Now Playing Theme's extracted artwork palette. There's no
- * separate "which accent source" branch to maintain here: reading
- * colorScheme.primary is inherently correct for all of them since that's
- * exactly the value ThemeRepository recomputes for whichever source is
- * currently active.
- */
 @Composable
 private fun StartMixCard(onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "startMixScale",
-    )
-
-    Card(
+    val scale = rememberGroupPressScale(interactionSource)
+    Surface(
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-        // 0dp deliberately — see ModeCard/SettingsToggleCard for why a
-        // nonzero tonalElevation would blend a second tinted layer on top
-        // of containerColor here.
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shape = CircleShape,
         interactionSource = interactionSource,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            },
+        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
         Row(
-            Modifier.padding(horizontal = 18.dp, vertical = 10.dp).fillMaxWidth(),
+            Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.onPrimary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Shuffle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-            }
-            Spacer(Modifier.width(16.dp))
-            Text(
-                stringResource(R.string.menu_start_mix),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Icon(Icons.Filled.Shuffle, null, Modifier.size(24.dp))
+            Text(stringResource(R.string.menu_start_mix_short), style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, Modifier.size(16.dp))
         }
     }
 }
 
-/** Three quick actions directly below Start Mix — no outline, no dividers.
- *  Each action is its own card in a spaced Row, so separation matches the
- *  sheet's current grouped language instead of the old outlined container. */
 @Composable
 private fun QuickActionsRow(
-    onJam: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onAddToQueue: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        QuickActionCard(Icons.Filled.Group, stringResource(R.string.menu_quick_jam), Modifier.weight(1f), onJam)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuickActionCard(Icons.Filled.QueuePlayNext, stringResource(R.string.menu_quick_play_next), Modifier.weight(1f), onPlayNext)
         QuickActionCard(Icons.Filled.PlaylistAdd, stringResource(R.string.menu_quick_add_playlist), Modifier.weight(1f), onAddToPlaylist)
+        QuickActionCard(Icons.Filled.QueueMusic, stringResource(R.string.menu_add_queue), Modifier.weight(1f), onAddToQueue)
     }
 }
 
 @Composable
-private fun WatchVideoCard(
-    onClick: () -> Unit,
-) {
+private fun QuickActionCard(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberGroupPressScale(interactionSource)
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-        shape = RoundedCornerShape(22.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        interactionSource = interactionSource,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            },
+    Column(
+        modifier.clip(MaterialTheme.shapes.large)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.SmartDisplay,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = stringResource(R.string.menu_watch_video),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.video_sync_tag),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Icon(icon, null, Modifier.size(48.dp).padding(12.dp), tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Text(label, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun MenuActionGrid(actions: List<@Composable () -> Unit>, tonal: Boolean = true) {
+    Surface(
+        color = if (tonal) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val columns = if (actions.size == 1 || maxWidth < 280.dp || LocalDensity.current.fontScale >= 1.3f) 1 else 2
+            Column(Modifier.padding(if (tonal) 4.dp else 0.dp)) {
+                actions.chunked(columns).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        pair.forEach { action -> Box(Modifier.weight(1f)) { action() } }
+                        if (pair.size < columns) Spacer(Modifier.weight(1f))
                     }
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.menu_watch_video_sub),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(16.dp),
-            )
         }
     }
 }
 
-@Composable
-private fun QuickActionCard(
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val scale = rememberGroupPressScale(interactionSource)
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(22.dp),
-        interactionSource = interactionSource,
-        modifier = modifier.graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        },
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-/** A rounded, elevated-feeling row (real Card, not a flat clickable Row) —
- *  each menu action is one row in the shared ExpressiveGroup surface (see
- *  the call site), so the whole set of actions reads as one continuous
- *  premium container instead of separate floating rows — same language as
- *  Settings/Generator's grouped lists. */
 @Composable
 private fun MenuActionRow(
     icon: ImageVector,
     label: String,
     danger: Boolean = false,
-    position: GroupPosition = GroupPosition.SINGLE,
+    supportingText: String? = null,
+    quiet: Boolean = false,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberGroupPressScale(interactionSource)
-    val contentColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-    val badgeColor = if (danger) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
-    val badgeContentColor = if (danger) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
-
-    Card(
+    val contentColor = when {
+        danger -> MaterialTheme.colorScheme.error
+        quiet -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Surface(
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = groupShape(position),
+        shape = MaterialTheme.shapes.medium,
+        color = Color.Transparent,
+        contentColor = contentColor,
         interactionSource = interactionSource,
-        modifier = Modifier.fillMaxWidth().graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        },
+        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            Modifier.heightIn(min = if (quiet) 48.dp else 56.dp).padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(badgeColor),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = badgeContentColor, modifier = Modifier.size(20.dp))
+            Icon(icon, null, Modifier.size(24.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis)
+                if (supportingText != null) {
+                    Text(supportingText, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis)
+                }
             }
-            Spacer(Modifier.width(16.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
 
 @Composable
-private fun MenuInfoRow(
+private fun MenuMetadataAction(
     icon: ImageVector,
-    text: String,
-    loading: Boolean,
-    position: GroupPosition = GroupPosition.SINGLE,
-    onClick: (() -> Unit)? = null,
+    label: String,
+    loading: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
 ) {
-    Card(
-        onClick = onClick ?: {},
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = groupShape(position),
-        // Not actually interactive when there's no genre to open yet
-        // (still resolving, or resolution came back empty) — no ripple,
-        // no press feedback pretending there's something to tap.
-        enabled = onClick != null,
-        modifier = Modifier.fillMaxWidth(),
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.heightIn(min = 48.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(16.dp))
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            if (loading) {
-                ExpressiveInlineLoadingIndicator(
-                    modifier = Modifier.padding(start = 8.dp),
-                    size = 14.dp,
-                    strokeWidth = 2.dp,
-                )
-            } else if (onClick != null) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-            }
+        Icon(icon, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(8.dp))
+        Text(label, modifier = Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (loading) {
+            Spacer(Modifier.width(8.dp))
+            ExpressiveInlineLoadingIndicator(size = 14.dp)
         }
     }
 }
