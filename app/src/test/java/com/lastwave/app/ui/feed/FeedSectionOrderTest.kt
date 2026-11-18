@@ -14,28 +14,6 @@ class FeedSectionOrderTest {
     )
 
     @Test
-    fun waitsForEarlierSectionsBeforeRevealingLaterOnes() {
-        val order = listOf("genres", "discovery", "picks", "native", "albums")
-        val pending = setOf("discovery", "picks", "albums")
-
-        assertThat(readyFeedSections(order, setOf("genres", "native"), pending::contains))
-            .containsExactly("genres").inOrder()
-        assertThat(readyFeedSections(order, setOf("genres", "discovery", "picks", "native"), pending::contains))
-            .containsExactly("genres", "discovery", "picks", "native").inOrder()
-    }
-
-    @Test
-    fun keepsVisibleSectionsInPlaceWhenNewDataArrives() {
-        val order = FeedSectionOrder()
-        assertThat(order.update(listOf("genres", "native"), listOf("genres", "native")))
-            .containsExactly("genres", "native").inOrder()
-        assertThat(order.update(listOf("genres", "picks", "native"), listOf("genres", "picks", "native")))
-            .containsExactly("genres", "native", "picks").inOrder()
-        assertThat(order.update(listOf("genres", "picks"), listOf("genres", "picks")))
-            .containsExactly("genres", "picks").inOrder()
-    }
-
-    @Test
     fun refreshUpdatesMatchingShelvesWithoutRemovingOrReorderingExistingOnes() {
         val old = listOf(shelf("First", "first"), shelf("Second", "old"))
         val updatedSecond = shelf(" second ", "updated")
@@ -45,17 +23,6 @@ class FeedSectionOrderTest {
             .containsExactly(old[0], updatedSecond.copy(title = "Second"), added).inOrder()
         assertThat(mergeFeedShelves(old, listOf(HomeShelf("Second"))))
             .containsExactlyElementsIn(old).inOrder()
-    }
-
-    @Test
-    fun laterSectionsDoNotMoveAnExistingPagedShelf() {
-        val order = FeedSectionOrder()
-        order.update(listOf("genres", "paged_shelf_0"), listOf("genres", "paged_shelf_0"))
-
-        assertThat(order.update(
-            listOf("genres", "new_section", "paged_shelf_0"),
-            listOf("genres", "new_section", "paged_shelf_0"),
-        )).containsExactly("genres", "paged_shelf_0", "new_section").inOrder()
     }
 
     @Test

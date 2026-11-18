@@ -217,7 +217,6 @@ fun FeedScreen(
         viewModel.selectChip(null)
     }
     val discoveryTracks by viewModel.discoveryTracks.collectAsStateWithLifecycle()
-    val isDiscoveryLoading by viewModel.isDiscoveryLoading.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
@@ -633,9 +632,10 @@ fun FeedScreen(
                     }
                 }
 
-                val sectionOrder = remember(homeSectionsOrder, pinnedHomeSections, allHiddenIds, state.isChipActive,
-                    state.feedData.userName, state.feedData.ytAccountName, state.feedData.isYtConnected) { FeedSectionOrder() }
-                val (orderedFeedSections, ytShelfBySectionKey, hasPendingSections) = remember(
+                // Sections render the moment their data lands, in their configured
+                // order. Holding them until the whole feed finished kept everything
+                // below My genres behind a spinner for the slowest fetch (10 s+).
+                val (orderedFeedSections, ytShelfBySectionKey) = remember(
                     showSynthetic, allHiddenIds, pinnedHomeSections, homeSectionsOrder,
                     quickTiles, podcastsEnabled, state.feedData.podcastShows, displayTags, previewQueues,
                     combinedQuickPicks, discoveryTracks, hasShownDiscovery, state.feedData.becauseYouListenTo,
@@ -643,9 +643,8 @@ fun FeedScreen(
                     individualTopArtists, state.feedData.heavyRotation, state.feedData.recentAlbums,
                     state.feedData.charts, combinedNewReleases, state.feedData.friends,
                     remainingNativeShelves, resolveNativeShelf, state.feedData.spotlight,
-                    state.isFeedUpdating, state.feedData.lastUpdatedMillis, isDiscoveryLoading, sectionOrder,
                 ) {
-                    if (state.isChipActive) return@remember Triple(emptyList<String>(), emptyMap<String, HomeShelf>(), false)
+                    if (state.isChipActive) return@remember emptyList<String>() to emptyMap<String, HomeShelf>()
 
                     // cache so each yt: key is resolved once
                     val ytResolved = HashMap<String, HomeShelf?>()
@@ -692,18 +691,7 @@ fun FeedScreen(
                     }
                     val winners = winnerByShelf.values.toHashSet()
                     val sections = available.filter { key -> !key.startsWith("yt:") || key in winners }
-                    val sectionSet = sections.toSet()
-                    fun isPending(key: String): Boolean =
-                        (key == "discover_new_music" && isDiscoveryLoading) ||
-                            (state.isFeedUpdating && state.feedData.lastUpdatedMillis == 0L &&
-                                key in feedSectionsAwaitingData &&
-                                (key != "podcast_shelf" && key != "podcasts" || podcastsEnabled))
-                    val ready = readyFeedSections(ordered, sectionSet, ::isPending)
-                    Triple(
-                        sectionOrder.update(sections, ready),
-                        winners.associateWith { key -> ytShelf(key)!! },
-                        ordered.any { it !in sectionSet && isPending(it) },
-                    )
+                    sections to winners.associateWith { key -> ytShelf(key)!! }
                 }
 
                 val visiblePagedShelfKeys = remember(state.pagedShelves, allHiddenIds, ytHidden, state.isChipActive) {
@@ -721,10 +709,8 @@ fun FeedScreen(
                 val pagedShelvesByKey = remember(state.pagedShelves) {
                     state.pagedShelves.mapIndexed { index, shelf -> "paged_shelf_${index}_${shelf.title}" to shelf }.toMap()
                 }
-                val containerOrder = remember(sectionOrder) { FeedSectionOrder() }
-                val allContainerKeys = remember(orderedFeedSections, visiblePagedShelfKeys, containerOrder) {
-                    val available = orderedFeedSections + visiblePagedShelfKeys
-                    containerOrder.update(available, available)
+                val allContainerKeys = remember(orderedFeedSections, visiblePagedShelfKeys) {
+                    orderedFeedSections + visiblePagedShelfKeys
                 }
 
                 val showInitialPlaceholders = showSynthetic && state.isFeedUpdating && state.feedData.lastUpdatedMillis == 0L
@@ -1638,7 +1624,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if ((state.isLoadingMore || hasPendingSections) && hasAnyFeedSections) {
+                    if (state.isLoadingMore && hasAnyFeedSections) {
                         item(key = "loading_more_indicator", contentType = "loading") {
                             Box(
                                 modifier = Modifier
@@ -1651,7 +1637,7 @@ fun FeedScreen(
                         }
                     }
 
-                    if (showSynthetic && hasAnyFeedSections && !hasPendingSections) {
+                    if (showSynthetic && hasAnyFeedSections) {
                         item(key = "feed_footer", contentType = "feed_footer") {
                             FeedFooter(lastUpdatedMillis = state.feedData.lastUpdatedMillis)
                         }
