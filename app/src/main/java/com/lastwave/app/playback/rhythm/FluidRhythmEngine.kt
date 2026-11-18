@@ -58,8 +58,14 @@ object FluidRhythmEngine {
     var currentRhythmValue: Float = 0f
         private set
 
+    // The Visualizer is an extra effect on the output session (battery, and it
+    // sits on the bit-perfect path), so it only exists while beat sync is on.
     @Volatile
     var isEnabled: Boolean = false
+        set(value) {
+            field = value
+            syncVisualizer()
+        }
 
     @Volatile
     private var rawRhythmTarget: Float = 0f
@@ -109,11 +115,27 @@ object FluidRhythmEngine {
 
     @Synchronized
     fun attachSession(sessionId: Int) {
-        if (currentSessionId == sessionId && visualizer != null) return
-        detachSession()
-        currentSessionId = sessionId
-        if (sessionId <= 0 || sessionId == C.AUDIO_SESSION_ID_UNSET) return
+        if (currentSessionId != sessionId) {
+            releaseVisualizer()
+            currentSessionId = sessionId
+        }
+        syncVisualizer()
+    }
 
+    @Synchronized
+    fun detachSession() {
+        releaseVisualizer()
+        currentSessionId = C.AUDIO_SESSION_ID_UNSET
+    }
+
+    @Synchronized
+    private fun syncVisualizer() {
+        if (!isEnabled) {
+            releaseVisualizer()
+            return
+        }
+        val sessionId = currentSessionId
+        if (visualizer != null || sessionId <= 0 || sessionId == C.AUDIO_SESSION_ID_UNSET) return
         runCatching {
             val v = Visualizer(sessionId).apply {
                 captureSize = 128
@@ -130,14 +152,12 @@ object FluidRhythmEngine {
         }
     }
 
-    @Synchronized
-    fun detachSession() {
+    private fun releaseVisualizer() {
         runCatching {
             visualizer?.enabled = false
             visualizer?.release()
         }
         visualizer = null
-        currentSessionId = C.AUDIO_SESSION_ID_UNSET
     }
 
     private fun processVisualizerFft(fft: ByteArray) {
