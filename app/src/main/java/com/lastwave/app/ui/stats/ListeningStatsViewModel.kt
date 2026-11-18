@@ -40,6 +40,7 @@ class ListeningStatsViewModel @Inject constructor(
 
     private var rawStatsList: List<SongPlayStatsEntity> = emptyList()
     private var localStatsCache: LocalStatsRepository.LocalStats? = null
+    private var tasteTags: List<String> = emptyList()
 
     init {
         loadData()
@@ -71,6 +72,7 @@ class ListeningStatsViewModel @Inject constructor(
             runCatching {
                 rawStatsList = songPlayStatsDao.getAll()
                 localStatsCache = runCatching { localStatsRepository.load() }.getOrNull()
+                tasteTags = runCatching { tasteProfileProvider.get().topTags.toList() }.getOrNull().orEmpty()
             }
             recalculate()
             _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
@@ -349,7 +351,7 @@ class ListeningStatsViewModel @Inject constructor(
                         val durationMs = alb.playCount * 210_000L
                         RankedCategoryItem(
                             rank = idx + 1,
-                            title = alb.title,
+                            title = alb.name,
                             subtitle = "${alb.playCount} plays \u2022 ${alb.artist}",
                             durationLabel = formatHoursMins(durationMs),
                             progress = (alb.playCount.toFloat() / maxPlays).coerceIn(0.05f, 1f),
@@ -376,7 +378,7 @@ class ListeningStatsViewModel @Inject constructor(
                 }
             }
             CategoryFilter.GENRE -> {
-                val tags = tasteProfileProvider.topTags.toList()
+                val tags = tasteTags
                 val genres = if (tags.isNotEmpty()) tags else listOf("Pop", "Electronic", "Rock", "Hip-Hop", "Indie", "R&B")
                 val totalMs = tracks.sumOf { if (it.totalPlayTimeMs > 0L) it.totalPlayTimeMs else it.playCount * 210_000L }
                 genres.take(8).mapIndexed { idx, genre ->
