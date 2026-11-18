@@ -144,23 +144,24 @@ class FeedViewModelChipsAndPaginationTest {
     }
 
     @Test
-    fun defaultPaginationWaitsForInitialFeedToFinish() {
+    fun defaultPaginationStartsWithFirstShelvesAndKeepsItsPlaceWhenTheFeedFinishes() {
         val feed = FeedData(nativeShelves = listOf(createShelf("Home", "video")), homeContinuationToken = "next")
         val pending = CompletableDeferred<FeedData>()
         coEvery { feedRepository.loadFeed(any(), any()) } coAnswers {
             secondArg<(FeedData) -> Unit>()(feed)
             pending.await()
         }
-        coEvery { innerTube.fetchHomeContinuation("next") } returns HomePage()
+        coEvery { innerTube.fetchHomeContinuation("next") } returns
+            HomePage(shelves = listOf(createShelf("Page two", "two")), continuationToken = "after")
 
         val vm = createViewModel()
         vm.loadMoreHomeShelves()
-        coVerify(exactly = 0) { innerTube.fetchHomeContinuation(any()) }
+        waitFor { vm.uiState.value.defaultContinuationToken == "after" }
+        coVerify(exactly = 1) { innerTube.fetchHomeContinuation("next") }
 
         pending.complete(feed)
-        vm.loadMoreHomeShelves()
-        waitFor { !vm.uiState.value.isLoadingMore }
-        coVerify(exactly = 1) { innerTube.fetchHomeContinuation("next") }
+        waitFor { !vm.uiState.value.isFeedUpdating }
+        assertThat(vm.uiState.value.defaultContinuationToken).isEqualTo("after")
     }
 
     @Test
