@@ -23,8 +23,16 @@
     <string name="settings_language_applied">Idioma aplicado</string>
 
     <string name="settings_section_youtube">YouTube Music</string>
+    <string name="playback_vpn_youtube_login_required">Para reproducir con VPN necesitas una cuenta de YouTube Music conectada. Inicia sesión en Ajustes y vuelve a intentarlo.</string>
     <string name="settings_connect_yt">Conectar YouTube Music</string>
     <string name="settings_connect_yt_sub">Inicia sesión para ver y sincronizar todas las listas</string>
+    <string name="settings_cookie_login">Inicio de sesión con cookies de YouTube Music</string>
+    <string name="settings_cookie_login_sub">Inicia sesión con cookies de sesión exportadas</string>
+    <string name="cookie_login_instructions">Pega tus cookies de sesión de music.youtube.com (cabecera Cookie sin procesar, cookies.txt de Netscape o array JSON). Deben incluir SAPISID o __Secure-3PAPISID.</string>
+    <string name="cookie_login_placeholder">SID=...; __Secure-3PAPISID=...; SAPISID=...</string>
+    <string name="cookie_login_paste_clipboard">Pegar del portapapeles</string>
+    <string name="cookie_login_connect">Conectar</string>
+    <string name="cookie_login_connecting">Conectando…</string>
     <string name="settings_yt_sync">Sincronización bidireccional</string>
     <string name="settings_select_playlists">Elegir listas para sincronizar</string>
     <string name="settings_yt_shown">Listas de YouTube visibles</string>
@@ -36,16 +44,35 @@
 
     <string name="settings_section_appearance">Apariencia</string>
     <string name="settings_amoled">Modo AMOLED</string>
-    <string name="settings_amoled_sub">Fondo negro puro</string>
+    <string name="settings_amoled_sub">Fondo negro puro (solo en modo oscuro)</string>
     <string name="settings_dynamic_color">Color dinámico</string>
     <string name="settings_dynamic_color_sub">Usar los colores del fondo de pantalla</string>
     <string name="settings_dynamic_now_playing">Dinámico en reproducción</string>
     <string name="settings_dynamic_now_playing_sub">Combinar con la portada</string>
     <string name="settings_app_font">Fuente de la aplicación</string>
     <string name="settings_app_font_sub">Un aspecto personalizado en toda la app</string>
+    <string name="settings_bold_font">Usar fuente en negrita</string>
+    <string name="settings_bold_font_sub">Engrosa todo el texto, incluidas las letras</string>
+    <string name="settings_collapsing_nav_bar">Barra de navegación contraíble</string>
+    <string name="settings_collapsing_nav_bar_sub">Reduce la barra a un icono de pestaña y acopla el minirreproductor a su lado al desplazarte</string>
     <string name="settings_section_accent">Acento</string>
 
     <string name="settings_section_experimental">Experimental</string>
+    <string name="settings_music_video">Videoclip</string>
+    <string name="settings_music_video_on">Mira videoclips sincronizados desde el menú de reproducción</string>
+    <string name="settings_music_video_off">Desactivado (actívalo para ver el vídeo sincronizado en el menú del reproductor)</string>
+    <string name="menu_watch_video">Ver vídeo</string>
+    <string name="menu_watch_video_sub">Sincronizado al milisegundo con la música</string>
+    <string name="video_sync_tag">SINCRONIZADO</string>
+    <string name="video_buffering">Sincronizando el vídeo…</string>
+    <string name="video_stream_unavailable">No se pudo cargar el vídeo de esta canción</string>
+    <string name="video_retry">Reintentar</string>
+    <string name="video_exit_fullscreen">Salir de pantalla completa</string>
+    <string name="video_enter_fullscreen">Pantalla completa</string>
+    <string name="video_quality">Calidad</string>
+    <string name="video_quality_title">Calidad de vídeo</string>
+    <string name="video_quality_auto">Automática</string>
+    <string name="video_quality_auto_recommended">Automática (recomendada)</string>
     <string name="settings_liquid_glass">Cristal líquido</string>
     <string name="settings_liquid_glass_sub">Materiales translúcidos estilo iOS en la app</string>
     <string name="settings_lyrics_animation">Animación de letras</string>
@@ -54,6 +81,10 @@
     <string name="settings_wavy_seekbar">Barra ondulada</string>
     <string name="settings_wavy_seekbar_on">Deslizador ondulado fluido multicapa</string>
     <string name="settings_wavy_seekbar_off">Deslizador clásico estándar</string>
+    <string name="settings_seekbar_style">Estilo de la barra de progreso</string>
+    <string name="settings_seekbar_style_default">Predeterminada</string>
+    <string name="settings_seekbar_style_wavy">Ondulada</string>
+    <string name="settings_seekbar_style_waveform">Forma de onda</string>
     <string name="settings_studio_clarity">Claridad Master de estudio</string>
     <string name="settings_studio_clarity_on">Sonido abierto cristalino • detalle aéreo • separación profunda y limpia</string>
     <string name="settings_studio_clarity_off">Salida original sin procesar</string>
@@ -81,11 +112,38 @@
     <string name="settings_now_playing_sub">Muestra al instante lo que suena en tu perfil</string>
 
     <string name="settings_section_data">Gestión de datos</string>
+    <string name="settings_section_storage">Almacenamiento</string>
+    <string name="settings_storage_title">Almacenamiento</string>
+    <string name="settings_storage_sub">Consulta la caché y gestiona la música sin conexión</string>
+    <string name="storage_back">Atrás</string>
     <string name="settings_excluded_songs">Canciones excluidas</string>
     <string name="settings_clear_all">Borrar todos los datos guardados</string>
     <string name="settings_clear_all_sub">Borra todos los datos locales</string>
 
     <string name="settings_section_backup">Copia de seguridad</string>
+    <string name="storage_cached_media">Caché de portadas y audio en streaming</string>
+    <string name="storage_downloaded_music">Música descargada</string>
+    <string name="storage_cache_usage">%1$s usados de %2$s</string>
+    <string name="storage_cache_artwork_usage">Portadas: %1$s</string>
+    <string name="storage_cache_audio_usage">Audio en streaming: %1$s</string>
+    <string name="storage_cache_last_cleared">Última limpieza: %1$s • %2$s liberados</string>
+    <string name="storage_cache_limit">Límite de la caché</string>
+    <string name="storage_cache_limit_summary">Límite seleccionado: %1$s • Máximo disponible: %2$s. Los elementos más antiguos se eliminan cuando hace falta; las descargas no cuentan.</string>
+    <string name="storage_quality_note">Con datos móviles, las portadas usan miniaturas más pequeñas. Si ya hay una portada en alta resolución en la caché, LastWave la reutiliza sin volver a descargarla.</string>
+    <string name="storage_clear_cache">Borrar caché</string>
+    <string name="storage_clear_cache_title">¿Borrar las portadas y el audio en caché?</string>
+    <string name="storage_clear_cache_message">Se eliminarán las portadas y el audio en streaming de la caché. La música descargada se quedará en tu dispositivo.</string>
+    <string name="storage_download_usage">%1$d canciones • %2$s</string>
+    <string name="storage_delete_downloads">Borrar música descargada</string>
+    <string name="storage_delete_downloads_title">¿Borrar toda la música descargada?</string>
+    <string name="storage_delete_downloads_message">¿Borrar para siempre las %1$d canciones descargadas (%2$s)? No se puede deshacer.</string>
+    <string name="storage_manage_downloads">Gestionar descargas</string>
+    <string name="storage_limit_warning_title">¿Reducir el límite de la caché?</string>
+    <string name="storage_limit_warning">Se eliminarán algunas portadas y audio antiguos de la caché para ajustarse al nuevo límite. La música descargada no se verá afectada.</string>
+    <string name="storage_limit_confirm">Aplicar límite</string>
+    <string name="storage_cache_cleared">Caché borrada</string>
+    <string name="storage_downloads_deleted">Música descargada borrada</string>
+    <string name="storage_operation_failed">No se pudo completar la acción de almacenamiento</string>
     <string name="settings_backup">Crear copia</string>
     <string name="settings_backup_sub">Guarda todos tus datos en un archivo</string>
     <string name="settings_restore">Restaurar</string>
@@ -98,6 +156,8 @@
     <string name="settings_diagnostics_sub">Comparte registros para solucionar problemas</string>
     <string name="settings_check_updates">Buscar actualizaciones</string>
     <string name="settings_source_code">Código fuente</string>
+    <string name="settings_desktop_app">Descargar la app de escritorio</string>
+    <string name="about_made_by">Creado por el equipo de LastWave</string>
 
     <string name="common_cancel">Cancelar</string>
     <string name="common_done">Listo</string>
@@ -113,7 +173,7 @@
     <string name="common_selected">Seleccionado</string>
 
     <string name="dialog_clear_all_title">¿Borrar todos los datos?</string>
-    <string name="dialog_clear_all_text">Esto elimina tus credenciales, listas y datos en caché. No se puede deshacer.</string>
+    <string name="dialog_clear_all_text">Esto elimina tus credenciales, listas, canciones descargadas y datos en caché. No se puede deshacer.</string>
     <string name="dialog_clear_all_confirm">Borrar todo</string>
     <string name="dialog_disconnect_yt_title">¿Desconectar YouTube Music?</string>
     <string name="dialog_disconnect_yt_text">Las listas ya reflejadas en tu cuenta se conservan, pero LastWave deja de sincronizar y olvida la conexión.</string>
@@ -128,10 +188,18 @@
     <string name="home_sections_desc">Las secciones ocultas desaparecen de tu pestaña de inicio. Las secciones nuevas de futuras actualizaciones seguirán visibles hasta que las ocultes.</string>
     <string name="home_section_hero_title">Bienvenida</string>
     <string name="home_section_hero_sub">Saludo y radio infinita</string>
+    <string name="home_section_greeting_title">Saludo</string>
+    <string name="home_section_greeting_sub">Saludo diario y fecha actual</string>
+    <string name="home_section_infinite_radio_title">Radio infinita</string>
+    <string name="home_section_infinite_radio_sub">Radio al instante según tus gustos</string>
     <string name="home_section_quick_tiles_title">Acceso rápido</string>
     <string name="home_section_quick_tiles_sub">Accesos directos</string>
     <string name="home_section_taste_strip_title">Etiquetas de gusto</string>
     <string name="home_section_taste_strip_sub">Radio rápida por género y ánimo</string>
+    <string name="home_section_discover_title">Descubre música nueva</string>
+    <string name="home_section_discover_sub">Cambia las canciones cada vez que actualizas</string>
+    <string name="home_section_preview_queues_title">Vista previa de colas</string>
+    <string name="home_section_preview_queues_sub">Colas reproducidas anteriormente</string>
     <string name="home_section_quick_picks_title">Elegido para ti</string>
     <string name="home_section_quick_picks_sub">Selecciones rápidas a tu gusto</string>
     <string name="home_section_because_title">Porque escuchas</string>
@@ -156,6 +224,8 @@
     <string name="home_section_releases_sub">Singles y álbumes frescos</string>
     <string name="home_section_friends_title">Tus amigos</string>
     <string name="home_section_friends_sub">Actividad de escucha de amigos</string>
+    <string name="home_section_podcasts_title">Podcasts</string>
+    <string name="home_section_podcasts_sub">Podcasts populares</string>
 
     <string name="settings_downloads_sub">%1$d canciones • %2$s • Music/%3$s</string>
     <string name="settings_downloads_sub_structured">%1$d canciones • %2$s • Music/%3$s • %4$s</string>
@@ -177,7 +247,7 @@
     <string name="dl_saved_structured">Music/%1$s/ • %2$s • %3$d canciones</string>
     <string name="dl_clear_history">Esto borra la lista de historial en la app. Tus audios en Music/%1$s seguirán a salvo en el dispositivo.</string>
     <string name="dl_delete_all">Esto borra para siempre todos los %1$d audios descargados de Music/%2$s y libera %3$s de espacio.</string>
-    <string name="dl_empty_hint">Toca el menú de 3 puntos de cualquier canción y elige \"Download (Max Quality)\". Los temas Lossless FLAC y el audio de YouTube van directo a la carpeta Music del dispositivo (ver Carpeta de descargas en el menú ⋮) con metadatos y letras LRCLIB sincronizadas.</string>
+    <string name="dl_empty_hint">Toca el menú de 3 puntos de cualquier canción y elige \"Descargar\". Los temas se guardan con la calidad elegida en Ajustes → Audio y streaming → Calidad de descarga directamente en la carpeta Music del dispositivo (ver Carpeta de descargas en el menú ⋮) con metadatos incrustados y letras LRCLIB sincronizadas.</string>
     <string name="dl_open_folder">Abrir Music/%1$s</string>
     <string name="dl_open_manager">Abrir en el gestor de archivos</string>
     <string name="dl_clear_history_only">Borrar solo el historial de descargas</string>
@@ -238,7 +308,7 @@
     <string name="signal_detail_tempo_ok">1.00x — sin procesado de tono</string>
     <string name="signal_detail_tempo_active">%1$sx — remuestreo activo</string>
     <string name="signal_detail_gain_unity">0.0 dB — ganancia unidad</string>
-    <string name="signal_detail_gain_scaled">Ganancia %1$sx — se exige unidad (ducking o fundido activo)</string>
+    <string name="signal_detail_gain_scaled">Ganancia %1$sx — volumen ajustado</string>
     <string name="signal_detail_sysvol_hw">Volumen de hardware — sin escalado digital</string>
     <string name="signal_detail_sysvol_max">MÁX — sin atenuación digital</string>
     <string name="signal_detail_sysvol_scaled">%1$d/%2$d — atenuación digital antes del DAC</string>
@@ -261,6 +331,45 @@
 
     <string name="widget_obsidian_name">LastWave Vidrio de obsidiana</string>
     <string name="widget_obsidian_description">Reproductor de cristal de obsidiana esmerilado con profundidad translúcida y borde de cristal.</string>
+
+    <!-- Wave home-screen widgets -->
+    <string name="wave_widget_strip_name">LastWave Franja · 3×1–4×1</string>
+    <string name="wave_widget_strip_description">Reproductor con portada completa y botones de me gusta, anterior, reproducir, siguiente y aleatorio; ajustable entre 3×1 y 4×1</string>
+    <string name="wave_widget_glass_name">LastWave Cristal · 2×2</string>
+    <string name="wave_widget_glass_description">Reproductor de cristal cuadrado y fijo con los colores de la portada, el progreso y los controles de reproducción</string>
+    <string name="wave_widget_circular_name">LastWave Wave circular · 2×2</string>
+    <string name="wave_widget_circular_description">Portada circular fija con un anillo de onda y botones de anterior, reproducir y siguiente</string>
+    <string name="wave_widget_library_name">LastWave Cuadrícula de biblioteca</string>
+    <string name="wave_widget_library_description">Lo que suena, cuatro canciones recientes y acceso rápido; ajustable entre 3×2 y 4×2</string>
+    <string name="wave_widget_recently_played">Escuchado recientemente</string>
+    <string name="wave_widget_coming_next">A continuación</string>
+    <string name="wave_widget_no_up_next">La cola está vacía</string>
+    <string name="wave_widget_quick_access">Acceso rápido</string>
+    <string name="wave_widget_search">Buscar</string>
+    <string name="wave_widget_playlist_shortcut">Acceso directo a lista</string>
+    <string name="wave_widget_no_recent">Aquí aparecerá la música que escuches</string>
+    <string name="wave_widget_preview_time">1:15 / 3:42</string>
+    <string name="wave_widget_unlike">Quitar me gusta</string>
+    <string name="wave_widget_shuffle_on">Desactivar aleatorio</string>
+    <string name="wave_widget_nothing_playing">No suena nada</string>
+    <string name="wave_widget_tap_to_open">Toca para reproducir algo</string>
+    <string name="wave_widget_play">Reproducir</string>
+    <string name="wave_widget_pause">Pausar</string>
+    <string name="wave_widget_like">Me gusta</string>
+    <string name="wave_widget_shuffle">Aleatorio</string>
+    <string name="wave_widget_repeat">Repetir</string>
+    <string name="wave_widget_up_next">A continuación</string>
+    <string name="wave_widget_playlists">Listas</string>
+    <string name="wave_widget_playlist_liked">Me gusta</string>
+    <string name="wave_widget_playlist_recent">Recientes</string>
+    <string name="wave_widget_playlist_most_played">Más escuchadas</string>
+    <string name="wave_widget_preview_title">Midnight Current</string>
+    <string name="wave_widget_preview_artist">Radio LastWave</string>
+    <string name="wave_widget_preview_next_one">Afterglow &#183; Lumen</string>
+    <string name="wave_widget_preview_next_two">Low Tide &#183; Nocturne</string>
+    <string name="wave_widget_preview_next_three">Signal Bloom &#183; Arc</string>
+    <string name="wave_widget_preview_playlist_four">Mix para concentrarse</string>
+    <string name="wave_widget_preview_playlist_five">Ruta nocturna</string>
     <string name="nav_generator">Generador</string>
     <string name="settings_downloads_sub_custom">%1$d canción(es) • %2$s • %3$s</string>
     <string name="settings_downloads_sub_structured_custom">%1$d canción(es) • %2$s • %3$s • %4$s</string>
@@ -276,8 +385,24 @@
     <string name="theme_mode_system">Sistema</string>
     <string name="theme_mode_light">Luz</string>
     <string name="theme_mode_dark">oscuro</string>
+    <string name="settings_section_app_icon">Icono de la app</string>
+    <string name="settings_app_icon_sub">Elige el logotipo de la pantalla de inicio y de la app</string>
+    <string name="app_icon_default">Predeterminado</string>
+    <string name="app_icon_default_sub">Lima eléctrica y verde azulado obsidiana originales</string>
+    <string name="app_icon_desktop">Escritorio</string>
+    <string name="app_icon_desktop_sub">Edición de LastWave Desktop Player</string>
+    <string name="app_icon_white">Blanco puro</string>
+    <string name="app_icon_white_sub">Logotipo blanco con franjas negras</string>
+    <string name="app_icon_black">Negro obsidiana</string>
+    <string name="app_icon_black_sub">Logotipo negro con franjas blancas</string>
+    <string name="settings_lastwave_theme">Tema distintivo de LastWave</string>
+    <string name="settings_lastwave_theme_sub">Paleta a medida del logotipo • Lima eléctrica y verde azulado obsidiana</string>
     <string name="settings_md3_nav_bar">Material 3 Barra de navegación</string>
     <string name="settings_md3_nav_bar_sub">Utilice la navegación inferior clásica de ancho completo en lugar del muelle flotante</string>
+    <string name="settings_hide_nav_tabs">Ocultar pestañas de navegación</string>
+    <string name="settings_hide_nav_tabs_sub">Oculta por completo las pestañas de navegación y cambia de pantalla solo con gestos de deslizamiento</string>
+    <string name="settings_ui_haptics">Respuesta háptica</string>
+    <string name="settings_ui_haptics_sub">Vibrar con toques, botones, interruptores y gestos</string>
     <string name="settings_lyrics_provider">Proveedor de letras</string>
     <string name="settings_lyrics_provider_desc">Intenté primero con cada canción. Si no devuelve nada, la aplicación pasa automáticamente a los otros proveedores.</string>
     <string name="settings_rotating_background">Fondo giratorio</string>
@@ -286,14 +411,22 @@
     <string name="settings_lyrics_rotating_background">Movimiento de fondo de letras</string>
     <string name="settings_lyrics_rotating_background_on">Animar ilustraciones giratorias fluidas en la vista de letras.</string>
     <string name="settings_lyrics_rotating_background_off">Fondo de portada borrosa estática en la vista de letras</string>
+    <string name="settings_fluid_beat_sync">Movimiento fluido al ritmo</string>
+    <string name="settings_fluid_beat_sync_on">La portada fluida late y gira al ritmo de la música</string>
+    <string name="settings_fluid_beat_sync_off">La portada fluida se mueve a una velocidad constante</string>
     <string name="settings_canvas_enabled">Lienzo de álbum animado</string>
     <string name="settings_canvas_enabled_sub">Transmita bucles de arte en movimiento de Apple Music, Tidal y la red</string>
     <string name="settings_canvas_full_bleed">Ilustraciones en pantalla completa</string>
     <string name="settings_canvas_full_bleed_sub">Ilustraciones de borde a borde en pantalla completa para pistas estáticas y animadas</string>
+    <string name="settings_canvas_gradient_blur">Desenfoque degradado en el lienzo</string>
+    <string name="settings_canvas_gradient_blur_sub">Funde la parte inferior del lienzo con el degradado del fondo</string>
     <string name="settings_canvas_cellular">Lienzo sobre celular</string>
     <string name="settings_canvas_cellular_sub">Descargar ilustraciones en movimiento a través de datos móviles (almacenadas en caché después del primer bucle)</string>
     <string name="settings_keep_lyrics_screen_awake">Mantener la pantalla activa en las letras</string>
     <string name="settings_keep_lyrics_screen_awake_desc">Evite que la pantalla se apague mientras ve la letra</string>
+    <string name="settings_stop_on_recents">Detener al quitar de Recientes</string>
+    <string name="settings_stop_on_recents_on">Quitar LastWave de Recientes detiene la reproducción</string>
+    <string name="settings_stop_on_recents_off">La reproducción sigue en segundo plano tras quitarla de Recientes</string>
     <string name="common_delete">Eliminar</string>
     <string name="common_create">crear</string>
     <string name="common_rename">Cambiar nombre</string>
@@ -334,18 +467,61 @@
     <string name="settings_search_title">Configuración de búsqueda</string>
     <string name="local_add_to_playlist">Agregar a una lista de reproducción</string>
     <string name="local_panel_title">Canciones de este dispositivo</string>
-    <string name="local_panel_hint">Elija una carpeta: cada archivo MP3, FLAC, WAV, OGG/Opus, M4A/ALAC o AAC que contiene (subcarpetas incluidas) se copia en la aplicación con sus etiquetas, portada y letra .lrc.</string>
+    <string name="local_panel_hint">Elige una carpeta o activa el escaneo del audio del dispositivo: los archivos MP3, FLAC, WAV, AIFF, DSD (DSF/DFF), OGG/Opus, M4A/ALAC, AAC y E-AC-3 se reproducen directamente desde este dispositivo.</string>
     <string name="local_no_folder">Aún no se ha elegido ninguna carpeta.</string>
-    <string name="local_forget_folder">Olvida esta carpeta (las canciones copiadas permanecen)</string>
+    <string name="local_forget_folder">Olvidar esta carpeta</string>
     <string name="local_choose_folder">Elige una carpeta</string>
     <string name="local_rescan">Volver a escanear</string>
     <string name="local_scanning">Buscando... %1$d archivos encontrados</string>
-    <string name="local_copying">Copiando %1$d/%2$d — %3$s</string>
-    <string name="local_report_space">No hay suficiente espacio libre para copiar estas canciones.</string>
+    <string name="local_copying">Indexando %1$d/%2$d — %3$s</string>
+    <string name="local_report_space">No hay suficiente espacio libre.</string>
     <string name="local_report_summary">%1$d agregado • %2$d actualizado • %3$d sin cambios</string>
-    <string name="local_report_failed">No se pudieron copiar los archivos %1$d</string>
+    <string name="local_report_failed">No se pudieron indexar %1$d archivo(s)</string>
     <string name="local_report_unreachable">Ya no se puede acceder a %1$d carpetas: selecciónelas nuevamente</string>
     <string name="local_storage_used">Espacio utilizado por canciones locales: %1$s</string>
+    <string name="local_tab_songs">Canciones</string>
+    <string name="local_tab_albums">Álbumes</string>
+    <string name="local_tab_artists">Artistas</string>
+    <string name="local_tab_folders">Carpetas</string>
+    <string name="local_tab_playlists">Listas</string>
+    <string name="local_sort_title">Título</string>
+    <string name="local_sort_artist">Artista</string>
+    <string name="local_sort_album">Álbum</string>
+    <string name="local_sort_track_number">N.º de pista</string>
+    <string name="local_sort_added">Orden de adición</string>
+    <string name="local_sort_format">Formato</string>
+    <string name="local_search_hint">Buscar canciones, álbumes, artistas, carpetas…</string>
+    <string name="local_view_grid_cd">Vista de cuadrícula</string>
+    <string name="local_view_list_cd">Vista de lista</string>
+    <string name="local_autoscan_title">Buscar audio del dispositivo automáticamente</string>
+    <string name="local_autoscan_sub">Indexa las carpetas de música de MediaStore junto con las carpetas elegidas</string>
+    <string name="local_filter_non_music_title">Omitir clips cortos y del sistema</string>
+    <string name="local_filter_non_music_sub">Oculta tonos de llamada, alarmas, notas de voz y clips de menos de 30 s</string>
+    <string name="local_grant_permission">Permitir acceso al audio</string>
+    <string name="local_permission_title">Se necesita permiso para acceder al audio</string>
+    <string name="local_permission_sub">Concede acceso al audio para indexar automáticamente la música guardada en tu teléfono o elige carpetas manualmente.</string>
+    <string name="local_manage_sources_cd">Carpetas y ajustes de escaneo</string>
+    <string name="local_sources_sheet_title">Carpetas locales y escaneo</string>
+    <string name="local_offline_likes">Me gusta sin conexión</string>
+    <string name="local_offline_likes_sub">Canciones locales favoritas guardadas solo en este dispositivo</string>
+    <string name="local_offline_playlists">Listas sin conexión</string>
+    <string name="local_new_playlist">Nueva lista</string>
+    <string name="local_rename_playlist">Cambiar nombre de la lista</string>
+    <string name="local_delete_playlist">Eliminar lista</string>
+    <string name="local_delete_playlist_confirm">¿Eliminar la lista sin conexión “%1$s”? Los archivos de audio de tu dispositivo no se tocarán.</string>
+    <string name="local_playlist_name_hint">Nombre de la lista</string>
+    <string name="local_empty_tracks">Aún no hay canciones locales</string>
+    <string name="local_empty_filtered">Nada coincide con tu búsqueda</string>
+    <string name="local_empty_offline_likes">Toca el corazón de cualquier canción local para añadirla a Me gusta sin conexión.</string>
+    <string name="local_empty_offline_playlists">Crea una lista solo sin conexión para la música de tu dispositivo.</string>
+    <string name="local_selected_count">%1$d seleccionados</string>
+    <string name="local_play_next">Reproducir a continuación</string>
+    <string name="local_add_queue">Añadir a la cola</string>
+    <string name="local_like_offline">Me gusta sin conexión</string>
+    <string name="local_remove_from_library">Quitar</string>
+    <string name="local_remove_from_playlist">Quitar de la lista sin conexión</string>
+    <string name="local_select_all_cd">Seleccionar todo</string>
+    <string name="local_add_to_offline_playlist">Añadir a una lista sin conexión</string>
     <string name="signal_label_internal">Salida directa interna</string>
     <string name="signal_detail_internal_resampled">Salida fijada en %2$d Hz - %1$d Hz remuestreada en la aplicación (libsoxr)</string>
     <string name="signal_detail_internal_mixer_bypassed">Omitido: transmisión exclusiva de AAudio (MMAP), AudioFlinger nunca la mezcla</string>
@@ -365,6 +541,11 @@
     <string name="signal_direct_hal">DIRECTO → HAL</string>
     <string name="signal_verdict_direct_hal">Mezclador de Android omitido: las muestras ingresan al HAL sin cambios. Un DSP de proveedor después de HAL no se puede verificar desde Android.</string>
     <string name="signal_internal_track">AAudio exclusivo (interno)</string>
+    <string name="signal_usb_hardware_section">Ruta directa por hardware</string>
+    <string name="signal_usb_interface">Interfaz</string>
+    <string name="signal_usb_interface_value">USB directo (usbdevfs)</string>
+    <string name="signal_android_mixer">Mezclador de Android</string>
+    <string name="signal_android_mixer_bypassed">Omitido (exclusivo por hardware)</string>
     <string name="signal_internal_section">Salida interna</string>
     <string name="signal_internal_route">Ruta</string>
     <string name="signal_internal_status">Salida directa</string>
@@ -430,6 +611,8 @@
     <string name="details_resolution">Resolución</string>
     <string name="details_bitrate">tasa de bits</string>
     <string name="details_provider">Proveedor</string>
+    <string name="details_canvas_source">Canvas</string>
+    <string name="details_canvas_none">Ninguno</string>
     <string name="details_duration">Duración</string>
     <string name="details_offline_storage">Almacenamiento sin conexión</string>
     <string name="details_status">Estado</string>
@@ -445,6 +628,8 @@
     <string name="menu_timer_minutes">%1$d minutos</string>
     <string name="menu_add_queue">Añadir a la cola</string>
     <string name="menu_open_lastfm">Abierto en Last.fm</string>
+    <string name="menu_copy_link">Copiar enlace</string>
+    <string name="link_copied">Enlace copiado al portapapeles</string>
     <string name="menu_refresh_artwork">Actualizar la portada</string>
     <string name="menu_copy_song">Copiar canción</string>
     <string name="menu_details_specs">Detalles y especificaciones de audio</string>
@@ -474,6 +659,9 @@
     <string name="menu_quick_play">Jugar</string>
     <string name="menu_quick_play_next">Reproducir siguiente</string>
     <string name="menu_quick_add_playlist">Agregar a la lista de reproducción</string>
+    <string name="menu_quick_jam">Jam</string>
+    <string name="settings_jam_title">LastWave Jam</string>
+    <string name="settings_jam_sub">Escucha música con otros en tiempo real • Crea una sesión o únete con un código</string>
     <string name="pl_sort_newest">Lo más nuevo primero</string>
     <string name="pl_sort_oldest">El más viejo primero</string>
     <string name="pl_sort_name">Nombre</string>
@@ -538,6 +726,8 @@
     <string name="pd_loading">Cargando pistas…</string>
     <string name="pd_empty">Aún no hay pistas en esta lista de reproducción.</string>
     <string name="pd_reorder_hint">Cambie a Orden personalizado para reorganizar</string>
+    <string name="playlist_rearrange_songs">Reordenar canciones</string>
+    <string name="playlist_rearrange_clear_search">Borra la búsqueda para reordenar las canciones</string>
     <string name="pd_building">Creando una nueva lista de reproducción...</string>
     <string name="pd_sort_custom">Orden personalizada</string>
     <string name="pd_sort_date">Fecha agregada</string>
@@ -577,6 +767,7 @@
     <string name="feed_see_all">Ver todo</string>
     <string name="feed_discover">Descubre nueva música</string>
     <string name="feed_discover_sub">Pistas cuidadosamente seleccionadas que se adaptan a tus gustos</string>
+    <string name="feed_discover_empty">No hay recomendaciones disponibles</string>
     <string name="feed_fresh">Hallazgos frescos</string>
     <string name="feed_fresh_sub">Nuevas pistas más allá de tu rotación habitual</string>
     <string name="feed_jump">Saltar de nuevo</string>
@@ -666,9 +857,15 @@
     <string name="gen_load_top_artists">Cargar mis mejores artistas</string>
     <string name="search_cd">Buscar</string>
     <string name="search_clear_cd">Borrar</string>
+    <string name="search_voice_cd">Buscar por voz</string>
+    <string name="search_voice_prompt">Di una canción, un artista o un álbum para buscar</string>
+    <string name="search_voice_unavailable">La búsqueda por voz no está disponible en este dispositivo.</string>
     <string name="search_hint_users">Buscar Last.fm usuarios…</string>
     <string name="search_hint_yt">Buscar YouTube Music…</string>
+    <string name="search_hint_local">Buscar canciones locales, álbumes, artistas…</string>
     <string name="search_tab_tracks">Pistas</string>
+    <string name="search_tab_local">Local</string>
+    <string name="search_tab_podcasts">Podcasts</string>
     <string name="search_tab_artists">Artistas</string>
     <string name="search_tab_albums">Álbumes</string>
     <string name="search_tab_playlists">Listas de reproducción</string>
@@ -714,6 +911,7 @@
     <string name="dl_delete_title">¿Eliminar “%1$s”?</string>
     <string name="dl_delete_text">Puede eliminar el archivo de audio local para liberar espacio de almacenamiento o eliminarlo únicamente del historial.</string>
     <string name="dl_delete_file">Eliminar archivo</string>
+    <string name="dl_delete_failed">No se pudo eliminar el archivo</string>
     <string name="dl_history_only">Sólo historia</string>
     <string name="dl_filter_all">Todos</string>
     <string name="dl_filter_lossless">Sin pérdidas / FLAC</string>
@@ -996,6 +1194,31 @@
     <string name="ly_no_vocals">Esta pista no tiene letras vocales.</string>
     <string name="ly_no_synced">No se encontraron letras sincronizadas para esta pista.</string>
     <string name="ly_retry">Inténtalo de nuevo</string>
+    <string name="ly_signature_credit">Letra de %1$s</string>
+    <string name="ly_signature_not_found">No encontramos tu letra, %1$s</string>
+    <string name="ly_signature_not_found_hint">Esta vez la letra se hace la tímida. La música, no.</string>
+    <string-array name="ly_signature_loading">
+        <item>Buscando tu letra…</item>
+        <item>Rastreando cada palabra…</item>
+        <item>Preparando los versos…</item>
+        <item>Cocinando tu letra…</item>
+        <item>Sintonizando las palabras…</item>
+        <item>Colocando el primer verso…</item>
+        <item>Pidiéndoselo con educación a los proveedores…</item>
+        <item>Calentando el escenario…</item>
+    </string-array>
+    <string-array name="ly_signature_address">
+        <item>Caballero</item>
+        <item>Camarada</item>
+        <item>Amo</item>
+        <item>Mi señor</item>
+        <item>Capitán</item>
+        <item>Jefe</item>
+        <item>Maestro</item>
+        <item>Alteza</item>
+        <item>Leyenda</item>
+        <item>Jefazo</item>
+    </string-array>
     <string name="ly_size_cd">Ajustar el tamaño del texto de la letra</string>
     <string name="art_verified_cd">Artista verificado</string>
     <string name="art_shuffle_cd">Artista aleatorio</string>
@@ -1008,6 +1231,9 @@
     <string name="art_albums">Álbumes</string>
     <string name="art_fans_like">A los fans también les gusta</string>
     <string name="art_load_fail">No se pudieron cargar los detalles del artista</string>
+    <string name="art_type_album">Álbum</string>
+    <string name="art_type_single">Sencillo</string>
+    <string name="art_type_ep">EP</string>
     <string name="alb_shuffle_cd">Álbum aleatorio</string>
     <string name="alb_play_cd">Reproducir álbum</string>
     <string name="alb_tracks">Pistas</string>
@@ -1019,7 +1245,7 @@
     <string name="nr_load_fail">No se pudieron cargar nuevos lanzamientos</string>
     <string name="nr_empty">No se encontraron nuevos lanzamientos</string>
     <string name="nr_empty_hint">Desplácese hacia abajo o toque actualizar para verificar nuevamente.</string>
-    <string name="nr_more_fail">No se pudieron cargar más versiones. Rever</string>
+    <string name="nr_more_fail">No se pudieron cargar más lanzamientos. Reintentar</string>
     <string name="ge_title">Tus géneros</string>
     <string name="ge_sub">Según tu historial de escucha</string>
     <string name="ge_empty">Aún no hay datos de género</string>
@@ -1031,6 +1257,7 @@
     <string name="login_guest">Continuar como invitado</string>
     <string name="login_guest_desc">El modo invitado funciona completamente sin conexión con recomendaciones locales. Conecte Last.fm en cualquier momento en Configuración para sincronizar scrobbles.</string>
     <string name="login_restore">Restaurar copia de seguridad</string>
+    <string name="login_prefs_reset">Tus ajustes se restablecieron tras un cierre inesperado. Toca Restaurar copia de seguridad para recuperarlos desde tu archivo de copia.</string>
     <string name="login_downloads">Abrir descargas sin conexión</string>
     <plurals name="local_report_unsupported">
         <item quantity="one">Archivo %1$d omitido (formato no compatible: %2$s)</item>
@@ -1072,6 +1299,118 @@
     <string name="lyshare_color_brand">Lima LastWave</string>
     <string name="lyshare_accessibility_line_selected">Seleccionada, línea %1$d de %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Línea %1$d de %2$d</string>
+    <!-- Remaining screen strings -->
+    <string name="gen_progress_title">Generando lista</string>
+    <string name="disc_error_title">Algo ha salido mal</string>
+    <string name="disc_empty_title">Aún no hay recomendaciones</string>
+    <string name="disc_empty_hint">Escucha más música en Last.fm y luego desliza hacia abajo para actualizar.</string>
+    <string name="ly_offset_title">Desplazamiento de sincronización de letras</string>
+    <string name="ly_size_title">Tamaño del texto de la letra</string>
+    <string name="excluded_restore">Restaurar</string>
+    <string name="cast_title">Chromecast</string>
+    <string name="cast_unavailable">Chromecast requiere los servicios de Google Play</string>
+    <string name="ytimport_fetching">Obteniendo lista…</string>
+    <string name="ytimport_fetch">Obtener lista</string>
+    <string name="ytimport_importing">Importando lista…</string>
+    <string name="ytimport_import_n">Importar %1$d canciones</string>
+    <string name="ytimport_clear_cd">Borrar</string>
+    <string name="ytimport_paste_cd">Pegar del portapapeles</string>
+    <string name="ytlogin_continue">Continuar</string>
+    <string name="ytlogin_verifying">Verificando…</string>
+    <string name="ytlogin_signed_in">Ya he iniciado sesión</string>
+
+    <!-- Signal path dialog -->
+    <string name="sig_node_source">Fuente</string>
+    <string name="sig_node_dsp">DSP</string>
+    <string name="sig_node_volume">Control de volumen</string>
+    <string name="sig_node_output">Salida</string>
+    <string name="sig_node_device">Dispositivo de salida</string>
+    <string name="sig_eq">Ecualizador</string>
+    <string name="sig_tone">Tono</string>
+    <string name="sig_tone_off">Tono desactivado</string>
+    <string name="sig_crossfade">Fundido</string>
+    <string name="sig_buffers">Búferes</string>
+    <string name="sig_latency">Latencia</string>
+    <string name="sig_preamp">Preamplificador</string>
+    <string name="sig_flags">Indicadores</string>
+    <string name="sig_eq_off">EQ desactivado • Balance (0%)</string>
+    <string name="sig_eq_mode">Modo del ecualizador: gráfico (10 bandas)</string>
+    <string name="sig_xfade_active">Fundido activo</string>
+    <string name="sig_xfade_off">Sin fundido / fundido corto</string>
+    <string name="sig_buffers_value">2x (50 ms, %1$d tramas de audio)</string>
+    <string name="sig_ms_value">%1$d ms</string>
+
+    <string name="settings_section_content">Contenido</string>
+    <string name="settings_podcasts">Podcasts</string>
+    <string name="settings_podcasts_sub_on">Muestra secciones de podcasts, páginas de programas y búsqueda de episodios</string>
+    <string name="settings_podcasts_sub_off">Los podcasts están ocultos; el progreso guardado se conserva</string>
+    <string name="podcasts_title">Podcasts</string>
+    <string name="podcasts_subtitle">Programas y episodios de YouTube Music</string>
+    <string name="podcasts_search_hint">Buscar episodios</string>
+    <string name="podcasts_search_empty">No se encontraron episodios</string>
+    <string name="podcasts_searching">Buscando episodios…</string>
+    <string name="podcasts_loading">Cargando podcasts…</string>
+    <string name="podcasts_load_fail">No se pudieron cargar los podcasts</string>
+    <string name="podcasts_empty">No hay podcasts disponibles ahora mismo</string>
+    <string name="podcasts_empty_hint">Puede que los podcasts no estén disponibles en esta región.</string>
+    <string name="podcasts_see_all">Ver todo</string>
+    <string name="podcast_episodes">Episodios</string>
+    <string name="podcast_load_more">Cargar más</string>
+    <string name="podcast_resume">Reanudar</string>
+    <string name="podcast_play_latest">Reproducir el último</string>
+    <string name="podcast_progress_fraction">%1$d%% escuchado</string>
+
+    <!-- AutoEQ -->
+    <string name="autoeq_title">AutoEQ</string>
+    <string name="autoeq_row_off">Desactivado • Corrige tus auriculares con la base de datos de AutoEQ</string>
+    <string name="autoeq_row_on">Activado • %1$s</string>
+    <string name="autoeq_row_custom">Activado • %1$s (personalizado)</string>
+    <string name="autoeq_manual">EQ manual</string>
+    <string name="autoeq_no_profile">No hay auriculares seleccionados</string>
+    <string name="autoeq_custom">Personalizado</string>
+    <string name="autoeq_custom_hint">Editado a mano. Vuelve a elegir los auriculares para recuperar el perfil de AutoEQ.</string>
+    <string name="autoeq_choose">Elegir auriculares</string>
+    <string name="autoeq_reset">Volver al perfil</string>
+    <string name="autoeq_reset_default">Restablecer valores predeterminados</string>
+    <string name="autoeq_curve_title">Respuesta en frecuencia</string>
+    <string name="autoeq_target_title">Curva objetivo</string>
+    <string name="autoeq_target_hint">Las demás curvas objetivo se aplican como diferencia respecto a la curva tipo Harman del laboratorio y después se reajustan.</string>
+    <string name="autoeq_target_default">Curva del laboratorio (predeterminada de AutoEQ)</string>
+    <string name="autoeq_target_iem_suffix">(IEM)</string>
+    <string name="autoeq_bass">Graves</string>
+    <string name="autoeq_tilt">Inclinación</string>
+    <string name="autoeq_filters_title">EQ paramétrico</string>
+    <string name="autoeq_filters_hint">Toca un filtro para editarlo. Cualquier cambio pasa a Personalizado.</string>
+    <string name="autoeq_manual_start">Crear un EQ manual</string>
+    <string name="autoeq_preamp">Preamplificador</string>
+    <string name="autoeq_preamp_auto">Auto</string>
+    <string name="autoeq_frequency">Frecuencia</string>
+    <string name="autoeq_gain">Ganancia</string>
+    <string name="autoeq_q">Q</string>
+    <string name="autoeq_add_filter">Añadir filtro</string>
+    <string name="autoeq_remove_filter">Quitar filtro</string>
+    <string name="autoeq_devices_title">Por dispositivo</string>
+    <string name="autoeq_devices_auto">Cargar el perfil de cada dispositivo cuando se conecte</string>
+    <string name="autoeq_devices_save">Usar con %1$s</string>
+    <string name="autoeq_devices_forget">Olvidar dispositivo</string>
+    <string name="autoeq_attribution">Perfiles: AutoEQ de Jaakko Pasanen (MIT); mediciones: %1$s. Se descargan de GitHub y se guardan para usarlos sin conexión.</string>
+    <string name="autoeq_legend_eq">EQ</string>
+    <string name="autoeq_legend_raw">Medida</string>
+    <string name="autoeq_legend_target">Objetivo</string>
+    <string name="autoeq_legend_result">Corregida</string>
+    <string name="autoeq_search_title">Elige tus auriculares</string>
+    <string name="autoeq_search_hint">Modelo, marca o fuente de la medición</string>
+    <string name="autoeq_search_loading">Descargando la lista de AutoEQ…</string>
+    <string name="autoeq_search_error">No se pudo descargar la lista de AutoEQ.</string>
+    <string name="autoeq_retry">Reintentar</string>
+    <string name="autoeq_search_empty">Ningún perfil coincide. Prueba con menos palabras.</string>
+    <string name="autoeq_msg_loaded">Perfil de AutoEQ aplicado</string>
+    <string name="autoeq_msg_download_failed">No se pudo descargar este perfil</string>
+    <string name="autoeq_msg_device_saved">Perfil guardado para este dispositivo</string>
+    <string name="signal_label_autoeq">AutoEQ</string>
+    <string name="signal_detail_autoeq">Corrección aplicada por LastWave (modifica las muestras; el mezclador de Android sigue omitido)</string>
+    <string name="signal_verdict_direct_eq">Mezclador de Android omitido. LastWave aplica tu corrección AutoEQ y después las muestras van directas al HAL.</string>
+    <string name="signal_direct_eq">DIRECTO + EQ</string>
 
     <!-- Recommendations -->
     <string name="settings_section_recommendations">Recomendaciones</string>
@@ -1085,4 +1424,24 @@
     <string name="recommendation_source_spotify_sub">Basado en Spotify, reproducido desde YouTube Music</string>
     <string name="toast_spotify_connect_first">Conecta Spotify primero</string>
     <string name="toast_spotify_disconnected">Cuenta de Spotify desconectada</string>
+    <string name="settings_spotify_live_playlists_title">Sincronizar listas en directo</string>
+    <string name="settings_spotify_live_playlists_sub">Muestra las listas de Spotify y Canciones que te gustan en tu biblioteca de listas</string>
+    <string name="spotify_playlists_section_title">Spotify</string>
+    <string name="spotify_liked_songs_title">Canciones que te gustan</string>
+    <string name="spotify_liked_songs_sub">Tus Me gusta de Spotify</string>
+    <string name="recognize_music">Identificar música</string>
+    <string name="recognize_listening">Escuchando…</string>
+    <string name="recognize_listening_hint">Acerca el teléfono a la música</string>
+    <string name="recognize_identifying">Identificando…</string>
+    <string name="recognize_cancel">Cancelar</string>
+    <string name="recognize_close">Cerrar</string>
+    <string name="recognize_search">Buscar en LastWave</string>
+    <string name="recognize_retry">Reintentar</string>
+    <string name="recognize_open_settings">Abrir ajustes</string>
+    <string name="recognize_error_permission">Se necesita acceso al micrófono para escuchar la música.</string>
+    <string name="recognize_error_mic">El micrófono no está disponible. Cierra otras apps que lo estén usando y vuelve a intentarlo.</string>
+    <string name="recognize_error_silence">No se ha oído nada. Sube el volumen de la música o acércate y vuelve a intentarlo.</string>
+    <string name="recognize_error_no_match">No se ha podido reconocer esta canción. Acércate a la música y vuelve a intentarlo.</string>
+    <string name="recognize_error_rate_limited">Demasiados intentos. Espera un momento y vuelve a intentarlo.</string>
+    <string name="recognize_error_network">No se ha podido conectar con el servicio de reconocimiento. Comprueba tu conexión y vuelve a intentarlo.</string>
 </resources>

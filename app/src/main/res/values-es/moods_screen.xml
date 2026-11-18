@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="moods_title">Estados de ánimo y géneros</string>
+    <string name="moods_open_all">Ver todos los estados de ánimo y géneros</string>
+    <string name="moods_load_failed">No se pudo cargar esta página. Inténtalo de nuevo.</string>
+    <string name="moods_empty">No hay nada por ahora. Vuelve a intentarlo más tarde.</string>
+    <string name="moods_retry">Reintentar</string>
+    <string name="moods_loading">Cargando estados de ánimo y géneros</string>
+</resources>
