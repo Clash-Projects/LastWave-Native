@@ -203,6 +203,14 @@ internal fun KaraokeVocal(
                 // LyricGlowText); the shadow is only the pre-S fallback.
                 if (lit && enableLineGlow && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
                     s.copy(shadow = LYRIC_FALLBACK_SHADOW)
+                } else if (!lit && themeSpec?.inactiveTextDropShadow == true) {
+                    s.copy(
+                        shadow = Shadow(
+                            color = Color.Black.copy(alpha = 0.15f),
+                            offset = Offset(0f, 3f),
+                            blurRadius = 5f,
+                        )
+                    )
                 } else s
             }
             val lineAlpha = if (themeSpec?.wordGlideEffect == true) {
@@ -273,7 +281,7 @@ internal fun KaraokeFillText(
             fontFamily = activeFont,
         )
         if (themeSpec?.selectiveLongWordGlow == true) {
-            val glowAlpha = if (currentWordIsLong) 1.0f else 0.10f
+            val glowAlpha = if (currentWordIsLong) 0.90f else 0.10f
             s = s.copy(
                 shadow = Shadow(
                     color = Color.White.copy(alpha = glowAlpha),
@@ -579,6 +587,13 @@ internal fun syllableLift(syl: LyricSyllable, pos: Long): Float {
     return riseE * settleE
 }
 
+private data class LiftWord(
+    val wordLeft: Float,
+    val wordRight: Float,
+    val translateY: Float,
+    val scaleX: Float,
+)
+
 /**
  * Draws the text content with each currently-lifting syllable translated up
  * by up to [liftPx]. Syllables wrapping across visual lines are not lifted.
@@ -594,10 +609,20 @@ internal fun ContentDrawScope.drawWithSyllableLift(
     themeSpec: LyricsThemeSpec? = null,
 ) {
     val textLength = l.layoutInput.text.length
+    if (textLength == 0 || units.isEmpty()) {
+        drawContent()
+        return
+    }
+
+    val fullText = l.layoutInput.text
     var rects: ArrayList<FloatArray>? = null
     val glidePx = 3.dp.toPx()
     val emPx = if (l.layoutInput.style.fontSize.isSpecified) l.layoutInput.style.fontSize.toPx() else 24.dp.toPx()
     val maxUpwardLift = 2.5.dp.toPx()
+    val padX = 8.dp.toPx()
+
+    // 1. Gather nominal word bounds and motion transforms for all units on each line.
+    val wordsByLine = HashMap<Int, ArrayList<LiftWord>>(l.lineCount.coerceAtLeast(1))
 
     for (i in units.indices) {
         val syl = units[i]
@@ -652,32 +677,102 @@ internal fun ContentDrawScope.drawWithSyllableLift(
             }
         }
 
-        if (kotlin.math.abs(translateY) <= 0.001f && kotlin.math.abs(scaleX - 1f) <= 0.001f) continue
-        val (cs, ce) = charRanges.getOrNull(i) ?: continue
+        val range = charRanges.getOrNull(i) ?: continue
+        val cs = range.first
+        val ce = range.second
         if (ce <= cs || cs >= textLength) continue
-        val last = (ce - 1).coerceAtMost(textLength - 1)
-        val li = l.getLineForOffset(cs)
-        if (li != l.getLineForOffset(last)) continue
-        val xs = l.getHorizontalPosition(cs, true)
-        val xe = if (ce < textLength && l.getLineForOffset(ce) == li) {
-            l.getHorizontalPosition(ce, true)
+
+        var wordStart = cs
+        while (wordStart < ce && fullText[wordStart].isWhitespace()) {
+            wordStart++
+        }
+        var wordEnd = ce
+        while (wordEnd > wordStart && fullText[wordEnd - 1].isWhitespace()) {
+            wordEnd--
+        }
+        if (wordStart >= wordEnd) continue
+
+        val li = l.getLineForOffset(wordStart)
+        if (li != l.getLineForOffset(wordEnd - 1)) continue
+
+        val xs = l.getHorizontalPosition(wordStart, true)
+        val xe = if (wordEnd < textLength && l.getLineForOffset(wordEnd) == li) {
+            l.getHorizontalPosition(wordEnd, true)
         } else if (isRtl) l.getLineLeft(li) else l.getLineRight(li)
-        val rowTop = if (li > 0) (l.getLineBottom(li - 1) + l.getLineTop(li)) / 2f else -size.height
-        val rowBottom = if (li + 1 < l.lineCount) (l.getLineBottom(li) + l.getLineTop(li + 1)) / 2f else size.height * 2f
-        if (rects == null) rects = ArrayList(4)
-        rects += floatArrayOf(
-            minOf(xs, xe), rowTop, maxOf(xs, xe), rowBottom, translateY, scaleX,
+
+        val wordLeft = minOf(xs, xe)
+        val wordRight = maxOf(xs, xe)
+
+        wordsByLine.getOrPut(li) { ArrayList() }.add(
+            LiftWord(
+                wordLeft = wordLeft,
+                wordRight = wordRight,
+                translateY = translateY,
+                scaleX = scaleX,
+            )
         )
     }
-    if (rects == null) {
+
+    // 2. For each line, sort words horizontally and place clip boundaries at the midpoints of whitespace gaps.
+    for ((li, lineWords) in wordsByLine) {
+        if (lineWords.isEmpty()) continue
+        lineWords.sortBy { it.wordLeft }
+
+        val rowLeft = l.getLineLeft(li)
+        val rowRight = l.getLineRight(li)
+        val rowTop = if (li > 0) (l.getLineBottom(li - 1) + l.getLineTop(li)) / 2f else -size.height
+        val rowBottom = if (li + 1 < l.lineCount) (l.getLineBottom(li) + l.getLineTop(li + 1)) / 2f else size.height * 2f
+
+        for (k in lineWords.indices) {
+            val w = lineWords[k]
+            if (kotlin.math.abs(w.translateY) <= 0.001f && kotlin.math.abs(w.scaleX - 1f) <= 0.001f) continue
+
+            val isFirstWordOnRow = (k == 0)
+            val isLastWordOnRow = (k == lineWords.lastIndex)
+
+            val rawClipLeft = if (isFirstWordOnRow) {
+                rowLeft - padX
+            } else {
+                val prevWordRight = lineWords[k - 1].wordRight
+                (prevWordRight + w.wordLeft) / 2f
+            }
+
+            val rawClipRight = if (isLastWordOnRow) {
+                rowRight + padX
+            } else {
+                val nextWordLeft = lineWords[k + 1].wordLeft
+                (w.wordRight + nextWordLeft) / 2f
+            }
+
+            val clipLeft = minOf(rawClipLeft, rawClipRight)
+            val clipRight = maxOf(rawClipLeft, rawClipRight)
+            if (clipRight <= clipLeft) continue
+
+            if (rects == null) rects = ArrayList(4)
+            rects += floatArrayOf(
+                clipLeft, rowTop, clipRight, rowBottom, w.translateY, w.scaleX,
+            )
+        }
+    }
+
+    if (rects == null || rects.isEmpty()) {
         drawContent()
         return
     }
+
     val canvas = drawContext.canvas.nativeCanvas
     canvas.save()
-    for (r in rects) canvas.clipOutRect(r[0], r[1], r[2], r[3])
+    for (r in rects) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            canvas.clipOutRect(r[0], r[1], r[2], r[3])
+        } else {
+            @Suppress("DEPRECATION")
+            canvas.clipRect(r[0], r[1], r[2], r[3], android.graphics.Region.Op.DIFFERENCE)
+        }
+    }
     drawContent()
     canvas.restore()
+
     for (r in rects) {
         canvas.save()
         val centerX = (r[0] + r[2]) / 2f
@@ -686,7 +781,7 @@ internal fun ContentDrawScope.drawWithSyllableLift(
         if (r[5] != 1f) {
             canvas.scale(r[5], 1f, centerX, centerY)
         }
-        canvas.clipRect(r[0] - 1f, r[1], r[2] + 1f, r[3])
+        canvas.clipRect(r[0], r[1], r[2], r[3])
         drawContent()
         canvas.restore()
     }
