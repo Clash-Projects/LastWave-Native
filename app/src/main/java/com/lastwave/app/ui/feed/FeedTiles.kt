@@ -808,13 +808,13 @@ internal fun QuickPicksRows(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
-                            Box(modifier = Modifier.size(48.dp)) {
+                            Box(modifier = Modifier.size(54.dp)) {
                                 ArtworkImage(
                                     name = track.title,
                                     artist = ArtistHelper.primaryArtist(track.artist),
                                     embeddedUrl = track.artworkUrl,
                                     fallbackIcon = Icons.Filled.MusicNote,
-                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)),
                                 )
                                 if (isCurrent && isPlaying) {
                                     PlayingWaveBars(
@@ -830,7 +830,9 @@ internal fun QuickPicksRows(
                                     track.title,
                                     style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.5.sp),
                                     fontWeight = FontWeight.SemiBold,
-                                    maxLines = 2,
+                                    // One line keeps every row the same height; a long
+                                    // title wrapping to two made its row taller than the rest.
+                                    maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(start = 2.dp),
