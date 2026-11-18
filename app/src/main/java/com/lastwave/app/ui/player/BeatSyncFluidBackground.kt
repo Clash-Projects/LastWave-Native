@@ -60,14 +60,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.intellij.lang.annotations.Language
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
-
-@Language("AGSL")
-.trimIndent()
 
 private data class BeatFluidCopy(
     val centreX: Float,
@@ -307,14 +303,6 @@ private class BeatAgslFluidRenderer {
     }
 }
 
-/**
- * Checks whether this device can render the fluid background.
- * Requires:
- *  - Android 12+ (API >= 31) because RenderEffect and AGSL (API 33+) are unsupported on API <= 30
- *    (where Modifier.blur() is an explicit no-op in Jetpack Compose).
- *  - Hardware acceleration enabled on the current View.
- *  - Not a low-RAM device where background blurs are unsupported or disabled by the OS/GPU.
- */
 @Composable
 internal fun BeatSyncFluidArtworkBackground(
     track: PlayableTrack,
