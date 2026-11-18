@@ -6,6 +6,7 @@ import com.lastwave.app.data.feed.FeedData
 import com.lastwave.app.data.feed.FeedRepository
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.GenresRepository
+import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.data.local.SessionData
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.SettingsPreferences
@@ -54,6 +55,7 @@ class FeedViewModelDiscoveryTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        coEvery { discoverRepository.observeRecommendationExclusions() } returns MutableStateFlow(emptyList<RecommendationExclusionEntity>())
         coEvery { ytAuth.connection } returns MutableStateFlow(YtConnection())
         coEvery { ytAuth.awaitLoadedConnection() } returns YtConnection()
         coEvery { sessionPreferences.session } returns MutableStateFlow(SessionData(username = "test_user"))

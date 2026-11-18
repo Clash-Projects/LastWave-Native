@@ -2116,6 +2116,7 @@ internal fun FullPlayer(
                 showCopyActions = true,
                 showDeleteScrobble = false,
                 showRecommendationExclusion = true,
+                showPlayAction = false,
             ),
             playableTrack = track,
             onDismiss = { showTrackMenu = false },

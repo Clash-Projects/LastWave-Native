@@ -138,6 +138,53 @@ class YtMusicRecommendationsTest {
     }
 
     @Test
+    fun failedPlayerLookupStillUsesExactHomeFeedbackToken() = runBlocking {
+        val account = YtConnection(cookies = mapOf("SAPISID" to "fixture-cookie"), accountName = "Fixture")
+        val api = api(MutableStateFlow(account))
+        val calls = mutableListOf<String>()
+        coEvery { api.post(
+            url = any(), body = any(), clientName = "WEB_REMIX", clientVersion = "test-version",
+            userAgent = WEB_USER_AGENT, authenticated = true, authenticatedAccount = account,
+        ) } answers {
+            val endpoint = firstArg<String>().substringBefore('?').substringAfterLast('/')
+            calls += endpoint
+            when (endpoint) {
+                "next" -> throw java.io.IOException("Player lookup unavailable")
+                "browse" -> json("""{"musicTwoRowItemRenderer":{"navigationEndpoint":{
+                    "watchEndpoint":{"videoId":"$songId"}},"menu":${menu("HOME_TOKEN")}}}""")
+                else -> {
+                    assertThat(secondArg<JsonObject>()["feedbackTokens"].toString()).isEqualTo("[\"HOME_TOKEN\"]")
+                    json("""{"feedbackResponses":[{"isProcessed":true}]}""")
+                }
+            }
+        }
+        assertThat(api.markNotInterested(songId, account)).isTrue()
+        assertThat(calls).containsExactly("next", "browse", "feedback").inOrder()
+    }
+
+    @Test
+    fun canceledPlayerLookupDoesNotContinueToHomeOrFeedback() = runBlocking {
+        val account = YtConnection(cookies = mapOf("SAPISID" to "fixture-cookie"), accountName = "Fixture")
+        val api = api(MutableStateFlow(account))
+        val calls = mutableListOf<String>()
+        coEvery { api.post(
+            url = any(), body = any(), clientName = "WEB_REMIX", clientVersion = "test-version",
+            userAgent = WEB_USER_AGENT, authenticated = true, authenticatedAccount = account,
+        ) } answers {
+            calls += firstArg<String>().substringBefore('?').substringAfterLast('/')
+            throw kotlinx.coroutines.CancellationException("Canceled")
+        }
+        var canceled = false
+        try {
+            api.markNotInterested(songId, account)
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            canceled = true
+        }
+        assertThat(canceled).isTrue()
+        assertThat(calls).containsExactly("next")
+    }
+
+    @Test
     fun switchingAccountsAfterTokenLookupNeverPostsThatAccountsToken() = runBlocking {
         val account = YtConnection(cookies = mapOf("SAPISID" to "fixture-cookie"), accountName = "First")
         val connection = MutableStateFlow(account)

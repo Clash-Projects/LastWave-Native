@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -99,10 +100,18 @@ class FeedViewModel @Inject constructor(
         musicPlayer.playQueue(queue.tracks, 0, sourceLabel = queue.title)
     }
 
+    private val recommendationExclusionKeys = discoverRepository.observeRecommendationExclusions()
+        .map { exclusions -> exclusions.mapTo(mutableSetOf()) { it.trackKey } }
+        .distinctUntilChanged()
+        .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
     private val _uiState = MutableStateFlow(FeedUiState())
-    val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<FeedUiState> = combine(_uiState, recommendationExclusionKeys) { state, keys ->
+        state.withRecommendationExclusions(keys)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, FeedUiState())
     private val _discoveryTracks = MutableStateFlow<List<GeneratedTrack>>(emptyList())
-    val discoveryTracks: StateFlow<List<GeneratedTrack>> = _discoveryTracks.asStateFlow()
+    val discoveryTracks: StateFlow<List<GeneratedTrack>> = combine(_discoveryTracks, recommendationExclusionKeys) { tracks, keys ->
+        tracks.filterNot { it.key in keys }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val _isDiscoveryLoading = MutableStateFlow(false)
     val isDiscoveryLoading: StateFlow<Boolean> = _isDiscoveryLoading.asStateFlow()
     @Volatile private var discoveryGeneration = 0L
@@ -253,11 +262,12 @@ class FeedViewModel @Inject constructor(
     }
 
     fun playInfiniteRadio() {
-        val state = _uiState.value
+        val state = uiState.value
         val feed = if (state.isFeedUpdating) state.feedData else state.lastCompletedFeed ?: state.feedData
-        (feedQuickPicks(feed) + feed.ytLikedSongs + feed.freshFinds).randomOrNull()?.let {
-            playTrack(it, "Infinite Radio")
-        }
+        val excluded = recommendationExclusionKeys.replayCache.lastOrNull().orEmpty()
+        (feedQuickPicks(feed) + feed.ytLikedSongs + feed.freshFinds)
+            .filterNot { GeneratedTrack(it.title, it.artist).key in excluded }
+            .randomOrNull()?.let { playTrack(it, "Infinite Radio") }
     }
 
     fun playMix(mix: FeedMix) = playTrack(mix.seed, mix.title)
@@ -593,6 +603,11 @@ class FeedViewModel @Inject constructor(
         )
     }
 
+    private suspend fun filterRecommendedSongs(tracks: List<YouTubeMusicTrack>): List<YouTubeMusicTrack> {
+        val excluded = discoverRepository.recommendationExclusionKeys()
+        return tracks.filterNot { GeneratedTrack(it.title, it.artist).key in excluded }
+    }
+
     fun playArtistRadio(artist: FeedArtist) {
         viewModelScope.launch {
             val seeds = try {
@@ -620,7 +635,7 @@ class FeedViewModel @Inject constructor(
                     emptyList()
                 }
             }.orEmpty()
-            val songs = (listOfNotNull(seed) + related).distinctBy(YouTubeMusicTrack::videoId)
+            val songs = filterRecommendedSongs((listOfNotNull(seed) + related).distinctBy(YouTubeMusicTrack::videoId))
             if (songs.isNotEmpty()) {
                 playTracksQueue(songs, startIndex = 0, sourceLabel = "${artist.name} Radio")
             }
@@ -659,7 +674,7 @@ class FeedViewModel @Inject constructor(
                         emptyList()
                     }
                     if (searchResults.isNotEmpty()) {
-                        playTracksQueue(searchResults, sourceLabel = title)
+                        playTracksQueue(filterRecommendedSongs(searchResults), sourceLabel = title)
                     }
                 }
             } finally {
