@@ -595,7 +595,7 @@ internal fun ContentDrawScope.drawWithSyllableLift(
 ) {
     val textLength = l.layoutInput.text.length
     var rects: ArrayList<FloatArray>? = null
-    val glidePx = 2.5.dp.toPx()
+    val glidePx = 3.dp.toPx()
     val emPx = if (l.layoutInput.style.fontSize.isSpecified) l.layoutInput.style.fontSize.toPx() else 24.dp.toPx()
     val maxUpwardLift = 2.5.dp.toPx()
 

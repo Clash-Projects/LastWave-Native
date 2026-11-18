@@ -213,6 +213,17 @@ internal fun ModernSyncedLyricsList(
 
     val themeSpec = remember(lyricsStyle) { lyricsStyle.toThemeSpec() }
 
+    // Scroll-lookahead active index: advances the scroll target by the
+    // theme's lookahead (e.g. 600ms) so the viewport anticipates the next
+    // line. The horizontal syllable sweep and row lit/dim state still use
+    // the real activeIndex (zero lookahead).
+    val scrollActiveState = remember(stage, themeSpec) {
+        if (themeSpec.scrollLookaheadMs > 0L) {
+            derivedStateOf { stage.activeIndex(currentPositionMsState() + themeSpec.scrollLookaheadMs) }
+        } else null
+    }
+    val scrollActiveIndex = scrollActiveState?.value ?: activeIndex
+
     val isDraggedState = listState.interactionSource.collectIsDraggedAsState()
     // [0] = a user drag or the fling it started is still moving the list.
     // Plain array, read only from effects, so it never recomposes. The old
@@ -257,26 +268,32 @@ internal fun ModernSyncedLyricsList(
         }
     }
 
-    LaunchedEffect(activeIndex, isPlaying) {
+    LaunchedEffect(scrollActiveIndex, isPlaying) {
         // Auto-follow yields to the user for a short grace period after a
         // manual scroll; a paused player has no urgency, so the grace is
         // longer and the line only takes the focus back once the user is
         // clearly done browsing.
         val resumeDelayMs = if (isPlaying) 600L else 5000L
         val timeSinceUserScroll = System.currentTimeMillis() - userScrolledTime
-        if (!userScrollActive[0] && timeSinceUserScroll > resumeDelayMs && activeIndex in items.indices) {
+        if (!userScrollActive[0] && timeSinceUserScroll > resumeDelayMs && scrollActiveIndex in items.indices) {
             runCatching {
                 val layoutInfo = listState.layoutInfo
                 val viewportHeight = layoutInfo.viewportSize.height
                 if (viewportHeight > 0) {
-                    // Upper-third anchor: the sung line sits 18% from the top.
-                    val targetY = (viewportHeight * LYRIC_ANCHOR_FRACTION).toInt()
-                    val targetItem = layoutInfo.visibleItemsInfo.find { it.index == activeIndex }
+                    val anchorFraction = themeSpec.scrollAnchorFraction ?: LYRIC_ANCHOR_FRACTION
+                    val targetY = (viewportHeight * anchorFraction).toInt()
+                    val targetItem = layoutInfo.visibleItemsInfo.find { it.index == scrollActiveIndex }
                     if (targetItem != null) {
                         val delta = targetItem.offset - targetY
-                        listState.animateScrollBy(delta.toFloat(), lyricScrollDurationMs(delta.toFloat()))
+                        val duration = themeSpec.scrollDurationMs ?: lyricScrollDurationMs(delta.toFloat())
+                        val easing = themeSpec.scrollEasing
+                        if (easing != null) {
+                            listState.animateScrollBy(delta.toFloat(), duration, easing)
+                        } else {
+                            listState.animateScrollBy(delta.toFloat(), duration)
+                        }
                     } else {
-                        listState.animateScrollToItem(index = activeIndex, scrollOffset = -targetY)
+                        listState.animateScrollToItem(index = scrollActiveIndex, scrollOffset = -targetY)
                     }
                 }
             }
@@ -980,7 +997,11 @@ internal fun LyricSubLine(
  * jumping. Callers already guard with runCatching. Mirrors the classic
  * view's helper (same package, file-private there so duplicated here).
  */
-internal suspend fun LazyListState.animateScrollBy(pixels: Float, durationMs: Float = 560f) {
+internal suspend fun LazyListState.animateScrollBy(
+    pixels: Float,
+    durationMs: Float = 560f,
+    easing: androidx.compose.animation.core.Easing = LYRIC_EASE,
+) {
     if (pixels == 0f) return
     var consumed = 0f
     var startNanos = -1L
@@ -990,7 +1011,7 @@ internal suspend fun LazyListState.animateScrollBy(pixels: Float, durationMs: Fl
             if (startNanos < 0L) startNanos = now
             val t = ((now - startNanos) / (durationMs * 1_000_000f)).coerceIn(0f, 1f)
             done = t >= 1f
-            pixels * LYRIC_EASE.transform(t)
+            pixels * easing.transform(t)
         }
         val delta = target - consumed
         val scrolled = scrollBy(delta)

@@ -129,6 +129,18 @@ data class LyricsThemeSpec(
     /** Whether to draw the loader as a hollow outline instead of a filled shape. */
     val loaderDrawOutline: Boolean = false,
 
+    // ── Scroll ─────────────────────────────────────────────────────────────
+    /** Lookahead (ms) added to currentPositionMs for the auto-scroll target
+     *  index. The horizontal syllable sweep still uses the real position. */
+    val scrollLookaheadMs: Long = 0L,
+    /** Vertical anchor fraction: active line sits this far from the top of
+     *  the viewport (0.0 = very top, 0.5 = center). Null = use default. */
+    val scrollAnchorFraction: Float? = null,
+    /** Auto-scroll animation duration (ms). Null = use default band. */
+    val scrollDurationMs: Float? = null,
+    /** Auto-scroll easing. Null = use default LYRIC_EASE. */
+    val scrollEasing: Easing? = null,
+
     // ── Transitions ────────────────────────────────────────────────────────
     /** Duration (ms) for opacity/blur transitions on inactive lines. */
     val transitionDurationMs: Int = 420,
@@ -204,6 +216,10 @@ fun LyricsStyle.toThemeSpec(): LyricsThemeSpec = when (this) {
         loaderUseFloatAnim = false,
         loaderUseOpacityPulse = false,
         loaderGlowRadiusPx = 0f,
+        scrollLookaheadMs = 600L,
+        scrollAnchorFraction = 0.45f,
+        scrollDurationMs = 400f,
+        scrollEasing = FastOutSlowInEasing,
         transitionDurationMs = 300,
         transitionDelayMs = 0,
         transitionEasing = FlowEasing,
@@ -254,7 +270,7 @@ fun LyricsStyle.toThemeSpec(): LyricsThemeSpec = when (this) {
         activeLineScale = 1.0f,
         inactiveScaleFalloff = listOf(0.92f),
         useSpringForScale = false,
-        scaleDurationMs = 166,
+        scaleDurationMs = 600,
         fontFamily = FontFamily.Default,
         activeFontWeight = FontWeight.Black,
         inactiveFontWeight = FontWeight.Black,
@@ -278,6 +294,10 @@ fun LyricsStyle.toThemeSpec(): LyricsThemeSpec = when (this) {
         activeLineProgressFill = false,
         loaderUseScaleAnim = true,
         loaderGlowRadiusPx = 0f,
+        scrollLookaheadMs = 600L,
+        scrollAnchorFraction = 0.45f,
+        scrollDurationMs = 400f,
+        scrollEasing = FastOutSlowInEasing,
         transitionDurationMs = 500,
         previousAlphaDurationMs = 900,
         previousBlurDurationMs = 250,
