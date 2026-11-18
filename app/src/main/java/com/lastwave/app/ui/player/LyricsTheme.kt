@@ -13,8 +13,7 @@ import androidx.compose.ui.unit.sp
 enum class LyricsStyle(val id: String, val displayName: String) {
     DEFAULT("default", "Default"),
     FLOW("flow", "Flow"),
-    HALO("halo", "Halo"),
-    VELVET("velvet", "Velvet");
+    HALO("halo", "Halo");
 
     companion object {
         fun fromId(id: String?): LyricsStyle =
@@ -54,6 +53,8 @@ data class LyricsThemeSpec(
     val inactiveScaleFalloff: List<Float> = listOf(0.97f, 0.94f, 0.92f),
     /** Use spring physics for scale transitions instead of tween. */
     val useSpringForScale: Boolean = true,
+    /** Whether to scale vertical layout height with animatedScale to eliminate empty gaps on shrunk lines. */
+    val collapseInactiveLineHeight: Boolean = false,
 
     // ── Typography ─────────────────────────────────────────────────────────
     /** Font family. If null, uses app/system default. */
@@ -66,6 +67,8 @@ data class LyricsThemeSpec(
     val lineHeightMultiplier: Float = 1.20f,
     /** Font size multiplier to scale text for specific themes. */
     val fontSizeMultiplier: Float = 1.0f,
+    /** Font size multiplier for sub-lines (translation/romanization) relative to parent line font size. */
+    val subLineScaleMultiplier: Float? = null,
     /** Custom letter spacing override for lyrics text in this theme. If null, default spacing (-0.6.sp) is used. */
     val letterSpacing: TextUnit? = null,
 
@@ -150,6 +153,8 @@ data class LyricsThemeSpec(
     val previousBlurDurationMs: Int? = null,
     /** Duration (ms) for scale transition. */
     val scaleDurationMs: Int? = null,
+    /** Custom easing for scale transitions. Null = use transitionEasing. */
+    val scaleEasing: Easing? = null,
     /** Delay (ms) before blur/opacity transition starts. */
     val transitionDelayMs: Int = 0,
     /** Easing for blur/alpha transitions. */
@@ -157,6 +162,7 @@ data class LyricsThemeSpec(
 )
 
 private val FlowEasing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
+private val FlowScaleEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1.0f)
 
 fun LyricsStyle.toThemeSpec(): LyricsThemeSpec = when (this) {
     LyricsStyle.DEFAULT -> LyricsThemeSpec(
@@ -185,25 +191,28 @@ fun LyricsStyle.toThemeSpec(): LyricsThemeSpec = when (this) {
 
     LyricsStyle.FLOW -> LyricsThemeSpec(
         activeLineAlpha = 1.0f,
-        previousLineAlpha = 0.5f,
-        futureLineAlpha = 0.65f,
-        futureAlphaFalloff = listOf(0.65f, 0.45f, 0.30f),
+        previousLineAlpha = 0.32f,
+        futureLineAlpha = 0.48f,
+        futureAlphaFalloff = listOf(0.48f, 0.36f, 0.26f),
         blurPreviousLines = true,
-        blurRadiusPx = 12f,
+        blurRadiusPx = 6.0f,
         blurFutureLines = false,
         activeLineScale = 1.0f,
-        inactiveScaleFalloff = listOf(0.84f, 0.78f, 0.74f),
+        inactiveScaleFalloff = listOf(0.58f, 0.54f, 0.50f),
         useSpringForScale = false,
         scaleDurationMs = 300,
+        scaleEasing = FlowScaleEasing,
+        collapseInactiveLineHeight = true,
         activeFontWeight = FontWeight(650),
         inactiveFontWeight = FontWeight(650),
-        lineHeightMultiplier = 1.38f,
+        lineHeightMultiplier = 1.33f,
         fontSizeMultiplier = 1.0f,
+        subLineScaleMultiplier = 0.60f,
         glowActiveWord = true,
         selectiveLongWordGlow = true,
         wordGlowRadiusPx = 14f,
         wordWobbleEffect = true,
-        futureWordAlpha = 0.45f,
+        futureWordAlpha = 0.38f,
         passedWordAlpha = 1.0f,
         useAccentForWordGlow = false,
         activeWordGlowAlpha = 0.75f,
@@ -221,39 +230,6 @@ fun LyricsStyle.toThemeSpec(): LyricsThemeSpec = when (this) {
         scrollDurationMs = 400f,
         scrollEasing = FastOutSlowInEasing,
         transitionDurationMs = 300,
-        transitionDelayMs = 0,
-        transitionEasing = FlowEasing,
-    )
-
-    LyricsStyle.VELVET -> LyricsThemeSpec(
-        activeLineAlpha = 1.0f,
-        previousLineAlpha = 0.7f,
-        futureLineAlpha = 0.7f,
-        futureAlphaFalloff = listOf(0.7f, 0.6f, 0.5f),
-        blurPreviousLines = false,
-        blurRadiusPx = 0f,
-        blurFutureLines = false,
-        activeLineScale = 1.05f,
-        inactiveScaleFalloff = listOf(1.0f),
-        activeFontWeight = FontWeight.SemiBold,
-        inactiveFontWeight = FontWeight.Medium,
-        lineHeightMultiplier = 1.35f,
-        glowActiveWord = true,
-        wordGlowRadiusPx = 10f,
-        futureWordAlpha = 0.6f,
-        passedWordAlpha = 0.8f,
-        useAccentForWordGlow = true,
-        activeWordGlowAlpha = 0.4f,
-        tintNextLineWithAccent = true,
-        activeLineProgressFill = true,
-        romanizedTextAlpha = 0.7f,
-        romanizedBackgroundAlpha = 0.05f,
-        translatedTextAlpha = 0.7f,
-        themeAccentColor = Color(0xFFD49E9B),
-        loaderUseOpacityPulse = true,
-        loaderGlowRadiusPx = 16f,
-        loaderGlowColorOverride = Color(0xFFD49E9B),
-        transitionDurationMs = 500,
         transitionDelayMs = 0,
         transitionEasing = FlowEasing,
     )
