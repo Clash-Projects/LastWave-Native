@@ -15,7 +15,6 @@ import androidx.compose.ui.text.style.TextAlign
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.material3.MotionScheme
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.CoroutineStart
 
@@ -378,7 +377,7 @@ fun TrackContextMenuSheet(
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
     trackLinkViewModel: TrackLinkViewModel = hiltViewModel(),
     exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
-) = MaterialTheme(motionScheme = TrackMenuMotionScheme) {
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -447,7 +446,7 @@ fun TrackContextMenuSheet(
                 onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
             },
         )
-        return@MaterialTheme
+        return
     }
 
     if (showSyncedVideoDialog && target is TrackMenuTarget.Track) {
@@ -460,7 +459,7 @@ fun TrackContextMenuSheet(
                 onDismiss()
             },
         )
-        return@MaterialTheme
+        return
     }
 
     if (showJamSheet) {
@@ -470,7 +469,7 @@ fun TrackContextMenuSheet(
                 onDismiss()
             },
         )
-        return@MaterialTheme
+        return
     }
 
     if (showTimerDialog) {
@@ -935,13 +934,4 @@ private fun MenuMetadataAction(
             ExpressiveInlineLoadingIndicator(size = 14.dp)
         }
     }
-}
-
-private object TrackMenuMotionScheme : MotionScheme {
-    override fun <T> defaultSpatialSpec() = ExpressiveMotion.spatialDefault<T>()
-    override fun <T> fastSpatialSpec() = ExpressiveMotion.spatialFast<T>()
-    override fun <T> slowSpatialSpec() = ExpressiveMotion.spatialSlow<T>()
-    override fun <T> defaultEffectsSpec() = ExpressiveMotion.effectsDefault<T>()
-    override fun <T> fastEffectsSpec() = ExpressiveMotion.effectsFast<T>()
-    override fun <T> slowEffectsSpec() = ExpressiveMotion.effectsSlow<T>()
 }
