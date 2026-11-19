@@ -516,7 +516,7 @@ fun TrackContextMenuSheet(
                     TextButton(
                         enabled = customDuration != null,
                         onClick = {
-                            customDuration?.let(musicPlayer::setSleepTimerMinutes)
+                            customDuration?.let { musicPlayer.setSleepTimerMinutes(it) }
                             showCustomDialog = false
                             showTimerDialog = false
                         },
@@ -591,7 +591,7 @@ fun TrackContextMenuSheet(
                 musicPlayer = musicPlayer,
                 addToPlaylist = addToPlaylist,
                 dismissing = dismissing,
-                dismissMenu = ::dismissMenu,
+                dismissMenu = { dismissMenu() },
                 onPlayInLastWave = onPlayInLastWave,
                 onStartMix = onStartMix,
                 onExploreGenre = onExploreGenre,
@@ -603,7 +603,7 @@ fun TrackContextMenuSheet(
                 musicVideoEnabled = musicVideoEnabled,
                 resolvedGenre = resolvedGenre,
                 resolvingGenre = resolvingGenre,
-                exploreGenre = ::exploreGenre,
+                exploreGenre = { exploreGenre(it) },
                 isDownloaded = isDownloaded,
                 activeDownloads = activeDownloads,
                 downloadLabel = downloadLabel,
@@ -626,7 +626,7 @@ fun TrackContextMenuSheet(
                 musicPlayer = musicPlayer,
                 addToPlaylist = addToPlaylist,
                 dismissing = dismissing,
-                dismissMenu = ::dismissMenu,
+                dismissMenu = { dismissMenu() },
                 onPlayInLastWave = onPlayInLastWave,
                 onStartMix = onStartMix,
                 onRefreshArtwork = onRefreshArtwork,
@@ -637,7 +637,7 @@ fun TrackContextMenuSheet(
                 musicVideoEnabled = musicVideoEnabled,
                 resolvedGenre = resolvedGenre,
                 resolvingGenre = resolvingGenre,
-                exploreGenre = ::exploreGenre,
+                exploreGenre = { exploreGenre(it) },
                 isDownloaded = isDownloaded,
                 activeDownloads = activeDownloads,
                 downloadTier = downloadTier,
@@ -727,7 +727,7 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
-                        IconButton(onClick = ::dismissMenu, enabled = !dismissing) {
+                        IconButton(onClick = { dismissMenu() }, enabled = !dismissing) {
                             Icon(Icons.Outlined.Close, stringResource(R.string.common_close))
                         }
                     }
