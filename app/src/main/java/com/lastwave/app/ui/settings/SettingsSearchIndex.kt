@@ -520,7 +520,7 @@ object SettingsSearchIndex {
                         "legacy colors", "legacy colours", "material you background", "base colour", "original background",
                         "bright background", "solid background", "monet"
                     ),
-                    icon = Icons.Filled.Colorize,
+                    icon = Icons.Filled.Palette,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
                     parentTab = SettingsTab.APPEARANCE,

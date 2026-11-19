@@ -1238,7 +1238,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.amoled"),
                             )
                             4 -> SettingsToggleCard(
-                                icon = Icons.Filled.Colorize,
+                                icon = Icons.Filled.Palette,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_legacy_colors),
