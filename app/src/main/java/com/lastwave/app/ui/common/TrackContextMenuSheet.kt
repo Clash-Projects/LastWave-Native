@@ -103,6 +103,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
 import com.lastwave.app.ui.player.LocalMusicPlayer
 import com.lastwave.app.ui.player.LocalAddToPlaylist
@@ -1027,10 +1028,13 @@ private fun ColumnScope.ClassicTrackMenuContent(
                     add { pos ->
                         ClassicMenuActionRow(
                             Icons.Outlined.PlaylistAdd,
-                            stringResource(R.string.menu_local_file_tag),
+                            stringResource(R.string.local_add_to_playlist),
                             position = pos,
                             enabled = !dismissing,
-                        ) {}
+                        ) {
+                            addToPlaylist(playable)
+                            dismissMenu()
+                        }
                     }
                 }
                 val downloadKey = com.lastwave.app.data.download.TrackDownloadManager.makeDownloadKey(t.name, t.artist)
