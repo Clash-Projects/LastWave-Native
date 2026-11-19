@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestartAlt
@@ -523,6 +525,38 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Palette,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.legacy_track_menu",
+                    title = "Use Classic Song Menu",
+                    subtitle = "Use the classic card-based song options menu instead of the redesigned sheet",
+                    keywords = listOf(
+                        "classic song menu", "legacy track menu", "old song menu", "3 dots menu", "context menu", "track menu"
+                    ),
+                    icon = Icons.Filled.MoreVert,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.menu_blur",
+                    title = "Use Blur in Menus",
+                    subtitle = "Blur the background behind song options and context menus",
+                    keywords = listOf(
+                        "menu blur", "blur", "translucent menu", "glass menu", "3 dots blur", "backdrop blur"
+                    ),
+                    icon = Icons.Filled.BlurOn,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Appearance",
                     type = EntryType.TOGGLE,

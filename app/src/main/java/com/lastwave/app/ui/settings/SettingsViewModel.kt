@@ -528,6 +528,8 @@ class SettingsViewModel @Inject constructor(
     fun setUseCustomFont(enabled: Boolean) = launchSettingsAction("update the app font") { settingsPreferences.setUseCustomFont(enabled) }
     fun setUseBoldFont(enabled: Boolean) = launchSettingsAction("update font weight") { settingsPreferences.setUseBoldFont(enabled) }
     fun setCollapsingNavBar(enabled: Boolean) = launchSettingsAction("update nav bar collapse") { settingsPreferences.setCollapsingNavBar(enabled) }
+    fun setLegacyTrackMenu(enabled: Boolean) = launchSettingsAction("update classic song menu") { settingsPreferences.setLegacyTrackMenu(enabled) }
+    fun setMenuBlur(enabled: Boolean) = launchSettingsAction("update menu blur") { settingsPreferences.setMenuBlur(enabled) }
     fun setPreferLosslessStreaming(enabled: Boolean) = launchSettingsAction("update streaming preference") { settingsPreferences.setPreferLosslessStreaming(enabled) }
     fun setHiResStart(mode: com.lastwave.app.data.local.HiResStart) = launchSettingsAction("update hi-res start") { settingsPreferences.setHiResStart(mode) }
     fun setWifiStreamingQuality(quality: Int) = launchSettingsAction("update Wi-Fi streaming quality") { settingsPreferences.setWifiStreamingQuality(quality) }

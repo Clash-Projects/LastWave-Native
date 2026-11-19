@@ -300,6 +300,10 @@ data class MiscSettings(
     val musicHapticsIntensity: MusicHapticsIntensity = MusicHapticsIntensity.MEDIUM,
     val musicHapticsEngineMode: MusicHapticsEngineMode = MusicHapticsEngineMode.AUTO,
     val musicHapticsPauseOnBatterySaver: Boolean = true,
+    /** When true, uses the classic card-based 3-dots song menu instead of the redesigned layout. */
+    val useLegacyTrackMenu: Boolean = false,
+    /** When true, enables blur effect behind and around song options menus. */
+    val useMenuBlur: Boolean = true,
 )
 
 val MiscSettings.musicHapticsConfig: MusicHapticsConfig
@@ -519,6 +523,8 @@ class SettingsPreferences @Inject constructor(
         val MUSIC_HAPTICS_INTENSITY = stringPreferencesKey("lw_music_haptics_intensity")
         val MUSIC_HAPTICS_ENGINE_MODE = stringPreferencesKey("lw_music_haptics_engine_mode")
         val MUSIC_HAPTICS_BATTERY_SAVER = booleanPreferencesKey("lw_music_haptics_battery_saver")
+        val USE_LEGACY_TRACK_MENU = booleanPreferencesKey("lw_use_legacy_track_menu")
+        val USE_MENU_BLUR = booleanPreferencesKey("lw_use_menu_blur")
     }
 
     val settings: Flow<MiscSettings> = dataStore.data
@@ -636,6 +642,8 @@ class SettingsPreferences @Inject constructor(
                 musicHapticsIntensity = MusicHapticsIntensity.fromName(p.readSafely(Keys.MUSIC_HAPTICS_INTENSITY)),
                 musicHapticsEngineMode = MusicHapticsEngineMode.fromName(p.readSafely(Keys.MUSIC_HAPTICS_ENGINE_MODE)),
                 musicHapticsPauseOnBatterySaver = p.readSafely(Keys.MUSIC_HAPTICS_BATTERY_SAVER) ?: true,
+                useLegacyTrackMenu = p.readSafely(Keys.USE_LEGACY_TRACK_MENU) ?: false,
+                useMenuBlur = p.readSafely(Keys.USE_MENU_BLUR) ?: true,
             )
         }
         // Cold, every one of ~60 collectors (mostly on Main) re-ran this mapping and
@@ -1248,6 +1256,14 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setJamRoomMode(mode: String) {
         dataStore.edit { it[Keys.JAM_ROOM_MODE] = mode }
+    }
+
+    suspend fun setLegacyTrackMenu(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_LEGACY_TRACK_MENU] = enabled }
+    }
+
+    suspend fun setMenuBlur(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_MENU_BLUR] = enabled }
     }
     private companion object {
         val STREAMING_QUALITIES = setOf(-1, 4, 5, 6, 27, 28)

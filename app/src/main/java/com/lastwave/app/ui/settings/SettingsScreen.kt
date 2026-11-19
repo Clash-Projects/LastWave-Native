@@ -138,6 +138,8 @@ import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.HighQuality
@@ -1200,7 +1202,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 14) { index, position ->
+                    SettingsGroup(rowCount = 16) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1351,6 +1353,28 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setCollapsingNavBar,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.collapsing_nav_bar"),
+                            )
+                            14 -> SettingsToggleCard(
+                                icon = Icons.Filled.MoreVert,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_legacy_track_menu),
+                                subtitle = stringResource(R.string.settings_legacy_track_menu_sub),
+                                checked = misc.useLegacyTrackMenu,
+                                onCheckedChange = viewModel::setLegacyTrackMenu,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.legacy_track_menu"),
+                            )
+                            15 -> SettingsToggleCard(
+                                icon = Icons.Filled.BlurOn,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_menu_blur),
+                                subtitle = stringResource(R.string.settings_menu_blur_sub),
+                                checked = misc.useMenuBlur,
+                                onCheckedChange = viewModel::setMenuBlur,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.menu_blur"),
                             )
                         }
                     }

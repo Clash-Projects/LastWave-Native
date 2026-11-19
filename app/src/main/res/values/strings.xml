@@ -121,6 +121,10 @@
     <string name="settings_amoled_sub">Pure black background (Dark mode only)</string>
     <string name="settings_legacy_colors">Use legacy colours</string>
     <string name="settings_legacy_colors_sub">Use authentic Material You background and surface tones instead of deep obsidian surfaces</string>
+    <string name="settings_legacy_track_menu">Use classic song menu</string>
+    <string name="settings_legacy_track_menu_sub">Use the classic card-based song options menu instead of the redesigned sheet</string>
+    <string name="settings_menu_blur">Use blur in menus</string>
+    <string name="settings_menu_blur_sub">Blur the background behind song options and context menus</string>
     <string name="settings_dynamic_color">Dynamic Color</string>
     <string name="settings_dynamic_color_sub">Use your wallpaper\'s colors</string>
     <string name="settings_dynamic_now_playing">Dynamic Now Playing</string>
