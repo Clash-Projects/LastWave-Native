@@ -242,9 +242,26 @@ android {
     // island and is almost never already installed outside China.
     val vivoOrigin = (project.findProperty("vivoOrigin") as? String)?.toBoolean() == true
 
+    // Android TV build: `-PtvApp=true` ships the same app as a separate
+    // package (com.lastwave.app.tv) so the TV APK installs alongside the
+    // phone app instead of replacing it. Still one universal APK.
+    val tvApp = (project.findProperty("tvApp") as? String)?.toBoolean() == true
+
+    // App ships English-only: strip every other locale from the APK
+    // (AGP 9 replacement for the deprecated resourceConfigurations).
+    androidResources {
+        localeFilters += setOf("en")
+    }
+
+
     defaultConfig {
-        applicationId = if (vivoOrigin) "com.tencent.qqmusic" else "com.lastwave.app"
+        applicationId = when {
+            vivoOrigin -> "com.tencent.qqmusic"
+            tvApp -> "com.lastwave.app.tv"
+            else -> "com.lastwave.app"
+        }
         buildConfigField("boolean", "VIVO_ORIGIN", vivoOrigin.toString())
+        buildConfigField("boolean", "TV_APP", tvApp.toString())
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
         versionCode = 33
@@ -316,6 +333,8 @@ android {
                 storePassword = storePasswordProp
                 keyAlias = keyAliasProp
                 keyPassword = keyPasswordProp
+                // Store type override (e.g. PKCS12 from the DollBloom unseal flow).
+                resolveSecret("RELEASE_STORE_TYPE").takeIf { it.isNotBlank() }?.let { storeType = it }
                 enableV1Signing = true
                 enableV2Signing = true
                 enableV3Signing = true
@@ -332,7 +351,15 @@ android {
                 // so debug builds and unit tests keep working with no signing
                 // secrets present on a dev machine.
                 if (requestsRelease) {
+                    println(
+                        "LastWave signing probe: SIGNING_KEY blank=" + (base64Key.isBlank()).toString() +
+                            ", RELEASE_STORE_FILE blank=" + (storeFilePath.isBlank()).toString() +
+                            ", STORE_PASSWORD blank=" + (storePasswordProp.isBlank()).toString() +
+                            ", keystoreFile=" + (releaseKeystoreFile?.absolutePath ?: "null") +
+                            ", exists=" + (releaseKeystoreFile?.exists()?.toString() ?: "n/a")
+                    )
                     throw GradleException(
+
                         "No release signing key found. Provide SIGNING_KEY (base64 " +
                             "keystore) or RELEASE_STORE_FILE + RELEASE_STORE_PASSWORD + " +
                             "RELEASE_KEY_ALIAS. Refusing to sign a release variant with " +
