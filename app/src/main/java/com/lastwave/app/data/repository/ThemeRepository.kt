@@ -65,6 +65,7 @@ data class ThemeUiState(
     val isNowPlayingThemed: Boolean = false,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val isLastWaveTheme: Boolean = false,
+    val useLegacyColors: Boolean = false,
     val appIcon: AppIcon = AppIcon.DEFAULT,
 )
 
@@ -221,14 +222,14 @@ class ThemeRepository @Inject constructor(
     }
 
     /** System wallpaper (Monet) schemes, or null before Android 12 / on ROMs without them. */
-    private fun systemDynamicSchemes(amoled: Boolean): Pair<ColorScheme, ColorScheme>? {
+    private fun systemDynamicSchemes(amoled: Boolean, useLegacyColors: Boolean): Pair<ColorScheme, ColorScheme>? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
         return runCatching {
             val systemDark = androidx.compose.material3.dynamicDarkColorScheme(context)
-            val dark = if (amoled) {
-                Md3SchemeBuilder.applyAmoledTheme(systemDark)
-            } else {
-                Md3SchemeBuilder.applyDarkSurfaces(systemDark)
+            val dark = when {
+                amoled -> Md3SchemeBuilder.applyAmoledTheme(systemDark)
+                useLegacyColors -> systemDark
+                else -> Md3SchemeBuilder.applyDarkSurfaces(systemDark)
             }
             dark to androidx.compose.material3.dynamicLightColorScheme(context)
         }.getOrNull()
@@ -243,19 +244,20 @@ class ThemeRepository @Inject constructor(
         val isAmoled = prefs.amoled
         val isGlass = prefs.liquidGlass
         val isLastWave = prefs.lastWaveTheme
+        val useLegacy = prefs.useLegacyColors
         val nowPlayingActive = misc.dynamicNowPlayingEnabled && nowPlaying != null && !isLastWave
         // Real wallpaper Monet on S+. Built here (not only in LastWaveTheme)
         // so widgets and the media notification use the same colors as the UI.
-        val systemDynamic = if (prefs.accentMode == AccentMode.DYNAMIC && !isLastWave) systemDynamicSchemes(isAmoled) else null
+        val systemDynamic = if (prefs.accentMode == AccentMode.DYNAMIC && !isLastWave) systemDynamicSchemes(isAmoled, useLegacy) else null
         val (baseDark, baseLight) = when {
             isLastWave -> {
-                val dark = Md3SchemeBuilder.buildLastWaveDarkScheme(isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildLastWaveDarkScheme(isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildLastWaveLightScheme(isGlass)
                 dark to light
             }
             systemDynamic != null -> systemDynamic
             prefs.accentMode == AccentMode.MONOCHROME -> {
-                val dark = Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildMonochromeLightScheme(isGlass)
                 dark to light
             }
@@ -266,12 +268,12 @@ class ThemeRepository @Inject constructor(
                 // and cold-start frames already show the wallpaper accent
                 // instead of the default red or monochrome.
                 val seed = dynamic ?: getSystemWallpaperColorHex() ?: prefs.accentColor
-                val dark = Md3SchemeBuilder.buildDarkScheme(seed, isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildDarkScheme(seed, isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildLightScheme(seed, isGlass)
                 dark to light
             }
             else -> {
-                val dark = Md3SchemeBuilder.buildDarkScheme(prefs.accentColor, isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildDarkScheme(prefs.accentColor, isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildLightScheme(prefs.accentColor, isGlass)
                 dark to light
             }
@@ -279,7 +281,7 @@ class ThemeRepository @Inject constructor(
         // The cover owns the palette while there is one: blended 40% into the
         // wallpaper theme and muted, every song ended up the same generic tint.
         val (darkScheme, lightScheme) = if (nowPlayingActive) {
-            Md3SchemeBuilder.buildArtworkSchemes(nowPlaying!!.seed, nowPlaying.second, isAmoled)
+            Md3SchemeBuilder.buildArtworkSchemes(nowPlaying!!.seed, nowPlaying.second, isAmoled, useLegacy)
         } else {
             baseDark to baseLight
         }
@@ -299,6 +301,7 @@ class ThemeRepository @Inject constructor(
             uiHaptics = prefs.uiHaptics,
             isNowPlayingThemed = nowPlayingActive,
             isLastWaveTheme = isLastWave,
+            useLegacyColors = useLegacy,
             appIcon = prefs.appIcon,
         )
     }.stateIn(
@@ -317,6 +320,7 @@ class ThemeRepository @Inject constructor(
             md3NavBar = false,
             hideNavTabs = false,
             isLastWaveTheme = false,
+            useLegacyColors = false,
             appIcon = AppIcon.DEFAULT,
         ),
     )
@@ -326,6 +330,8 @@ class ThemeRepository @Inject constructor(
     }
 
     suspend fun setLastWaveTheme(enabled: Boolean) = themePreferences.setLastWaveTheme(enabled)
+
+    suspend fun setLegacyColors(enabled: Boolean) = themePreferences.setLegacyColors(enabled)
 
     suspend fun setAppIcon(icon: AppIcon) {
         themePreferences.setAppIcon(icon)

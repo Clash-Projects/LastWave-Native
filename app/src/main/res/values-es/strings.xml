@@ -45,6 +45,8 @@
     <string name="settings_section_appearance">Apariencia</string>
     <string name="settings_amoled">Modo AMOLED</string>
     <string name="settings_amoled_sub">Fondo negro puro (solo en modo oscuro)</string>
+    <string name="settings_legacy_colors">Usar colores heredados</string>
+    <string name="settings_legacy_colors_sub">Usa tonos auténticos de fondo y superficie de Material You en lugar de superficies de obsidiana profunda</string>
     <string name="settings_dynamic_color">Color dinámico</string>
     <string name="settings_dynamic_color_sub">Usar los colores del fondo de pantalla</string>
     <string name="settings_dynamic_now_playing">Dinámico en reproducción</string>
