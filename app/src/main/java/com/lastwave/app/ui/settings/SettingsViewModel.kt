@@ -713,6 +713,10 @@ class SettingsViewModel @Inject constructor(
         launchSettingsAction("update stop playback on recents setting") {
             settingsPreferences.setStopPlaybackOnTaskRemoved(enabled)
         }
+    fun setPauseOnZeroVolume(enabled: Boolean) =
+        launchSettingsAction("update pause on zero volume setting") {
+            settingsPreferences.setPauseOnZeroVolume(enabled)
+        }
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
