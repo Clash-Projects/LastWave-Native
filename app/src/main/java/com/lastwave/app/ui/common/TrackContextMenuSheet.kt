@@ -1,8 +1,15 @@
 package com.lastwave.app.ui.common
 
+import android.widget.Toast
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Cast
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.ui.draw.alpha
+import androidx.compose.viewinterop.AndroidView
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.framework.CastButtonFactory
 
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -107,7 +114,6 @@ import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.ui.navigation.ArtistAlbumNavigator
 import com.lastwave.app.ui.player.LocalMusicPlayer
 import com.lastwave.app.ui.player.LocalAddToPlaylist
-import com.lastwave.app.ui.player.PlayerCastMenuRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.map
@@ -392,7 +398,9 @@ fun TrackContextMenuSheet(
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val useLegacyTrackMenu by downloadViewModel.useLegacyTrackMenu.collectAsStateWithLifecycle()
+    val useMenuBlur by downloadViewModel.useMenuBlur.collectAsStateWithLifecycle()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = !useLegacyTrackMenu)
     val scope = rememberCoroutineScope()
     var dismissing by remember { mutableStateOf(false) }
     fun dismissMenu() {
@@ -419,8 +427,6 @@ fun TrackContextMenuSheet(
     val downloadQuality by downloadViewModel.downloadQuality.collectAsStateWithLifecycle()
     val downloadTier = downloadTierForQuality(context, downloadQuality)
     val downloadLabel = remember(downloadQuality) { downloadLabelForQuality(context, downloadQuality) }
-    val useLegacyTrackMenu by downloadViewModel.useLegacyTrackMenu.collectAsStateWithLifecycle()
-    val useMenuBlur by downloadViewModel.useMenuBlur.collectAsStateWithLifecycle()
     var isDownloaded by remember(target) { mutableStateOf(false) }
 
     LaunchedEffect(target, activeDownloads) {
@@ -708,7 +714,7 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                 val isSong = playable.mediaType == com.lastwave.app.playback.MediaType.SONG
                 val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats
                     .importedPathOrNull(playable.playbackUrl) != null
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         ArtworkImage(
                             name = t.name,
@@ -721,46 +727,40 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                         Column(Modifier.weight(1f)) {
                             Text(t.name, style = MaterialTheme.typography.titleMedium, maxLines = 2,
                                 overflow = TextOverflow.Ellipsis)
-                            if (!isSong && t.artist.isNotBlank()) {
+                            if (t.artist.isNotBlank()) {
+                                Spacer(Modifier.height(2.dp))
                                 Text(t.artist, style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
-                        IconButton(onClick = { dismissMenu() }, enabled = !dismissing) {
-                            Icon(Icons.Outlined.Close, stringResource(R.string.common_close))
-                        }
                     }
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        if (isSong) {
-                            com.lastwave.app.util.ArtistHelper.splitArtists(t.artist).forEach { artist ->
-                                MenuMetadataAction(Icons.Outlined.Person, artist, menuEnabled = !dismissing) {
-                                    artistAlbumViewModel.openArtist(artist)
+                    val albumText = playable.album?.takeIf { it.isNotBlank() }
+                    val genre = resolvedGenre?.trim()
+                    val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
+                    if ((isSong && albumText != null) || resolvingGenre || hasGenre) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (isSong && albumText != null) {
+                                MenuMetadataAction(Icons.Outlined.Album, albumText, menuEnabled = !dismissing) {
+                                    artistAlbumViewModel.openAlbum(albumText, playable.artist.ifBlank { t.artist })
                                     dismissMenu()
                                 }
                             }
-                            playable.album?.takeIf { it.isNotBlank() }?.let { album ->
-                                MenuMetadataAction(Icons.Outlined.Album, album, menuEnabled = !dismissing) {
-                                    artistAlbumViewModel.openAlbum(album, playable.artist.ifBlank { t.artist })
+                            if (resolvingGenre || hasGenre) {
+                                MenuMetadataAction(
+                                    icon = Icons.Outlined.Sell,
+                                    label = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else genre!!,
+                                    loading = resolvingGenre,
+                                    enabled = !resolvingGenre && hasGenre,
+                                    menuEnabled = !dismissing,
+                                ) {
+                                    exploreGenre(genre!!)
                                     dismissMenu()
                                 }
-                            }
-                        }
-                        val genre = resolvedGenre?.trim()
-                        val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
-                        if (resolvingGenre || hasGenre) {
-                            MenuMetadataAction(
-                                icon = Icons.Outlined.Sell,
-                                label = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else genre!!,
-                                loading = resolvingGenre,
-                                enabled = !resolvingGenre && hasGenre,
-                                menuEnabled = !dismissing,
-                            ) {
-                                exploreGenre(genre!!)
-                                dismissMenu()
                             }
                         }
                     }
@@ -772,52 +772,84 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                 }
                 QuickActionsRow(
                     enabled = !dismissing,
+                    onPlay = {
+                        onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+                        dismissMenu()
+                    },
                     onPlayNext = { musicPlayer.playNext(playable); dismissMenu() },
                     onAddToPlaylist = { addToPlaylist(playable); dismissMenu() },
-                    onAddToQueue = { musicPlayer.addToQueue(playable); dismissMenu() },
                 )
+                val castAvailable = remember(musicPlayer) { musicPlayer.initializeCast() }
+                var castRouteButton by remember { mutableStateOf<MediaRouteButton?>(null) }
+                if (castAvailable) {
+                    AndroidView(
+                        modifier = Modifier.size(0.dp).alpha(0f),
+                        update = { it.isEnabled = !dismissing },
+                        factory = { viewContext ->
+                            MediaRouteButton(viewContext).apply {
+                                background = null
+                                contentDescription = "Chromecast"
+                                CastButtonFactory.setUpMediaRouteButton(viewContext, this)
+                                castRouteButton = this
+                            }
+                        },
+                    )
+                }
                 val actions = buildList<@Composable () -> Unit> {
-                    val downloadKey = com.lastwave.app.data.download.TrackDownloadManager.makeDownloadKey(t.name, t.artist)
-                    val isDownloading = activeDownloads[downloadKey]?.let { !it.isFinished } == true
-                    if (!isLocalFile) add {
-                        when {
-                            isDownloaded -> MenuActionRow(
-                                Icons.Filled.CheckCircle, stringResource(R.string.menu_downloaded),
-                                enabled = !dismissing,
-                            ) {
-                                android.widget.Toast.makeText(context, context.getString(R.string.menu_already_downloaded),
-                                    android.widget.Toast.LENGTH_SHORT).show()
-                                dismissMenu()
-                            }
-                            isDownloading -> MenuActionRow(
-                                Icons.Outlined.Download, stringResource(R.string.menu_downloading),
-                                enabled = !dismissing,
-                            ) {
-                                android.widget.Toast.makeText(context, context.getString(R.string.menu_download_progress),
-                                    android.widget.Toast.LENGTH_SHORT).show()
-                                dismissMenu()
-                            }
-                            else -> MenuActionRow(
-                                Icons.Outlined.Download, stringResource(R.string.details_download),
-                                supportingText = downloadTier,
-                                enabled = !dismissing,
-                            ) {
-                                downloadViewModel.download(
-                                    title = t.name, artist = t.artist, album = playable.album,
-                                    artworkUrl = playable.artworkUrl, videoId = playable.videoId,
-                                    durationMs = playable.durationMs,
-                                )
-                                dismissMenu()
-                            }
+                    // Row 1: Jam | Add to queue
+                    add {
+                        MenuActionRow(Icons.Outlined.Group, stringResource(R.string.menu_quick_jam), enabled = !dismissing) {
+                            openJam()
                         }
                     }
-                    if (isSong && musicVideoEnabled && canWatchVideo) add {
-                        MenuActionRow(Icons.Outlined.SmartDisplay, stringResource(R.string.menu_watch_video), enabled = !dismissing) {
-                            if (onWatchVideo != null) {
-                                onWatchVideo()
+                    add {
+                        MenuActionRow(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(R.string.menu_add_queue), enabled = !dismissing) {
+                            musicPlayer.addToQueue(playable)
+                            dismissMenu()
+                        }
+                    }
+
+                    // Row 2: Download | Sleep timer
+                    val downloadKey = com.lastwave.app.data.download.TrackDownloadManager.makeDownloadKey(t.name, t.artist)
+                    val isDownloading = activeDownloads[downloadKey]?.let { !it.isFinished } == true
+                    if (!isLocalFile) {
+                        add {
+                            when {
+                                isDownloaded -> MenuActionRow(
+                                    Icons.Filled.CheckCircle, stringResource(R.string.menu_downloaded),
+                                    enabled = !dismissing,
+                                ) {
+                                    android.widget.Toast.makeText(context, context.getString(R.string.menu_already_downloaded),
+                                        android.widget.Toast.LENGTH_SHORT).show()
+                                    dismissMenu()
+                                }
+                                isDownloading -> MenuActionRow(
+                                    Icons.Outlined.Download, stringResource(R.string.menu_downloading),
+                                    enabled = !dismissing,
+                                ) {
+                                    android.widget.Toast.makeText(context, context.getString(R.string.menu_download_progress),
+                                        android.widget.Toast.LENGTH_SHORT).show()
+                                    dismissMenu()
+                                }
+                                else -> MenuActionRow(
+                                    Icons.Outlined.Download, stringResource(R.string.details_download),
+                                    supportingText = downloadTier,
+                                    enabled = !dismissing,
+                                ) {
+                                    downloadViewModel.download(
+                                        title = t.name, artist = t.artist, album = playable.album,
+                                        artworkUrl = playable.artworkUrl, videoId = playable.videoId,
+                                        durationMs = playable.durationMs,
+                                    )
+                                    dismissMenu()
+                                }
+                            }
+                        }
+                    } else {
+                        add {
+                            MenuActionRow(Icons.Outlined.PlaylistAdd, stringResource(R.string.local_add_to_playlist), enabled = !dismissing) {
+                                addToPlaylist(playable)
                                 dismissMenu()
-                            } else {
-                                openSyncedVideo()
                             }
                         }
                     }
@@ -826,28 +858,26 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                             openTimer()
                         }
                     }
-                    add { PlayerCastMenuRow(musicPlayer, enabled = !dismissing) }
+
+                    // Row 3: Copy song name | Cast
                     add {
-                        MenuActionRow(Icons.Outlined.Group, stringResource(R.string.menu_quick_jam), enabled = !dismissing) {
-                            openJam()
-                        }
-                    }
-                    add {
-                        MenuActionRow(Icons.Outlined.Info, stringResource(R.string.menu_audio_details), enabled = !dismissing) {
-                            openDetails()
-                        }
-                    }
-                    if (capabilities.showPlayAction) add {
-                        MenuActionRow(Icons.Outlined.PlayCircle, stringResource(R.string.menu_quick_play), enabled = !dismissing) {
-                            onPlayInLastWave?.invoke() ?: musicPlayer.play(playable, sourceLabel = playbackSourceLabel)
+                        MenuActionRow(Icons.Outlined.ContentCopy, stringResource(R.string.menu_copy_song), enabled = !dismissing) {
+                            clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
+                            android.widget.Toast.makeText(context, context.getString(R.string.song_copied), android.widget.Toast.LENGTH_SHORT).show()
                             dismissMenu()
                         }
                     }
-                }
-                MenuActionGrid(actions)
-                MenuActionGrid(maxColumns = 1, actions = buildList<@Composable () -> Unit> {
                     add {
-                        MenuActionRow(Icons.Outlined.Link, stringResource(R.string.menu_copy_link), quiet = true, enabled = !dismissing) {
+                        MenuActionRow(Icons.Outlined.Cast, stringResource(R.string.menu_cast_short), enabled = !dismissing) {
+                            if (castAvailable) castRouteButton?.performClick()
+                            else android.widget.Toast.makeText(context, context.getString(R.string.cast_unavailable), android.widget.Toast.LENGTH_SHORT).show()
+                            dismissMenu()
+                        }
+                    }
+
+                    // Row 4: Copy link | Audio details
+                    add {
+                        MenuActionRow(Icons.Outlined.Link, stringResource(R.string.menu_copy_link), enabled = !dismissing) {
                             val directId = playable.videoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(t.url)
                             if (directId != null) {
                                 val link = "https://www.youtube.com/watch?v=$directId"
@@ -859,6 +889,23 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                             dismissMenu()
                         }
                     }
+                    add {
+                        MenuActionRow(Icons.Outlined.Info, stringResource(R.string.menu_audio_details), enabled = !dismissing) {
+                            openDetails()
+                        }
+                    }
+
+                    if (isSong && musicVideoEnabled && canWatchVideo) {
+                        add {
+                            MenuActionRow(Icons.Outlined.SmartDisplay, stringResource(R.string.menu_watch_video), enabled = !dismissing) {
+                                if (onWatchVideo != null) onWatchVideo() else openSyncedVideo()
+                                dismissMenu()
+                            }
+                        }
+                    }
+                }
+                MenuActionGrid(actions)
+                MenuActionGrid(maxColumns = 1, actions = buildList<@Composable () -> Unit> {
                     if (onRefreshArtwork != null) add {
                         MenuActionRow(Icons.Outlined.Refresh, stringResource(R.string.menu_refresh_artwork), quiet = true, enabled = !dismissing) {
                             onRefreshArtwork()
@@ -987,6 +1034,22 @@ private fun ColumnScope.ClassicTrackMenuContent(
                 onAddToPlaylist = { addToPlaylist(playable); dismissMenu() },
             )
             val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats.importedPathOrNull(playable.playbackUrl) != null
+            val classicCastAvailable = remember(musicPlayer) { musicPlayer.initializeCast() }
+            var classicCastRouteButton by remember { mutableStateOf<MediaRouteButton?>(null) }
+            if (classicCastAvailable) {
+                AndroidView(
+                    modifier = Modifier.size(0.dp).alpha(0f),
+                    update = { it.isEnabled = !dismissing },
+                    factory = { viewContext ->
+                        MediaRouteButton(viewContext).apply {
+                            background = null
+                            contentDescription = "Chromecast"
+                            CastButtonFactory.setUpMediaRouteButton(viewContext, this)
+                            classicCastRouteButton = this
+                        }
+                    },
+                )
+            }
             val rows = buildList<@Composable (GroupPosition) -> Unit> {
                 val genre = resolvedGenre?.trim()
                 val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
@@ -1096,13 +1159,15 @@ private fun ColumnScope.ClassicTrackMenuContent(
                     }
                 }
                 add { pos ->
-                    Card(
-                        shape = groupShape(pos),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                    ClassicMenuActionRow(
+                        icon = Icons.Outlined.Cast,
+                        label = stringResource(R.string.menu_cast_short),
+                        position = pos,
+                        enabled = !dismissing,
                     ) {
-                        PlayerCastMenuRow(musicPlayer, enabled = !dismissing)
+                        if (classicCastAvailable) classicCastRouteButton?.performClick()
+                        else Toast.makeText(context, context.getString(R.string.cast_unavailable), Toast.LENGTH_SHORT).show()
+                        dismissMenu()
                     }
                 }
                 add { pos ->
@@ -1120,6 +1185,18 @@ private fun ColumnScope.ClassicTrackMenuContent(
                         } else {
                             trackLinkViewModel.copyYouTubeLink(t.name, t.artist, playable.videoId, t.url)
                         }
+                        dismissMenu()
+                    }
+                }
+                add { pos ->
+                    ClassicMenuActionRow(
+                        icon = Icons.Outlined.ContentCopy,
+                        label = stringResource(R.string.menu_copy_song),
+                        position = pos,
+                        enabled = !dismissing,
+                    ) {
+                        clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
+                        Toast.makeText(context, context.getString(R.string.song_copied), Toast.LENGTH_SHORT).show()
                         dismissMenu()
                     }
                 }
@@ -1409,14 +1486,14 @@ private fun StartMixCard(enabled: Boolean, onClick: () -> Unit) {
 @Composable
 private fun QuickActionsRow(
     enabled: Boolean,
+    onPlay: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToPlaylist: () -> Unit,
-    onAddToQueue: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        QuickActionCard(Icons.Filled.PlayArrow, stringResource(R.string.menu_quick_play), Modifier.weight(1f), enabled, onPlay)
         QuickActionCard(Icons.Outlined.QueuePlayNext, stringResource(R.string.menu_quick_play_next), Modifier.weight(1f), enabled, onPlayNext)
         QuickActionCard(Icons.Outlined.PlaylistAdd, stringResource(R.string.menu_quick_add_playlist), Modifier.weight(1f), enabled, onAddToPlaylist)
-        QuickActionCard(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(R.string.menu_add_queue), Modifier.weight(1f), enabled, onAddToQueue)
     }
 }
 
@@ -1425,7 +1502,7 @@ private fun QuickActionCard(icon: ImageVector, label: String, modifier: Modifier
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val iconCorner by animateDpAsState(
-        targetValue = if (pressed) 16.dp else 24.dp,
+        targetValue = if (pressed) 14.dp else 20.dp,
         animationSpec = ExpressiveMotion.spatialFast(),
         label = "menuShortcutShape",
     )
@@ -1439,13 +1516,13 @@ private fun QuickActionCard(icon: ImageVector, label: String, modifier: Modifier
         modifier = modifier.fillMaxHeight().expressivePressScale(interactionSource, targetScale = 0.98f),
     ) {
         Column(
-            Modifier.padding(horizontal = 8.dp, vertical = 16.dp),
+            Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(icon, null, Modifier.size(24.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Icon(icon, null, Modifier.size(22.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -1464,8 +1541,19 @@ private fun MenuActionGrid(actions: List<@Composable () -> Unit>, maxColumns: In
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    rows[i].forEach { action -> Box(Modifier.weight(1f)) { action() } }
-                    if (rows[i].size < columns) Spacer(Modifier.weight(1f))
+                    val rowItems = rows[i]
+                    if (columns == 1 || rowItems.size == 1) {
+                        Box(Modifier.weight(1f)) { rowItems[0]() }
+                    } else {
+                        Box(Modifier.weight(1f)) { rowItems[0]() }
+                        Box(
+                            Modifier
+                                .width(1.dp)
+                                .height(30.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        )
+                        Box(Modifier.weight(1f)) { rowItems[1]() }
+                    }
                 }
             }
         }

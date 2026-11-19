@@ -655,6 +655,8 @@
     <string name="menu_open_lastfm">Open in Last.fm</string>
     <string name="menu_copy_link">Copy link</string>
     <string name="link_copied">Link copied to clipboard</string>
+    <string name="menu_copy_song">Copy song name</string>
+    <string name="song_copied">Song name copied to clipboard</string>
     <string name="menu_refresh_artwork">Refresh Cover Art</string>
     <string name="menu_details_specs">Details &amp; Audio Specs</string>
     <string name="menu_dont_recommend">Don\'t recommend again</string>

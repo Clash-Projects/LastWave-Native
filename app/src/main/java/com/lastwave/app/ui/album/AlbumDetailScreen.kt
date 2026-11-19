@@ -86,7 +86,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.data.model.ArtistAlbumItem
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
+import com.lastwave.app.ui.common.ExpressiveGroupTrackRow
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
+import com.lastwave.app.ui.common.GroupGap
+import com.lastwave.app.ui.common.groupPositionFor
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
@@ -446,24 +449,25 @@ fun AlbumDetailScreen(
                             playbackState.current?.title.equals(track.title, ignoreCase = true) &&
                             (playbackState.current?.artist.isNullOrBlank() || playbackState.current?.artist.equals(track.artist, ignoreCase = true))
 
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isPlayingThis) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                            else MaterialTheme.colorScheme.surfaceContainerLow,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    viewModel.playAll(startIndex = index)
-                                },
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                        val position = groupPositionFor(index, data.tracks.size)
+                        ExpressiveGroupTrackRow(
+                            title = track.title,
+                            subtitle = if (track.artist.isNotBlank() &&
+                                !com.lastwave.app.util.ArtistHelper.isPlayCountOrStat(track.artist) &&
+                                !track.artist.equals(data.artist, ignoreCase = true)
                             ) {
-                                // Artwork Thumbnail with Wave overlay
+                                "${track.artist} \u2022 Track ${index + 1}"
+                            } else {
+                                "Track ${index + 1}"
+                            },
+                            position = position,
+                            isPlaying = isPlayingThis,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                viewModel.playAll(startIndex = index)
+                            },
+                            modifier = Modifier.padding(bottom = GroupGap),
+                            leading = {
                                 Box(
                                     modifier = Modifier
                                         .size(48.dp)
@@ -486,35 +490,8 @@ fun AlbumDetailScreen(
                                         )
                                     }
                                 }
-
-                                Spacer(Modifier.width(14.dp))
-
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        text = track.title,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isPlayingThis) FontWeight.Bold else FontWeight.SemiBold,
-                                        color = if (isPlayingThis) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        text = if (track.artist.isNotBlank() &&
-                                            !com.lastwave.app.util.ArtistHelper.isPlayCountOrStat(track.artist) &&
-                                            !track.artist.equals(data.artist, ignoreCase = true)
-                                        ) {
-                                            "${track.artist} \u2022 Track ${index + 1}"
-                                        } else {
-                                            "Track ${index + 1}"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-
+                            },
+                            trailing = {
                                 IconButton(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -529,8 +506,8 @@ fun AlbumDetailScreen(
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
-                            }
-                        }
+                            },
+                        )
                     }
 
 
@@ -539,7 +516,8 @@ fun AlbumDetailScreen(
                         item(key = "album_description") {
                             Card(
                                 shape = RoundedCornerShape(20.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                             ) {
                                 Column(Modifier.padding(16.dp)) {
@@ -723,7 +701,8 @@ private fun AlbumCard(
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.width(150.dp),
     ) {
         Column(Modifier.padding(10.dp)) {

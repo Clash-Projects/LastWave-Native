@@ -636,6 +636,8 @@
     <string name="menu_open_lastfm">Abierto en Last.fm</string>
     <string name="menu_copy_link">Copiar enlace</string>
     <string name="link_copied">Enlace copiado al portapapeles</string>
+    <string name="menu_copy_song">Copiar nombre de la canción</string>
+    <string name="song_copied">Nombre de la canción copiado</string>
     <string name="menu_refresh_artwork">Actualizar la portada</string>
     <string name="menu_details_specs">Detalles y especificaciones de audio</string>
     <string name="menu_dont_recommend">No lo recomiendo nuevamente</string>
