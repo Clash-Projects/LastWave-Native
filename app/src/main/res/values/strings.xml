@@ -1309,6 +1309,12 @@
     <string name="ge_title">Your Genres</string>
     <string name="ge_sub">Your Genres</string>
     <string name="ge_empty">No genre data yet</string>
+    <string name="ge_glance">Your taste, at a glance</string>
+    <string name="ge_leading_genre">Leading genre</string>
+    <string name="ge_relative_strength">Strength relative to your top genre</string>
+    <string name="ge_beyond_top">Beyond your top genre</string>
+    <string name="ge_strength_percent">%1$d%%</string>
+    <string name="ge_updating">Updating genres</string>
     <string name="ge_tracks">Your Tracks</string>
     <string name="ge_discover">Discover More</string>
     <string name="ge_no_tracks">No tracks found</string>
