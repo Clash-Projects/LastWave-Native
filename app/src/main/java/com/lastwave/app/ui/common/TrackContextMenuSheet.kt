@@ -7,7 +7,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.ui.draw.alpha
-import androidx.compose.viewinterop.AndroidView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.mediarouter.app.MediaRouteButton
 import com.google.android.gms.cast.framework.CastButtonFactory
 
