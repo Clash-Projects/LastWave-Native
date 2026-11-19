@@ -82,6 +82,15 @@ class ListeningStatsViewModel @Inject constructor(
     private fun getCutoffMillis(range: StatsTimeRange): Long {
         val now = Calendar.getInstance()
         return when (range) {
+            StatsTimeRange.WEEK -> {
+                now.apply {
+                    set(Calendar.DAY_OF_WEEK, firstDayOfWeek)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+            }
             StatsTimeRange.MONTH_TO_DATE -> {
                 now.apply {
                     set(Calendar.DAY_OF_MONTH, 1)
@@ -151,7 +160,14 @@ class ListeningStatsViewModel @Inject constructor(
         // 5. Track Concentration
         val concentration = computeConcentration(tracks, totalListeningMs, totalPlays)
 
-        // 6. Tracks in range
+        // 6. Detailed Rhythm & Insights
+        val records = computePersonalRecords(rawStatsList.ifEmpty { tracks })
+        val weeklyRhythm = computeWeeklyRhythm(rawStatsList.ifEmpty { tracks })
+        val monthComparison = computeMonthComparison(rawStatsList.ifEmpty { tracks })
+        val hourlyRhythm = computeHourlyRhythm(rawStatsList.ifEmpty { tracks })
+        val activityHeatmap = computeActivityHeatmap(rawStatsList.ifEmpty { tracks })
+
+        // 7. Tracks in range
         val maxTrackMs = tracks.maxOfOrNull {
             if (it.totalPlayTimeMs > 0L) it.totalPlayTimeMs else it.playCount * 210_000L
         }?.coerceAtLeast(1L) ?: 1L
@@ -183,6 +199,11 @@ class ListeningStatsViewModel @Inject constructor(
                 habits = habits,
                 concentration = concentration,
                 tracksInRange = tracksInRange,
+                records = records,
+                weeklyRhythm = weeklyRhythm,
+                monthComparison = monthComparison,
+                hourlyRhythm = hourlyRhythm,
+                activityHeatmap = activityHeatmap,
             )
         }
     }
@@ -202,6 +223,28 @@ class ListeningStatsViewModel @Inject constructor(
         val buckets = LinkedHashMap<String, Bucket>()
 
         when (range) {
+            StatsTimeRange.WEEK -> {
+                val dayNameFmt = SimpleDateFormat("EEE", Locale.getDefault())
+                val tempCal = Calendar.getInstance()
+                tempCal.set(Calendar.DAY_OF_WEEK, tempCal.firstDayOfWeek)
+                val daysOfWeek = mutableListOf<String>()
+                for (i in 0..6) {
+                    daysOfWeek.add(dayNameFmt.format(tempCal.time))
+                    tempCal.add(Calendar.DAY_OF_WEEK, 1)
+                }
+                daysOfWeek.forEach { d -> buckets[d] = Bucket(d) }
+                val cal = Calendar.getInstance()
+                tracks.forEach { t ->
+                    val time = if (t.lastPlayedAtMillis > 0L) t.lastPlayedAtMillis else System.currentTimeMillis()
+                    cal.timeInMillis = time
+                    val label = dayNameFmt.format(cal.time)
+                    val b = buckets.getOrPut(label) { Bucket(label) }
+                    val ms = if (t.totalPlayTimeMs > 0L) t.totalPlayTimeMs else t.playCount * 210_000L
+                    b.totalMs += ms
+                    b.plays += t.playCount.coerceAtLeast(1)
+                    b.sessions += (t.playCount.coerceAtLeast(1) / 3).coerceAtLeast(1)
+                }
+            }
             StatsTimeRange.ALL_TIME -> {
                 val currentYear = Calendar.getInstance().get(Calendar.YEAR)
                 val years = listOf(currentYear - 2, currentYear - 1, currentYear)
@@ -515,6 +558,247 @@ class ListeningStatsViewModel @Inject constructor(
             othersPercent = othersPct,
             othersDurationLabel = formatHoursMins(othersMs),
         )
+    }
+
+    private fun computePersonalRecords(tracks: List<SongPlayStatsEntity>): PersonalRecordsData {
+        if (tracks.isEmpty()) {
+            return PersonalRecordsData(
+                bestDayPlays = 0,
+                bestDayDurationLabel = "0m",
+                bestDayDate = "None",
+                bestWeekPlays = 0,
+                bestWeekDurationLabel = "0m",
+                bestMonthPlays = 0,
+                bestMonthDurationLabel = "0m",
+                longestStreakDays = 0,
+            )
+        }
+        val cal = Calendar.getInstance()
+        val dayFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val displayDayFmt = SimpleDateFormat("d MMM", Locale.getDefault())
+        val monthFmt = SimpleDateFormat("yyyy-MM", Locale.US)
+
+        val dayStats = mutableMapOf<String, Long>()
+        val dayPlays = mutableMapOf<String, Int>()
+        val weekStats = mutableMapOf<String, Long>()
+        val weekPlays = mutableMapOf<String, Int>()
+        val monthStats = mutableMapOf<String, Long>()
+        val monthPlays = mutableMapOf<String, Int>()
+
+        tracks.forEach { t ->
+            val time = if (t.lastPlayedAtMillis > 0L) t.lastPlayedAtMillis else System.currentTimeMillis()
+            cal.timeInMillis = time
+            val dayKey = dayFmt.format(cal.time)
+            val weekKey = "${cal.get(Calendar.YEAR)}-W${cal.get(Calendar.WEEK_OF_YEAR)}"
+            val monthKey = monthFmt.format(cal.time)
+            val ms = if (t.totalPlayTimeMs > 0L) t.totalPlayTimeMs else t.playCount * 210_000L
+            val p = t.playCount.coerceAtLeast(1)
+
+            dayStats[dayKey] = (dayStats[dayKey] ?: 0L) + ms
+            dayPlays[dayKey] = (dayPlays[dayKey] ?: 0) + p
+            weekStats[weekKey] = (weekStats[weekKey] ?: 0L) + ms
+            weekPlays[weekKey] = (weekPlays[weekKey] ?: 0) + p
+            monthStats[monthKey] = (monthStats[monthKey] ?: 0L) + ms
+            monthPlays[monthKey] = (monthPlays[monthKey] ?: 0) + p
+        }
+
+        val bestDayEntry = dayStats.maxByOrNull { it.value }
+        val bestDayKey = bestDayEntry?.key
+        val bestDayDate = bestDayKey?.let {
+            runCatching { displayDayFmt.format(dayFmt.parse(it)!!) }.getOrNull()
+        } ?: "Today"
+        val bestDayPlays = bestDayKey?.let { dayPlays[it] } ?: 0
+        val bestDayDuration = formatHoursMins(bestDayEntry?.value ?: 0L)
+
+        val bestWeekEntry = weekStats.maxByOrNull { it.value }
+        val bestWeekPlays = bestWeekEntry?.key?.let { weekPlays[it] } ?: 0
+        val bestWeekDuration = formatHoursMins(bestWeekEntry?.value ?: 0L)
+
+        val bestMonthEntry = monthStats.maxByOrNull { it.value }
+        val bestMonthPlays = bestMonthEntry?.key?.let { monthPlays[it] } ?: 0
+        val bestMonthDuration = formatHoursMins(bestMonthEntry?.value ?: 0L)
+
+        // Calculate streak of consecutive active days
+        val sortedDays = dayStats.keys.mapNotNull {
+            runCatching { dayFmt.parse(it)?.time }.getOrNull()
+        }.sorted()
+
+        var longestStreak = 0
+        var currentStreak = 0
+        var prevDayMs = 0L
+        for (dayMs in sortedDays) {
+            if (prevDayMs == 0L) {
+                currentStreak = 1
+            } else {
+                val diffDays = (dayMs - prevDayMs) / (24 * 60 * 60 * 1000L)
+                if (diffDays == 1L) {
+                    currentStreak++
+                } else if (diffDays > 1L) {
+                    longestStreak = maxOf(longestStreak, currentStreak)
+                    currentStreak = 1
+                }
+            }
+            prevDayMs = dayMs
+        }
+        longestStreak = maxOf(longestStreak, currentStreak)
+
+        return PersonalRecordsData(
+            bestDayPlays = bestDayPlays,
+            bestDayDurationLabel = bestDayDuration,
+            bestDayDate = bestDayDate,
+            bestWeekPlays = bestWeekPlays,
+            bestWeekDurationLabel = bestWeekDuration,
+            bestMonthPlays = bestMonthPlays,
+            bestMonthDurationLabel = bestMonthDuration,
+            longestStreakDays = maxOf(longestStreak, 1),
+        )
+    }
+
+    private fun computeWeeklyRhythm(tracks: List<SongPlayStatsEntity>): WeeklyRhythmData {
+        if (tracks.isEmpty()) {
+            return WeeklyRhythmData(weekdayAvgLabel = "0m", weekendAvgLabel = "0m")
+        }
+        val cal = Calendar.getInstance()
+        var weekdayMs = 0L
+        var weekdayCount = 0
+        var weekendMs = 0L
+        var weekendCount = 0
+
+        tracks.forEach { t ->
+            val time = if (t.lastPlayedAtMillis > 0L) t.lastPlayedAtMillis else System.currentTimeMillis()
+            cal.timeInMillis = time
+            val dow = cal.get(Calendar.DAY_OF_WEEK)
+            val ms = if (t.totalPlayTimeMs > 0L) t.totalPlayTimeMs else t.playCount * 210_000L
+            if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) {
+                weekendMs += ms
+                weekendCount++
+            } else {
+                weekdayMs += ms
+                weekdayCount++
+            }
+        }
+        val weekdayAvg = if (weekdayCount > 0) weekdayMs / maxOf(1, weekdayCount / 4) else 0L
+        val weekendAvg = if (weekendCount > 0) weekendMs / maxOf(1, weekendCount / 2) else 0L
+
+        return WeeklyRhythmData(
+            weekdayAvgLabel = formatHoursMins(weekdayAvg),
+            weekendAvgLabel = formatHoursMins(weekendAvg),
+        )
+    }
+
+    private fun computeMonthComparison(tracks: List<SongPlayStatsEntity>): MonthComparisonData {
+        val cal = Calendar.getInstance()
+        val curYear = cal.get(Calendar.YEAR)
+        val curMonth = cal.get(Calendar.MONTH)
+
+        cal.add(Calendar.MONTH, -1)
+        val prevYear = cal.get(Calendar.YEAR)
+        val prevMonth = cal.get(Calendar.MONTH)
+
+        var thisMonthMs = 0L
+        var lastMonthMs = 0L
+
+        val tCal = Calendar.getInstance()
+        tracks.forEach { t ->
+            val time = if (t.lastPlayedAtMillis > 0L) t.lastPlayedAtMillis else System.currentTimeMillis()
+            tCal.timeInMillis = time
+            val y = tCal.get(Calendar.YEAR)
+            val m = tCal.get(Calendar.MONTH)
+            val ms = if (t.totalPlayTimeMs > 0L) t.totalPlayTimeMs else t.playCount * 210_000L
+            if (y == curYear && m == curMonth) {
+                thisMonthMs += ms
+            } else if (y == prevYear && m == prevMonth) {
+                lastMonthMs += ms
+            }
+        }
+
+        val progress = if (lastMonthMs > 0L) {
+            (thisMonthMs.toFloat() / lastMonthMs.toFloat()).coerceIn(0.05f, 1f)
+        } else if (thisMonthMs > 0L) {
+            1f
+        } else {
+            0f
+        }
+
+        return MonthComparisonData(
+            thisMonthLabel = formatHoursMins(thisMonthMs),
+            lastMonthLabel = formatHoursMins(lastMonthMs),
+            progress = progress,
+        )
+    }
+
+    private fun computeHourlyRhythm(tracks: List<SongPlayStatsEntity>): List<HourlyRhythmBar> {
+        val hourCounts = IntArray(24)
+        val cal = Calendar.getInstance()
+        tracks.forEach { t ->
+            val time = if (t.lastPlayedAtMillis > 0L) t.lastPlayedAtMillis else System.currentTimeMillis()
+            cal.timeInMillis = time
+            val h = cal.get(Calendar.HOUR_OF_DAY).coerceIn(0, 23)
+            hourCounts[h] += t.playCount.coerceAtLeast(1)
+        }
+        val maxVal = hourCounts.maxOrNull()?.coerceAtLeast(1) ?: 1
+        return (0..23).map { h ->
+            val c = hourCounts[h]
+            val frac = if (maxVal > 0) (c.toFloat() / maxVal).coerceIn(0.08f, 1f) else 0.08f
+            val label = String.format(Locale.US, "%02d", h)
+            HourlyRhythmBar(
+                hour = h,
+                label = label,
+                count = c,
+                fraction = frac,
+                isPeak = (c == maxVal && c > 0),
+            )
+        }
+    }
+
+    private fun computeActivityHeatmap(tracks: List<SongPlayStatsEntity>): List<HeatmapDay> {
+        val dayFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val cal = Calendar.getInstance()
+        val dailyMs = mutableMapOf<String, Long>()
+
+        tracks.forEach { t ->
+            val time = if (t.lastPlayedAtMillis > 0L) t.lastPlayedAtMillis else System.currentTimeMillis()
+            cal.timeInMillis = time
+            val key = dayFmt.format(cal.time)
+            val ms = if (t.totalPlayTimeMs > 0L) t.totalPlayTimeMs else t.playCount * 210_000L
+            dailyMs[key] = (dailyMs[key] ?: 0L) + ms
+        }
+
+        val endCal = Calendar.getInstance()
+        while (endCal.get(Calendar.DAY_OF_WEEK) != Calendar.SATURDAY) {
+            endCal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        val startCal = Calendar.getInstance().apply {
+            timeInMillis = endCal.timeInMillis
+            add(Calendar.DAY_OF_YEAR, -83)
+        }
+
+        val result = mutableListOf<HeatmapDay>()
+        val cur = Calendar.getInstance().apply { timeInMillis = startCal.timeInMillis }
+        for (i in 0 until 84) {
+            val key = dayFmt.format(cur.time)
+            val dow = (cur.get(Calendar.DAY_OF_WEEK) - 1).coerceIn(0, 6)
+            val weekIdx = i / 7
+            val ms = dailyMs[key] ?: 0L
+            val intensity = when {
+                ms <= 0L -> 0
+                ms < 15 * 60_000L -> 1
+                ms < 45 * 60_000L -> 2
+                ms < 90 * 60_000L -> 3
+                else -> 4
+            }
+            result.add(
+                HeatmapDay(
+                    dateString = key,
+                    dayOfWeek = dow,
+                    weekIndex = weekIdx,
+                    intensity = intensity,
+                    durationLabel = formatHoursMins(ms),
+                )
+            )
+            cur.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return result
     }
 
     private fun formatHoursMins(ms: Long): String {

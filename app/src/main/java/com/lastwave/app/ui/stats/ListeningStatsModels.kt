@@ -3,8 +3,9 @@ package com.lastwave.app.ui.stats
 import androidx.compose.runtime.Immutable
 
 enum class StatsTimeRange(val label: String) {
-    MONTH_TO_DATE("Month to Date"),
-    YEAR_TO_DATE("Year to Date"),
+    WEEK("Week"),
+    MONTH_TO_DATE("Month"),
+    YEAR_TO_DATE("Year"),
     ALL_TIME("All Time"),
 }
 
@@ -74,6 +75,49 @@ data class RankedTrackItem(
 )
 
 @Immutable
+data class PersonalRecordsData(
+    val bestDayPlays: Int,
+    val bestDayDurationLabel: String,
+    val bestDayDate: String,
+    val bestWeekPlays: Int,
+    val bestWeekDurationLabel: String,
+    val bestMonthPlays: Int,
+    val bestMonthDurationLabel: String,
+    val longestStreakDays: Int,
+)
+
+@Immutable
+data class WeeklyRhythmData(
+    val weekdayAvgLabel: String,
+    val weekendAvgLabel: String,
+)
+
+@Immutable
+data class MonthComparisonData(
+    val thisMonthLabel: String,
+    val lastMonthLabel: String,
+    val progress: Float,
+)
+
+@Immutable
+data class HourlyRhythmBar(
+    val hour: Int,
+    val label: String,
+    val count: Int,
+    val fraction: Float,
+    val isPeak: Boolean = false,
+)
+
+@Immutable
+data class HeatmapDay(
+    val dateString: String,
+    val dayOfWeek: Int,
+    val weekIndex: Int,
+    val intensity: Int,
+    val durationLabel: String,
+)
+
+@Immutable
 data class ListeningStatsUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -89,4 +133,9 @@ data class ListeningStatsUiState(
     val habits: ListeningHabitsData? = null,
     val concentration: TrackConcentrationData? = null,
     val tracksInRange: List<RankedTrackItem> = emptyList(),
+    val records: PersonalRecordsData? = null,
+    val weeklyRhythm: WeeklyRhythmData? = null,
+    val monthComparison: MonthComparisonData? = null,
+    val hourlyRhythm: List<HourlyRhythmBar> = emptyList(),
+    val activityHeatmap: List<HeatmapDay> = emptyList(),
 )

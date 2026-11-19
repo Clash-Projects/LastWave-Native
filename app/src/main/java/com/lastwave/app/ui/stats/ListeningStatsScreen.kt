@@ -172,6 +172,40 @@ fun ListeningStatsScreen(
                 }
             }
 
+            // ── PERSONAL RECORDS ──
+            uiState.records?.let { records ->
+                item {
+                    PersonalRecordsCard(records = records)
+                }
+            }
+
+            // ── WEEKLY RHYTHM & MONTH COMPARISON ──
+            uiState.weeklyRhythm?.let { rhythm ->
+                item {
+                    WeeklyRhythmCard(rhythm = rhythm)
+                }
+            }
+
+            uiState.monthComparison?.let { comparison ->
+                item {
+                    MonthComparisonCard(comparison = comparison)
+                }
+            }
+
+            // ── HOURLY LISTENING RHYTHM ──
+            if (uiState.hourlyRhythm.isNotEmpty()) {
+                item {
+                    HourlyRhythmChart(bars = uiState.hourlyRhythm)
+                }
+            }
+
+            // ── ACTIVITY HEATMAP (LAST 12 WEEKS) ──
+            if (uiState.activityHeatmap.isNotEmpty()) {
+                item {
+                    ActivityHeatmapGrid(days = uiState.activityHeatmap)
+                }
+            }
+
             // ── SECTION 1: LISTENING TIMELINE ──
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -183,6 +217,7 @@ fun ListeningStatsScreen(
                     )
                     Text(
                         text = when (uiState.selectedRange) {
+                            StatsTimeRange.WEEK -> "Total listening captured this week. Daily bars summarize your progression."
                             StatsTimeRange.MONTH_TO_DATE -> "Total listening captured this month. Daily bars summarize your progression."
                             StatsTimeRange.YEAR_TO_DATE -> "Total listening captured this year. Monthly bars summarize your progression."
                             StatsTimeRange.ALL_TIME -> "Total listening captured in the selected range. Yearly bars summarize your full history."
@@ -220,6 +255,7 @@ fun ListeningStatsScreen(
                                 Column {
                                     Text(
                                         text = when (uiState.selectedRange) {
+                                            StatsTimeRange.WEEK -> "Current week progression"
                                             StatsTimeRange.MONTH_TO_DATE -> "Current month progression"
                                             StatsTimeRange.YEAR_TO_DATE -> "Year-to-date progression"
                                             StatsTimeRange.ALL_TIME -> "All-time progression"
@@ -230,6 +266,7 @@ fun ListeningStatsScreen(
                                     )
                                     Text(
                                         text = when (uiState.selectedRange) {
+                                            StatsTimeRange.WEEK -> "Grouped by day"
                                             StatsTimeRange.MONTH_TO_DATE -> "Grouped by day"
                                             StatsTimeRange.YEAR_TO_DATE -> "Grouped by month"
                                             StatsTimeRange.ALL_TIME -> "Grouped by year"

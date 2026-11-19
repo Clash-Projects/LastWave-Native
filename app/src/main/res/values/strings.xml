@@ -119,6 +119,8 @@
     <string name="settings_lastwave_theme_sub">Bespoke logo palette • Electric Lime &amp; Obsidian Teal</string>
     <string name="settings_amoled">AMOLED Mode</string>
     <string name="settings_amoled_sub">Pure black background (Dark mode only)</string>
+    <string name="settings_legacy_colors">Use legacy colours</string>
+    <string name="settings_legacy_colors_sub">Use authentic Material You background and surface tones instead of deep obsidian surfaces</string>
     <string name="settings_dynamic_color">Dynamic Color</string>
     <string name="settings_dynamic_color_sub">Use your wallpaper\'s colors</string>
     <string name="settings_dynamic_now_playing">Dynamic Now Playing</string>

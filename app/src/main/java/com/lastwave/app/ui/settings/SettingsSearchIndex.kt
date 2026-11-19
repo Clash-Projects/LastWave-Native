@@ -513,6 +513,23 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.legacy_colors",
+                    title = "Use Legacy Colours",
+                    subtitle = "Use authentic Material You background and surface tones instead of deep obsidian surfaces",
+                    keywords = listOf(
+                        "legacy colors", "legacy colours", "material you background", "base colour", "original background",
+                        "bright background", "solid background", "monet"
+                    ),
+                    icon = Icons.Filled.Colorize,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.dynamic_color",
                     title = "Dynamic Color (Material You)",
                     subtitle = "Match UI accent colors to wallpaper and system palette",
