@@ -30,6 +30,7 @@ import com.lastwave.app.playback.haptics.MusicHapticsIntensity
 import com.lastwave.app.playback.haptics.MusicHapticsMode
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
@@ -510,9 +511,18 @@ fun PlayerHost(
     val chromeCollapse = rememberChromeCollapseState(enabled = hasBottomNavigation && settings.collapsingNavBar)
     // While docking, the card slides down over the fading bar, not under it.
     val chromeDocking by remember { derivedStateOf { chromeCollapse.progress() > 0f } }
+    val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) {
         viewModel.toastMessage.collect { msg ->
             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.snackbarEvent.collect { msg ->
+            snackbarHostState.showSnackbar(
+                message = msg,
+                duration = androidx.compose.material3.SnackbarDuration.Short,
+            )
         }
     }
     CompositionLocalProvider(
@@ -725,6 +735,13 @@ fun PlayerHost(
                     },
                 )
             }
+
+            MiniPlayerAwareSnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .zIndex(100f),
+            )
         }
     }
 }
