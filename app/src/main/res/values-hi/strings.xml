@@ -450,7 +450,6 @@
     <string name="menu_add_queue">कतार में जोड़ें</string>
     <string name="menu_open_lastfm">Last.fm में खोलें</string>
     <string name="menu_refresh_artwork">कवर आर्ट ताज़ा करें</string>
-    <string name="menu_copy_song">गाना कॉपी करें</string>
     <string name="menu_details_specs">विवरण एवं ऑडियो विशिष्टताएँ</string>
     <string name="menu_dont_recommend">दोबारा अनुशंसा न करें</string>
     <string name="menu_remove_from_playlist">प्लेलिस्ट से हटाएँ</string>

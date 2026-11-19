@@ -631,7 +631,6 @@
     <string name="menu_copy_link">Copiar enlace</string>
     <string name="link_copied">Enlace copiado al portapapeles</string>
     <string name="menu_refresh_artwork">Actualizar la portada</string>
-    <string name="menu_copy_song">Copiar canción</string>
     <string name="menu_details_specs">Detalles y especificaciones de audio</string>
     <string name="menu_dont_recommend">No lo recomiendo nuevamente</string>
     <string name="menu_remove_from_playlist">Eliminar de la lista de reproducción</string>

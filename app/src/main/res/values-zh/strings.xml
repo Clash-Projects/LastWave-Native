@@ -449,7 +449,6 @@
     <string name="menu_add_queue">添加到队列</string>
     <string name="menu_open_lastfm">开放时间：Last.fm</string>
     <string name="menu_refresh_artwork">刷新封面艺术</string>
-    <string name="menu_copy_song">复制歌曲</string>
     <string name="menu_details_specs">详细信息和音频规格</string>
     <string name="menu_dont_recommend">不再推荐</string>
     <string name="menu_remove_from_playlist">从播放列表中删除</string>

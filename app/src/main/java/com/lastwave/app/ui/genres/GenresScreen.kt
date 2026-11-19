@@ -454,7 +454,7 @@ private fun GenreDetailSheet(
     menuTrack?.let { track ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = true),
             playbackSourceLabel = "Genres",
             onDismiss = { menuTrack = null },
             onExploreGenre = onExploreGenre,

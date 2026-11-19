@@ -650,7 +650,6 @@
     <string name="menu_copy_link">Copy link</string>
     <string name="link_copied">Link copied to clipboard</string>
     <string name="menu_refresh_artwork">Refresh Cover Art</string>
-    <string name="menu_copy_song">Copy Song</string>
     <string name="menu_details_specs">Details &amp; Audio Specs</string>
     <string name="menu_dont_recommend">Don\'t recommend again</string>
     <string name="menu_remove_from_playlist">Remove from Playlist</string>

@@ -446,7 +446,6 @@
     <string name="menu_add_queue">Tambahkan ke antrean</string>
     <string name="menu_open_lastfm">Buka di Last.fm</string>
     <string name="menu_refresh_artwork">Segarkan Seni Sampul</string>
-    <string name="menu_copy_song">Salin Lagu</string>
     <string name="menu_details_specs">Detail &amp; Spesifikasi Audio</string>
     <string name="menu_dont_recommend">Jangan rekomendasikan lagi</string>
     <string name="menu_remove_from_playlist">Hapus dari Daftar Putar</string>

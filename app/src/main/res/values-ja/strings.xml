@@ -446,7 +446,6 @@
     <string name="menu_add_queue">キューに追加</string>
     <string name="menu_open_lastfm">Last.fmにオープン</string>
     <string name="menu_refresh_artwork">カバーアートを更新</string>
-    <string name="menu_copy_song">曲をコピーする</string>
     <string name="menu_details_specs">詳細とオーディオ仕様</string>
     <string name="menu_dont_recommend">二度とお勧めしないでください</string>
     <string name="menu_remove_from_playlist">プレイリストから削除</string>

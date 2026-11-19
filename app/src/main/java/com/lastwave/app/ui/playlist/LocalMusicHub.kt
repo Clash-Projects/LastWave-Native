@@ -1584,7 +1584,7 @@ fun LocalMusicHub(
         val activePlId = (detailRoute as? LocalDetailRoute.OfflinePlaylistDetail)?.playlistId
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playableTrack = track.toPlayableTrack(),
             playbackSourceLabel = sourceLabel,
             onDismiss = { menuTrack = null },

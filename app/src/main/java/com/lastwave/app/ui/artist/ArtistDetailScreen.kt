@@ -1160,7 +1160,7 @@ fun ArtistDetailScreen(
     selectedTrackMenu?.let { track ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.title, track.artist, ""),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playableTrack = track,
             playbackSourceLabel = artistName,
             onDismiss = { selectedTrackMenu = null },

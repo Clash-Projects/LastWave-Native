@@ -2113,7 +2113,6 @@ internal fun FullPlayer(
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.title, track.artist, ""),
             capabilities = TrackMenuCapabilities(
-                showCopyActions = true,
                 showDeleteScrobble = false,
                 showRecommendationExclusion = true,
                 showPlayAction = false,

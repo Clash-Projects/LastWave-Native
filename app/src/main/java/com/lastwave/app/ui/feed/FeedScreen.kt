@@ -1680,7 +1680,7 @@ fun FeedScreen(
     menuTrack?.let { track ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.title, track.artist, ""),
-            capabilities = TrackMenuCapabilities(showCopyActions = false, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playableTrack = PlayableTrack(
                 title = track.title,
                 artist = track.artist,

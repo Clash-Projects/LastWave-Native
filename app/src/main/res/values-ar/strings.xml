@@ -446,7 +446,6 @@
     <string name="menu_add_queue">أضف إلى قائمة الانتظار</string>
     <string name="menu_open_lastfm">مفتوح في Last.fm</string>
     <string name="menu_refresh_artwork">تحديث الغلاف الفني</string>
-    <string name="menu_copy_song">نسخ الأغنية</string>
     <string name="menu_details_specs">التفاصيل والمواصفات الصوتية</string>
     <string name="menu_dont_recommend">لا أوصي مرة أخرى</string>
     <string name="menu_remove_from_playlist">إزالة من قائمة التشغيل</string>

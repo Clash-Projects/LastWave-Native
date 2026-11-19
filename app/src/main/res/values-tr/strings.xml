@@ -456,7 +456,6 @@
     <string name="menu_add_queue">Sıraya ekle</string>
     <string name="menu_open_lastfm">Last.fm’de aç</string>
     <string name="menu_refresh_artwork">Kapağı Yenile</string>
-    <string name="menu_copy_song">Şarkıyı Kopyala</string>
     <string name="menu_details_specs">Bilgiler ve Ses Özellikleri</string>
     <string name="menu_dont_recommend">Tekrar önerme</string>
     <string name="menu_remove_from_playlist">Listeden Kaldır</string>

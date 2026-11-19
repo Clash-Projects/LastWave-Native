@@ -383,7 +383,7 @@ fun FriendProfileScreen(
     menuTrack?.let { track ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.artworkUrl.orEmpty()),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playbackSourceLabel = "${uiState.displayName}'s Profile",
             onDismiss = { menuTrack = null },
         )

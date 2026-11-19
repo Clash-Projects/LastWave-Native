@@ -446,7 +446,6 @@
     <string name="menu_add_queue">Adicionar à fila</string>
     <string name="menu_open_lastfm">Abrir em Last.fm</string>
     <string name="menu_refresh_artwork">Atualizar arte da capa</string>
-    <string name="menu_copy_song">Copiar música</string>
     <string name="menu_details_specs">Detalhes e especificações de áudio</string>
     <string name="menu_dont_recommend">Não recomendo novamente</string>
     <string name="menu_remove_from_playlist">Remover da lista de reprodução</string>

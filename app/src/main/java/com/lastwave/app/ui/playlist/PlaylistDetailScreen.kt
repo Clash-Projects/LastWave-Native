@@ -1370,7 +1370,7 @@ fun PlaylistDetailScreen(
     menuTarget?.let { (sourceIndex, track) ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = true),
             // Keep the file path so menu actions play / add the local copy.
             playableTrack = track.takeIf { it.isLocalFile() }?.toPlayableTrack(),
             playbackSourceLabel = playlist.title,

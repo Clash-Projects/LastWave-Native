@@ -376,7 +376,7 @@ fun NewReleasesScreen(
         val trackIndex = state.tracks.indexOfFirst { it.videoId == track.videoId }
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.title, track.artist, ""),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playableTrack = PlayableTrack(
                 title = track.title,
                 artist = track.artist,

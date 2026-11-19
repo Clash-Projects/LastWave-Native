@@ -707,7 +707,7 @@ fun AlbumDetailScreen(
         val safeTrack = if (track.artist != safeArtist && safeArtist.isNotBlank()) track.copy(artist = safeArtist) else track
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(safeTrack.title, safeTrack.artist, ""),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playableTrack = safeTrack,
             playbackSourceLabel = albumTitle,
             onDismiss = { selectedTrackMenu = null },

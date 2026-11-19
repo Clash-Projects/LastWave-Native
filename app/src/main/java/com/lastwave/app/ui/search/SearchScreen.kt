@@ -656,7 +656,7 @@ fun SearchScreen(
         TrackContextMenuSheet(
             target = target,
             playableTrack = menuPlayableTrack,
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = state.tab != SearchTab.PODCASTS),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = state.tab != SearchTab.PODCASTS),
             playbackSourceLabel = "Search",
             onRefreshArtwork = (target as? TrackMenuTarget.Track)?.let { trackTarget ->
                 { artworkViewModel.refresh(trackTarget.name, trackTarget.artist) }

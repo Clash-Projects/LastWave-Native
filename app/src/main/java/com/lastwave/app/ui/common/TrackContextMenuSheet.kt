@@ -7,6 +7,8 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.filled.MusicNote
@@ -21,7 +23,6 @@ import kotlinx.coroutines.CoroutineStart
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -42,7 +43,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Group
@@ -111,10 +111,9 @@ import kotlinx.coroutines.launch
 
 /** Which optional rows this instance of the sheet should show — matches the
  *  reference's per-screen menu variance (§1.7 / §6.5 / home.js's reduced
- *  menu): Home and Discover omit Copy/Delete Scrobble; Playlist/Search/
+ *  menu): Home and Discover omit Delete Scrobble; Playlist/Search/
  *  Genre Detail include everything. */
 data class TrackMenuCapabilities(
-    val showCopyActions: Boolean = true,
     val showDeleteScrobble: Boolean = true,
     val showRecommendationExclusion: Boolean = false,
     val showPlayAction: Boolean = true,
@@ -562,7 +561,7 @@ fun TrackContextMenuSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 16.dp + safeDrawingBottomPadding()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (target is TrackMenuTarget.Track) {
                 val t = target
@@ -570,58 +569,60 @@ fun TrackContextMenuSheet(
                 val isSong = playable.mediaType == com.lastwave.app.playback.MediaType.SONG
                 val isLocalFile = com.lastwave.app.data.generate.LocalAudioFormats
                     .importedPathOrNull(playable.playbackUrl) != null
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    ArtworkImage(
-                        name = t.name,
-                        artist = t.artist,
-                        embeddedUrl = playable.artworkUrl,
-                        fallbackIcon = Icons.Filled.MusicNote,
-                        modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.medium),
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(t.name, style = MaterialTheme.typography.titleMedium, maxLines = 2,
-                            overflow = TextOverflow.Ellipsis)
-                        if (!isSong && t.artist.isNotBlank()) {
-                            Text(t.artist, style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                    IconButton(onClick = ::dismissMenu, enabled = !dismissing) {
-                        Icon(Icons.Outlined.Close, stringResource(R.string.common_close))
-                    }
-                }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (isSong) {
-                        com.lastwave.app.util.ArtistHelper.splitArtists(t.artist).forEach { artist ->
-                            MenuMetadataAction(Icons.Outlined.Person, artist, menuEnabled = !dismissing) {
-                                artistAlbumViewModel.openArtist(artist)
-                                dismissMenu()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        ArtworkImage(
+                            name = t.name,
+                            artist = t.artist,
+                            embeddedUrl = playable.artworkUrl,
+                            fallbackIcon = Icons.Filled.MusicNote,
+                            modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.medium),
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(t.name, style = MaterialTheme.typography.titleMedium, maxLines = 2,
+                                overflow = TextOverflow.Ellipsis)
+                            if (!isSong && t.artist.isNotBlank()) {
+                                Text(t.artist, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
-                        playable.album?.takeIf { it.isNotBlank() }?.let { album ->
-                            MenuMetadataAction(Icons.Outlined.Album, album, menuEnabled = !dismissing) {
-                                artistAlbumViewModel.openAlbum(album, playable.artist.ifBlank { t.artist })
-                                dismissMenu()
-                            }
+                        IconButton(onClick = ::dismissMenu, enabled = !dismissing) {
+                            Icon(Icons.Outlined.Close, stringResource(R.string.common_close))
                         }
                     }
-                    val genre = resolvedGenre?.trim()
-                    val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
-                    if (resolvingGenre || hasGenre) {
-                        MenuMetadataAction(
-                            icon = Icons.Outlined.Sell,
-                            label = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else genre!!,
-                            loading = resolvingGenre,
-                            enabled = !resolvingGenre && hasGenre,
-                            menuEnabled = !dismissing,
-                        ) {
-                            exploreGenre(genre!!)
-                            dismissMenu()
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (isSong) {
+                            com.lastwave.app.util.ArtistHelper.splitArtists(t.artist).forEach { artist ->
+                                MenuMetadataAction(Icons.Outlined.Person, artist, menuEnabled = !dismissing) {
+                                    artistAlbumViewModel.openArtist(artist)
+                                    dismissMenu()
+                                }
+                            }
+                            playable.album?.takeIf { it.isNotBlank() }?.let { album ->
+                                MenuMetadataAction(Icons.Outlined.Album, album, menuEnabled = !dismissing) {
+                                    artistAlbumViewModel.openAlbum(album, playable.artist.ifBlank { t.artist })
+                                    dismissMenu()
+                                }
+                            }
+                        }
+                        val genre = resolvedGenre?.trim()
+                        val hasGenre = !genre.isNullOrBlank() && !genre.equals("unknown", ignoreCase = true)
+                        if (resolvingGenre || hasGenre) {
+                            MenuMetadataAction(
+                                icon = Icons.Outlined.Sell,
+                                label = if (resolvingGenre) stringResource(R.string.menu_resolving_genre) else genre!!,
+                                loading = resolvingGenre,
+                                enabled = !resolvingGenre && hasGenre,
+                                menuEnabled = !dismissing,
+                            ) {
+                                exploreGenre(genre!!)
+                                dismissMenu()
+                            }
                         }
                     }
                 }
@@ -705,7 +706,7 @@ fun TrackContextMenuSheet(
                     }
                 }
                 MenuActionGrid(actions)
-                val copyActions = buildList<@Composable () -> Unit> {
+                MenuActionGrid(maxColumns = 1, actions = buildList<@Composable () -> Unit> {
                     add {
                         MenuActionRow(Icons.Outlined.Link, stringResource(R.string.menu_copy_link), quiet = true, enabled = !dismissing) {
                             val directId = playable.videoId?.takeIf { it.isNotBlank() } ?: extractYouTubeVideoId(t.url)
@@ -719,62 +720,67 @@ fun TrackContextMenuSheet(
                             dismissMenu()
                         }
                     }
-                    if (capabilities.showCopyActions) add {
-                        MenuActionRow(Icons.Outlined.ContentCopy, stringResource(R.string.menu_copy_song), quiet = true, enabled = !dismissing) {
-                            clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
+                    if (onRefreshArtwork != null) add {
+                        MenuActionRow(Icons.Outlined.Refresh, stringResource(R.string.menu_refresh_artwork), quiet = true, enabled = !dismissing) {
+                            onRefreshArtwork()
                             dismissMenu()
                         }
                     }
-                }
-                MenuActionGrid(copyActions, tonal = false)
-                if (onRefreshArtwork != null) {
-                    MenuActionRow(Icons.Outlined.Refresh, stringResource(R.string.menu_refresh_artwork), quiet = true, enabled = !dismissing) {
-                        onRefreshArtwork()
-                        dismissMenu()
+                    if (capabilities.showRecommendationExclusion && !isLocalFile && isSong) add {
+                        MenuActionRow(Icons.Outlined.ThumbDown, stringResource(R.string.menu_dont_recommend), quiet = true, enabled = !dismissing) {
+                            exclusionViewModel.exclude(playable)
+                            dismissMenu()
+                        }
                     }
-                }
-                if (capabilities.showRecommendationExclusion && !isLocalFile && isSong) {
-                    MenuActionRow(Icons.Outlined.ThumbDown, stringResource(R.string.menu_dont_recommend), quiet = true, enabled = !dismissing) {
-                        exclusionViewModel.exclude(playable)
-                        dismissMenu()
+                    if (onRemoveFromPlaylist != null) add {
+                        MenuActionRow(Icons.Outlined.Delete, stringResource(R.string.menu_remove_from_playlist), danger = true, enabled = !dismissing) {
+                            onRemoveFromPlaylist()
+                            dismissMenu()
+                        }
                     }
-                }
-                if (onRemoveFromPlaylist != null) {
-                    MenuActionRow(Icons.Outlined.Delete, stringResource(R.string.menu_remove_from_playlist), danger = true, enabled = !dismissing) {
-                        onRemoveFromPlaylist()
-                        dismissMenu()
+                    if (onRemoveFromQueue != null) add {
+                        MenuActionRow(Icons.Outlined.Delete, stringResource(R.string.menu_remove_from_queue), danger = true, enabled = !dismissing) {
+                            onRemoveFromQueue()
+                            dismissMenu()
+                        }
                     }
-                }
-                if (onRemoveFromQueue != null) {
-                    MenuActionRow(Icons.Outlined.Delete, stringResource(R.string.menu_remove_from_queue), danger = true, enabled = !dismissing) {
-                        onRemoveFromQueue()
-                        dismissMenu()
-                    }
-                }
+                })
             } else if (target is TrackMenuTarget.Artist) {
-                MenuActionRow(Icons.Outlined.Person, stringResource(R.string.menu_view_artist), enabled = !dismissing) {
-                    artistAlbumViewModel.openArtist(target.name)
-                    dismissMenu()
-                }
-                MenuActionRow(Icons.Outlined.Language, stringResource(R.string.menu_open_lastfm), enabled = !dismissing) {
-                    openUrl(context, buildLastFmUrl(target))
-                    dismissMenu()
-                }
+                MenuActionGrid(maxColumns = 1, actions = listOf<@Composable () -> Unit>(
+                    {
+                        MenuActionRow(Icons.Outlined.Person, stringResource(R.string.menu_view_artist), enabled = !dismissing) {
+                            artistAlbumViewModel.openArtist(target.name)
+                            dismissMenu()
+                        }
+                    },
+                    {
+                        MenuActionRow(Icons.Outlined.Language, stringResource(R.string.menu_open_lastfm), enabled = !dismissing) {
+                            openUrl(context, buildLastFmUrl(target))
+                            dismissMenu()
+                        }
+                    },
+                ))
             } else if (target is TrackMenuTarget.Album) {
-                MenuActionRow(Icons.Outlined.Album, stringResource(R.string.menu_view_album), enabled = !dismissing) {
-                    artistAlbumViewModel.openAlbum(target.name, target.artist)
-                    dismissMenu()
-                }
-                if (target.artist.isNotBlank()) {
-                    MenuActionRow(Icons.Outlined.Person, stringResource(R.string.menu_view_artist_name, target.artist), enabled = !dismissing) {
-                        artistAlbumViewModel.openArtist(target.artist)
-                        dismissMenu()
+                MenuActionGrid(maxColumns = 1, actions = buildList<@Composable () -> Unit> {
+                    add {
+                        MenuActionRow(Icons.Outlined.Album, stringResource(R.string.menu_view_album), enabled = !dismissing) {
+                            artistAlbumViewModel.openAlbum(target.name, target.artist)
+                            dismissMenu()
+                        }
                     }
-                }
-                MenuActionRow(Icons.Outlined.Language, stringResource(R.string.menu_open_lastfm), enabled = !dismissing) {
-                    openUrl(context, buildLastFmUrl(target))
-                    dismissMenu()
-                }
+                    if (target.artist.isNotBlank()) add {
+                        MenuActionRow(Icons.Outlined.Person, stringResource(R.string.menu_view_artist_name, target.artist), enabled = !dismissing) {
+                            artistAlbumViewModel.openArtist(target.artist)
+                            dismissMenu()
+                        }
+                    }
+                    add {
+                        MenuActionRow(Icons.Outlined.Language, stringResource(R.string.menu_open_lastfm), enabled = !dismissing) {
+                            openUrl(context, buildLastFmUrl(target))
+                            dismissMenu()
+                        }
+                    }
+                })
             }
         }
     }
@@ -812,7 +818,7 @@ private fun QuickActionsRow(
     onAddToPlaylist: () -> Unit,
     onAddToQueue: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuickActionCard(Icons.Outlined.QueuePlayNext, stringResource(R.string.menu_quick_play_next), Modifier.weight(1f), enabled, onPlayNext)
         QuickActionCard(Icons.Outlined.PlaylistAdd, stringResource(R.string.menu_quick_add_playlist), Modifier.weight(1f), enabled, onAddToPlaylist)
         QuickActionCard(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(R.string.menu_add_queue), Modifier.weight(1f), enabled, onAddToQueue)
@@ -828,37 +834,43 @@ private fun QuickActionCard(icon: ImageVector, label: String, modifier: Modifier
         animationSpec = ExpressiveMotion.spatialFast(),
         label = "menuShortcutShape",
     )
-    Column(
-        modifier.clip(MaterialTheme.shapes.large)
-            .expressivePressScale(interactionSource, targetScale = 0.98f)
-            .clickable(enabled = enabled, interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    // Whole tile is the target (old menu's look); its corners morph on press instead of an icon chip's.
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(iconCorner),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        interactionSource = interactionSource,
+        modifier = modifier.fillMaxHeight().expressivePressScale(interactionSource, targetScale = 0.98f),
     ) {
-        Surface(shape = RoundedCornerShape(iconCorner), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            Icon(icon, null, Modifier.size(48.dp).padding(12.dp), tint = MaterialTheme.colorScheme.onSurface)
+        Column(
+            Modifier.padding(horizontal = 8.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(icon, null, Modifier.size(24.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        Text(label, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
-private fun MenuActionGrid(actions: List<@Composable () -> Unit>, tonal: Boolean = true) {
-    Surface(
-        color = if (tonal) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent,
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val columns = if (actions.size == 1 || maxWidth < 280.dp || LocalDensity.current.fontScale >= 1.3f) 1 else 2
-            Column(Modifier.padding(if (tonal) 4.dp else 0.dp)) {
-                actions.chunked(columns).forEach { pair ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        pair.forEach { action -> Box(Modifier.weight(1f)) { action() } }
-                        if (pair.size < columns) Spacer(Modifier.weight(1f))
-                    }
+private fun MenuActionGrid(actions: List<@Composable () -> Unit>, maxColumns: Int = 2) {
+    if (actions.isEmpty()) return
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxColumns == 1 || actions.size == 1 || maxWidth < 280.dp || LocalDensity.current.fontScale >= 1.3f) 1 else 2
+        val rows = actions.chunked(columns)
+        // One segment per row so the GroupGap reads as the divider, matching Settings' grouped rows.
+        ExpressiveGroup(rows.size) { i, position ->
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = groupShape(position),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    rows[i].forEach { action -> Box(Modifier.weight(1f)) { action() } }
+                    if (rows[i].size < columns) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -895,7 +907,7 @@ private fun MenuActionRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(icon, null, Modifier.size(24.dp))
+            GroupIconBadge(icon, MaterialTheme.colorScheme.surfaceContainerHighest, contentColor, size = 40.dp, iconSize = 20.dp)
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 2,
                     overflow = TextOverflow.Ellipsis)

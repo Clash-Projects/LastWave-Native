@@ -439,7 +439,7 @@ private fun PlaylistContent(
     menuTrack?.let { track ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.title, track.artist, ""),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playableTrack = PlayableTrack(
                 title = track.title,
                 artist = track.artist,

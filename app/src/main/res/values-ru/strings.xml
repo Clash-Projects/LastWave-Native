@@ -446,7 +446,6 @@
     <string name="menu_add_queue">Добавить в очередь</string>
     <string name="menu_open_lastfm">Открыто в Last.fm</string>
     <string name="menu_refresh_artwork">Обновить обложку</string>
-    <string name="menu_copy_song">Копировать песню</string>
     <string name="menu_details_specs">Детали и характеристики звука</string>
     <string name="menu_dont_recommend">Больше не рекомендую</string>
     <string name="menu_remove_from_playlist">Удалить из плейлиста</string>

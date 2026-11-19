@@ -862,7 +862,7 @@ internal fun QueuePanel(
         if (itemTrack != null) {
             com.lastwave.app.ui.common.TrackContextMenuSheet(
                 target = com.lastwave.app.ui.common.TrackMenuTarget.Track(itemTrack.title, itemTrack.artist, itemTrack.album ?: ""),
-                capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(showCopyActions = true),
+                capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(),
                 playableTrack = itemTrack,
                 onDismiss = { menuIndex = null },
                 onRemoveFromQueue = if (isQueueLocked) null else ({ player.removeQueueItem(index) })

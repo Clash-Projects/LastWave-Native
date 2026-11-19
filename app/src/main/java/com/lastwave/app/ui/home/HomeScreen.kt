@@ -471,7 +471,7 @@ fun HomeScreen(
     menuTrack?.let { track ->
         com.lastwave.app.ui.common.TrackContextMenuSheet(
             target = com.lastwave.app.ui.common.TrackMenuTarget.Track(track.name, track.artist, track.artworkUrl.orEmpty()),
-            capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
+            capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(showDeleteScrobble = true),
             playbackSourceLabel = "Home",
             onDismiss = { menuTrack = null },
         )

@@ -453,7 +453,6 @@
     <string name="menu_add_queue">Ajouter à la file d\'attente</string>
     <string name="menu_open_lastfm">Ouvert dans Last.fm</string>
     <string name="menu_refresh_artwork">Actualiser la pochette</string>
-    <string name="menu_copy_song">Copier la chanson</string>
     <string name="menu_details_specs">Détails et spécifications audio</string>
     <string name="menu_dont_recommend">Ne recommande plus</string>
     <string name="menu_remove_from_playlist">Supprimer de la liste de lecture</string>
