@@ -286,6 +286,7 @@ data class MiscSettings(
      *  tears down the playback service. When false, playback keeps running in
      *  the background after the task is removed. */
     val stopPlaybackOnTaskRemoved: Boolean = false,
+    val pauseOnZeroVolume: Boolean = false,
     val suppressYouTubeLoginPrompt: Boolean = false,
     val hasDismissedJoinSupportPrompt: Boolean = false,
     /** Display name used in LastWave Jam sessions. */
@@ -513,6 +514,7 @@ class SettingsPreferences @Inject constructor(
         val LIKED_SONGS_LOCAL_ONLY = stringPreferencesKey("lw_liked_songs_local_only")
         val PODCASTS_ENABLED = booleanPreferencesKey("lw_podcasts_enabled")
         val STOP_PLAYBACK_ON_TASK_REMOVED = booleanPreferencesKey("lw_stop_playback_on_task_removed")
+        val PAUSE_ON_ZERO_VOLUME = booleanPreferencesKey("lw_pause_on_zero_volume")
         val SUPPRESS_YOUTUBE_LOGIN_PROMPT = booleanPreferencesKey("lw_suppress_youtube_login_prompt")
         val HAS_DISMISSED_JOIN_SUPPORT_PROMPT = booleanPreferencesKey("lw_has_dismissed_join_support_prompt")
         val JAM_DISPLAY_NAME = stringPreferencesKey("lw_jam_display_name")
@@ -627,6 +629,7 @@ class SettingsPreferences @Inject constructor(
                 canvasOverCellular = p.readSafely(Keys.CANVAS_OVER_CELLULAR) ?: true,
                 podcastsEnabled = p.readSafely(Keys.PODCASTS_ENABLED) ?: true,
                 stopPlaybackOnTaskRemoved = p.readSafely(Keys.STOP_PLAYBACK_ON_TASK_REMOVED) ?: false,
+                pauseOnZeroVolume = p.readSafely(Keys.PAUSE_ON_ZERO_VOLUME) ?: false,
                 suppressYouTubeLoginPrompt = p.readSafely(Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT) ?: false,
                 hasDismissedJoinSupportPrompt = p.readSafely(Keys.HAS_DISMISSED_JOIN_SUPPORT_PROMPT) ?: false,
                 jamDisplayName = p.readSafely(Keys.JAM_DISPLAY_NAME)?.trim().orEmpty(),
@@ -880,6 +883,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setStopPlaybackOnTaskRemoved(enabled: Boolean) {
         dataStore.edit { it[Keys.STOP_PLAYBACK_ON_TASK_REMOVED] = enabled }
+    }
+
+    suspend fun setPauseOnZeroVolume(enabled: Boolean) {
+        dataStore.edit { it[Keys.PAUSE_ON_ZERO_VOLUME] = enabled }
     }
 
     suspend fun setSuppressYouTubeLoginPrompt(suppress: Boolean) {
