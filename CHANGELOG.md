@@ -61,7 +61,17 @@
 ## [Unreleased]
 
 ### Added & Improved
+- **Android TV (Leanback) Support:** LastWave now runs natively on Android TV, Google TV and Fire TV from the same APK. A dedicated D-pad home (Now Playing hero, top tracks and recently played from your listening history, remote-keyboard search) launches from the TV home screen, driven by the same process-wide MusicPlayer — queue, radio and the media session behave exactly as on phone. The phone launcher is untouched and the TV activity is declared separately, so phones list only the touch UI.
 - **Recommendation Provider Switch:** Settings → Spotify now offers a recommendation provider choice. Pick Spotify to seed Home shelves, Quick Picks, radio, Discover and mixes from your Spotify taste; the switch applies everywhere and invalidates the cached home feed. Spotify only supplies the seeds — tracks are matched back to playable YouTube Music, and any failure or empty answer silently keeps the YouTube Music graph, so playback never breaks.
+
+### Fixed
+- **Seekable FLAC Downloads:** Fixed fragmented-MP4 header parsing (FullBox version/flags offsets) so STREAMINFO total samples, sidx timescale and duration patching land on the right fields and FLAC downloads seek correctly.
+- **Android TV on API 23:** DataStore lowered to 1.1.7 so the TV build keeps its Android 6.0 minimum instead of being forced to API 24 by DataStore 1.3.
+- **TV Lyrics Scrolling:** Holding the D-pad on the lyrics screen now steers the list instantly and stops the moment the key is released, instead of letting queued scroll animations keep gliding.
+- **Artist Profile Backdrop:** The artist page now paints a solid background and slides in smoothly, so the browse screen no longer shows through behind it.
+- **Virtual Pointer on Sign-In Pages:** The virtual mouse pointer is now always on in sign-in pages — parked at the centre the moment a page opens, no first D-pad press needed. The pointer options were removed from the setup wizard and TV Settings.
+- **Setup Welcome Logo:** The setup screen now shows the original LastWave mark — the dark bars on the logo's lime disc — instead of the barely visible dark-on-dark bars.
+- **Security Hardening:** Login sessions (the Spotify sp_dc store and the YouTube sign-in cookies) are now excluded from device backups and phone-to-phone transfers, and the sign-in pages refuse cleartext (HTTP) subresources so a hostile network cannot inject anything into a page that captures credentials.
 
 ## [5.0.0] - 2026-10-30
 

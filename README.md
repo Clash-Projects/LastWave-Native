@@ -48,6 +48,7 @@ For audio lovers, LastWave packs Bit-Perfect USB DAC output, Lossless FLAC addon
 #### Playback
 - Stream any track or video from YouTube Music
 - Background playback with lockscreen & Android Auto controls
+- Native Android TV / Google TV (Leanback) home with D-pad navigation
 - High-res audio downloads with embedded tags & `.lrc` lyrics
 - Download & cache for offline listening
 - Skip silence & sleep timer

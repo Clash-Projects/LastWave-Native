@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TV launcher icon: brand disc over the banner-navy tile. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/tv_icon_background" />
+    <item android:drawable="@drawable/tv_icon_foreground" />
+</layer-list>

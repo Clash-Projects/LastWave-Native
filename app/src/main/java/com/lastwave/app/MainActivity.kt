@@ -183,6 +183,13 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
             val themeState by themeViewModel.uiState.collectAsStateWithLifecycle()
 
             LastWaveTheme(themeState = themeState) {
+                // Android TV (leanback) gets a dedicated D-pad home instead of
+                // the touch NavHost; playback still runs through the same
+                // MusicPlayer, so the media session and queue stay identical.
+                if (com.lastwave.app.util.TvDetect.isTvMode(this)) {
+                    com.lastwave.app.ui.tv.TvHomeRoot()
+                } else {
+
                 val currentConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
                 val customViewConfig = androidx.compose.runtime.remember(currentConfig) {
                     object : androidx.compose.ui.platform.ViewConfiguration by currentConfig {
@@ -224,7 +231,8 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
                         com.lastwave.app.ui.update.AppUpdateDialogHost()
                     }
                 }
-            }
+                            }
+}
         }
         StartupTrail.mark("activity.content.set")
         // First drawn frame: if the process dies between content.set and
