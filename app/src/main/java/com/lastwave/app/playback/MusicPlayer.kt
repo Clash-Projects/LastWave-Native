@@ -449,6 +449,10 @@ class MusicPlayer @Inject constructor(
     val stopPlaybackOnTaskRemoved: Boolean
         get() = stopPlaybackOnTaskRemovedPref
     internal var activePlayer: ExoPlayer? = null
+        set(value) {
+            field = value
+            com.lastwave.app.playback.rhythm.FluidRhythmEngine.liveSink = value?.let { playerToSink[it] }
+        }
     internal var secondaryPlayer: ExoPlayer? = null
     internal var secondaryNativeEngine: NativeAudioEngine? = null
     internal var secondaryEffects: AudioEffectsEngine? = null
@@ -1984,7 +1988,6 @@ class MusicPlayer @Inject constructor(
                         effects.attach(audioSessionId)
                         runCatching { systemEffectsBridge.onSessionChanged(audioSessionId) }
                         musicHapticsController.onAudioSessionIdChanged(audioSessionId)
-                        com.lastwave.app.playback.rhythm.FluidRhythmEngine.attachSession(audioSessionId)
                     }
                 })
             }.also { playerInstance ->
@@ -2070,7 +2073,6 @@ class MusicPlayer @Inject constructor(
     fun release() {
         zeroVolumePlaybackObserver.unregister()
         cancelCrossfade()
-        com.lastwave.app.playback.rhythm.FluidRhythmEngine.detachSession()
         activePlayer?.removeListener(listener)
         activePlayer?.release()
         activePlayer = null
@@ -8240,7 +8242,6 @@ class MusicPlayer @Inject constructor(
             activePlayer = standby
             musicHapticsController.bindToPlayer(standby)
             musicHapticsController.onAudioSessionIdChanged(standby.audioSessionId)
-            com.lastwave.app.playback.rhythm.FluidRhythmEngine.attachSession(standby.audioSessionId)
             standby.addListener(listener)
             committed = true
             standbyQueue = emptyList()

@@ -403,8 +403,6 @@ internal fun BeatSyncFluidArtworkBackground(
     var renderEffectRevision by remember { mutableIntStateOf(0) }
     val isForeground = rememberIsForeground()
     val motionActive = isPlaying && isForeground
-    val rhythmState by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
-    val activeRhythm = if (fluidBeatSyncEnabled) com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue else 0f
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -414,7 +412,6 @@ internal fun BeatSyncFluidArtworkBackground(
                 cachedRenderEffect = null
                 cachedSigma = 0f
                 renderEffectRevision++
-                com.lastwave.app.playback.rhythm.FluidRhythmEngine.onForegroundResume()
             } else if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 agslRenderer?.invalidateShaders()
                 cachedRenderEffect = null
@@ -440,9 +437,6 @@ internal fun BeatSyncFluidArtworkBackground(
                 com.lastwave.app.playback.rhythm.FluidRhythmEngine.tick(0.016f, false)
             }
             return@LaunchedEffect
-        }
-        if (fluidBeatSyncEnabled) {
-            com.lastwave.app.playback.rhythm.FluidRhythmEngine.onForegroundResume()
         }
         var last = withFrameNanos { it }
         while (true) {
