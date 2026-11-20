@@ -118,6 +118,31 @@ data class HeatmapDay(
 )
 
 @Immutable
+data class ConsistencyScoreData(
+    val score: Int,
+    val rating: String,
+    val subtitle: String,
+    val avgSessionMinutes: Int,
+    val activeDaysThisWeek: Int,
+    val streakDays: Int,
+)
+
+@Immutable
+data class ListeningStage(
+    val name: String,
+    val percent: Int,
+    val durationLabel: String,
+    val description: String,
+)
+
+@Immutable
+data class ListeningStagesData(
+    val deepFocus: ListeningStage,
+    val flowState: ListeningStage,
+    val discovery: ListeningStage,
+)
+
+@Immutable
 data class ListeningStatsUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -138,4 +163,6 @@ data class ListeningStatsUiState(
     val monthComparison: MonthComparisonData? = null,
     val hourlyRhythm: List<HourlyRhythmBar> = emptyList(),
     val activityHeatmap: List<HeatmapDay> = emptyList(),
+    val consistency: ConsistencyScoreData? = null,
+    val stages: ListeningStagesData? = null,
 )

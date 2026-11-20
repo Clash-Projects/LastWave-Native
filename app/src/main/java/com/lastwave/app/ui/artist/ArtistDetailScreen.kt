@@ -154,7 +154,7 @@ fun ArtistDetailScreen(
     }
 
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val playedKeys by viewModel.playedKeys.collectAsStateWithLifecycle()
+    val knownSignals by viewModel.knownSignals.collectAsStateWithLifecycle()
     var selectedTrackMenu by remember { mutableStateOf<PlayableTrack?>(null) }
     var showAllSongs by rememberSaveable { mutableStateOf(false) }
     var songSortOption by rememberSaveable { mutableStateOf(ArtistSongSortOption.MOST_PLAYED) }
@@ -196,13 +196,21 @@ fun ArtistDetailScreen(
     var artworkIndex by remember(artistData) { mutableStateOf(0) }
 
     val topSongs = artistData?.topSongs.orEmpty()
-    val sortedSongs = remember(topSongs, songSortOption, playedKeys) {
+    val sortedSongs = remember(topSongs, songSortOption, knownSignals) {
         when (songSortOption) {
             ArtistSongSortOption.MOST_PLAYED -> topSongs
             ArtistSongSortOption.RECENT -> topSongs.reversed()
             ArtistSongSortOption.KNOWN -> topSongs.sortedByDescending { track ->
-                val key = "${track.title}|${track.artist}".lowercase()
-                if (playedKeys.contains(key)) 1 else 0
+                val title = track.title.trim().lowercase()
+                val key = "${title}|${track.artist.trim().lowercase()}"
+                val isLiked = viewModel.trackLikeController.isLiked(track, knownSignals.likedKeys)
+                val isDownloaded = title in knownSignals.downloadedTitlesAndIds || key in knownSignals.downloadedTitlesAndIds
+                val isPlayed = title in knownSignals.playedTitlesAndIds || key in knownSignals.playedTitlesAndIds || (track.videoId != null && track.videoId in knownSignals.playedTitlesAndIds)
+                var score = 0
+                if (isLiked) score += 100
+                if (isDownloaded) score += 50
+                if (isPlayed) score += 25
+                score
             }
         }
     }
@@ -584,127 +592,149 @@ fun ArtistDetailScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Songs (${data.topSongs.size})",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Box {
-                                        Surface(
-                                            onClick = { sortMenuExpanded = true },
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                            modifier = Modifier.size(32.dp),
+                                Text(
+                                    text = "Songs (${data.topSongs.size})",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Box {
+                                    Surface(
+                                        onClick = { sortMenuExpanded = true },
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        tonalElevation = 2.dp,
+                                        modifier = Modifier.height(34.dp),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    Icons.AutoMirrored.Filled.Sort,
-                                                    contentDescription = "Sort songs",
-                                                    modifier = Modifier.size(16.dp),
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
-                                            }
-                                        }
-                                        DropdownMenu(
-                                            expanded = sortMenuExpanded,
-                                            onDismissRequest = { sortMenuExpanded = false },
-                                            shape = RoundedCornerShape(18.dp),
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("Most played", fontWeight = if (songSortOption == ArtistSongSortOption.MOST_PLAYED) FontWeight.Bold else FontWeight.Normal) },
-                                                onClick = {
-                                                    songSortOption = ArtistSongSortOption.MOST_PLAYED
-                                                    sortMenuExpanded = false
-                                                },
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.Sort,
+                                                contentDescription = "Sort songs",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary,
                                             )
-                                            DropdownMenuItem(
-                                                text = { Text("Recent", fontWeight = if (songSortOption == ArtistSongSortOption.RECENT) FontWeight.Bold else FontWeight.Normal) },
-                                                onClick = {
-                                                    songSortOption = ArtistSongSortOption.RECENT
-                                                    sortMenuExpanded = false
+                                            Text(
+                                                text = when (songSortOption) {
+                                                    ArtistSongSortOption.MOST_PLAYED -> "Most played"
+                                                    ArtistSongSortOption.RECENT -> "Recent"
+                                                    ArtistSongSortOption.KNOWN -> "Known"
                                                 },
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface,
                                             )
-                                            DropdownMenuItem(
-                                                text = { Text("Songs that I know", fontWeight = if (songSortOption == ArtistSongSortOption.KNOWN) FontWeight.Bold else FontWeight.Normal) },
-                                                onClick = {
-                                                    songSortOption = ArtistSongSortOption.KNOWN
-                                                    sortMenuExpanded = false
-                                                },
+                                            Icon(
+                                                Icons.Filled.ExpandMore,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
+                                    }
+                                    DropdownMenu(
+                                        expanded = sortMenuExpanded,
+                                        onDismissRequest = { sortMenuExpanded = false },
+                                        shape = RoundedCornerShape(18.dp),
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Most played", fontWeight = if (songSortOption == ArtistSongSortOption.MOST_PLAYED) FontWeight.Bold else FontWeight.Normal) },
+                                            onClick = {
+                                                songSortOption = ArtistSongSortOption.MOST_PLAYED
+                                                sortMenuExpanded = false
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Recent", fontWeight = if (songSortOption == ArtistSongSortOption.RECENT) FontWeight.Bold else FontWeight.Normal) },
+                                            onClick = {
+                                                songSortOption = ArtistSongSortOption.RECENT
+                                                sortMenuExpanded = false
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Songs that I know", fontWeight = if (songSortOption == ArtistSongSortOption.KNOWN) FontWeight.Bold else FontWeight.Normal) },
+                                            onClick = {
+                                                songSortOption = ArtistSongSortOption.KNOWN
+                                                sortMenuExpanded = false
+                                            },
+                                        )
                                     }
                                 }
                             }
                         }
 
-                        // Top Songs List
-                        itemsIndexed(
-                            visibleSongs,
-                            key = { index, track -> "${track.videoId ?: track.title}_$index" },
-                            contentType = { _, _ -> "artist_top_song" },
-                        ) { index, track ->
-                            val isPlayingThis = playbackState.isPlaying &&
-                                playbackState.current?.title.equals(track.title, ignoreCase = true) &&
-                                playbackState.current?.artist.equals(track.artist, ignoreCase = true)
-
-                            val position = groupPositionFor(index, visibleSongs.size)
-                            ExpressiveGroupTrackRow(
-                                title = track.title,
-                                subtitle = track.album ?: com.lastwave.app.util.ArtistHelper.primaryArtist(track.artist).ifBlank { com.lastwave.app.util.ArtistHelper.primaryArtist(data.name) },
-                                position = position,
-                                isPlaying = isPlayingThis,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    val fullIndex = data.topSongs.indexOf(track).takeIf { it >= 0 } ?: index
-                                    viewModel.playAll(startIndex = fullIndex)
-                                },
+                        // Top Songs List with small 2.dp gap
+                        item(key = "top_songs_list") {
+                            Column(
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .adaptiveContentWidth(maxWidth = 860.dp)
                                     .padding(horizontal = 20.dp),
-                                leading = {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(RoundedCornerShape(12.dp)),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        ArtworkImage(
-                                            name = track.title,
-                                            artist = com.lastwave.app.util.ArtistHelper.primaryArtist(track.artist),
-                                            embeddedUrl = track.artworkUrl,
-                                            fallbackIcon = Icons.Filled.MusicNote,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                        if (isPlayingThis) {
-                                            PlayingWaveBars(
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomEnd)
-                                                    .padding(2.dp)
-                                                    .size(24.dp, 18.dp),
-                                            )
-                                        }
-                                    }
-                                },
-                                trailing = {
-                                    IconButton(
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                visibleSongs.forEachIndexed { index, track ->
+                                    val isPlayingThis = playbackState.isPlaying &&
+                                        playbackState.current?.title.equals(track.title, ignoreCase = true) &&
+                                        playbackState.current?.artist.equals(track.artist, ignoreCase = true)
+
+                                    val position = groupPositionFor(index, visibleSongs.size)
+                                    ExpressiveGroupTrackRow(
+                                        title = track.title,
+                                        subtitle = track.album ?: com.lastwave.app.util.ArtistHelper.primaryArtist(track.artist).ifBlank { com.lastwave.app.util.ArtistHelper.primaryArtist(data.name) },
+                                        position = position,
+                                        isPlaying = isPlayingThis,
                                         onClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            selectedTrackMenu = track
+                                            val fullIndex = data.topSongs.indexOf(track).takeIf { it >= 0 } ?: index
+                                            viewModel.playAll(startIndex = fullIndex)
                                         },
-                                        modifier = Modifier.size(36.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.MoreVert,
-                                            contentDescription = stringResource(R.string.dl_options_cd),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                    }
-                                },
-                            )
+                                        modifier = Modifier.fillMaxWidth(),
+                                        leading = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .clip(RoundedCornerShape(12.dp)),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                ArtworkImage(
+                                                    name = track.title,
+                                                    artist = com.lastwave.app.util.ArtistHelper.primaryArtist(track.artist),
+                                                    embeddedUrl = track.artworkUrl,
+                                                    fallbackIcon = Icons.Filled.MusicNote,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                                if (isPlayingThis) {
+                                                    PlayingWaveBars(
+                                                        modifier = Modifier
+                                                            .align(Alignment.BottomEnd)
+                                                            .padding(2.dp)
+                                                            .size(24.dp, 18.dp),
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        trailing = {
+                                            IconButton(
+                                                onClick = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                                    selectedTrackMenu = track
+                                                },
+                                                modifier = Modifier.size(36.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.MoreVert,
+                                                    contentDescription = stringResource(R.string.dl_options_cd),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                            }
                         }
 
                         if (data.topSongs.size > initialDisplayLimit) {

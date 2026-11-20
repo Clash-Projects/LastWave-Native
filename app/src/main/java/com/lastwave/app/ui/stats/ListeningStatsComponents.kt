@@ -872,3 +872,300 @@ fun ActivityHeatmapGrid(days: List<HeatmapDay>) {
         }
     }
 }
+
+@Composable
+fun ConsistencyScoreCard(
+    data: ConsistencyScoreData,
+    modifier: Modifier = Modifier,
+) {
+    val animProgress = remember { Animatable(0f) }
+    LaunchedEffect(data.score) {
+        animProgress.snapTo(0f)
+        animProgress.animateTo(
+            targetValue = data.score / 100f,
+            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        )
+    }
+
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        text = "Rhythm & Consistency",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "Sleep tracker inspired flow analysis",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        text = data.rating,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                // Circular Score Ring
+                Box(
+                    modifier = Modifier.size(110.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+                        val strokeWidth = 10.dp.toPx()
+                        val diameter = size.minDimension - strokeWidth
+                        val arcSize = Size(diameter, diameter)
+                        val topLeft = Offset(strokeWidth / 2f, strokeWidth / 2f)
+
+                        drawArc(
+                            color = trackColor,
+                            startAngle = -90f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                        )
+
+                        drawArc(
+                            color = primaryColor,
+                            startAngle = -90f,
+                            sweepAngle = 360f * animProgress.value,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${(data.score * animProgress.value).toInt()}",
+                            style = MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp),
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Score",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                // 3 Quick metrics
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("Avg. Session", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${data.avgSessionMinutes}m", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("Streak", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${data.streakDays} days", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("Active Days", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${data.activeDaysThisWeek} / 7", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = data.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+fun ListeningStagesCard(
+    stages: ListeningStagesData,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column {
+                Text(
+                    text = "Listening Stages",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Deep focus vs. daily flow vs. discovery",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Multi-segment horizontal bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(7.dp)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(stages.deepFocus.percent.toFloat().coerceAtLeast(1f))
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+                Spacer(Modifier.width(2.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(stages.flowState.percent.toFloat().coerceAtLeast(1f))
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.tertiary),
+                )
+                Spacer(Modifier.width(2.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(stages.discovery.percent.toFloat().coerceAtLeast(1f))
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.secondary),
+                )
+            }
+
+            // Legend & Details
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                StageDetailRow(
+                    stage = stages.deepFocus,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                StageDetailRow(
+                    stage = stages.flowState,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+                StageDetailRow(
+                    stage = stages.discovery,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StageDetailRow(
+    stage: ListeningStage,
+    color: Color,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color),
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stage.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "${stage.percent}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                )
+            }
+            Text(
+                text = stage.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = stage.durationLabel,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}

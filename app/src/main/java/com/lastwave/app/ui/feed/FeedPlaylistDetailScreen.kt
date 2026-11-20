@@ -216,14 +216,20 @@ private fun PlaylistContent(
         if (sortMode == OnlinePlaylistSort.DEFAULT) {
             if (sortAscending) playlist.tracks else playlist.tracks.reversed()
         } else {
-            val comparator: Comparator<YouTubeMusicTrack> = when (sortMode) {
-                OnlinePlaylistSort.TITLE -> compareBy { it.title.lowercase() }
-                OnlinePlaylistSort.ARTIST -> compareBy({ it.artist.lowercase() }, { it.title.lowercase() })
-                OnlinePlaylistSort.DURATION -> compareBy { it.durationSeconds ?: 0 }
-                OnlinePlaylistSort.DEFAULT -> compareBy { 0 }
+            when (sortMode) {
+                OnlinePlaylistSort.TITLE -> playlist.tracks.sortedWith(
+                    if (sortAscending) compareBy { it.title.lowercase() } else compareByDescending { it.title.lowercase() }
+                )
+                OnlinePlaylistSort.ARTIST -> playlist.tracks.sortedWith(
+                    if (sortAscending) compareBy({ it.artist.lowercase() }, { it.title.lowercase() })
+                    else compareByDescending<YouTubeMusicTrack> { it.artist.lowercase() }.thenBy { it.title.lowercase() }
+                )
+                OnlinePlaylistSort.DURATION -> playlist.tracks.sortedWith(
+                    compareBy<YouTubeMusicTrack> { (it.durationSeconds ?: 0) == 0 }
+                        .then(if (sortAscending) compareBy { it.durationSeconds ?: 0 } else compareByDescending { it.durationSeconds ?: 0 })
+                )
+                OnlinePlaylistSort.DEFAULT -> playlist.tracks
             }
-            val sorted = playlist.tracks.sortedWith(comparator)
-            if (sortAscending) sorted else sorted.reversed()
         }
     }
 

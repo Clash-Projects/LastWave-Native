@@ -171,7 +171,8 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenDiscover: () -> Unit,
-    onOpenListeningStats: () -> Unit,
+    onOpenGenres: () -> Unit = {},
+    onOpenListeningStats: () -> Unit = {},
     onOpenFriends: () -> Unit,
     onOpenDownloads: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
@@ -274,7 +275,7 @@ fun HomeScreen(
                                 artistCount = stats.artistCount,
                                 albumCount = stats.albumCount,
                                 headlineLabel = headlineLabel,
-                                onOpenListeningStats = onOpenListeningStats,
+                                onOpenGenres = onOpenGenres,
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp),
                             )
                         }
@@ -287,7 +288,7 @@ fun HomeScreen(
                             albumCount = stats.albumCount,
                             headlineLabel = headlineLabel,
                             onExpand = statsCollapse::expand,
-                            onOpenListeningStats = onOpenListeningStats,
+                            onOpenGenres = onOpenGenres,
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
                     },

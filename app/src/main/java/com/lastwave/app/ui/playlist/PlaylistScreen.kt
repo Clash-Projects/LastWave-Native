@@ -279,6 +279,49 @@ fun PlaylistScreen(
                 },
             )
 
+            // Base pill container holding filter chips
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 6.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PlaylistFilter.entries.forEach { filter ->
+                        val isSelected = selectedFilter == filter
+                        Surface(
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                selectedFilter = filter
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                            modifier = Modifier.height(34.dp),
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                            ) {
+                                Text(
+                                    text = filter.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Search Bar + Generator button matching Downloads tab design
             Row(
                 modifier = Modifier
@@ -341,41 +384,6 @@ fun PlaylistScreen(
                 }
             }
 
-            // Filter chips without outlines
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlaylistFilter.entries.forEach { filter ->
-                    val isSelected = selectedFilter == filter
-                    Surface(
-                        onClick = {
-                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                            selectedFilter = filter
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.height(36.dp),
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 14.dp),
-                        ) {
-                            Text(
-                                text = filter.label,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-
             val localSongsPlaylist = remember(state.playlists, searchQuery) {
                 state.playlists.firstOrNull {
                     it.mode == LOCAL_SONGS_MODE && it.matchesPlaylistSearch(searchQuery)
@@ -435,16 +443,8 @@ fun PlaylistScreen(
                             .clip(TopCurvedSectionClipShape(horizontalInset = 16.dp, cornerRadius = 28.dp)),
                     ) {
                         if (localSongsPlaylist != null || showDownloadsCard) {
-                            val hasPlaylistsBelow = state.isGenerating ||
-                                state.justSavedBannerVisible ||
-                                effectiveSpotify.isNotEmpty() ||
-                                filteredPlaylists.isNotEmpty()
                             item(key = "heroes_side_by_side", contentType = "heroes_side_by_side") {
-                                Box(
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .then(if (hasPlaylistsBelow) Modifier.padding(bottom = 12.dp) else Modifier),
-                                ) {
+                                Box(modifier = Modifier.animateItem()) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -458,7 +458,6 @@ fun PlaylistScreen(
                                                     playbackSource = playbackState.sourceLabel,
                                                     shape = if (showDownloadsCard) connectedShape(0, 2) else RoundedCornerShape(24.dp),
                                                     onClick = { onOpenPlaylist(localSongsPlaylist.id) },
-                                                    onEditCover = { coverEditorPlaylistId = localSongsPlaylist.id },
                                                     onPlay = {
                                                         musicPlayer.playQueue(
                                                             localSongsPlaylist.tracks.map(GeneratedTrack::toPlayableTrack),

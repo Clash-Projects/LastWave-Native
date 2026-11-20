@@ -464,8 +464,7 @@ internal fun LocalSongsHeroCard(
     isPlaying: Boolean,
     playbackSource: String,
     onClick: () -> Unit,
-    onEditCover: () -> Unit,
-    onPlay: () -> Unit,
+    onPlay: () -> Unit = {},
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
     modifier: Modifier = Modifier,
 ) {
@@ -509,7 +508,7 @@ internal fun LocalSongsHeroCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(
+                .clickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = {
@@ -521,22 +520,18 @@ internal fun LocalSongsHeroCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(52.dp)) {
-                if (!playlist.customCoverUri.isNullOrBlank() || playlist.tracks.isNotEmpty()) {
-                    PlaylistCover(playlist = playlist, modifier = Modifier.fillMaxSize(), cornerRadius = 16.dp)
-                } else {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.FolderOpen,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(26.dp),
-                            )
-                        }
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.FolderOpen,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondary,
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                 }
                 if (isThisPlaylistPlaying) {
@@ -550,7 +545,7 @@ internal fun LocalSongsHeroCard(
 
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = playlist.title,
+                    text = stringResource(R.string.local_music_tab_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = contentColor,
@@ -568,6 +563,11 @@ internal fun LocalSongsHeroCard(
                     color = contentColor.copy(alpha = 0.78f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
                 )
             }
         }

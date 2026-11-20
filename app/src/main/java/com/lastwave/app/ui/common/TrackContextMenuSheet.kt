@@ -1115,18 +1115,6 @@ private fun ColumnScope.ClassicTrackMenuContent(
                     }
                 }
                 add { pos ->
-                    ClassicMenuActionRow(
-                        icon = Icons.Outlined.ContentCopy,
-                        label = stringResource(R.string.menu_copy_song),
-                        position = pos,
-                        enabled = !dismissing,
-                    ) {
-                        clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
-                        Toast.makeText(context, context.getString(R.string.song_copied), Toast.LENGTH_SHORT).show()
-                        dismissMenu()
-                    }
-                }
-                add { pos ->
                     ClassicMenuActionRow(Icons.Outlined.Person, stringResource(R.string.menu_go_to_artist), position = pos, enabled = !dismissing) {
                         val artist = t.artist.ifBlank { playable.artist }
                         if (artist.isNotBlank()) artistAlbumViewModel.openArtist(artist)
@@ -1143,6 +1131,18 @@ private fun ColumnScope.ClassicTrackMenuContent(
                 }
                 if (onRefreshArtwork != null) {
                     add { pos -> ClassicMenuActionRow(Icons.Outlined.Refresh, stringResource(R.string.menu_refresh_artwork), position = pos, enabled = !dismissing) { onRefreshArtwork(); dismissMenu() } }
+                }
+                add { pos ->
+                    ClassicMenuActionRow(
+                        icon = Icons.Outlined.ContentCopy,
+                        label = stringResource(R.string.menu_copy_song),
+                        position = pos,
+                        enabled = !dismissing,
+                    ) {
+                        clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
+                        Toast.makeText(context, context.getString(R.string.song_copied), Toast.LENGTH_SHORT).show()
+                        dismissMenu()
+                    }
                 }
                 add { pos ->
                     ClassicMenuActionRow(Icons.Outlined.Info, stringResource(R.string.menu_details_specs), position = pos, enabled = !dismissing) {

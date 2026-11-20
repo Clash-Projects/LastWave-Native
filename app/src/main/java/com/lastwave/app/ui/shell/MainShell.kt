@@ -53,6 +53,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -463,6 +464,7 @@ fun MainShell(
                             onOpenSettings = { showAccountMenu = true },
                             onOpenSearch = onOpenSearch,
                             onOpenDiscover = onOpenDiscover,
+                            onOpenGenres = onOpenGenres,
                             onOpenListeningStats = onOpenListeningStats,
                             onOpenFriends = onOpenFriends,
                             onOpenDownloads = onOpenDownloads,
@@ -606,7 +608,7 @@ fun MainShell(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(com.lastwave.app.ui.common.GroupGap),
             ) {
                 Row(
                     modifier = Modifier
@@ -626,10 +628,55 @@ fun MainShell(
                 }
 
                 // 1. Cast
-                com.lastwave.app.ui.player.PlayerCastMenuRow(
-                    player = musicPlayer,
+                val castAvailable = remember(musicPlayer) { musicPlayer.initializeCast() }
+                var routeButton by remember { mutableStateOf<androidx.mediarouter.app.MediaRouteButton?>(null) }
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        if (castAvailable) routeButton?.performClick()
+                        else android.widget.Toast.makeText(context, context.getString(R.string.cast_unavailable), android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.TOP),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.fillMaxWidth(),
-                )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Outlined.Cast,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Cast", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Stream to TV or speaker", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (castAvailable) {
+                            androidx.compose.ui.viewinterop.AndroidView(
+                                modifier = Modifier.size(0.dp),
+                                factory = { viewContext ->
+                                    androidx.mediarouter.app.MediaRouteButton(viewContext).apply {
+                                        background = null
+                                        com.google.android.gms.cast.framework.CastButtonFactory.setUpMediaRouteButton(viewContext, this)
+                                        routeButton = this
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
 
                 // 2. Sleep timer
                 Surface(
@@ -637,7 +684,7 @@ fun MainShell(
                         showAccountMenu = false
                         showSleepTimerDialog = true
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -673,7 +720,7 @@ fun MainShell(
                         showAccountMenu = false
                         onOpenListeningStats()
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -709,7 +756,7 @@ fun MainShell(
                         showAccountMenu = false
                         showJamSheet = true
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -745,7 +792,7 @@ fun MainShell(
                         showAccountMenu = false
                         onOpenSettings()
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.BOTTOM),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.fillMaxWidth(),
                 ) {

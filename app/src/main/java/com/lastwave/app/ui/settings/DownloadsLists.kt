@@ -150,7 +150,7 @@ internal fun DownloadedSongsList(
             top = 6.dp,
             bottom = FloatingNavDefaults.contentBottomPadding(),
         ),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
         // Active ongoing downloads

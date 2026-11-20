@@ -172,6 +172,20 @@ fun ListeningStatsScreen(
                 }
             }
 
+            // ── RHYTHM & CONSISTENCY (SLEEP TRACKER INSPIRED) ──
+            uiState.consistency?.let { consistency ->
+                item {
+                    ConsistencyScoreCard(data = consistency)
+                }
+            }
+
+            // ── LISTENING STAGES (DEEP FOCUS / FLOW / DISCOVERY) ──
+            uiState.stages?.let { stages ->
+                item {
+                    ListeningStagesCard(stages = stages)
+                }
+            }
+
             // ── PERSONAL RECORDS ──
             uiState.records?.let { records ->
                 item {

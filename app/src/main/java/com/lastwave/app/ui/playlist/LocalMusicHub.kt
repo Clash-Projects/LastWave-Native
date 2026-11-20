@@ -500,6 +500,8 @@ fun LocalMusicHub(
             sortAscending
         if (preservePlaylistOrder) {
             filtered
+        } else if (detailRoute is LocalDetailRoute.OfflinePlaylistDetail && sortMode == LocalSortMode.ADDED && !sortAscending) {
+            filtered.reversed()
         } else if (detailRoute is LocalDetailRoute.Album && sortMode == LocalSortMode.TITLE && sortAscending) {
             // Albums default nicely by disc + track number when user hasn't picked a custom sort override
             filtered.sortedWith(
@@ -2668,7 +2670,7 @@ private fun sortLocalTracks(
             { it.name },
         )
         LocalSortMode.DURATION -> compareBy<LocalSortKey>({ it.track.durationMs ?: 0L }, { it.name })
-        LocalSortMode.ADDED -> compareBy<LocalSortKey> { it.track.url }
+        LocalSortMode.ADDED -> compareBy<LocalSortKey> { it.addedOrder }
         LocalSortMode.FORMAT -> compareBy<LocalSortKey>({ it.format }, { it.name })
     }
     val base = tracks.map(::LocalSortKey).sortedWith(comparator).map { it.track }
@@ -2682,6 +2684,11 @@ private class LocalSortKey(val track: GeneratedTrack) {
     val artist by lazy(LazyThreadSafetyMode.NONE) { track.artist.lowercase() }
     val album by lazy(LazyThreadSafetyMode.NONE) { track.album?.lowercase().orEmpty() }
     val format by lazy(LazyThreadSafetyMode.NONE) { formatBadgeForTrack(track).orEmpty() }
+    val addedOrder by lazy(LazyThreadSafetyMode.NONE) {
+        track.url.substringAfterLast('/').toLongOrNull()
+            ?: runCatching { java.io.File(track.url).takeIf { it.exists() }?.lastModified() }.getOrNull()
+            ?: 0L
+    }
 }
 
 private fun albumKeyOf(track: GeneratedTrack): String {
