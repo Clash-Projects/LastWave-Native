@@ -466,7 +466,12 @@ internal fun MiniPlayer(
                 shadowElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth().then(
                     if (backdrop != null) {
-                        Modifier.liquidGlass(backdrop, luminance, shape)
+                        Modifier.liquidGlassChrome(
+                            shape = shape,
+                            enabled = true,
+                            preset = LiquidGlassPreset.MiniPlayer,
+                            backdrop = backdrop,
+                        )
                     } else Modifier
                 )
                 .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
@@ -500,8 +505,8 @@ internal fun MiniPlayer(
                             }
                         }
                         val miniTitleColor = if (LocalIsDarkTheme.current) Color.White else Color.Black
-                        val miniArtistColor = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.7f)
-                            else Color.Black.copy(alpha = 0.7f)
+                        val miniArtistColor = if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.85f)
+                            else Color.Black.copy(alpha = 0.80f)
                         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                             Text(
                                 track.title,

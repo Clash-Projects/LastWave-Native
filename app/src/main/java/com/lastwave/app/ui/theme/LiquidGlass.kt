@@ -71,7 +71,9 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.Shadow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.sign
@@ -620,6 +622,107 @@ private object HeaderGlassRecipe {
 }
 
 /**
+ * iOS 26 style clear liquid glass recipe for BottomNavigation and MiniPlayer.
+ *
+ * 1. Low blur (4dp) so background content behind remains recognizable.
+ * 2. No black scrim — uses a very light white tint (0.10 in dark, 0.12 in light).
+ * 3. Strong edge refraction: lens height 20dp, amount 28dp, depthEffect on, chromatic aberration off.
+ * 4. 1dp directional rim highlight + soft shadow under the pill.
+ * 5. Boosted saturation (1.35) and vibrancy so colors behind glow through.
+ */
+private object ClearLiquidGlassRecipe {
+    const val BLUR_DP = 4f
+    const val SATURATION = 1.35f
+    const val BRIGHTNESS_DARK = 0.04f
+    const val BRIGHTNESS_LIGHT = 0.04f
+    const val CONTRAST = 1.05f
+    const val TINT_ALPHA_DARK = 0.10f
+    const val TINT_ALPHA_LIGHT = 0.12f
+    const val LENS_HEIGHT_DP = 20f
+    const val LENS_AMOUNT_DP = 28f
+    val RIM = Highlight(width = 1.dp)
+    val SHADOW = Shadow(radius = 16.dp, color = Color.Black.copy(alpha = 0.25f))
+}
+
+/**
+ * Clear liquid glass drawing modifier for BottomNavigation and MiniPlayer.
+ * Shared recipe ensuring the bottom navigation and mini player visually match.
+ */
+@Composable
+fun Modifier.clearLiquidGlass(
+    backdrop: Backdrop,
+    shape: Shape,
+    interactive: Boolean = false,
+    forceDark: Boolean = false,
+): Modifier {
+    if (!LocalLiquidGlass.current || !isLiquidGlassBackdropSupported()) {
+        return this
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f))
+    }
+    val isDark = forceDark || LocalIsDarkTheme.current
+    val interaction = if (interactive) rememberGlassInteraction() else null
+    val targetShape = lensSafeGlassShape(shape)
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { targetShape },
+        highlight = { ClearLiquidGlassRecipe.RIM },
+        shadow = { ClearLiquidGlassRecipe.SHADOW },
+        effects = {
+            vibrancy()
+            colorControls(
+                brightness = if (isDark) ClearLiquidGlassRecipe.BRIGHTNESS_DARK else ClearLiquidGlassRecipe.BRIGHTNESS_LIGHT,
+                contrast = ClearLiquidGlassRecipe.CONTRAST,
+                saturation = ClearLiquidGlassRecipe.SATURATION,
+            )
+            blur(ClearLiquidGlassRecipe.BLUR_DP.dp.toPx())
+            lens(
+                ClearLiquidGlassRecipe.LENS_HEIGHT_DP.dp.toPx().coerceAtMost(size.minDimension / 2f),
+                ClearLiquidGlassRecipe.LENS_AMOUNT_DP.dp.toPx().coerceAtMost(size.minDimension / 2f),
+                false,
+            )
+        },
+        onDrawBackdrop = { drawBackdrop ->
+            drawBackdrop()
+        },
+        onDrawSurface = {
+            drawRect(
+                Color.White.copy(
+                    alpha = if (isDark) ClearLiquidGlassRecipe.TINT_ALPHA_DARK else ClearLiquidGlassRecipe.TINT_ALPHA_LIGHT,
+                ),
+            )
+            val press = interaction?.pressProgress ?: 0f
+            if (press > 0f) {
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.15f * press),
+                            Color.Transparent,
+                        ),
+                        center = interaction?.touchPosition ?: Offset(size.width / 2f, size.height / 2f),
+                        radius = size.minDimension * 1.2f,
+                    ),
+                    blendMode = BlendMode.Plus,
+                )
+            }
+        },
+        layerBlock = if (interaction != null) {
+            {
+                val scale = lerp(1f, 1.04f, interaction.pressProgress)
+                scaleX = scale
+                scaleY = scale
+            }
+        } else null,
+    ).then(
+        if (interaction != null) {
+            Modifier.pointerInput(interaction) { interaction.detectPress(this) }
+        } else {
+            Modifier
+        },
+    )
+}
+
+/**
  * lens-safe shape guard: kyant's lens effect (used by every interactive
  * glass surface) only accepts corner-based shapes — its SDF shader throws
  * "Only RoundedRectangularShape or CornerBasedShape is supported" for a
@@ -846,6 +949,14 @@ fun Modifier.liquidGlassChrome(
 ): Modifier {
     if (!enabled || !preset.isGlassTarget() || backdrop == null || !isLiquidGlassBackdropSupported()) {
         return this
+    }
+    if (preset == LiquidGlassPreset.BottomNavigation || preset == LiquidGlassPreset.MiniPlayer) {
+        return this.clearLiquidGlass(
+            backdrop = backdrop,
+            shape = shape,
+            interactive = preset == LiquidGlassPreset.MiniPlayer,
+            forceDark = forceDark,
+        )
     }
     // PlayerControls and FloatingControls in Now Playing always use dark-glass
     // styling matching dark mode so they remain crisp and legible against immersive media backdrops.

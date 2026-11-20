@@ -532,7 +532,7 @@ fun PlayerHost(
         LocalMiniPlayerSnackbarClearance provides if (miniPlayerVisible) {
             // Keep snackbars clear of the tray: its bottom lift plus its ~80dp card.
             (if (hasBottomNavigation) {
-                if (material3NavigationEnabled) 84.dp else 80.dp
+                if (material3NavigationEnabled) 80.dp else 74.dp
             } else {
                 14.dp
             }) + 80.dp
@@ -570,7 +570,7 @@ fun PlayerHost(
             }
             if (state.current != null && !settings.buttonNowPlayingEnabled && !hideMiniPlayer && showMiniPlayer) {
                 val miniBottomPadding = if (hasBottomNavigation) {
-                    if (material3NavigationEnabled) 84.dp else 80.dp
+                    if (material3NavigationEnabled) 80.dp else 74.dp
                 } else {
                     14.dp
                 }

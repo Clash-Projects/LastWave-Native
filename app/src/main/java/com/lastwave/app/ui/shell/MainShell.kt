@@ -17,7 +17,9 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -157,6 +159,7 @@ import com.kyant.backdrop.shadow.Shadow
 import kotlin.math.sign
 import com.lastwave.app.ui.theme.LocalIsDarkTheme
 import com.lastwave.app.ui.theme.LocalLiquidGlass
+import com.lastwave.app.ui.theme.LocalLiquidGlassBackdrop
 import com.lastwave.app.ui.theme.LocalMd3NavBar
 import com.lastwave.app.ui.theme.LiquidGlassPreset
 import com.lastwave.app.ui.theme.liquidGlassChrome
@@ -169,8 +172,6 @@ import com.lastwave.app.ui.theme.liquidGlassSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
-import io.github.fletchmckee.liquid.liquefiable
-import io.github.fletchmckee.liquid.rememberLiquidState
 import javax.inject.Inject
 
 /** Thin bridge exposing AppUpdateManager's live update state to MainShell */
@@ -391,18 +392,6 @@ fun MainShell(
 
     val backgroundColor = MaterialTheme.colorScheme.background
     val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
-    val useLiquidNavigation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-        LocalLiquidGlass.current && !hideNavTabs
-    val navigationLiquidState = if (useLiquidNavigation) rememberLiquidState() else null
-    // Only one renderer records the pager for navigation. The bar is hosted by
-    // PlayerHost as a sibling, never below its own liquefiable source.
-    val navigationBackdrop = if (!useLiquidNavigation) {
-        rememberLayerBackdrop {
-            drawRect(backgroundColor)
-            drawContent()
-        }
-    } else null
-    val navGlass = isLiquidGlassBackdropSupported()
     val chromeCollapse = LocalChromeCollapse.current
     // Each tab keeps its own scroll offset: a compact bar carried onto a tab
     // resting at its top would have nothing to scroll back up to expand it.
@@ -423,14 +412,7 @@ fun MainShell(
             state = pagerState,
             beyondViewportPageCount = if (allTabs) tabs.size - 1 else 0,
             modifier = Modifier.fillMaxSize()
-                .then(if (chromeCollapse != null) Modifier.nestedScroll(chromeCollapse.connection) else Modifier)
-                .then(
-                if (navigationLiquidState != null) {
-                    Modifier.liquefiable(navigationLiquidState).background(backgroundColor)
-                } else {
-                    Modifier.liquidGlassSource(if (navGlass) navigationBackdrop else null)
-                },
-            ),
+                .then(if (chromeCollapse != null) Modifier.nestedScroll(chromeCollapse.connection) else Modifier),
         ) { page ->
             // derivedStateOf: reading currentPage directly recomposed every
             // page's whole tab each time it flipped halfway through a swipe.
@@ -548,7 +530,8 @@ fun MainShell(
             selectLiquidTab(index, refreshIfSelected = false)
         }
 
-        androidx.compose.runtime.DisposableEffect(navigationBackdrop, navigationLiquidState, tabs, hideNavTabs) {
+        val hostBackdrop = LocalLiquidGlassBackdrop.current
+        androidx.compose.runtime.DisposableEffect(hostBackdrop, tabs, hideNavTabs) {
             if (!hideNavTabs) {
                 bottomNavSlot.value = { material3NavigationEnabled ->
                     Box(Modifier.fillMaxSize()) {
@@ -557,38 +540,15 @@ fun MainShell(
                         val barModifier = Modifier.align(Alignment.BottomCenter).collapsingNavBar(collapseProgress)
                         val pillModifier = Modifier.align(Alignment.BottomStart).collapsedNavPill(collapseProgress)
                         val expand = { collapse?.expand(); Unit }
-                        if (navigationLiquidState != null) {
-                            val items = tabs.map { tab ->
-                                LiquidNavigationItem(
-                                    label = androidx.compose.ui.res.stringResource(tab.labelRes),
-                                    icon = tab.icon(),
-                                )
-                            }
-                            LiquidNavigationBar(
-                                liquidState = navigationLiquidState,
-                                items = items,
-                                selectedIndex = currentSelectedIndex,
-                                onSelect = currentOnLiquidSelect,
-                                onScrubSelect = currentOnScrubSelect,
-                                modifier = barModifier,
-                                style = if (material3NavigationEnabled) {
-                                    LiquidNavigationStyle.Material3
-                                } else {
-                                    LiquidNavigationStyle.Tabs
-                                },
-                            )
-                            LiquidNavigationPill(navigationLiquidState, items[currentSelectedIndex], expand, pillModifier)
-                        } else {
-                            FloatingNavBar(
-                                backdrop = navigationBackdrop,
-                                tabs = tabs,
-                                selectedIndex = currentSelectedIndex,
-                                onSelect = currentOnSelect,
-                                onOpenGenerator = currentOnOpenGenerator,
-                                modifier = barModifier,
-                            )
-                            FloatingNavPill(navigationBackdrop, tabs[currentSelectedIndex], expand, pillModifier)
-                        }
+                        FloatingNavBar(
+                            backdrop = hostBackdrop,
+                            tabs = tabs,
+                            selectedIndex = currentSelectedIndex,
+                            onSelect = currentOnSelect,
+                            onOpenGenerator = currentOnOpenGenerator,
+                            modifier = barModifier,
+                        )
+                        FloatingNavPill(hostBackdrop, tabs[currentSelectedIndex], expand, pillModifier)
                     }
                 }
             } else {
@@ -977,10 +937,15 @@ private fun FloatingNavBar(
                     tabs.forEachIndexed { index, tab ->
                         val onClick = remember(index) { { onSelect(index) } }
                         val selected = selectedIndex == index
+                        val isDark = LocalIsDarkTheme.current
                         val indicatorColor by animateColorAsState(
-                            targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(
-                                alpha = if (liquidGlass) 0.35f else 1f,
-                            ) else Color.Transparent,
+                            targetValue = if (selected) {
+                                if (liquidGlass) {
+                                    if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.45f)
+                                } else {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                }
+                            } else Color.Transparent,
                             animationSpec = ExpressiveMotion.effectsDefault(),
                             label = "md3IndicatorColor_$index",
                         )
@@ -990,12 +955,30 @@ private fun FloatingNavBar(
                             label = "md3IndicatorWidth_$index",
                         )
                         val iconTint by animateColorAsState(
-                            targetValue = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            targetValue = if (selected) {
+                                if (liquidGlass) {
+                                    if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                }
+                            } else {
+                                if (liquidGlass && isDark) Color.White.copy(alpha = 0.70f)
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             animationSpec = ExpressiveMotion.effectsDefault(),
                             label = "md3IconTint_$index",
                         )
                         val labelColor by animateColorAsState(
-                            targetValue = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            targetValue = if (selected) {
+                                if (liquidGlass) {
+                                    if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            } else {
+                                if (liquidGlass && isDark) Color.White.copy(alpha = 0.75f)
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            },
                             animationSpec = ExpressiveMotion.effectsDefault(),
                             label = "md3LabelColor_$index",
                         )
@@ -1017,7 +1000,16 @@ private fun FloatingNavBar(
                                     .height(32.dp)
                                     .width(indicatorWidth)
                                     .clip(CircleShape)
-                                    .background(indicatorColor),
+                                    .background(indicatorColor)
+                                    .then(
+                                        if (liquidGlass && selected) {
+                                            Modifier.border(
+                                                1.dp,
+                                                if (isDark) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.60f),
+                                                CircleShape,
+                                            )
+                                        } else Modifier
+                                    ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
@@ -1159,15 +1151,30 @@ private fun FloatingNavItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = LocalIsDarkTheme.current
+    val liquidGlass = LocalLiquidGlass.current
     val backgroundColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(
-            alpha = if (LocalLiquidGlass.current) 0.28f else 1f,
-        ) else Color.Transparent,
+        targetValue = if (selected) {
+            if (liquidGlass) {
+                if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.primaryContainer
+            }
+        } else Color.Transparent,
         animationSpec = ExpressiveMotion.effectsDefault(),
         label = "navItemBackground",
     )
     val contentColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (selected) {
+            if (liquidGlass) {
+                if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            }
+        } else {
+            if (liquidGlass && isDark) Color.White.copy(alpha = 0.75f)
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        },
         animationSpec = ExpressiveMotion.effectsDefault(),
         label = "navItemContent",
     )
@@ -1186,6 +1193,9 @@ private fun FloatingNavItem(
         onClick = onClick,
         shape = PillShape,
         color = backgroundColor,
+        border = if (liquidGlass && selected) {
+            BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.60f))
+        } else null,
         modifier = modifier.height(48.dp),
     ) {
         Row(
