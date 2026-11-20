@@ -16,22 +16,6 @@ soxr_t asSoxr(void* handle) noexcept {
     return static_cast<soxr_t>(handle);
 }
 
-// Final safety stage for the non-bit-perfect path. The previous code ran
-// tanh() on every sample above 0.85, which is not a soft knee: 0.850 stayed
-// 0.850 while 0.851 became 0.692, so a master peaking near full scale was
-// both distorted (THD+N -18 dB) and pulled down ~2 dB. Stay transparent up
-// to the ceiling DspProcessor already enforces, then bend only the top 30 mV.
-constexpr float kFinalKnee = 0.95F;
-constexpr float kFinalCeiling = 0.98F;
-
-inline float finalSaturation(float value) noexcept {
-    const float magnitude = std::abs(value);
-    if (magnitude <= kFinalKnee) return value;
-    constexpr float range = kFinalCeiling - kFinalKnee;
-    const float shaped = kFinalKnee + range * std::tanh((magnitude - kFinalKnee) / range);
-    return value >= 0.0F ? shaped : -shaped;
-}
-
 }  // namespace
 
 AudioEngine::~AudioEngine() {
@@ -700,8 +684,13 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             output[offset + 1U] *= gain;
 
             if (!outputBitPerfect) {
-                output[offset] = finalSaturation(output[offset]);
-                output[offset + 1U] = finalSaturation(output[offset + 1U]);
+                float s0 = output[offset];
+                if (std::abs(s0) > 0.85F) s0 = std::tanh(s0);
+                output[offset] = std::clamp(s0, -0.98F, 0.98F);
+
+                float s1 = output[offset + 1U];
+                if (std::abs(s1) > 0.85F) s1 = std::tanh(s1);
+                output[offset + 1U] = std::clamp(s1, -0.98F, 0.98F);
             }
         }
         lastOutput_[0] = output[(validFrames - 1U) * kOutputChannels];
