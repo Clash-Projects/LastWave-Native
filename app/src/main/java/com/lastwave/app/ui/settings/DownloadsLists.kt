@@ -150,7 +150,7 @@ internal fun DownloadedSongsList(
             top = 6.dp,
             bottom = FloatingNavDefaults.contentBottomPadding(),
         ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
         // Active ongoing downloads
@@ -161,7 +161,7 @@ internal fun DownloadedSongsList(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 6.dp),
                 )
             }
 
@@ -170,6 +170,7 @@ internal fun DownloadedSongsList(
                     download = download,
                     onCancel = { onCancelDownload(download.key) },
                 )
+                Spacer(Modifier.height(8.dp))
             }
         }
 
@@ -179,7 +180,7 @@ internal fun DownloadedSongsList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
+                        .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

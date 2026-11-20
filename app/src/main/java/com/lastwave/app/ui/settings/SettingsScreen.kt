@@ -1424,7 +1424,8 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 12) { index, position ->
+                    val experimentalRowCount = if (misc.musicVideoEnabled) 13 else 12
+                    SettingsGroup(rowCount = experimentalRowCount) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Subtitles,
@@ -1593,7 +1594,36 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.music_video"),
                             )
-                            11 -> SettingsToggleCard(
+                            11 -> if (misc.musicVideoEnabled) {
+                                SettingsToggleCard(
+                                    icon = Icons.Filled.SmartDisplay,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_music_video_np_button),
+                                    subtitle = stringResource(R.string.settings_music_video_np_button_desc),
+                                    checked = misc.musicVideoNowPlayingButtonEnabled,
+                                    onCheckedChange = viewModel::setMusicVideoNowPlayingButtonEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "appearance.music_video_np_button"),
+                                )
+                            } else {
+                                SettingsToggleCard(
+                                    icon = Icons.Filled.PlayCircle,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = "Button Now playing",
+                                    subtitle = if (misc.buttonNowPlayingEnabled) {
+                                        "Floating button mode active • Card hidden"
+                                    } else {
+                                        "Classic bottom now playing card"
+                                    },
+                                    checked = misc.buttonNowPlayingEnabled,
+                                    onCheckedChange = viewModel::setButtonNowPlayingEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
+                                )
+                            }
+                            12 -> SettingsToggleCard(
                                 icon = Icons.Filled.PlayCircle,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,

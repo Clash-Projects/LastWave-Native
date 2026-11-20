@@ -22,11 +22,16 @@ internal fun playlistTrackDisplayIndices(
     val sorted = when (sort) {
         PlaylistTrackSort.CUSTOM -> if (ascending) indices else indices.reversed()
         PlaylistTrackSort.DATE_ADDED -> if (ascending != newestFirst) indices else indices.reversed()
-        PlaylistTrackSort.NAME -> indices.sortedWith(by { it.name }.let { if (ascending) it else it.reversed() })
-        PlaylistTrackSort.ARTIST -> indices.sortedWith(by { it.artist }.let { if (ascending) it else it.reversed() })
+        PlaylistTrackSort.NAME -> indices.sortedWith(
+            (by { it.name }.thenComparing(by { it.artist })).let { if (ascending) it else it.reversed() }
+        )
+        PlaylistTrackSort.ARTIST -> indices.sortedWith(
+            (by { it.artist }.thenComparing(by { it.name })).let { if (ascending) it else it.reversed() }
+        )
         PlaylistTrackSort.PLAY_TIME -> indices.sortedWith(
             compareBy<Int> { tracks[it].durationMs == null }
-                .then(compareBy<Int> { tracks[it].durationMs }.let { if (ascending) it else it.reversed() }),
+                .then(compareBy<Int> { tracks[it].durationMs ?: 0L }.let { if (ascending) it else it.reversed() })
+                .thenComparing(by { it.name }),
         )
     }
     if (query.isBlank()) return sorted

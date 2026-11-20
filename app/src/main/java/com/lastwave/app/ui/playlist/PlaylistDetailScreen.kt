@@ -766,7 +766,8 @@ fun PlaylistDetailScreen(
                 itemsIndexed(
                     items = displayTracks,
                     key = { index, track ->
-                        displayKeys.getOrNull(index) ?: "pos_${track.url.ifBlank { "${track.name}_${track.artist}" }}_$index"
+                        val origIdx = displayTrackIndices.getOrElse(index) { index }
+                        "track_${origIdx}_${track.url.ifBlank { "${track.name}_${track.artist}" }}"
                     },
                     contentType = { _, _ -> "playlist_track" },
                 ) { index, track ->
@@ -774,7 +775,8 @@ fun PlaylistDetailScreen(
                         playbackState.current?.title.equals(track.name, ignoreCase = true) &&
                         playbackState.current?.artist.equals(track.artist, ignoreCase = true)
                     val isDragging = reorderEnabled && index == draggingIndex
-                    val stableKey = displayKeys.getOrNull(index) ?: "pos_${track.url.ifBlank { "${track.name}_${track.artist}" }}_$index"
+                    val origIdx = displayTrackIndices.getOrElse(index) { index }
+                    val stableKey = "track_${origIdx}_${track.url.ifBlank { "${track.name}_${track.artist}" }}"
                     val rowPosition = groupPositionFor(index, displayTracks.size)
 
                     Box(

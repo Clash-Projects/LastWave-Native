@@ -51,6 +51,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
@@ -278,6 +284,12 @@ fun MainShell(
             selectedTabIndex = pagerState.settledPage
         }
     }
+    val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
+    var showAccountMenu by remember { mutableStateOf(false) }
+    var showJamSheet by remember { mutableStateOf(false) }
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var showCustomTimerDialog by remember { mutableStateOf(false) }
+    var customDurationText by remember { mutableStateOf("") }
     val ytConnection by mainShellViewModel.ytConnection.collectAsStateWithLifecycle()
     val settings by mainShellViewModel.settings.collectAsStateWithLifecycle(initialValue = null)
     var promptDismissedThisSession by rememberSaveable { mutableStateOf(false) }
@@ -430,7 +442,7 @@ fun MainShell(
                 ) {
                     when (tabs[page]) {
                         MainTab.FEED -> FeedScreen(
-                            onOpenSettings = onOpenSettings,
+                            onOpenSettings = { showAccountMenu = true },
                             onOpenSearch = onOpenSearch,
                             onOpenDiscover = onOpenDiscover,
                             onOpenGenres = onOpenGenres,
@@ -447,7 +459,7 @@ fun MainShell(
                             feedTapEvents = feedTapEvents,
                         )
                         MainTab.STATS -> HomeScreen(
-                            onOpenSettings = onOpenSettings,
+                            onOpenSettings = { showAccountMenu = true },
                             onOpenSearch = onOpenSearch,
                             onOpenDiscover = onOpenDiscover,
                             onOpenListeningStats = onOpenListeningStats,
@@ -580,6 +592,273 @@ fun MainShell(
             }
             onDispose { bottomNavSlot.value = { _ -> } }
         }
+    }
+
+    if (showAccountMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showAccountMenu = false },
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Quick Actions",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    IconButton(onClick = { showAccountMenu = false }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
+                }
+
+                // 1. Cast
+                com.lastwave.app.ui.player.PlayerCastMenuRow(
+                    player = musicPlayer,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                // 2. Sleep timer
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        showSleepTimerDialog = true
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Bedtime,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Sleep timer", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Stop playback automatically", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 3. Listening stats
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        onOpenListeningStats()
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.tertiaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Leaderboard,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Listening stats", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Your top artists, tracks & recaps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 4. Jam
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        showJamSheet = true
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Group,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Jam", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Listen together in real time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 5. Settings
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        onOpenSettings()
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Settings,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Settings", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("App preferences and audio options", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showJamSheet) {
+        com.lastwave.app.ui.jam.LastWaveJamSheet(
+            onDismiss = { showJamSheet = false },
+        )
+    }
+
+    if (showSleepTimerDialog) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showSleepTimerDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Sleep timer",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = {
+                                showSleepTimerDialog = false
+                                showCustomTimerDialog = true
+                            },
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Custom timer")
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    listOf(0, 15, 30, 45, 60).forEach { minutes ->
+                        TextButton(
+                            onClick = {
+                                musicPlayer.setSleepTimerMinutes(minutes)
+                                showSleepTimerDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                if (minutes == 0) "Turn timer off" else "$minutes minutes",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCustomTimerDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomTimerDialog = false },
+            title = { Text("Set Custom Timer") },
+            text = {
+                OutlinedTextField(
+                    value = customDurationText,
+                    onValueChange = { customDurationText = it.filter(Char::isDigit).take(4) },
+                    label = { Text("Duration (minutes)") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = customDurationText.toIntOrNull()?.let { it > 0 } == true,
+                    onClick = {
+                        val mins = customDurationText.toIntOrNull() ?: 0
+                        if (mins > 0) musicPlayer.setSleepTimerMinutes(mins)
+                        showCustomTimerDialog = false
+                    },
+                ) { Text("Set timer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomTimerDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 

@@ -59,7 +59,7 @@ class PreviewQueueRepository @Inject constructor(
 
     fun recordQueue(tracks: List<PlayableTrack>, sourceLabel: String = "Queue") {
         if (tracks.size < 2) return
-        val snapshotTracks = tracks.take(30)
+        val snapshotTracks = tracks.take(1500)
         val firstTrack = snapshotTracks.firstOrNull() ?: return
         val title = if (sourceLabel.isNotBlank() && sourceLabel != "LastWave" && sourceLabel != "Home") {
             sourceLabel

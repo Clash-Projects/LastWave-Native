@@ -17,7 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -389,11 +396,175 @@ fun HomeSectionsScreen(
                 return@Column
             }
 
+            var selectedTabItem by remember { mutableStateOf<Pair<String, String>?>(null) }
+            val homeMoodTabs = remember {
+                listOf(
+                    "All" to "quick_tiles",
+                    "Podcasts" to "podcast_shelf",
+                    "Feel good" to "yt:Feel good",
+                    "Energy boosters" to "yt:Energy boosters",
+                    "Relax" to "yt:Relax",
+                    "Workout" to "yt:Workout",
+                    "Focus" to "yt:Focus",
+                    "Commute" to "yt:Commute",
+                    "Party" to "yt:Party",
+                    "Romance" to "yt:Romance",
+                    "Sleep" to "yt:Sleep",
+                )
+            }
+
+            // Top Header Mood / Section Slider matching Home & Feed screen
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    homeMoodTabs.forEach { (label, sectionId) ->
+                        val isPinned = sectionId in uiState.pinnedSections
+                        val isHidden = sectionId in uiState.hiddenSections
+                        Surface(
+                            onClick = {
+                                selectedTabItem = label to sectionId
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = when {
+                                isPinned -> MaterialTheme.colorScheme.primaryContainer
+                                isHidden -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
+                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                            },
+                            modifier = Modifier.height(36.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                if (isPinned) {
+                                    Icon(
+                                        Icons.Filled.PushPin,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                }
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isPinned) FontWeight.Bold else FontWeight.Medium,
+                                    color = when {
+                                        isPinned -> MaterialTheme.colorScheme.onPrimaryContainer
+                                        isHidden -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        else -> MaterialTheme.colorScheme.onSurface,
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            selectedTabItem?.let { (label, sectionId) ->
+                val isPinned = sectionId in uiState.pinnedSections
+                val isHidden = sectionId in uiState.hiddenSections
+                val sectionIdx = uiState.sections.indexOfFirst { it.id == sectionId }
+
+                AlertDialog(
+                    onDismissRequest = { selectedTabItem = null },
+                    title = { Text(label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Manage tab position and visibility on the Home feed.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            FilledTonalButton(
+                                onClick = {
+                                    viewModel.togglePin(sectionId)
+                                    selectedTabItem = null
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Icon(
+                                    if (isPinned) Icons.Outlined.PushPin else Icons.Filled.PushPin,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (isPinned) "Unpin tab" else "Pin to top")
+                            }
+                            if (sectionIdx > 0) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        viewModel.moveSection(sectionIdx, sectionIdx - 1)
+                                        selectedTabItem = null
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Icon(Icons.Filled.ArrowUpward, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Move left / up")
+                                }
+                            }
+                            if (sectionIdx >= 0 && sectionIdx < uiState.sections.lastIndex) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        viewModel.moveSection(sectionIdx, sectionIdx + 1)
+                                        selectedTabItem = null
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Icon(Icons.Filled.ArrowDownward, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Move right / down")
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    viewModel.toggleVisibility(sectionId, isHidden)
+                                    selectedTabItem = null
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Icon(
+                                    if (isHidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (isHidden) "Show section" else "Hide section")
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { selectedTabItem = null }) {
+                            Text("Done")
+                        }
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                )
+            }
+
             Text(
                 text = "Drag the handle to reorder sections, pin favorites to top, and toggle visibility for both LastWave and YouTube Music shelves.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
 
             val listState = rememberLazyListState()

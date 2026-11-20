@@ -380,6 +380,8 @@ internal fun PlaylistCard(
 internal fun DownloadsHeroCard(
     downloadedCount: Int,
     onClick: () -> Unit,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
+    modifier: Modifier = Modifier,
 ) {
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -392,10 +394,10 @@ internal fun DownloadsHeroCard(
     val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
 
     Card(
-        shape = RoundedCornerShape(GroupOuterRadius),
+        shape = shape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = cardScale
@@ -409,42 +411,33 @@ internal fun DownloadsHeroCard(
                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
                     onClick()
                 }
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.size(68.dp),
+                modifier = Modifier.size(52.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Filled.Download,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onTertiary,
-                        modifier = Modifier.size(30.dp),
+                        modifier = Modifier.size(26.dp),
                     )
                 }
             }
 
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "Saved for offline",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = contentColor.copy(alpha = 0.78f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
                     text = "Downloads",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = contentColor,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
@@ -452,21 +445,14 @@ internal fun DownloadsHeroCard(
                     text = if (downloadedCount > 0) {
                         stringResource(R.string.pd_track_count, downloadedCount)
                     } else {
-                        "Nothing downloaded yet"
+                        "0 tracks"
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor.copy(alpha = 0.82f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor.copy(alpha = 0.78f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                contentDescription = null,
-                tint = contentColor.copy(alpha = 0.7f),
-                modifier = Modifier.size(18.dp),
-            )
         }
     }
 }
@@ -480,25 +466,19 @@ internal fun LocalSongsHeroCard(
     onClick: () -> Unit,
     onEditCover: () -> Unit,
     onPlay: () -> Unit,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
+    modifier: Modifier = Modifier,
 ) {
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val isThisPlaylistPlaying = isPlaying && playbackSource == playlist.title
-    var menuExpanded by remember { mutableStateOf(false) }
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val playInteractionSource = remember { MutableInteractionSource() }
-    val isPlayPressed by playInteractionSource.collectIsPressedAsState()
 
     val cardScale by animateFloatAsState(
         targetValue = if (isPressed) 0.98f else 1f,
         animationSpec = ExpressiveMotion.spatialFast(),
         label = "localHeroScale",
-    )
-    val playScale by animateFloatAsState(
-        targetValue = if (isPlayPressed) 0.88f else 1f,
-        animationSpec = ExpressiveMotion.spatialFast(),
-        label = "localHeroPlayScale",
     )
     val containerColor by animateColorAsState(
         targetValue = if (isThisPlaylistPlaying) {
@@ -516,10 +496,10 @@ internal fun LocalSongsHeroCard(
     }
 
     Card(
-        shape = RoundedCornerShape(GroupOuterRadius),
+        shape = shape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = cardScale
@@ -537,15 +517,15 @@ internal fun LocalSongsHeroCard(
                         onClick()
                     },
                 )
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(68.dp)) {
+            Box(Modifier.size(52.dp)) {
                 if (!playlist.customCoverUri.isNullOrBlank() || playlist.tracks.isNotEmpty()) {
-                    PlaylistCover(playlist = playlist, modifier = Modifier.fillMaxSize(), cornerRadius = 18.dp)
+                    PlaylistCover(playlist = playlist, modifier = Modifier.fillMaxSize(), cornerRadius = 16.dp)
                 } else {
                     Surface(
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier.fillMaxSize(),
                     ) {
@@ -554,38 +534,27 @@ internal fun LocalSongsHeroCard(
                                 imageVector = Icons.Filled.FolderOpen,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(30.dp),
+                                modifier = Modifier.size(26.dp),
                             )
                         }
                     }
                 }
                 if (isThisPlaylistPlaying) {
                     com.lastwave.app.ui.player.PlayingWaveBars(
-                        Modifier.align(Alignment.BottomEnd).padding(4.dp).size(24.dp, 18.dp),
+                        Modifier.align(Alignment.BottomEnd).padding(3.dp).size(20.dp, 16.dp),
                     )
                 }
             }
 
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.local_panel_title),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = contentColor.copy(alpha = 0.78f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
                     text = playlist.title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = contentColor,
-                    // Two lines, not one: between the cover and the play button a
-                    // single titleLarge line cut the name down to "Local…".
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
@@ -595,70 +564,10 @@ internal fun LocalSongsHeroCard(
                     } else {
                         stringResource(R.string.local_choose_folder)
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor.copy(alpha = 0.82f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor.copy(alpha = 0.78f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            if (playlist.tracks.isNotEmpty()) {
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    onClick = {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
-                        onPlay()
-                    },
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    interactionSource = playInteractionSource,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .graphicsLayer {
-                            scaleX = playScale
-                            scaleY = playScale
-                        },
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(R.string.pl_play_cd),
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                }
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = stringResource(R.string.pl_options_cd),
-                            tint = contentColor.copy(alpha = 0.78f),
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                        shape = RoundedCornerShape(22.dp),
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        tonalElevation = 4.dp,
-                        shadowElevation = 10.dp,
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.pl_change_cover)) },
-                            leadingIcon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },
-                            onClick = { onEditCover(); menuExpanded = false },
-                        )
-                    }
-                }
-            } else {
-                Spacer(Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = contentColor.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp),
                 )
             }
         }

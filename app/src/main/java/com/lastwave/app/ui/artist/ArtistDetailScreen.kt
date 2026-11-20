@@ -36,7 +36,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -151,6 +156,8 @@ fun ArtistDetailScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     var selectedTrackMenu by remember { mutableStateOf<PlayableTrack?>(null) }
     var showAllSongs by rememberSaveable { mutableStateOf(false) }
+    var songSortOption by rememberSaveable { mutableStateOf(ArtistSongSortOption.MOST_PLAYED) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     var showHeaderVideo by rememberSaveable(artistName, settings.canvasEnabled) { mutableStateOf(settings.canvasEnabled) }
     var showFullscreenMotion by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -468,20 +475,33 @@ fun ArtistDetailScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 if (data.tags.isNotEmpty()) {
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                                        modifier = Modifier.fillMaxWidth(),
+                                    val tags = data.tags.take(6)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
                                     ) {
-                                        data.tags.take(6).forEach { tag ->
-                                            AssistChip(
+                                        tags.forEachIndexed { index, tag ->
+                                            val shape = connectedShape(index, tags.size)
+                                            Surface(
                                                 onClick = { genreBridge.genreExplorer.explore(tag) },
-                                                label = { Text(tag) },
-                                                shape = RoundedCornerShape(12.dp),
-                                                colors = AssistChipDefaults.assistChipColors(
-                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                ),
-                                            )
+                                                shape = shape,
+                                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                modifier = Modifier.height(38.dp),
+                                            ) {
+                                                Box(
+                                                    contentAlignment = Alignment.Center,
+                                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                                ) {
+                                                    Text(
+                                                        text = tag,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -534,11 +554,18 @@ fun ArtistDetailScreen(
 
                     // 3. Top Songs Section Header
                     if (data.topSongs.isNotEmpty()) {
+                        val sortedSongs = remember(data.topSongs, songSortOption) {
+                            when (songSortOption) {
+                                ArtistSongSortOption.MOST_PLAYED -> data.topSongs
+                                ArtistSongSortOption.RECENT -> data.topSongs.reversed()
+                                ArtistSongSortOption.KNOWN -> data.topSongs.sortedByDescending { it.playcount ?: 0L }
+                            }
+                        }
                         val initialDisplayLimit = 10
-                        val visibleSongs = if (showAllSongs || data.topSongs.size <= initialDisplayLimit) {
-                            data.topSongs
+                        val visibleSongs = if (showAllSongs || sortedSongs.size <= initialDisplayLimit) {
+                            sortedSongs
                         } else {
-                            data.topSongs.take(initialDisplayLimit)
+                            sortedSongs.take(initialDisplayLimit)
                         }
 
                         item(key = "top_songs_header") {
@@ -550,11 +577,59 @@ fun ArtistDetailScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(
-                                    text = "Songs",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Songs (${data.topSongs.size})",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Box {
+                                        Surface(
+                                            onClick = { sortMenuExpanded = true },
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                            modifier = Modifier.size(32.dp),
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.AutoMirrored.Filled.Sort,
+                                                    contentDescription = "Sort songs",
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                        DropdownMenu(
+                                            expanded = sortMenuExpanded,
+                                            onDismissRequest = { sortMenuExpanded = false },
+                                            shape = RoundedCornerShape(18.dp),
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Most played", fontWeight = if (songSortOption == ArtistSongSortOption.MOST_PLAYED) FontWeight.Bold else FontWeight.Normal) },
+                                                onClick = {
+                                                    songSortOption = ArtistSongSortOption.MOST_PLAYED
+                                                    sortMenuExpanded = false
+                                                },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Recent", fontWeight = if (songSortOption == ArtistSongSortOption.RECENT) FontWeight.Bold else FontWeight.Normal) },
+                                                onClick = {
+                                                    songSortOption = ArtistSongSortOption.RECENT
+                                                    sortMenuExpanded = false
+                                                },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Songs that I know", fontWeight = if (songSortOption == ArtistSongSortOption.KNOWN) FontWeight.Bold else FontWeight.Normal) },
+                                                onClick = {
+                                                    songSortOption = ArtistSongSortOption.KNOWN
+                                                    sortMenuExpanded = false
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -581,8 +656,7 @@ fun ArtistDetailScreen(
                                 },
                                 modifier = Modifier
                                     .adaptiveContentWidth(maxWidth = 860.dp)
-                                    .padding(horizontal = 20.dp)
-                                    .padding(bottom = GroupGap),
+                                    .padding(horizontal = 20.dp),
                                 leading = {
                                     Box(
                                         modifier = Modifier
@@ -696,6 +770,7 @@ fun ArtistDetailScreen(
                                 ) { album ->
                                     ArtistAlbumCard(
                                         item = album,
+                                        artist = data.name,
                                         onClick = {
                                             onOpenAlbum(album.title, com.lastwave.app.util.ArtistHelper.primaryArtist(data.name), album.browseId)
                                         },
@@ -734,6 +809,7 @@ fun ArtistDetailScreen(
                                 ) { single ->
                                     ArtistAlbumCard(
                                         item = single,
+                                        artist = data.name,
                                         onClick = {
                                             onOpenAlbum(single.title, com.lastwave.app.util.ArtistHelper.primaryArtist(data.name), single.browseId)
                                         },
@@ -1147,10 +1223,28 @@ fun ArtistDetailScreen(
     }
 }
 
+private enum class ArtistSongSortOption {
+    MOST_PLAYED,
+    RECENT,
+    KNOWN,
+}
+
+private fun connectedShape(index: Int, count: Int): RoundedCornerShape {
+    val outer = 24.dp
+    val inner = 6.dp
+    return RoundedCornerShape(
+        topStart = if (index == 0) outer else inner,
+        bottomStart = if (index == 0) outer else inner,
+        topEnd = if (index == count - 1) outer else inner,
+        bottomEnd = if (index == count - 1) outer else inner,
+    )
+}
+
 @Composable
 private fun ArtistAlbumCard(
     item: ArtistAlbumItem,
     onClick: () -> Unit,
+    artist: String = "",
 ) {
     Card(
         onClick = onClick,
@@ -1167,7 +1261,7 @@ private fun ArtistAlbumCard(
             ) {
                 ArtworkImage(
                     name = item.title,
-                    artist = "",
+                    artist = com.lastwave.app.util.ArtistHelper.primaryArtist(artist),
                     embeddedUrl = item.artworkUrl,
                     fallbackIcon = Icons.Filled.Album,
                     modifier = Modifier.fillMaxSize(),

@@ -510,7 +510,11 @@ internal fun AutoMixControlsCard(
             Spacer(Modifier.height(12.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onSpectralSweepsChange(!settings.spectralFilterSweepsEnabled) }
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -521,12 +525,34 @@ internal fun AutoMixControlsCard(
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("DJ Spectral Filter Sweeps", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    Text("3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "DJ Spectral Filter Sweeps",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
+                Spacer(Modifier.width(8.dp))
                 Switch(
                     checked = settings.spectralFilterSweepsEnabled,
                     onCheckedChange = onSpectralSweepsChange,
+                    thumbContent = if (settings.spectralFilterSweepsEnabled) {
+                        {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(androidx.compose.material3.SwitchDefaults.IconSize),
+                            )
+                        }
+                    } else null,
                 )
             }
         }

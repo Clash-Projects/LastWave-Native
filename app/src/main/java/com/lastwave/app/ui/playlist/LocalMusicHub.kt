@@ -946,7 +946,7 @@ fun LocalMusicHub(
                     } else {
                         itemsIndexed(
                             items = displayedSongs,
-                            key = { index, t -> "detail_${t.url}_$index" },
+                            key = { index, t -> if (t.url.isNotBlank()) "detail_${t.url}" else "detail_${t.name}_${t.artist}_$index" },
                             contentType = { _, _ -> "local_track_row" },
                         ) { index, track ->
                             val trackPlaying = playbackState.isPlaying &&
@@ -1007,7 +1007,7 @@ fun LocalMusicHub(
                     } else {
                         itemsIndexed(
                             items = displayedSongs,
-                            key = { index, t -> "song_${t.url}_$index" },
+                            key = { index, t -> if (t.url.isNotBlank()) "song_${t.url}" else "song_${t.name}_${t.artist}_$index" },
                             contentType = { _, _ -> "local_track_row" },
                         ) { index, track ->
                             val trackPlaying = playbackState.isPlaying &&
@@ -2654,7 +2654,7 @@ private fun sortLocalTracks(
     ascending: Boolean,
 ): List<GeneratedTrack> {
     val comparator: Comparator<LocalSortKey> = when (mode) {
-        LocalSortMode.TITLE -> compareBy<LocalSortKey> { it.name }
+        LocalSortMode.TITLE -> compareBy<LocalSortKey>({ it.name }, { it.artist })
         LocalSortMode.ARTIST -> compareBy<LocalSortKey>({ it.artist }, { it.name })
         LocalSortMode.ALBUM -> compareBy<LocalSortKey>(
             { it.album },
@@ -2667,8 +2667,8 @@ private fun sortLocalTracks(
             { it.track.trackNumber ?: Int.MAX_VALUE },
             { it.name },
         )
-        LocalSortMode.DURATION -> compareBy<LocalSortKey> { it.track.durationMs ?: 0L }
-        LocalSortMode.ADDED -> return if (ascending) tracks else tracks.reversed()
+        LocalSortMode.DURATION -> compareBy<LocalSortKey>({ it.track.durationMs ?: 0L }, { it.name })
+        LocalSortMode.ADDED -> compareBy<LocalSortKey> { it.track.url }
         LocalSortMode.FORMAT -> compareBy<LocalSortKey>({ it.format }, { it.name })
     }
     val base = tracks.map(::LocalSortKey).sortedWith(comparator).map { it.track }

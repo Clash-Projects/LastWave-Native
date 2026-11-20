@@ -781,6 +781,7 @@ internal fun ExpandedPlayer(
         canvasFullBleedEnabled = settings.canvasFullBleed,
         canvasGradientBlurEnabled = settings.canvasGradientBlurEnabled,
         musicVideoEnabled = settings.musicVideoEnabled,
+        musicVideoNowPlayingButtonEnabled = settings.musicVideoNowPlayingButtonEnabled,
         showAutoEqInVolumePanel = settings.showAutoEqInVolumePanel,
         currentTab = currentTab,
         onTabChange = onTabChange,

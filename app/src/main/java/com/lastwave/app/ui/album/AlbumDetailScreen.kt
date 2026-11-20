@@ -165,7 +165,7 @@ fun AlbumDetailScreen(
                 ArtworkImage(
                     name = albumData.title,
                     artist = albumData.artist,
-                    embeddedUrl = albumData.artworkUrl,
+                    embeddedUrl = albumData.artworkUrl ?: albumData.tracks.firstNotNullOfOrNull { it.artworkUrl?.takeIf(String::isNotBlank) },
                     fallbackIcon = Icons.Filled.Album,
                     alignment = Alignment.TopCenter,
                     modifier = Modifier.fillMaxSize(),
@@ -562,6 +562,7 @@ fun AlbumDetailScreen(
                                 ) { otherAlbum ->
                                     AlbumCard(
                                         item = otherAlbum,
+                                        artist = data.artist,
                                         onClick = {
                                             onOpenAlbum(otherAlbum.title, data.artist, otherAlbum.browseId)
                                         },
@@ -697,6 +698,7 @@ fun AlbumDetailScreen(
 private fun AlbumCard(
     item: ArtistAlbumItem,
     onClick: () -> Unit,
+    artist: String = "",
 ) {
     Card(
         onClick = onClick,
@@ -713,7 +715,7 @@ private fun AlbumCard(
             ) {
                 ArtworkImage(
                     name = item.title,
-                    artist = "",
+                    artist = com.lastwave.app.util.ArtistHelper.primaryArtist(artist),
                     embeddedUrl = item.artworkUrl,
                     fallbackIcon = Icons.Filled.Album,
                     modifier = Modifier.fillMaxSize(),
