@@ -41,6 +41,7 @@ class ListeningStatsViewModel @Inject constructor(
     private var rawStatsList: List<SongPlayStatsEntity> = emptyList()
     private var localStatsCache: LocalStatsRepository.LocalStats? = null
     private var tasteTags: List<String> = emptyList()
+    private var downloadedFallbackList: List<com.lastwave.app.data.local.db.DownloadedTrackEntity> = emptyList()
 
     init {
         loadData()
@@ -73,6 +74,7 @@ class ListeningStatsViewModel @Inject constructor(
                 rawStatsList = songPlayStatsDao.getAll()
                 localStatsCache = runCatching { localStatsRepository.load() }.getOrNull()
                 tasteTags = runCatching { tasteProfileProvider.get().topTags.toList() }.getOrNull().orEmpty()
+                downloadedFallbackList = runCatching { downloadedTrackDao.getAllList() }.getOrNull().orEmpty()
             }
             recalculate()
             _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
@@ -142,20 +144,17 @@ class ListeningStatsViewModel @Inject constructor(
                         lastPlayedAtMillis = System.currentTimeMillis() - (1..30).random() * 86_400_000L,
                     )
                 }
-            } else {
-                val downloaded = runCatching { downloadedTrackDao.getAllList() }.getOrNull().orEmpty()
-                if (downloaded.isNotEmpty()) {
-                    tracks = downloaded.map { dt ->
-                        SongPlayStatsEntity(
-                            trackKey = "${dt.title}|${dt.artist}".lowercase(),
-                            title = dt.title,
-                            artist = dt.artist,
-                            artworkUrl = dt.artworkUrl,
-                            totalPlayTimeMs = dt.durationMs.takeIf { it > 0L } ?: 210_000L,
-                            playCount = 1,
-                            lastPlayedAtMillis = dt.downloadedAtMillis,
-                        )
-                    }
+            } else if (downloadedFallbackList.isNotEmpty()) {
+                tracks = downloadedFallbackList.map { dt ->
+                    SongPlayStatsEntity(
+                        trackKey = "${dt.title}|${dt.artist}".lowercase(),
+                        title = dt.title,
+                        artist = dt.artist,
+                        artworkUrl = dt.artworkUrl,
+                        totalPlayTimeMs = dt.durationMs.takeIf { it > 0L } ?: 210_000L,
+                        playCount = 1,
+                        lastPlayedAtMillis = dt.downloadedAtMillis,
+                    )
                 }
             }
         }
