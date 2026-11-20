@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import kotlin.math.ceil
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -76,6 +77,8 @@ class ZeroVolumePlaybackObserver(
 
     /**
      * Checks volume changes and handles auto-pause and auto-resume transitions.
+     * When auto-resuming from zero volume, enforces a minimum 10% volume floor
+     * so playback does not resume inaudibly.
      */
     fun onVolumeChanged(
         currentVolume: Int = getCurrentStreamVolume(),
@@ -83,6 +86,7 @@ class ZeroVolumePlaybackObserver(
     ) {
         val isZero = currentVolume <= 0 || isMuted
         val wasPositive = lastKnownVolume > 0
+        var effectiveVolume = if (isZero) 0 else currentVolume
 
         if (isPauseOnZeroVolumeEnabled()) {
             if (wasPositive && isZero) {
@@ -92,6 +96,18 @@ class ZeroVolumePlaybackObserver(
                 }
             } else if (lastKnownVolume <= 0 && !isZero) {
                 if (pausedByZeroVolume) {
+                    audioManager?.let { am ->
+                        val maxVolume = runCatching { am.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0)
+                        if (maxVolume > 0) {
+                            val tenPercentVolume = ceil(maxVolume * 0.10).toInt().coerceIn(1, maxVolume)
+                            if (currentVolume < tenPercentVolume) {
+                                runCatching {
+                                    am.setStreamVolume(AudioManager.STREAM_MUSIC, tenPercentVolume, 0)
+                                }
+                                effectiveVolume = tenPercentVolume
+                            }
+                        }
+                    }
                     pausedByZeroVolume = false
                     onResumePlayback()
                 }
@@ -100,7 +116,7 @@ class ZeroVolumePlaybackObserver(
             pausedByZeroVolume = false
         }
 
-        lastKnownVolume = if (isZero) 0 else currentVolume
+        lastKnownVolume = effectiveVolume
     }
 
     /**
