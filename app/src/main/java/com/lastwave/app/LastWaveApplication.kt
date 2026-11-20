@@ -118,9 +118,6 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             runCatching { likedSongsManager.get().start() }
                 .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Liked Songs startup disabled", it) }
         }
-        // Never create BotGuard's headless WebView during app launch. Some
-        // Android 11 OEM devices have a missing/updating WebView provider,
-        // which can terminate the process. Playback initializes it on demand.
         // YouTube Music playlist sync heartbeat (no-ops until an account is
         // connected AND sync is enabled in Settings).
         applicationScope.launch {

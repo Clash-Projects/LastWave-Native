@@ -984,7 +984,7 @@ internal fun String.isLikelyArtistDetail(): Boolean {
         if (value.equals("Album", true) || value.equals("Single", true) ||
             value.equals("EP", true) || value.equals("Playlist", true)
         ) return false
-        if (parseDuration(value) != null || value.matches(Regex("^(19|20)\\d{2}$"))) return false
+        if (parseDuration(value) != null || value.matches(com.lastwave.app.util.ArtistHelper.YEAR)) return false
         // Centralized stat detection covers "15M listens", "15 ml listens",
         // "2.3M monthly listeners", "10K subscribers", "Track 16", etc.
         // The explicit contains-checks below stay as a fast pre-filter so a

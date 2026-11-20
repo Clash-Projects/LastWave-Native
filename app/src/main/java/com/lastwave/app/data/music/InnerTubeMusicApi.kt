@@ -2068,7 +2068,7 @@ class InnerTubeMusicApi @Inject constructor(
             } else {
                 val beforeMeta = subRuns.takeWhile { run ->
                     val txt = run.string("text")?.trim().orEmpty()
-                    !txt.matches(Regex("^(19|20)\\d{2}$")) &&
+                    !txt.matches(com.lastwave.app.util.ArtistHelper.YEAR) &&
                         txt != "•" && txt != "·" &&
                         !txt.equals("Playlist", ignoreCase = true) &&
                         !txt.equals("Album", ignoreCase = true) &&
@@ -2090,7 +2090,7 @@ class InnerTubeMusicApi @Inject constructor(
             ?: header?.obj("facepile")?.obj("avatarStackViewModel")?.obj("rendererContext")?.obj("commandContext")
                 ?.obj("onTap")?.obj("innertubeCommand")?.obj("browseEndpoint")?.string("browseId")
 
-        val releaseYear = subRuns.mapNotNull { it.string("text") }.firstOrNull { it.trim().matches(Regex("^(19|20)\\d{2}$")) }
+        val releaseYear = subRuns.mapNotNull { it.string("text") }.firstOrNull { it.trim().matches(com.lastwave.app.util.ArtistHelper.YEAR) }
 
         val secondSubtitleRuns = header?.obj("secondSubtitle")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }.orEmpty()
         val durationText = secondSubtitleRuns.firstOrNull { "min" in it.lowercase() || "hour" in it.lowercase() || "sec" in it.lowercase() }
@@ -2216,7 +2216,7 @@ class InnerTubeMusicApi @Inject constructor(
             val browseId = nav?.string("browseId") ?: ""
             if (browseId.isBlank() || browseId.startsWith("UC")) return@mapNotNull null
             val subtitleRuns = item.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }.orEmpty()
-            val year = subtitleRuns.firstOrNull { it.trim().matches(Regex("^(19|20)\\d{2}$")) }
+            val year = subtitleRuns.firstOrNull { it.trim().matches(com.lastwave.app.util.ArtistHelper.YEAR) }
             // The type label is localized too ("Albüm", "Tekli", "Single'lar"),
             // so match the same translated stems used for shelf headings
             // instead of only the English words.
