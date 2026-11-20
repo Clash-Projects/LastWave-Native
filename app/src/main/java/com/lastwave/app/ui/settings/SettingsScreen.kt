@@ -97,6 +97,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
@@ -1006,6 +1007,19 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setStopPlaybackOnTaskRemoved,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.stop_on_recents"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.AutoMirrored.Rounded.VolumeOff,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_pause_on_zero_volume),
+                                subtitle = stringResource(R.string.settings_pause_on_zero_volume_desc),
+                                checked = misc.pauseOnZeroVolume,
+                                onCheckedChange = viewModel::setPauseOnZeroVolume,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.pause_on_zero_volume"),
                             )
                         }
                         add { position ->

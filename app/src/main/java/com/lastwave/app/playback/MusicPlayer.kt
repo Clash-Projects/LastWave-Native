@@ -568,6 +568,20 @@ class MusicPlayer @Inject constructor(
     internal var lastCachedSysVolume: Int = 0
     @Volatile
     internal var lastSysVolumeCheckMs: Long = 0L
+
+    @Volatile
+    internal var pauseOnZeroVolumePref: Boolean = false
+
+    internal val zeroVolumePlaybackObserver: ZeroVolumePlaybackObserver by lazy {
+        ZeroVolumePlaybackObserver(
+            context = appContext,
+            audioManager = audioManager,
+            isPauseOnZeroVolumeEnabled = { pauseOnZeroVolumePref },
+            isPlaying = { _state.value.isPlaying },
+            onPausePlayback = { pauseInternal(focusInitiated = false, zeroVolumeInitiated = true) },
+            onResumePlayback = { resume() },
+        )
+    }
     // ---- App-owned audio focus -------------------------------------------------
     // The player is built with handleAudioFocus=false (see createPlayer), so
     // Media3 never answers a focus change itself. Its automatic handling parks
@@ -2054,6 +2068,7 @@ class MusicPlayer @Inject constructor(
 
     @MainThread
     fun release() {
+        zeroVolumePlaybackObserver.unregister()
         cancelCrossfade()
         com.lastwave.app.playback.rhythm.FluidRhythmEngine.detachSession()
         activePlayer?.removeListener(listener)
@@ -2066,6 +2081,7 @@ class MusicPlayer @Inject constructor(
     }
 
     init {
+        zeroVolumePlaybackObserver.register()
         applicationScope.launch {
             autoMixCoordinator.get().telemetry.collect { tel ->
                 _state.update { it.copy(deckBlendTelemetry = tel) }
@@ -2470,6 +2486,7 @@ class MusicPlayer @Inject constructor(
                 autoplaySimilarEnabled = settings.autoplaySimilarEnabled
                 crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 stopPlaybackOnTaskRemovedPref = settings.stopPlaybackOnTaskRemoved
+                pauseOnZeroVolumePref = settings.pauseOnZeroVolume
                 if (settings.wifiStreamingQuality != previousPlaybackSettings.wifiStreamingQuality ||
                     settings.cellularStreamingQuality != previousPlaybackSettings.cellularStreamingQuality
                 ) {
@@ -2617,6 +2634,8 @@ class MusicPlayer @Inject constructor(
         startPositionMs: Long = 0L,
         playWhenReady: Boolean = true,
     ) {
+        if (playWhenReady && zeroVolumePlaybackObserver.shouldBlockPlayAction()) return
+        zeroVolumePlaybackObserver.onManualAction()
         pendingRestoredSession = null
         disableDiscoverQueue()
         disableRadioQueue()
@@ -2752,6 +2771,8 @@ class MusicPlayer @Inject constructor(
         startShuffled: Boolean = false,
         playWhenReady: Boolean = true,
     ) {
+        if (playWhenReady && zeroVolumePlaybackObserver.shouldBlockPlayAction()) return
+        if (playWhenReady) zeroVolumePlaybackObserver.onManualAction()
         val selectedTrack = tracks[selectedIndex].withYoutubeArtwork()
         PlaybackStartupLog.begin(
             trackId = selectedTrack.internalTrackId?.takeIf { it.isNotBlank() } ?: selectedTrack.videoId.orEmpty(),
@@ -3163,6 +3184,8 @@ class MusicPlayer @Inject constructor(
     }
 
     fun resume() = onMain {
+        if (zeroVolumePlaybackObserver.shouldBlockPlayAction()) return@onMain
+        zeroVolumePlaybackObserver.onManualAction()
         // An explicit resume replaces any focus-induced pause we owed.
         focusPauseAwaitingRecovery = false
         exclusiveUsbOutput.setPaused(false)
@@ -3241,7 +3264,10 @@ class MusicPlayer @Inject constructor(
      *   request, so abandoning it here would strand [pauseForAudioFocus]'s
      *   recovery and a brief interruption would never resume.
      */
-    private fun pauseInternal(focusInitiated: Boolean) {
+    private fun pauseInternal(focusInitiated: Boolean, zeroVolumeInitiated: Boolean = false) {
+        if (!zeroVolumeInitiated) {
+            zeroVolumePlaybackObserver.onManualAction()
+        }
         // A deliberate pause supersedes a focus-induced one, so a later
         // AUDIOFOCUS_GAIN must not resurrect playback the user stopped.
         if (!focusInitiated) focusPauseAwaitingRecovery = false
@@ -3449,6 +3475,7 @@ class MusicPlayer @Inject constructor(
         return _state.value.positionMs
     }
     fun seekTo(positionMs: Long) = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         if (isCasting) {
             castPlayback?.seek(positionMs.coerceAtLeast(0))
             return@onMain
@@ -3686,6 +3713,7 @@ class MusicPlayer @Inject constructor(
         }
     }
     fun previous() = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         if (isCasting) {
             if (_state.value.positionMs > 5_000) seekTo(0)
             else seekToQueueItem(previousQueueIndex(_state.value))
@@ -3748,6 +3776,7 @@ class MusicPlayer @Inject constructor(
     }
 
     fun next() = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         if (isCasting) {
             seekToQueueItem(nextQueueIndex(_state.value))
             return@onMain
@@ -4001,6 +4030,7 @@ class MusicPlayer @Inject constructor(
      *   time the app opens.
      */
     fun stopAndClear(clearSession: Boolean = true) = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         // Captured before the player is torn down: afterwards it reports 0.
         val stoppedAtMs = runCatching {
             if (playerDelegate.isInitialized() && player.mediaItemCount > 0) player.currentPosition else null

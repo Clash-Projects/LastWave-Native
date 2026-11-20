@@ -407,6 +407,8 @@ class PlayerViewModel @Inject constructor(
     private val _toastMessage = MutableSharedFlow<String>()
     val toastMessage = _toastMessage.asSharedFlow()
 
+    val snackbarEvent = player.zeroVolumePlaybackObserver.snackbarEvent
+
     private val _liveLyricsOffsetMs = MutableStateFlow<Long?>(null)
     val liveLyricsOffsetMs: StateFlow<Long> = combine(
         _liveLyricsOffsetMs,

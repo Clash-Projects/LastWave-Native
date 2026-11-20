@@ -2,6 +2,7 @@ package com.lastwave.app.ui.settings
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -266,6 +267,23 @@ object SettingsSearchIndex {
                         "continue playing", "task removed", "kill app", "close app"
                     ),
                     icon = Icons.Filled.StopCircle,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.pause_on_zero_volume",
+                    title = "Pause Playback at Volume 0",
+                    subtitle = "Automatically pause playback when media volume reaches 0",
+                    keywords = listOf(
+                        "pause", "volume", "zero volume", "mute", "silent",
+                        "auto pause", "media volume", "volume 0"
+                    ),
+                    icon = Icons.AutoMirrored.Rounded.VolumeOff,
                     iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.AUDIO,

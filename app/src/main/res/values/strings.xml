@@ -206,6 +206,8 @@
     <string name="settings_stop_on_recents">Stop Playback When Swiped Away</string>
     <string name="settings_stop_on_recents_on">Removing LastWave from Recents stops playback</string>
     <string name="settings_stop_on_recents_off">Playback continues in the background after leaving Recents</string>
+    <string name="settings_pause_on_zero_volume">Pause Playback at Volume 0</string>
+    <string name="settings_pause_on_zero_volume_desc">Automatically pause playback when media volume reaches 0</string>
     <string name="settings_download_lyrics">Download Synced Lyrics</string>
     <string name="settings_download_lyrics_on">Save .lrc companion files &amp; embed lyrics in downloads</string>
     <string name="settings_download_lyrics_off">Do not fetch or save lyrics when downloading</string>
