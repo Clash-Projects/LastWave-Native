@@ -545,7 +545,7 @@ internal fun LocalSongsHeroCard(
 
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.local_music_tab_title),
+                    text = "Local songs",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = contentColor,
@@ -563,11 +563,6 @@ internal fun LocalSongsHeroCard(
                     color = contentColor.copy(alpha = 0.78f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
                 )
             }
         }

@@ -52,6 +52,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import com.lastwave.app.R
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.filled.Settings

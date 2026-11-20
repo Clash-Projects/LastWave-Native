@@ -143,15 +143,15 @@ class ListeningStatsViewModel @Inject constructor(
                     )
                 }
             } else {
-                val downloaded = runCatching { downloadedTrackDao.getAllTracks() }.getOrNull().orEmpty()
+                val downloaded = runCatching { downloadedTrackDao.getAllList() }.getOrNull().orEmpty()
                 if (downloaded.isNotEmpty()) {
                     tracks = downloaded.map { dt ->
                         SongPlayStatsEntity(
-                            trackKey = "${dt.name}|${dt.artist}".lowercase(),
-                            title = dt.name,
+                            trackKey = "${dt.title}|${dt.artist}".lowercase(),
+                            title = dt.title,
                             artist = dt.artist,
                             artworkUrl = dt.artworkUrl,
-                            totalPlayTimeMs = 210_000L,
+                            totalPlayTimeMs = dt.durationMs.takeIf { it > 0L } ?: 210_000L,
                             playCount = 1,
                             lastPlayedAtMillis = dt.downloadedAtMillis,
                         )
