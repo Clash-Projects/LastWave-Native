@@ -353,15 +353,33 @@ void DspProcessor::process(
     std::int32_t channelCount) noexcept {
     if (samples == nullptr || frameCount <= 0 || (channelCount != 1 && channelCount != 2)) return;
     const bool parametricApplied = parametricEq_.process(samples, frameCount, channelCount);
+    const std::size_t parametricSampleCount = static_cast<std::size_t>(frameCount) *
+        static_cast<std::size_t>(channelCount);
     const auto clampParametricOutput = [&]() noexcept {
         if (!parametricApplied) return;
-        const std::size_t count = static_cast<std::size_t>(frameCount) *
-            static_cast<std::size_t>(channelCount);
-        for (std::size_t i = 0; i < count; ++i) {
-            const float value = samples[i];
-            samples[i] = std::isfinite(value) ? std::clamp(value, -1.0F, 1.0F) : 0.0F;
+        // Non-finite samples were already zeroed by the overload scan below.
+        for (std::size_t i = 0; i < parametricSampleCount; ++i) {
+            samples[i] = std::clamp(samples[i], -1.0F, 1.0F);
         }
     };
+    // A positive preamp (the slider allows up to +6 dB) or a hot profile can
+    // push the EQ past full scale. Clamping that here would hard-clip the
+    // signal before the limiter ever sees it; instead, note the overload and
+    // let the existing protection stage limit it softly. Blocks that stay
+    // inside +-1.0 still take the sample-transparent bypass below.
+    bool parametricOverloaded = false;
+    if (parametricApplied) {
+        for (std::size_t i = 0; i < parametricSampleCount; ++i) {
+            const float value = samples[i];
+            if (!std::isfinite(value)) {
+                samples[i] = 0.0F;
+                continue;
+            }
+            if (value > 1.0F || value < -1.0F) {
+                parametricOverloaded = true;
+            }
+        }
+    }
     if (bitPerfectEnabled_.load(std::memory_order_acquire)) {
         clampParametricOutput();
         return;
@@ -402,7 +420,7 @@ void DspProcessor::process(
     // not on untouched program material. This restores a sample-transparent
     // bypass instead of permanently lowering ordinary 0 dBFS masters to -1 dB.
     const bool protectionRequired = peakProtectionEnabled &&
-        (enhancementTargeted || enhancementStateActive);
+        (enhancementTargeted || enhancementStateActive || parametricOverloaded);
     const bool controlsBypassed = !enhancementTargeted && !protectionRequired;
     const bool stateBypassed = currentWet_ == 0.0F &&
         activeEqualizerBands_ == 0U &&
