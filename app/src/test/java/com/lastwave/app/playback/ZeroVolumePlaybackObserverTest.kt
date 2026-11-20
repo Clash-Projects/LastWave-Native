@@ -1,6 +1,10 @@
 package com.lastwave.app.playback
 
+import android.media.AudioManager
 import com.google.common.truth.Truth.assertThat
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import org.junit.Test
 
 class ZeroVolumePlaybackObserverTest {
@@ -188,5 +192,101 @@ class ZeroVolumePlaybackObserverTest {
         assertThat(pauseCalled).isTrue()
         assertThat(observer.pausedByZeroVolume).isTrue()
         assertThat(observer.lastKnownVolume).isEqualTo(0)
+    }
+
+    @Test
+    fun `volume increase from zero jumps to 10 percent floor and resumes when pausedByZeroVolume is true`() {
+        val audioManager = mockk<AudioManager>(relaxed = true)
+        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 100
+
+        var resumeCalled = false
+        var isPlaying = true
+
+        val observer = ZeroVolumePlaybackObserver(
+            context = null,
+            audioManager = audioManager,
+            isPauseOnZeroVolumeEnabled = { true },
+            isPlaying = { isPlaying },
+            onPausePlayback = { isPlaying = false },
+            onResumePlayback = {
+                resumeCalled = true
+                isPlaying = true
+            },
+            initialVolume = 15,
+        )
+
+        // Drop to 0 -> auto-pause
+        observer.onVolumeChanged(currentVolume = 0, isMuted = false)
+        assertThat(observer.pausedByZeroVolume).isTrue()
+
+        // Volume increases from 0 to 1 (below 10% floor of 10)
+        observer.onVolumeChanged(currentVolume = 1, isMuted = false)
+
+        verify(exactly = 1) { audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 10, 0) }
+        assertThat(resumeCalled).isTrue()
+        assertThat(observer.pausedByZeroVolume).isFalse()
+        assertThat(observer.lastKnownVolume).isEqualTo(10)
+    }
+
+    @Test
+    fun `volume increase from zero at or above 10 percent preserves volume and resumes without setStreamVolume`() {
+        val audioManager = mockk<AudioManager>(relaxed = true)
+        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 100
+
+        var resumeCalled = false
+        var isPlaying = true
+
+        val observer = ZeroVolumePlaybackObserver(
+            context = null,
+            audioManager = audioManager,
+            isPauseOnZeroVolumeEnabled = { true },
+            isPlaying = { isPlaying },
+            onPausePlayback = { isPlaying = false },
+            onResumePlayback = {
+                resumeCalled = true
+                isPlaying = true
+            },
+            initialVolume = 15,
+        )
+
+        // Drop to 0 -> auto-pause
+        observer.onVolumeChanged(currentVolume = 0, isMuted = false)
+        assertThat(observer.pausedByZeroVolume).isTrue()
+
+        // Volume increases from 0 to 25 (above 10% floor)
+        observer.onVolumeChanged(currentVolume = 25, isMuted = false)
+
+        verify(exactly = 0) { audioManager.setStreamVolume(any(), any(), any()) }
+        assertThat(resumeCalled).isTrue()
+        assertThat(observer.pausedByZeroVolume).isFalse()
+        assertThat(observer.lastKnownVolume).isEqualTo(25)
+    }
+
+    @Test
+    fun `volume increase from zero when not pausedByZeroVolume does not jump to 10 percent or resume`() {
+        val audioManager = mockk<AudioManager>(relaxed = true)
+        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 100
+
+        var resumeCalled = false
+
+        val observer = ZeroVolumePlaybackObserver(
+            context = null,
+            audioManager = audioManager,
+            isPauseOnZeroVolumeEnabled = { true },
+            isPlaying = { false },
+            onPausePlayback = {},
+            onResumePlayback = { resumeCalled = true },
+            initialVolume = 0,
+        )
+
+        assertThat(observer.pausedByZeroVolume).isFalse()
+
+        // Volume increases from 0 to 1 without pausedByZeroVolume
+        observer.onVolumeChanged(currentVolume = 1, isMuted = false)
+
+        verify(exactly = 0) { audioManager.setStreamVolume(any(), any(), any()) }
+        assertThat(resumeCalled).isFalse()
+        assertThat(observer.pausedByZeroVolume).isFalse()
+        assertThat(observer.lastKnownVolume).isEqualTo(1)
     }
 }
