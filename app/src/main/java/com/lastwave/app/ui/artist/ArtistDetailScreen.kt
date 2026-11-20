@@ -154,6 +154,7 @@ fun ArtistDetailScreen(
     }
 
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val playedKeys by viewModel.playedKeys.collectAsStateWithLifecycle()
     var selectedTrackMenu by remember { mutableStateOf<PlayableTrack?>(null) }
     var showAllSongs by rememberSaveable { mutableStateOf(false) }
     var songSortOption by rememberSaveable { mutableStateOf(ArtistSongSortOption.MOST_PLAYED) }
@@ -193,6 +194,26 @@ fun ArtistDetailScreen(
         } else emptyList()
     }
     var artworkIndex by remember(artistData) { mutableStateOf(0) }
+
+    val topSongs = artistData?.topSongs.orEmpty()
+    val sortedSongs = remember(topSongs, songSortOption, playedKeys) {
+        when (songSortOption) {
+            ArtistSongSortOption.MOST_PLAYED -> topSongs
+            ArtistSongSortOption.RECENT -> topSongs.reversed()
+            ArtistSongSortOption.KNOWN -> topSongs.sortedByDescending { track ->
+                val key = "${track.title}|${track.artist}".lowercase()
+                if (playedKeys.contains(key)) 1 else 0
+            }
+        }
+    }
+    val initialDisplayLimit = 10
+    val visibleSongs = remember(sortedSongs, showAllSongs) {
+        if (showAllSongs || sortedSongs.size <= initialDisplayLimit) {
+            sortedSongs
+        } else {
+            sortedSongs.take(initialDisplayLimit)
+        }
+    }
     val artistArtwork = artworkCandidates.getOrNull(artworkIndex)
 
     Box(
@@ -554,20 +575,6 @@ fun ArtistDetailScreen(
 
                     // 3. Top Songs Section Header
                     if (data.topSongs.isNotEmpty()) {
-                        val sortedSongs = remember(data.topSongs, songSortOption) {
-                            when (songSortOption) {
-                                ArtistSongSortOption.MOST_PLAYED -> data.topSongs
-                                ArtistSongSortOption.RECENT -> data.topSongs.reversed()
-                                ArtistSongSortOption.KNOWN -> data.topSongs.sortedByDescending { it.playcount ?: 0L }
-                            }
-                        }
-                        val initialDisplayLimit = 10
-                        val visibleSongs = if (showAllSongs || sortedSongs.size <= initialDisplayLimit) {
-                            sortedSongs
-                        } else {
-                            sortedSongs.take(initialDisplayLimit)
-                        }
-
                         item(key = "top_songs_header") {
                             Row(
                                 modifier = Modifier

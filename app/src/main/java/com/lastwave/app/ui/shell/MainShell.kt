@@ -242,6 +242,7 @@ private val PillShape: Shape = CircleShape
 
 private fun <T> navSpring() = ExpressiveMotion.spatialSpring<T>()
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainShell(
     onOpenSettings: () -> Unit,

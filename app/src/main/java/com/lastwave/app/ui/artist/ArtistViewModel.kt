@@ -22,6 +22,8 @@ import com.lastwave.app.data.canvas.CanvasArtwork
 import com.lastwave.app.data.canvas.CanvasRepository
 import javax.inject.Inject
 
+import com.lastwave.app.data.local.db.SongPlayStatsDao
+import kotlinx.coroutines.flow.map
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.SettingsPreferences
 import kotlinx.coroutines.flow.SharingStarted
@@ -41,10 +43,15 @@ class ArtistViewModel @Inject constructor(
     private val mixLauncher: MixLauncher,
     private val settingsPreferences: SettingsPreferences,
     private val canvasRepository: CanvasRepository,
+    private val songPlayStatsDao: SongPlayStatsDao,
 ) : ViewModel() {
 
     val settings: StateFlow<MiscSettings> = settingsPreferences.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MiscSettings())
+
+    val playedKeys: StateFlow<Set<String>> = songPlayStatsDao.observeTopPlayed(2000)
+        .map { list -> list.map { it.trackKey }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private val _uiState = MutableStateFlow<ArtistUiState>(ArtistUiState.Loading)
     val uiState: StateFlow<ArtistUiState> = _uiState.asStateFlow()
