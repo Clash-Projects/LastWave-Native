@@ -173,15 +173,21 @@ object TrackAnalyzer {
     }
 
     private fun bandColumns(bandEnergy: Array<DoubleArray>, frameMs: Double): List<Int> {
-        val perColumn = (BAND_COLUMN_MS / frameMs).roundToInt().coerceAtLeast(1)
-        val columns = bandEnergy[0].size / perColumn
+        // Columns by time, not by whole frames: 9 frames are 104.5 ms at 11 kHz,
+        // which drifted the drawn waveform ~2 s across a window.
+        val frames = bandEnergy[0].size
+        val columns = (frames * frameMs / BAND_COLUMN_MS).toInt()
         if (columns == 0) return emptyList()
+        val sums = Array(3) { DoubleArray(columns) }
+        val counts = IntArray(columns)
+        for (frame in 0 until frames) {
+            val column = (frame * frameMs / BAND_COLUMN_MS).toInt()
+            if (column >= columns) break
+            counts[column]++
+            for (band in 0 until 3) sums[band][column] += bandEnergy[band][frame]
+        }
         val db = Array(3) { band ->
-            DoubleArray(columns) { column ->
-                var sum = 0.0
-                for (i in column * perColumn until (column + 1) * perColumn) sum += bandEnergy[band][i]
-                10.0 * log10(sum / perColumn + 1e-12)
-            }
+            DoubleArray(columns) { column -> 10.0 * log10(sums[band][column] / counts[column].coerceAtLeast(1) + 1e-12) }
         }
         val top = db.maxOf { it.max() }
         return List(columns) { column ->

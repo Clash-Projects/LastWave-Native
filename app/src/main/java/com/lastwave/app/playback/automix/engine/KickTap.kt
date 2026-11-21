@@ -82,7 +82,8 @@ class KickTap {
         fast = fast * fastDecay + energy * (1 - fastDecay)
         val rising = fast > slow * ONSET_RATIO && fast > MIN_ENERGY
         slow = slow * slowDecay + energy * (1 - slowDecay)
-        if (rising && blockStartUs - lastOnsetUs > REFRACTORY_US) {
+        // MIN_VALUE means none yet; subtracting it would overflow and block every onset.
+        if (rising && (lastOnsetUs == Long.MIN_VALUE || blockStartUs - lastOnsetUs > REFRACTORY_US)) {
             lastOnsetUs = blockStartUs
             val index = count.getAndIncrement()
             onsets.set(index % CAPACITY, blockStartUs)
