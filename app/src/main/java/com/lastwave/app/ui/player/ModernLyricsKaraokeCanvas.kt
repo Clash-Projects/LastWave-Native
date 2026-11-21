@@ -131,6 +131,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -177,6 +178,11 @@ internal fun KaraokeVocal(
     textColorOverride: Color? = null,
     themeSpec: LyricsThemeSpec? = null,
 ) {
+    // The bundled lyric font has no Hindi/CJK/Arabic glyphs, so those fall back to a
+    // thin regular-weight system face; the system family honours the requested bold weight.
+    val style = remember(style, vocal.text, themeSpec) {
+        if (themeSpec?.fontFamily == null && vocal.text.hasNonLatinScript()) style.copy(fontFamily = FontFamily.Default) else style
+    }
     val direction = if (vocal.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
         if (lit && vocal.isWordSynced) {
@@ -784,5 +790,13 @@ internal fun ContentDrawScope.drawWithSyllableLift(
         canvas.clipRect(r[0], r[1], r[2], r[3])
         drawContent()
         canvas.restore()
+    }
+}
+
+private fun String.hasNonLatinScript(): Boolean = any {
+    when (Character.UnicodeScript.of(it.code)) {
+        Character.UnicodeScript.LATIN, Character.UnicodeScript.COMMON, Character.UnicodeScript.INHERITED,
+        Character.UnicodeScript.CYRILLIC, Character.UnicodeScript.GREEK -> false
+        else -> true
     }
 }
