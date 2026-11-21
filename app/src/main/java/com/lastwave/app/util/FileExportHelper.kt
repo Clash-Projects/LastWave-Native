@@ -144,6 +144,10 @@ class FileExportHelper @Inject constructor(
     /** Opens the system share sheet for [filename]/[content] via
      *  FileProvider — mirrors shareFileContent()'s mime-typed file share. */
     fun shareFile(filename: String, content: String, mimeType: String) {
+        // Diagnostics reports carry a timestamp in the name, so each share left a new
+        // file in Documents forever. Drop old ones; the share sheet has long since read them.
+        documentsDir().listFiles { f -> f.name.startsWith("lastwave-diagnostics-") && f.lastModified() < System.currentTimeMillis() - 24 * 60 * 60 * 1000L }
+            ?.forEach { it.delete() }
         val file = saveToDocuments(filename, content)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
