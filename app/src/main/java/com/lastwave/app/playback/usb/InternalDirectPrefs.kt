@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
-private val Context.internalDirectDataStore: DataStore<Preferences> by preferencesDataStore(
+internal val Context.internalDirectDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "internal_direct_prefs",
 )
 

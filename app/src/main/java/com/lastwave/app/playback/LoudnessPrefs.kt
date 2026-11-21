@@ -25,7 +25,7 @@ import javax.inject.Singleton
  * Dedicated DataStore file for loudness normalization, separate from the
  * shared app preferences so the feature owns its keys and defaults.
  */
-private val Context.loudnessDataStore: DataStore<Preferences> by preferencesDataStore(
+internal val Context.loudnessDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "loudness_prefs",
     corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
 )
