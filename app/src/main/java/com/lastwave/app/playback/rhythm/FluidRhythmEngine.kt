@@ -2,9 +2,6 @@ package com.lastwave.app.playback.rhythm
 
 import android.os.SystemClock
 import com.lastwave.app.playback.haptics.HapticPulseListener
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.exp
 import kotlin.math.max
 
@@ -16,12 +13,9 @@ import kotlin.math.max
  */
 object FluidRhythmEngine : HapticPulseListener {
 
-    private const val ATTACK_MS = 25f
-    private const val RELEASE_MS = 120f
-
-    private val _rhythm = MutableStateFlow(0f)
-    /** Current smoothed rhythm value in range 0f..1f */
-    val rhythm: StateFlow<Float> = _rhythm.asStateFlow()
+    // Lyra Player's rhythm.attack_ms / rhythm.release_ms: soft swell, slow settle.
+    private const val ATTACK_MS = 35f
+    private const val RELEASE_MS = 180f
 
     @Volatile
     var currentRhythmValue: Float = 0f
@@ -75,7 +69,6 @@ object FluidRhythmEngine : HapticPulseListener {
         val tau = if (target > currentRhythmValue) ATTACK_MS else RELEASE_MS
         currentRhythmValue = (currentRhythmValue + (target - currentRhythmValue) * (1f - exp(-dtMs / tau)))
             .coerceIn(0f, 1f)
-        _rhythm.value = currentRhythmValue
         return currentRhythmValue
     }
 }

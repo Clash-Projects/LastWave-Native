@@ -30,8 +30,8 @@ interface HapticPulseListener {
     fun onAnalysisFlushed() {}
 
     /**
-     * Every 10 ms window: how far bass sits above its running average, 0..1
-     * against the recent peak. The beat-synced background follows this.
+     * Every 10 ms window: the bass envelope, 0..1 against the recent peak.
+     * The beat-synced background follows this.
      */
     fun onBassLevel(level: Float, leadTimeMs: Long) {}
 }
@@ -237,10 +237,9 @@ class MusicHapticsAnalyzer(
         val normBass = (fastBassEnv / bassPeak).coerceIn(0f, 1f)
         val normVocal = (fastVocalEnv / vocalPeak).coerceIn(0f, 1f)
         val bassRatio = fastBassEnv / max(slowBassEnv, 0.004f)
-        val bassLevel = if (fastBassEnv > 0.006f) {
-            ((fastBassEnv - slowBassEnv) / max(bassPeak - slowBassEnv, MIN_PEAK)).coerceIn(0f, 1f)
-        } else 0f
-        lead()?.let { pulseListener.onBassLevel(bassLevel, it) }
+        // The bass level itself, not its rise above the average: that rise fell back
+        // within ~100 ms, so hits barely moved the background next to Lyra.
+        lead()?.let { pulseListener.onBassLevel(if (fastBassEnv > 0.006f) normBass else 0f, it) }
         val vocalRatio = fastVocalEnv / max(slowVocalEnv, 0.004f)
 
         // Relative (gain-independent) onset tests plus a small absolute floor

@@ -190,7 +190,7 @@ private const val FRAME_INTERVAL_MS = 66L
 
 private val textureCache = LinkedHashMap<String, Bitmap>()
 
-private suspend fun loadTexture(context: Context, url: String, preBlur: Boolean = false): Bitmap? = withContext(Dispatchers.IO) {
+internal suspend fun loadTexture(context: Context, url: String, preBlur: Boolean = false): Bitmap? = withContext(Dispatchers.IO) {
     val cacheKey = if (preBlur) "$url-preblurred" else url
     synchronized(textureCache) {
         textureCache.remove(cacheKey)?.also { textureCache[cacheKey] = it }
@@ -327,26 +327,17 @@ fun FluidArtworkBackground(
     LaunchedEffect(fluidBeatSyncEnabled) {
         com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled = fluidBeatSyncEnabled
     }
-    if (fluidBeatSyncEnabled) {
-        BeatSyncFluidArtworkBackground(
-            track = track,
-            isPlaying = isPlaying,
-            modifier = modifier,
-            extraBlur = extraBlur,
-            rotatingBackgroundEnabled = rotatingBackgroundEnabled,
-            lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
-            fluidBeatSyncEnabled = true,
-            artworkViewModel = artworkViewModel,
-            fallback = fallback,
-        )
-        return
-    }
     val fluidSupported = isFluidSupported()
     val isEnabled = if (extraBlur) lyricsRotatingBackgroundEnabled && rotatingBackgroundEnabled else rotatingBackgroundEnabled
     if (!isEnabled || !fluidSupported) {
         Box(modifier) {
             fallback()
         }
+        return
+    }
+    // Lyra's flow needs AGSL; older devices keep the default fluid.
+    if (fluidBeatSyncEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        BeatSyncFluidArtworkBackground(track, isPlaying, modifier, extraBlur, artworkViewModel, fallback)
         return
     }
 
