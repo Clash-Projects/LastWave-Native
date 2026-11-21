@@ -1088,11 +1088,5 @@ internal fun com.lastwave.app.data.music.YouTubeAudioStream.isOpusStream(): Bool
             codec.orEmpty().contains("opus", ignoreCase = true)
     }
 
-/** Same test the resolver's [probeStream] uses: an .m3u8 manifest is not a downloadable file. */
-internal fun com.lastwave.app.data.music.YouTubeAudioStream.isHlsPlaylist(): Boolean =
-        mimeType?.contains("mpegurl", ignoreCase = true) == true ||
-            url.substringBefore('?').endsWith(".m3u8", ignoreCase = true) ||
-            codec?.equals("hls", ignoreCase = true) == true
-
 internal fun TrackDownloadManager.sanitizeFilename(title: String): String =
         title.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "track" }

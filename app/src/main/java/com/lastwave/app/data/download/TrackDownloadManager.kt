@@ -751,10 +751,6 @@ class TrackDownloadManager @Inject constructor(
                 // advertised a bit depth nothing had measured yet.
                 var formatBadge = "FLAC"
                 var isLossless = false
-                // Capture the caller's duration before the local var below
-                // shadows the parameter: the recording-mismatch veto needs the
-                // real catalog length even when no match was preloaded.
-                val callerDurationMs = durationMs
                 var durationMs = 0L
                 var downloadHeaders = emptyMap<String, String>()
                 var expectedContentLength: Long? = null
@@ -820,7 +816,7 @@ class TrackDownloadManager @Inject constructor(
                         continue
                     }
                     try {
-                        val expectedDurationSec = callerDurationMs?.takeIf { it > 0 }?.let { (it / 1000L).toInt() }
+                        val expectedDurationSec = durationMs?.takeIf { it > 0 }?.let { (it / 1000L).toInt() }
                             ?: preloadedBestMatch?.durationSeconds?.takeIf { it > 0 }
                         // One retry: a transient blip must not kill the tier.
                         var losslessStream: LosslessAudioStream? = null
@@ -1337,14 +1333,12 @@ class TrackDownloadManager @Inject constructor(
                                         null
                                     }
                                     // An HLS playlist is not a file: saving it wrote the playlist
-                                    // text as the "song". Audio-only streams come from
-                                    // adaptiveFormats with isAdaptive=true — that flag is not
-                                    // "not a file"; only an actual .m3u8 manifest is.
+                                    // text as the "song". Only progressive streams can be downloaded.
                                     pickedStream = listOfNotNull(
                                         opusStream?.takeIf { it.isOpusStream() },
                                         playbackStream,
                                         opusStream,
-                                    ).firstOrNull { !it.isHlsPlaylist() }
+                                    ).firstOrNull { !it.isAdaptive }
                                     if (pickedStream != null) {
                                         actualVideoId = candidateId
                                         resolvedYtVideoId = candidateId
