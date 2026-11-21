@@ -628,7 +628,115 @@ fun MainShell(
                     }
                 }
 
-                // 1. Cast
+                // 1. Settings
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        onOpenSettings()
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.TOP),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Settings,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Settings", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("App preferences and audio options", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 2. Jam
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        showJamSheet = true
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Group,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Jam", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Listen together in real time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 3. Listening stats
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        onOpenListeningStats()
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.tertiaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Leaderboard,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Listening stats", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Your top artists, tracks & recaps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 4. Cast
                 val castAvailable = remember(musicPlayer) { musicPlayer.initializeCast() }
                 var routeButton by remember { mutableStateOf<androidx.mediarouter.app.MediaRouteButton?>(null) }
                 Surface(
@@ -637,7 +745,7 @@ fun MainShell(
                         if (castAvailable) routeButton?.performClick()
                         else android.widget.Toast.makeText(context, context.getString(R.string.cast_unavailable), android.widget.Toast.LENGTH_SHORT).show()
                     },
-                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.TOP),
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -679,13 +787,13 @@ fun MainShell(
                     }
                 }
 
-                // 2. Sleep timer
+                // 5. Sleep timer
                 Surface(
                     onClick = {
                         showAccountMenu = false
                         showSleepTimerDialog = true
                     },
-                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.BOTTOM),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -711,114 +819,6 @@ fun MainShell(
                         Column(Modifier.weight(1f)) {
                             Text("Sleep timer", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                             Text("Stop playback automatically", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-
-                // 3. Listening stats
-                Surface(
-                    onClick = {
-                        showAccountMenu = false
-                        onOpenListeningStats()
-                    },
-                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.tertiaryContainer),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.Leaderboard,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Listening stats", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                            Text("Your top artists, tracks & recaps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-
-                // 4. Jam
-                Surface(
-                    onClick = {
-                        showAccountMenu = false
-                        showJamSheet = true
-                    },
-                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.Group,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Jam", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                            Text("Listen together in real time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-
-                // 5. Settings
-                Surface(
-                    onClick = {
-                        showAccountMenu = false
-                        onOpenSettings()
-                    },
-                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.BOTTOM),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.Settings,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Settings", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                            Text("App preferences and audio options", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
