@@ -43,6 +43,10 @@ interface SavedPlaylistDao {
     @Query("SELECT * FROM saved_playlists WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): SavedPlaylistEntity?
 
+    /** Newest row of [mode]; same pick as the newest-first list, ties to the lower id. */
+    @Query("SELECT * FROM saved_playlists WHERE mode = :mode ORDER BY createdAtMillis DESC, id ASC LIMIT 1")
+    suspend fun getNewestByMode(mode: String): SavedPlaylistEntity?
+
     @Upsert
     suspend fun upsert(entity: SavedPlaylistEntity)
 

@@ -91,16 +91,22 @@ Java_com_lastwave_app_playback_dsd_DsdNativeDecimator_nativeProcess(
         return 0;
     }
 
+    // Per-thread scratch, sized before the critical section: allocating there
+    // (twice per DSD block) held the GC off and churned the heap on every block.
+    // The decimator assigns every output sample it reports, so reuse is safe.
+    thread_local std::vector<float> tmpOut;
+    thread_local std::vector<const std::uint8_t*> planes;
+    tmpOut.resize(neededFloats);
+    planes.resize(static_cast<std::size_t>(channels));
+
     jboolean isInCopy = JNI_FALSE;
     auto* inPtr = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(inputBytes, &isInCopy));
     if (inPtr == nullptr) return 0;
 
     const auto* raw = reinterpret_cast<const std::uint8_t*>(inPtr + inputOffset);
-    std::vector<float> tmpOut(neededFloats);
     std::size_t producedFrames = 0;
 
     if (planar == JNI_TRUE) {
-        std::vector<const std::uint8_t*> planes(static_cast<std::size_t>(channels));
         for (jint ch = 0; ch < channels; ++ch) {
             planes[static_cast<std::size_t>(ch)] = raw + static_cast<std::size_t>(ch) * static_cast<std::size_t>(blockSizePerChannel);
         }

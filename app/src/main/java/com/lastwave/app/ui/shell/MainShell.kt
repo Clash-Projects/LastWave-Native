@@ -277,8 +277,6 @@ fun MainShell(
             selectedTabIndex = pagerState.settledPage
         }
     }
-    val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
-    val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
     val ytConnection by mainShellViewModel.ytConnection.collectAsStateWithLifecycle()
     val settings by mainShellViewModel.settings.collectAsStateWithLifecycle(initialValue = null)
     var promptDismissedThisSession by rememberSaveable { mutableStateOf(false) }
@@ -396,14 +394,18 @@ fun MainShell(
 
     Box(Modifier.fillMaxSize()) {
         val feedIndex = tabs.indexOf(MainTab.FEED)
+        // Composing Stats and Playlists on the launch frame (plus their own
+        // loads recomposing them) froze the Feed's first load for seconds on
+        // slower phones. Add them once the user leaves the Feed, then keep every
+        // tab: tab handlers set selectedTabIndex before scrolling, so the jump
+        // frame already composes all of them and a dock jump back to Feed never
+        // disposes and rebuilds it.
+        var composeAllTabs by remember { mutableStateOf(false) }
+        val allTabs = composeAllTabs || selectedTabIndex != feedIndex || pagerState.isScrollInProgress
+        if (allTabs) LaunchedEffect(Unit) { composeAllTabs = true }
         HorizontalPager(
             state = pagerState,
-            // Keep every tab composed. With 1, jumping Playlists -> Home
-            // (dock tap = instant scrollToPage) disposed and rebuilt the whole
-            // Feed (sections, shelves, covers) on that frame, and Statistics
-            // was rebuilt the same way from the far tab. Only 3 tabs, and
-            // off-screen pages are not drawn, so this is cheap.
-            beyondViewportPageCount = tabs.size - 1,
+            beyondViewportPageCount = if (allTabs) tabs.size - 1 else 0,
             modifier = Modifier.fillMaxSize()
                 .then(if (chromeCollapse != null) Modifier.nestedScroll(chromeCollapse.connection) else Modifier)
                 .then(
@@ -460,24 +462,7 @@ fun MainShell(
             }
         }
 
-        // App update prompt banner (only shown on app open when an update is available and not dismissed)
-        AnimatedVisibility(
-            visible = showUpdateBanner,
-            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .adaptiveContentWidth(maxWidth = 600.dp)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .zIndex(10f),
-        ) {
-            UpdatePromptCard(
-                version = updateInfo.latestVersion,
-                onUpdate = { mainShellViewModel.openUpdate(context) },
-                onDismiss = { mainShellViewModel.dismissUpdate(updateInfo.latestVersion) },
-            )
-        }
+        // The update prompt is the app-wide dialog (ui/update/AppUpdateDialog), opened on launch.
 
         val bottomNavSlot = com.lastwave.app.ui.player.LocalBottomNavSlot.current
         val md3NavBar = LocalMd3NavBar.current
@@ -596,72 +581,6 @@ fun MainShell(
     }
 }
 
-@Composable
-private fun UpdatePromptCard(
-    version: String,
-    onUpdate: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shadowElevation = 8.dp,
-        tonalElevation = 6.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.CloudDownload,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(24.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update_available),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                Text(
-                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update_ready_to_install, version),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(onClick = onUpdate),
-            ) {
-                Text(
-                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                )
-            }
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(28.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.dismiss_update),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun FloatingNavBar(

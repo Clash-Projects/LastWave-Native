@@ -391,7 +391,8 @@ internal fun LyricGroupRow(
                 )
         }
     }
-    val side = if (!isStaged) LyricSide.Start else when (group.role) {
+    val centered = LocalLyricsAlignment.current.centered
+    val side = if (centered) LyricSide.Center else if (!isStaged) LyricSide.Start else when (group.role) {
         VocalRole.DUET_RIGHT -> LyricSide.End
         VocalRole.UNISON_CENTER -> LyricSide.Center
         else -> LyricSide.Start
@@ -402,7 +403,7 @@ internal fun LyricGroupRow(
         LyricSide.Center -> Alignment.CenterHorizontally
     }
     val widthFraction = when {
-        !isStaged -> 1f
+        !isStaged || centered -> 1f
         side == LyricSide.Center -> LYRIC_UNISON_WIDTH
         else -> LYRIC_DUET_WIDTH
     }
@@ -410,8 +411,8 @@ internal fun LyricGroupRow(
     // pins rows to absolute sides so a mixed-script row stays on its singer's
     // side.
     val textAlign = when {
-        !isStaged -> TextAlign.Start
         side == LyricSide.Center -> TextAlign.Center
+        !isStaged -> TextAlign.Start
         (side == LyricSide.Start) != isOverallRtl -> TextAlign.Left
         else -> TextAlign.Right
     }
@@ -519,7 +520,7 @@ internal fun LyricInterludeRow(
             withFrameNanos { frameNanos.longValue = it }
         }
     }
-    val side = when (item.role) {
+    val side = if (LocalLyricsAlignment.current.centered) LyricSide.Center else when (item.role) {
         VocalRole.DUET_RIGHT -> LyricSide.End
         VocalRole.UNISON_CENTER -> LyricSide.Center
         else -> LyricSide.Start

@@ -1,9 +1,8 @@
 package com.lastwave.app.playback
 
 /**
- * True only while a UI that needs the 60 ms playhead cadence is on screen
- * (the open full player / lyrics seek bar). Collapsed mini-player screens
- * update at 4 fps, so they do not need to wake the ticker every 60 ms.
+ * True only while synced lyrics are on screen, the one UI that needs the
+ * 60 ms playhead. Seek bars (mini and full player) update at 4 fps.
  */
 internal object PlaybackUiDemand {
     @Volatile

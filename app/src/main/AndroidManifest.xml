@@ -15,6 +15,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Target audio playback and known music players without requiring QUERY_ALL_PACKAGES -->
     <queries>
         <intent>
@@ -48,6 +49,9 @@
         android:name="android.permission.RECEIVE_BOOT_COMPLETED"
         tools:node="remove" />
 
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.usb.host"
         android:required="false" />
@@ -118,13 +122,14 @@
                 <data android:scheme="lastwave" android:host="sync" />
             </intent-filter>
 
-            <!-- LastWave Jam web invite deep links (https://jam.clashprojects.qd.je/?code=...) -->
+            <!-- LastWave Jam web invite deep links (https://jam.clashgram.org/?code=...) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
+                <data android:host="jam.clashgram.org" />
                 <data android:host="jam.clashprojects.qd.je" />
             </intent-filter>
 

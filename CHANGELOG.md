@@ -1,5 +1,33 @@
 # Changelog
 
+## [5.2.1] - 2026-11-13
+
+### ✨ What's New
+
+* **Downloads in Library:** Find your saved music and download count directly in **Library**.
+
+---
+
+### ⚡ Improved
+
+* **Queue & Navigation Motion:** Smoother drag reordering and release, with swipe-to-remove and undo. Navigation and the mini player now collapse together while scrolling, with matching glass styling.
+* **Quality Switching & Wavy Seekbar:** More reliable selected-quality startup, preloading and Bit-Perfect transitions. Restored the lighter wavy seekbar in player and lyrics views (**Experimental; off by default**).
+
+---
+
+### 🛠️ Fixed
+
+* **Downloads & 59-Second Stops:** Restored YouTube downloads, improved interrupted-download recovery, and corrected stream selection behind premature playback stops.
+* **Addon Playback & Offline Audio:** Prevented upgrades to a different recording or language. Corrected Atmos download labels and restored seeking/duration for newly downloaded FLAC tracks.
+* **Local Library:** Folder scans now follow your selected locations, remove out-of-scope entries and filter recordings while retaining likes and playlists.
+* **Likes, Playlists & Mixes:** Fixed guest/YouTube like sync, restored notification like/shuffle controls, corrected playlist sorting/counts, and made Start Mix update the queue correctly.
+* **Player, Lyrics & Appearance:** Fixed black screens when reopening the player mid-close, cleaned malformed fallback lyrics, and corrected artwork colours, widget layouts and header seams.
+* **Audio & Playback Crashes:** Fixed Parametric EQ and BotGuard crashes, and restored external Dolby/EQ session support.
+* **Listen Together:** Updated Jam server and invitation links. Also refreshed Italian translations.
+
+> [!NOTE]
+> Previously affected FLAC downloads need to be downloaded again to gain the seeking fix.
+
 ## [5.2.0] - 2026-11-12
 
 ### ✨ What's New

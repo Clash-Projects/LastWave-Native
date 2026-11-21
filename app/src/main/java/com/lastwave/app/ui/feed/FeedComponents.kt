@@ -1,12 +1,11 @@
 package com.lastwave.app.ui.feed
 
+import com.lastwave.app.ui.common.rememberAmbientFloat
 import androidx.activity.compose.BackHandler
 import com.lastwave.app.playback.toPlayableTrack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -216,9 +215,8 @@ internal fun openPlaylistOrAlbum(
 
 @Composable
 internal fun FeedLoadingSkeleton() {
-    val transition = rememberInfiniteTransition(label = "feedSkeleton")
     // State read inside drawBehind: repaints each frame without recomposing the skeleton items.
-    val pulse = transition.animateFloat(
+    val pulse = rememberAmbientFloat(
         initialValue = 0.45f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),

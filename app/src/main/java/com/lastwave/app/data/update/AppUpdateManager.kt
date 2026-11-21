@@ -32,11 +32,18 @@ data class UpdateInfo(
     val downloadFileName: String? = null,
     val isDismissed: Boolean = false,
     val message: String? = null,
+    /** Release title and publish date, shown in the update dialog. */
+    val releaseTitle: String = "",
+    val publishedAt: String = "",
+    val downloadSizeBytes: Long = 0L,
+    /** The in-app update dialog is open (on launch, or from Settings / the banner). */
+    val showDialog: Boolean = false,
 )
 
 data class ReleaseAsset(
     val name: String,
     val downloadUrl: String,
+    val sizeBytes: Long = 0L,
 )
 
 enum class ApkVariant {
@@ -129,6 +136,8 @@ class AppUpdateManager @Inject constructor(
                 val tagName = json.optString("tag_name", "")
                 val releaseUrl = json.optString("html_url", "https://github.com/Clash-Projects/LastWave-native/releases")
                 val releaseNotes = json.optString("body", "")
+                val releaseTitle = json.optString("name", "")
+                val publishedAt = json.optString("published_at", "")
 
                 val apkAssets = mutableListOf<ReleaseAsset>()
                 val assets = json.optJSONArray("assets")
@@ -138,7 +147,13 @@ class AppUpdateManager @Inject constructor(
                         val name = asset.optString("name", "").trim()
                         val download = asset.optString("browser_download_url", "").trim()
                         if (name.endsWith(".apk", ignoreCase = true) && download.isNotBlank()) {
-                            apkAssets.add(ReleaseAsset(name = name, downloadUrl = download))
+                            apkAssets.add(
+                                ReleaseAsset(
+                                    name = name,
+                                    downloadUrl = download,
+                                    sizeBytes = asset.optLong("size", 0L),
+                                ),
+                            )
                         }
                     }
                 }
@@ -158,6 +173,10 @@ class AppUpdateManager @Inject constructor(
                 val dismissedVersion = prefs.getString("dismissed_version", null)
                 val isDismissed = dismissedVersion == cleanTag
 
+                // Like the desktop app: a new, not-dismissed release opens the
+                // update dialog by itself once per launch.
+                val autoOpen = isSilent && hasNewer && !isDismissed && !autoDialogShown
+                if (autoOpen) autoDialogShown = true
                 _updateInfo.update {
                     it.copy(
                         isChecking = false,
@@ -165,6 +184,10 @@ class AppUpdateManager @Inject constructor(
                         latestVersion = cleanTag,
                         currentVersion = currentVersion,
                         releaseNotes = releaseNotes,
+                        releaseTitle = releaseTitle,
+                        publishedAt = publishedAt,
+                        downloadSizeBytes = bestAsset?.sizeBytes ?: 0L,
+                        showDialog = it.showDialog || autoOpen,
                         releaseUrl = releaseUrl,
                         downloadUrl = downloadUrl,
                         downloadFileName = downloadFileName,
@@ -191,10 +214,35 @@ class AppUpdateManager @Inject constructor(
         _updateInfo.update { it.copy(isDismissed = true) }
     }
 
-    fun openUpdate(context: Context) {
-        val targetUrl = _updateInfo.value.downloadUrl ?: _updateInfo.value.releaseUrl.ifBlank {
+    /** Settings' "Update Ready" and the banner open the in-app dialog, not the browser. */
+    fun openUpdate(context: Context) = showDialog()
+
+    fun showDialog() = _updateInfo.update { it.copy(showDialog = true) }
+
+    fun hideDialog() = _updateInfo.update { it.copy(showDialog = false) }
+
+    /** The release page, for the dialog's GitHub button. */
+    fun openReleasePage(context: Context) {
+        val targetUrl = _updateInfo.value.releaseUrl.ifBlank {
             "https://github.com/Clash-Projects/LastWave-native/releases"
         }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) { }
+    }
+
+    @Volatile private var autoDialogShown = false
+    /**
+     * Update now: opens this build's APK download in the browser, as before;
+     * the listener installs it from there, so no install permission is needed.
+     * A release without an APK for this build opens its release page instead.
+     */
+    fun openDownload(context: Context) {
+        val targetUrl = _updateInfo.value.downloadUrl?.takeIf { it.isNotBlank() }
+            ?: return openReleasePage(context)
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

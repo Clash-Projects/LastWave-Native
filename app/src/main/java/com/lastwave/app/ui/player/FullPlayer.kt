@@ -2,6 +2,7 @@
 
 package com.lastwave.app.ui.player
 
+import com.lastwave.app.data.local.SeekbarStyle
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import com.lastwave.app.data.playlist.isLikedIn
@@ -79,11 +80,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Arrangement
@@ -240,6 +241,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -344,13 +347,16 @@ internal fun FullPlayer(
     progressState: StateFlow<PlaybackProgressState>,
     player: MusicPlayer,
     lyricsState: LyricsUiState,
-    wavySeekbarEnabled: Boolean = false,
+    seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
     onSetLyricsFontScale: ((Float) -> Unit)? = null,
+    lyricsCentered: Boolean = false,
+    onSetLyricsCentered: ((Boolean) -> Unit)? = null,
     /** 0 = floating lyrics buttons never auto-hide; 2..10 = idle seconds. */
     lyricsButtonsAutoHideSeconds: Int = 5,
     /** Language the lyric translate button targets; blank = app language. */
@@ -363,6 +369,8 @@ internal fun FullPlayer(
     showAutoEqInVolumePanel: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
+    playerLyrics: Boolean = false,
+    onPlayerLyricsChange: (Boolean) -> Unit = {},
     onRetryLyrics: () -> Unit,
     onCollapse: () -> Unit,
     onOpenArtist: (String) -> Unit = {},
@@ -388,6 +396,13 @@ internal fun FullPlayer(
     val isTablet = isTabletOrWideScreen()
     val isTabletLandscape = isLandscape && (isTablet || configuration.screenWidthDp >= 600)
     val isCanvasActive = canvasEnabled && canvas != null
+    // The two-column landscape layout has no single art area to replace, so
+    // its lyrics button keeps opening the lyrics tab. Not tied to currentTab:
+    // Now Playing keeps showing Player Lyrics while it fades out to the lyrics tab.
+    val playerLyricsActive = playerLyrics && !isTabletLandscape
+    // Rotating into that layout leaves the mode, so the host's back press and
+    // its 60 ms playhead never serve an invisible Player Lyrics.
+    LaunchedEffect(isTabletLandscape) { if (isTabletLandscape) onPlayerLyricsChange(false) }
     val syncedVideoVm: SyncedVideoViewModel = hiltViewModel()
     val showSyncedVideo by syncedVideoVm.isVideoActive.collectAsStateWithLifecycle()
     val syncedVideoState by syncedVideoVm.uiState.collectAsStateWithLifecycle()
@@ -408,10 +423,10 @@ internal fun FullPlayer(
         delay(VIDEO_PRELOAD_DELAY_MS)
         syncedVideoVm.preloadVideo(track.title, track.artist, track.videoId, track.durationMs)
     }
-    // Full bleed works wherever the player uses the single-column layout:
-    // phones and tablets in portrait. Only tablet landscape (two columns,
-    // cover beside the controls) keeps the boxed sleeve.
-    val fullBleedBlocked = isTablet && isLandscape
+    // This full bleed is the single-column (portrait) hero. The two-column
+    // landscape layout draws its own full-bleed art pane on the left
+    // (LandscapeArtworkPane), so the portrait hero must not paint behind it.
+    val fullBleedBlocked = isTabletLandscape
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !fullBleedBlocked
     val showSleeveCanvas = isCanvasActive && !showFullBleed && !isVideoActive
     // activeCanvas is the single gate every render branch below keys off, so it also
@@ -438,6 +453,12 @@ internal fun FullPlayer(
     // the same pixels. A disposed canvas reports 0, so the hero returns the
     // moment a track without a canvas starts.
     var canvasCover by remember { mutableFloatStateOf(0f) }
+    val playerLyricsUi = rememberPlayerLyricsUiState(
+        trackKey = track.videoId ?: "${track.artist}|${track.title}",
+        lyricsState = lyricsState,
+        translationLanguage = translationLanguage,
+        lyricsFontScale = lyricsFontScale,
+    )
     var lyricsFullscreen by remember(currentTab) { mutableStateOf(false) }
     var lyricsControlsVisible by remember(currentTab) { mutableStateOf(true) }
     val view = LocalView.current
@@ -592,35 +613,45 @@ internal fun FullPlayer(
     )
 
     fun Modifier.playerVerticalSwipe(enabled: Boolean): Modifier = if (!enabled) this else pointerInput(track.videoId, track.title, currentTab) {
-        detectVerticalDragGestures(
-            onDragStart = { isDismissDragging = true },
-            onDragCancel = {
-                isDismissDragging = false
-                dismissDragY = 0f
-            },
-            onDragEnd = {
-                isDismissDragging = false
-                var collapsing = false
-                when {
-                    currentTab != FullPlayerTab.NOW_PLAYING && dismissDragY > swipeThreshold -> onTabChange(FullPlayerTab.NOW_PLAYING)
-                    currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY < -swipeThreshold -> onTabChange(FullPlayerTab.QUEUE)
-                    currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY > swipeThreshold -> {
-                        collapsing = true
-                        onCollapse()
-                    }
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var slopY = 0f
+            var dragging = false
+            while (true) {
+                // Final pass: a child that scrolled with this move (the lyrics list)
+                // has consumed it by now, and then the gesture stays the child's.
+                val change = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                val dy = change.positionChange().y
+                if (!dragging) {
+                    if (change.isConsumed) return@awaitEachGesture
+                    slopY += dy
+                    if (abs(slopY) < viewConfiguration.touchSlop) continue
+                    dragging = true
+                    isDismissDragging = true
                 }
-                // Collapsing keeps the dragged offset: the close morph carries
-                // the player away from there instead of it springing back first.
-                if (!collapsing) dismissDragY = 0f
-            },
-        ) { change, amount ->
-            val updatedDrag = if (currentTab != FullPlayerTab.NOW_PLAYING) {
-                (dismissDragY + amount).coerceAtLeast(0f)
-            } else {
-                dismissDragY + amount
+                val updatedDrag = if (currentTab != FullPlayerTab.NOW_PLAYING) {
+                    (dismissDragY + dy).coerceAtLeast(0f)
+                } else {
+                    dismissDragY + dy
+                }
+                if (updatedDrag != dismissDragY) change.consume()
+                dismissDragY = updatedDrag
             }
-            if (updatedDrag != dismissDragY) change.consume()
-            dismissDragY = updatedDrag
+            if (!dragging) return@awaitEachGesture
+            isDismissDragging = false
+            var collapsing = false
+            when {
+                currentTab == FullPlayerTab.QUEUE && dismissDragY > swipeThreshold -> onTabChange(FullPlayerTab.NOW_PLAYING)
+                currentTab == FullPlayerTab.NOW_PLAYING && dismissDragY < -swipeThreshold -> onTabChange(FullPlayerTab.QUEUE)
+                dismissDragY > swipeThreshold -> {
+                    collapsing = true
+                    onCollapse()
+                }
+            }
+            // Collapsing keeps the dragged offset: the close morph carries
+            // the player away from there instead of it springing back first.
+            if (!collapsing) dismissDragY = 0f
         }
     }
 
@@ -647,6 +678,7 @@ internal fun FullPlayer(
         LocalLiquidGlassBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalIsDarkTheme provides true,
+        LocalLyricsAlignment provides LyricsAlignment(lyricsCentered, onSetLyricsCentered),
     ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -657,7 +689,9 @@ internal fun FullPlayer(
                 val playerHeight = size.height.coerceAtLeast(1f)
                 alpha = (1f - shownDismissY.coerceAtLeast(0f) / (playerHeight * 1.5f)).coerceIn(0.72f, 1f)
             }
-            .playerVerticalSwipe(enabled = currentTab == FullPlayerTab.NOW_PLAYING),
+            // Lyrics too: its list claims vertical drags first, so swiping down
+            // anywhere else (art pane, empty state, controls) closes the player.
+            .playerVerticalSwipe(enabled = currentTab != FullPlayerTab.QUEUE),
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val bgWidth = constraints.maxWidth.toFloat()
@@ -676,95 +710,98 @@ internal fun FullPlayer(
                 animationSpec = tween(350),
                 label = "lyricsVeil",
             )
-            Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
-                FluidArtworkBackground(
-                    track = track,
-                    isPlaying = state.isPlaying,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = (1f - lyricsVeil).coerceIn(0f, 1f) },
-                    extraBlur = isLyricsTab,
-                    rotatingBackgroundEnabled = if (isLyricsTab) showLyricsFluid else rotatingBackgroundEnabled,
-                    lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
-                    fallback = {
-                        val staticBlurTransform = remember(currentTab) {
-                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                                listOf(
-                                    BlurTransformation(
-                                        radius = if (currentTab == FullPlayerTab.LYRICS) 25 else 18,
-                                        maxDimension = 100,
-                                    )
+            // Kept out of the glass capture: every motion step re-blurred each glass
+            // control (~2x frame cost). The fluid is already blurred, so it shows through.
+            FluidArtworkBackground(
+                track = track,
+                // The queue list covers it: motion there redrew a static list at ~13 fps.
+                isPlaying = state.isPlaying && currentTab != FullPlayerTab.QUEUE,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = (1f - lyricsVeil).coerceIn(0f, 1f) },
+                extraBlur = isLyricsTab,
+                rotatingBackgroundEnabled = if (isLyricsTab) showLyricsFluid else rotatingBackgroundEnabled,
+                lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
+                fallback = {
+                    val staticBlurTransform = remember(currentTab) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                            listOf(
+                                BlurTransformation(
+                                    radius = if (currentTab == FullPlayerTab.LYRICS) 25 else 18,
+                                    maxDimension = 100,
                                 )
-                            } else {
-                                emptyList()
-                            }
+                            )
+                        } else {
+                            emptyList()
                         }
-                        PlayerArtwork(
-                            track = track,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    scaleX = 1.35f
-                                    scaleY = 1.35f
-                                    alpha = 0.9f
-                                }
-                                .then(
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        if (currentTab == FullPlayerTab.LYRICS) {
-                                            Modifier.blur(36.dp)
-                                        } else {
-                                            Modifier.blur(20.dp)
-                                        }
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                            corner = 0.dp,
-                            decodeSizePx = 200,
-                            transformations = staticBlurTransform,
-                        )
-                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (isLyricsTab) 0.40f else 0.52f)))
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.radialGradient(
-                                        0f to ambientColor.copy(alpha = 0.58f),
-                                        0.45f to ambientColor.copy(alpha = 0.22f),
-                                        1f to Color.Transparent,
-                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
-                                        radius = bgMaxDimension * 0.85f,
-                                    )
-                                )
-                        )
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.radialGradient(
-                                        0f to ambientCompanion.copy(alpha = 0.52f),
-                                        0.50f to ambientCompanion.copy(alpha = 0.20f),
-                                        1f to Color.Transparent,
-                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
-                                        radius = bgMaxDimension * 0.78f,
-                                    )
-                                )
-                        )
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.radialGradient(
-                                        0f to ambientDeep.copy(alpha = 0.42f),
-                                        0.55f to ambientDeep.copy(alpha = 0.14f),
-                                        1f to Color.Transparent,
-                                        center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
-                                        radius = bgMaxDimension * 0.70f,
-                                    )
-                                )
-                        )
                     }
-                )
+                    PlayerArtwork(
+                        track = track,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = 1.35f
+                                scaleY = 1.35f
+                                alpha = 0.9f
+                            }
+                            .then(
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    if (currentTab == FullPlayerTab.LYRICS) {
+                                        Modifier.blur(36.dp)
+                                    } else {
+                                        Modifier.blur(20.dp)
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        corner = 0.dp,
+                        decodeSizePx = 200,
+                        transformations = staticBlurTransform,
+                    )
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (isLyricsTab) 0.40f else 0.52f)))
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientColor.copy(alpha = 0.58f),
+                                    0.45f to ambientColor.copy(alpha = 0.22f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                                    radius = bgMaxDimension * 0.85f,
+                                )
+                            )
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientCompanion.copy(alpha = 0.52f),
+                                    0.50f to ambientCompanion.copy(alpha = 0.20f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                                    radius = bgMaxDimension * 0.78f,
+                                )
+                            )
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to ambientDeep.copy(alpha = 0.42f),
+                                    0.55f to ambientDeep.copy(alpha = 0.14f),
+                                    1f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                                    radius = bgMaxDimension * 0.70f,
+                                )
+                            )
+                    )
+                }
+            )
+            Box(Modifier.matchParentSize().liquidGlassSource(if (fullGlass) playerBackdrop else null)) {
                 // Dynamic ambient lyrics gradient overlay: subtly shifts line-by-line strictly
                 // using the album cover art palette, preserving zero text visibility issues.
                 if (showLyricsFluid) {
@@ -899,6 +936,20 @@ internal fun FullPlayer(
                     }
                 }
 
+                // Player Lyrics puts white text over the art: a scrim keeps it
+                // legible without hiding what plays behind. Read only in draw.
+                val playerLyricsScrim = animateFloatAsState(
+                    targetValue = when {
+                        !playerLyricsActive || currentTab != FullPlayerTab.NOW_PLAYING -> 0f
+                        // A moving canvas behind text needs a little more than a still cover.
+                        showFullBleed -> if (activeCanvas != null) 0.58f else 0.5f
+                        else -> 0.2f
+                    },
+                    animationSpec = tween(320),
+                    label = "playerLyricsScrim",
+                )
+                Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black, alpha = playerLyricsScrim.value) })
+
                 // Lyrics tab backdrop (ArchiveTune / Apple Music style):
                 // Deep dark base (#050505), blurred artwork (46.dp, 62% alpha),
                 // 3-stop vertical gradient of the extracted album art colors (0.88, 0.76, 0.96 alpha),
@@ -1007,7 +1058,7 @@ internal fun FullPlayer(
                                 .fillMaxWidth()
                                 .height(52.dp)
                                 .padding(horizontal = if (isTabletLandscape) 32.dp else 20.dp)
-                                .playerVerticalSwipe(enabled = currentTab != FullPlayerTab.NOW_PLAYING),
+                                .playerVerticalSwipe(enabled = currentTab == FullPlayerTab.QUEUE),
                         ) {
                             // FullPlayer sits on a dark blurred-artwork scrim in both light and
                             // dark mode, so foreground must use the white overlay palette â€”
@@ -1165,6 +1216,27 @@ internal fun FullPlayer(
                                     }
                                 },
                             ) {
+                                // Landscape: lyrics beside the same full-bleed art pane as
+                                // Now Playing.
+                                // Lyrics' own fullscreen still takes the whole width.
+                                val landscapeSplit = isTabletLandscape && !lyricsFullscreen
+                                Row(Modifier.fillMaxSize()) {
+                                if (landscapeSplit) {
+                                    LandscapeArtworkPane(
+                                        track = track,
+                                        state = state,
+                                        player = player,
+                                        canvas = if (showSleeveCanvas) activeCanvas ?: canvas else null,
+                                        resolvedArtworkUrl = resolvedAmbientUrl,
+                                        onDoubleTapLike = onDoubleTapLike,
+                                        shownDismissY = shownDismissY,
+                                        swipeThreshold = swipeThreshold,
+                                        isVideoActive = isVideoActive,
+                                        onCloseVideo = { syncedVideoVm.setVideoActive(false) },
+                                        onEnterFullscreen = { isVideoFullscreen = true },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
                                 ModernLyricsPanel(
                                     state = state,
                                     player = player,
@@ -1172,6 +1244,7 @@ internal fun FullPlayer(
                                     lyricsProviderStatuses = lyricsProviderStatuses,
                                     onProbeLyricsProviders = onProbeLyricsProviders,
                                     progressState = progressState,
+                                    seekbarStyle = seekbarStyle,
                                     wavySeekbarEnabled = wavySeekbarEnabled,
                                     lyricsOffsetMs = lyricsOffsetMs,
                                     lyricsFontScale = lyricsFontScale,
@@ -1183,17 +1256,34 @@ internal fun FullPlayer(
                                     onRetry = onRetryLyrics,
                                     onSelectLyricsProvider = onSelectLyricsProvider,
                                     onTryAnotherLyricsSource = onTryAnotherLyricsSource,
-                                    onToggleFullscreen = { lyricsFullscreen = !lyricsFullscreen },
+                                    // Full Screen cycles: Player Lyrics -> lyrics -> full screen -> back
+                                    // to Player Lyrics. The two-column landscape has no Player Lyrics,
+                                    // so it lands on its Now Playing.
+                                    onToggleFullscreen = {
+                                        if (lyricsFullscreen) {
+                                            if (!isTabletLandscape) onPlayerLyricsChange(true)
+                                            onTabChange(FullPlayerTab.NOW_PLAYING)
+                                        } else {
+                                            lyricsFullscreen = true
+                                        }
+                                    },
                                     isFullscreen = lyricsFullscreen,
                                     onOpenLyricsOffset = { showLyricsOffsetDialog = true },
                                     primaryColor = ambientColor,
                                     secondaryColor = ambientCompanion,
                                     tertiaryColor = ambientDeep,
                                     resolvedArtworkUrl = resolvedAmbientUrl,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp),
+                                    modifier = if (landscapeSplit) {
+                                        Modifier
+                                            .weight(1.15f)
+                                            .fillMaxHeight()
+                                    } else {
+                                        Modifier
+                                            .fillMaxSize()
+                                            .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp)
+                                    },
                                 )
+                                }
                             }
                         }
 
@@ -1222,6 +1312,7 @@ internal fun FullPlayer(
                                     state = state,
                                     player = player,
                                     progressState = progressState,
+                                    seekbarStyle = seekbarStyle,
                                     wavySeekbarEnabled = wavySeekbarEnabled,
                                     showSleeveCanvas = showSleeveCanvas,
                                     canvas = activeCanvas ?: canvas,
@@ -1244,6 +1335,7 @@ internal fun FullPlayer(
                                     onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                     onEnterFullscreen = { isVideoFullscreen = true },
                                     onToggleVideo = onToggleSyncedVideo,
+                                    resolvedArtworkUrl = resolvedAmbientUrl,
                                 )
                             } else {
                                 // â”€â”€ Standard layout (lifted and balanced) â”€â”€â”€â”€â”€â”€
@@ -1255,10 +1347,22 @@ internal fun FullPlayer(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     val hasArtwork = !track.artworkUrl.isNullOrBlank() || !resolvedAmbientUrl.isNullOrBlank() || activeCanvas != null
+                                    // Player Lyrics takes the sleeve's place and a video moves up. A
+                                    // sleeve canvas stays composed, dimmed, so it keeps playing under
+                                    // the lyrics instead of being disposed and restarted.
                                     val sleeveAlpha by animateFloatAsState(
-                                        targetValue = if (showFullBleed && hasArtwork) 0f else 1f,
+                                        targetValue = when {
+                                            showFullBleed && hasArtwork -> 0f
+                                            playerLyricsActive && !isVideoActive -> if (showSleeveCanvas) 0.3f else 0f
+                                            else -> 1f
+                                        },
                                         animationSpec = tween(350),
                                         label = "sleeveAlpha",
+                                    )
+                                    val videoBias by animateFloatAsState(
+                                        targetValue = if (playerLyricsActive) -1f else 0f,
+                                        animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                        label = "videoBias",
                                     )
 
                                     BoxWithConstraints(
@@ -1272,8 +1376,10 @@ internal fun FullPlayer(
                                                     heroBottomPx = bottom
                                                 }
                                             }
-                                            .pointerInput(track.videoId, track.title, isVideoActive) {
-                                                if (isVideoActive) return@pointerInput
+                                            .pointerInput(track.videoId, track.title, isVideoActive, playerLyricsActive) {
+                                                // Lyric rows own taps in Player Lyrics: a double tap
+                                                // there must not seek 5 s or like the song.
+                                                if (isVideoActive || playerLyricsActive) return@pointerInput
                                                 awaitEachGesture {
                                                     val down = awaitFirstDown(requireUnconsumed = false)
                                                     var isDrag = false
@@ -1374,7 +1480,7 @@ internal fun FullPlayer(
                                                     }
                                                 }
                                             },
-                                        contentAlignment = if (isVideoActive) Alignment.Center else BiasAlignment(0f, if (isTablet) -0.15f else -0.55f),
+                                        contentAlignment = if (isVideoActive) BiasAlignment(0f, videoBias) else BiasAlignment(0f, if (isTablet) -0.15f else -0.55f),
                                     ) {
                                         val artworkSize = (minOf(maxWidth, maxHeight) - 6.dp)
                                             .coerceAtLeast(0.dp)
@@ -1486,6 +1592,39 @@ internal fun FullPlayer(
                                                 )
                                             }
                                             }
+                                        }
+
+                                        androidx.compose.animation.AnimatedVisibility(
+                                            visible = playerLyricsActive,
+                                            enter = fadeIn(tween(320, delayMillis = 60)) +
+                                                scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
+                                            exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.96f),
+                                            modifier = Modifier
+                                                .layout { measurable, constraints ->
+                                                    // The lyric rows pad themselves 20 dp, as on the lyrics
+                                                    // screen; bleed through this column's own 20 dp so the
+                                                    // text sits at the same inset there and here.
+                                                    val bleed = if (isVideoActive) 0 else 20.dp.roundToPx()
+                                                    val width = constraints.maxWidth + bleed * 2
+                                                    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                                                    layout(constraints.maxWidth, placeable.height) { placeable.place(-bleed, 0) }
+                                                }
+                                                .fillMaxSize()
+                                                // Below the 16:9 video, never over its controls.
+                                                .padding(top = if (isVideoActive) maxWidth * 9f / 16f + 8.dp else 0.dp),
+                                        ) {
+                                            PlayerInlineLyrics(
+                                                state = state,
+                                                player = player,
+                                                lyricsState = lyricsState,
+                                                progressState = progressState,
+                                                lyricsOffsetMs = lyricsOffsetMs,
+                                                fontScale = playerLyricsUi.fontScale,
+                                                subLines = playerLyricsUi.subLines,
+                                                displayMode = playerLyricsUi.displayMode,
+                                                onRetry = onRetryLyrics,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
                                         }
 
                                         androidx.compose.animation.AnimatedVisibility(
@@ -1649,44 +1788,72 @@ internal fun FullPlayer(
 
                                         Spacer(Modifier.width(12.dp))
 
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            PlayerLikeButton(
-                                                liked = isLiked,
-                                                onClick = hapticClick(if (isLiked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onToggleLiked),
-                                                size = 48.dp,
-                                            )
-                                            val lyricsInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                                            val isLyricsPressed by lyricsInteraction.collectIsPressedAsState()
-                                            val lyricsScale by animateFloatAsState(
-                                                targetValue = if (isLyricsPressed) 0.82f else 1.0f,
-                                                animationSpec = ExpressiveMotion.spatialSpring(),
-                                                label = "lyricsScale",
-                                            )
-                                            LiquidGlassSurface(
-                                                glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
-                                                onClick = hapticClick { onTabChange(FullPlayerTab.LYRICS) },
-                                                interactionSource = lyricsInteraction,
-                                                shape = CircleShape,
-                                                color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                                contentColor = Color.White.copy(alpha = 0.90f),
-                                                tonalElevation = 0.dp,
-                                                shadowElevation = 0.dp,
-                                                modifier = Modifier
-                                                    .size(46.dp)
-                                                    .graphicsLayer {
-                                                        scaleX = lyricsScale
-                                                        scaleY = lyricsScale
-                                                    },
+                                        // Player Lyrics swaps Like + Lyrics for the lyrics screen's Full Screen + options pair.
+                                        AnimatedContent(
+                                            targetState = playerLyricsActive,
+                                            transitionSpec = {
+                                                (fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.85f)) togetherWith
+                                                    (fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.85f))
+                                            },
+                                            contentAlignment = Alignment.CenterEnd,
+                                            label = "playerTitleActions",
+                                        ) { lyricsActions ->
+                                            if (lyricsActions) {
+                                                PlayerLyricsActions(
+                                                    ui = playerLyricsUi,
+                                                    lyricsState = lyricsState,
+                                                    track = track,
+                                                    progressState = progressState,
+                                                    lyricsOffsetMs = lyricsOffsetMs,
+                                                    resolvedArtworkUrl = resolvedAmbientUrl,
+                                                    primaryColor = ambientColor,
+                                                    onOpenFullLyrics = { onTabChange(FullPlayerTab.LYRICS) },
+                                                    onLyricsFontScaleChange = onSetLyricsFontScale ?: {},
+                                                    onOpenLyricsOffset = { showLyricsOffsetDialog = true },
+                                                    lyricsProviderStatuses = lyricsProviderStatuses,
+                                                    onProbeLyricsProviders = onProbeLyricsProviders,
+                                                    onSelectLyricsProvider = onSelectLyricsProvider,
+                                                    onTryAnotherLyricsSource = onTryAnotherLyricsSource,
+                                                )
+                                            } else Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
-                                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        Icons.Filled.FormatQuote,
-                                                        contentDescription = stringResource(com.lastwave.app.R.string.player_show_lyrics_cd),
-                                                        modifier = Modifier.size(24.dp),
-                                                    )
+                                                PlayerLikeButton(
+                                                    liked = isLiked,
+                                                    onClick = hapticClick(if (isLiked) HapticFeedbackType.ToggleOff else HapticFeedbackType.Confirm, onToggleLiked),
+                                                    size = 48.dp,
+                                                )
+                                                val lyricsInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                                val isLyricsPressed by lyricsInteraction.collectIsPressedAsState()
+                                                val lyricsScale by animateFloatAsState(
+                                                    targetValue = if (isLyricsPressed) 0.82f else 1.0f,
+                                                    animationSpec = ExpressiveMotion.spatialSpring(),
+                                                    label = "lyricsScale",
+                                                )
+                                                LiquidGlassSurface(
+                                                    glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = lyricsInteraction),
+                                                    onClick = hapticClick { onPlayerLyricsChange(true) },
+                                                    interactionSource = lyricsInteraction,
+                                                    shape = CircleShape,
+                                                    color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
+                                                    contentColor = Color.White.copy(alpha = 0.90f),
+                                                    tonalElevation = 0.dp,
+                                                    shadowElevation = 0.dp,
+                                                    modifier = Modifier
+                                                        .size(46.dp)
+                                                        .graphicsLayer {
+                                                            scaleX = lyricsScale
+                                                            scaleY = lyricsScale
+                                                        },
+                                                ) {
+                                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            Icons.Filled.FormatQuote,
+                                                            contentDescription = stringResource(com.lastwave.app.R.string.player_show_lyrics_cd),
+                                                            modifier = Modifier.size(24.dp),
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -1696,6 +1863,7 @@ internal fun FullPlayer(
                                         progressState = progressState,
                                         isPlaying = state.isPlaying,
                                         trackKey = track.videoId ?: "${track.artist}|${track.title}",
+                                        seekbarStyle = seekbarStyle,
                                         wavyEnabled = wavySeekbarEnabled,
                                         onSeek = player::seekTo,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,

@@ -108,14 +108,13 @@ internal suspend fun TrackDownloadManager.downloadToTempFile(
         onConnectionStateChanged: (Boolean) -> Unit,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ): DownloadTransfer {
-        // googlevideo answers large or open-ended ranges for a while and then
-        // refuses them with 403 (InnerTubeX: ANDROID_VR / TVHTML5_SIMPLY need
-        // <=512 KB, IOS bounded). Playback already reads in 512 KB pieces;
-        // downloads asked for four multi-MB parts or one open-ended GET, which
-        // is why YouTube downloads failed while the same song played.
         val isYouTubeMedia = isGoogleVideoUrl(url)
         val knownLength = expectedContentLength?.takeIf { it > 0L }
-            ?: if (isYouTubeMedia) probeContentLength(url, requestHeaders) else null
+            ?: if (isYouTubeMedia) {
+                retryInterruptedTransfer(downloadKey, onConnectionStateChanged) {
+                    probeContentLength(url, requestHeaders)
+                }
+            } else null
         val rangeSize = when {
             knownLength == null -> null
             isYouTubeMedia -> YOUTUBE_RANGE_BYTES
@@ -138,6 +137,9 @@ internal suspend fun TrackDownloadManager.downloadToTempFile(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
+                // An unbounded retry makes googlevideo reject even a playable URL.
+                // Let the caller refresh a refused URL instead of changing its range policy.
+                if (isYouTubeMedia) throw error
                 android.util.Log.w(
                     "TrackDownloadManager",
                     "Validated range download unavailable; using one stream",
@@ -743,15 +745,31 @@ internal fun TrackDownloadManager.isGoogleVideoUrl(url: String): Boolean =
             host == "googlevideo.com" || host.endsWith(".googlevideo.com")
         }
 
-    /** Total size from a one-byte range request (`Content-Range: bytes 0-0/<total>`), or null. */
-internal suspend fun TrackDownloadManager.probeContentLength(url: String, requestHeaders: Map<String, String>): Long? =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                downloadClient.newCall(buildDownloadRequest(url, requestHeaders, DownloadRange(0L, 0L))).execute().use { response ->
-                    if (response.code != 206) return@use null
-                    parseContentRange(response.header("Content-Range"))?.total?.takeIf { it > 0L }
+internal suspend fun TrackDownloadManager.probeContentLength(url: String, requestHeaders: Map<String, String>): Long =
+        suspendCancellableCoroutine { continuation ->
+            val call = downloadClient.newCall(buildDownloadRequest(url, requestHeaders, DownloadRange(0L, 0L)))
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, error: IOException) {
+                    if (continuation.isActive) continuation.resumeWithException(error)
                 }
-            }.getOrNull()
+
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val total = response.use {
+                            validateMediaResponse(it, expectedCode = 206)
+                            val range = parseContentRange(it.header("Content-Range"))
+                            if (range == null || range.start != 0L || range.endInclusive != 0L || range.total <= 0L) {
+                                throw DownloadProtocolException("Missing or invalid Content-Range for YouTube download")
+                            }
+                            range.total
+                        }
+                        if (continuation.isActive) continuation.resume(total)
+                    } catch (error: Exception) {
+                        if (continuation.isActive) continuation.resumeWithException(error)
+                    }
+                }
+            })
         }
 
 internal fun TrackDownloadManager.buildDownloadRequest(

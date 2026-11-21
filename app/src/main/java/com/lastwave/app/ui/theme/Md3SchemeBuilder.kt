@@ -2,31 +2,55 @@ package com.lastwave.app.ui.theme
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import com.google.android.material.color.utilities.DynamicScheme
+import com.google.android.material.color.utilities.Hct
+import com.google.android.material.color.utilities.MaterialDynamicColors
+import com.google.android.material.color.utilities.SchemeNeutral
+import com.google.android.material.color.utilities.TonalPalette
+import com.google.android.material.color.utilities.Variant
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Rebuilds the app's dark Material You scheme from a single source hue,
- * mirroring `_applyMaterialYouScheme()` / `_applyMonochromeScheme()` in the
- * legacy app.js (which itself hand-rolled dynamicDarkColorScheme()-style
- * tonal roles in CSS HSL space). This is intentionally NOT the same
- * algorithm as Android's real HCT-based dynamic color — using that here
- * would shift every color relationship in the app and count as a redesign.
- * This is a literal, faithful port so nothing has to be re-approved visually.
+ * Builds Material Design 3 color schemes using the SchemeNeutral (reduced-chroma)
+ * dynamic theming architecture from SleepTracker, tuned to deeply muted, dark obsidian
+ * tones while preserving 100% cover art direction and contrast accessibility.
  */
 object Md3SchemeBuilder {
 
-    /** Chroma levels (CSS HSL %), match app.js constants exactly. */
-    private const val CHROMA_PRIMARY = 30
-    private const val CHROMA_SECONDARY = 14
-    private const val CHROMA_TERTIARY = 22
-    private const val CHROMA_NEUTRAL = 5
-    private const val CHROMA_NEUTRAL_VARIANT = 8
+    private val mdc = MaterialDynamicColors()
 
-    /** Extracts just the hue (0-360) from a hex color — the only component
-     *  app.js's _hexToHsl() result that _applyMaterialYouScheme() actually uses. */
+    // Deep obsidian dark surfaces (standard dark mode)
+    private val DarkBackground = Color(0xFF0C0C0E)
+    private val DarkSurface = Color(0xFF0C0C0E)
+    private val DarkSurfaceDim = Color(0xFF0C0C0E)
+    private val DarkSurfaceContainerLowest = Color(0xFF070709)
+    private val DarkSurfaceContainerLow = Color(0xFF111113)
+    private val DarkSurfaceContainer = Color(0xFF161619)
+    private val DarkSurfaceContainerHigh = Color(0xFF1C1C20)
+    private val DarkSurfaceContainerHighest = Color(0xFF232328)
+    private val DarkSurfaceVariant = Color(0xFF1E1E23)
+    private val DarkSurfaceBright = Color(0xFF2A2A30)
+
+    // AMOLED tokens matching SleepTracker (deep true black)
+    private val AmoledBlack = Color(0xFF000000)
+    private val AmoledSurfaceContainerLow = Color(0xFF070707)
+    private val AmoledSurfaceContainer = Color(0xFF0D0D0D)
+    private val AmoledSurfaceContainerHigh = Color(0xFF141414)
+    private val AmoledSurfaceContainerHighest = Color(0xFF1A1A1A)
+    private val AmoledSurfaceVariant = Color(0xFF141414)
+    private val AmoledSurfaceBright = Color(0xFF222222)
+
+    private fun parseColor(hex: String, fallback: Int = 0xFFE03030.toInt()): Int {
+        val clean = hex.trim()
+        val formatted = if (clean.startsWith("#")) clean else "#$clean"
+        return runCatching { android.graphics.Color.parseColor(formatted) }.getOrDefault(fallback)
+    }
+
+    /** Extracts just the hue (0-360) from a hex color. */
     fun hueOf(hex: String): Int {
         val clean = hex.removePrefix("#")
         if (clean.length < 6) return 0
@@ -61,94 +85,206 @@ object Md3SchemeBuilder {
     /** True for grey/black/white seeds: their hue is meaningless ([hueOf] gives 0, red). */
     fun isAchromatic(hex: String): Boolean = saturationOf(hex) < 0.1f
 
-    /** Extra chroma a fully saturated cover adds on top of the fixed levels. */
-    private const val MAX_ARTWORK_CHROMA_BOOST = 20
-
-    /**
-     * (dark, light) schemes for now-playing artwork. Fixed chroma and a
-     * hue+60 tertiary made every cover the same pastel: the cover's own
-     * saturation now sets how vivid the accents are, and its second colour,
-     * when it has one, is the tertiary. Grey covers get the monochrome scheme.
-     */
-    fun buildArtworkSchemes(seed: String, second: String?, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
-        if (isAchromatic(seed)) return buildMonochromeDarkScheme(amoled) to buildMonochromeLightScheme()
-        val h = hueOf(seed)
-        val hT = second?.let(::hueOf) ?: ((h + 60) % 360)
-        val boost = ((saturationOf(seed) * 100).roundToInt() - CHROMA_PRIMARY).coerceIn(0, MAX_ARTWORK_CHROMA_BOOST)
-        // Light primaries sit at 40% lightness under white text: half the boost keeps that readable.
-        return build(h, h, hT, h, amoled, chromaBoost = boost) to buildLight(h, h, hT, h, chromaBoost = boost / 2)
+    private fun DynamicScheme.toComposeColorScheme(): ColorScheme {
+        return if (this.isDark) {
+            ColorScheme(
+                primary = Color(primaryPalette.tone(72)),
+                onPrimary = Color(primaryPalette.tone(10)),
+                primaryContainer = Color(primaryPalette.tone(22)),
+                onPrimaryContainer = Color(primaryPalette.tone(85)),
+                inversePrimary = Color(primaryPalette.tone(40)),
+                secondary = Color(secondaryPalette.tone(72)),
+                onSecondary = Color(secondaryPalette.tone(10)),
+                secondaryContainer = Color(secondaryPalette.tone(22)),
+                onSecondaryContainer = Color(secondaryPalette.tone(85)),
+                tertiary = Color(tertiaryPalette.tone(72)),
+                onTertiary = Color(tertiaryPalette.tone(10)),
+                tertiaryContainer = Color(tertiaryPalette.tone(22)),
+                onTertiaryContainer = Color(tertiaryPalette.tone(85)),
+                background = DarkBackground,
+                onBackground = Color(neutralPalette.tone(90)),
+                surface = DarkSurface,
+                onSurface = Color(neutralPalette.tone(90)),
+                surfaceVariant = DarkSurfaceVariant,
+                onSurfaceVariant = Color(neutralVariantPalette.tone(75)),
+                surfaceTint = Color(primaryPalette.tone(72)),
+                inverseSurface = Color(neutralPalette.tone(90)),
+                inverseOnSurface = Color(neutralPalette.tone(20)),
+                error = Color(errorPalette.tone(70)),
+                onError = Color(errorPalette.tone(10)),
+                errorContainer = Color(errorPalette.tone(20)),
+                onErrorContainer = Color(errorPalette.tone(85)),
+                outline = Color(neutralVariantPalette.tone(45)),
+                outlineVariant = Color(neutralVariantPalette.tone(25)),
+                scrim = Color.Black,
+                surfaceBright = DarkSurfaceBright,
+                surfaceContainer = DarkSurfaceContainer,
+                surfaceContainerHigh = DarkSurfaceContainerHigh,
+                surfaceContainerHighest = DarkSurfaceContainerHighest,
+                surfaceContainerLow = DarkSurfaceContainerLow,
+                surfaceContainerLowest = DarkSurfaceContainerLowest,
+                surfaceDim = DarkSurfaceDim,
+            )
+        } else {
+            ColorScheme(
+                primary = Color(mdc.primary().getArgb(this)),
+                onPrimary = Color(mdc.onPrimary().getArgb(this)),
+                primaryContainer = Color(mdc.primaryContainer().getArgb(this)),
+                onPrimaryContainer = Color(mdc.onPrimaryContainer().getArgb(this)),
+                inversePrimary = Color(mdc.inversePrimary().getArgb(this)),
+                secondary = Color(mdc.secondary().getArgb(this)),
+                onSecondary = Color(mdc.onSecondary().getArgb(this)),
+                secondaryContainer = Color(mdc.secondaryContainer().getArgb(this)),
+                onSecondaryContainer = Color(mdc.onSecondaryContainer().getArgb(this)),
+                tertiary = Color(mdc.tertiary().getArgb(this)),
+                onTertiary = Color(mdc.onTertiary().getArgb(this)),
+                tertiaryContainer = Color(mdc.tertiaryContainer().getArgb(this)),
+                onTertiaryContainer = Color(mdc.onTertiaryContainer().getArgb(this)),
+                background = Color(mdc.background().getArgb(this)),
+                onBackground = Color(mdc.onBackground().getArgb(this)),
+                surface = Color(mdc.surface().getArgb(this)),
+                onSurface = Color(mdc.onSurface().getArgb(this)),
+                surfaceVariant = Color(mdc.surfaceVariant().getArgb(this)),
+                onSurfaceVariant = Color(mdc.onSurfaceVariant().getArgb(this)),
+                surfaceTint = Color(mdc.primary().getArgb(this)),
+                inverseSurface = Color(mdc.inverseSurface().getArgb(this)),
+                inverseOnSurface = Color(mdc.inverseOnSurface().getArgb(this)),
+                error = Color(mdc.error().getArgb(this)),
+                onError = Color(mdc.onError().getArgb(this)),
+                errorContainer = Color(mdc.errorContainer().getArgb(this)),
+                onErrorContainer = Color(mdc.onErrorContainer().getArgb(this)),
+                outline = Color(mdc.outline().getArgb(this)),
+                outlineVariant = Color(mdc.outlineVariant().getArgb(this)),
+                scrim = Color.Black,
+                surfaceBright = Color(mdc.surfaceBright().getArgb(this)),
+                surfaceContainer = Color(mdc.surfaceContainer().getArgb(this)),
+                surfaceContainerHigh = Color(mdc.surfaceContainerHigh().getArgb(this)),
+                surfaceContainerHighest = Color(mdc.surfaceContainerHighest().getArgb(this)),
+                surfaceContainerLow = Color(mdc.surfaceContainerLow().getArgb(this)),
+                surfaceContainerLowest = Color(mdc.surfaceContainerLowest().getArgb(this)),
+                surfaceDim = Color(mdc.surfaceDim().getArgb(this)),
+            )
+        }
     }
 
-    /** Full dynamic dark scheme, seeded from [hex]'s hue. Matches _applyMaterialYouScheme(). */
+    private fun generateDynamicScheme(
+        seedHex: String,
+        isDark: Boolean,
+    ): DynamicScheme {
+        val argb = parseColor(seedHex)
+        if (isAchromatic(seedHex)) {
+            val greyHct = Hct.fromInt(argb)
+            return DynamicScheme(
+                greyHct, Variant.NEUTRAL, isDark, 0.0,
+                TonalPalette.fromHueAndChroma(greyHct.hue, 0.0),
+                TonalPalette.fromHueAndChroma(greyHct.hue, 0.0),
+                TonalPalette.fromHueAndChroma(greyHct.hue, 0.0),
+                TonalPalette.fromHueAndChroma(greyHct.hue, 0.0),
+                TonalPalette.fromHueAndChroma(greyHct.hue, 0.0),
+            )
+        }
+        val hct = Hct.fromInt(argb)
+        val baseScheme = SchemeNeutral(hct, isDark, 0.0)
+        // Allow vivid covers to slightly influence primary chroma (8..16) while keeping it deeply muted
+        val priChroma = hct.chroma.coerceIn(8.0, 16.0)
+        val priPalette = TonalPalette.fromHueAndChroma(hct.hue, priChroma)
+
+        return DynamicScheme(
+            baseScheme.sourceColorHct,
+            baseScheme.variant,
+            baseScheme.isDark,
+            baseScheme.contrastLevel,
+            priPalette,
+            baseScheme.secondaryPalette,
+            baseScheme.tertiaryPalette,
+            baseScheme.neutralPalette,
+            baseScheme.neutralVariantPalette,
+        )
+    }
+
+    fun applyDarkSurfaces(scheme: ColorScheme): ColorScheme = scheme.copy(
+        background = DarkBackground,
+        surface = DarkSurface,
+        surfaceDim = DarkSurfaceDim,
+        surfaceContainerLowest = DarkSurfaceContainerLowest,
+        surfaceContainerLow = DarkSurfaceContainerLow,
+        surfaceContainer = DarkSurfaceContainer,
+        surfaceContainerHigh = DarkSurfaceContainerHigh,
+        surfaceContainerHighest = DarkSurfaceContainerHighest,
+        surfaceVariant = DarkSurfaceVariant,
+        surfaceBright = DarkSurfaceBright,
+    )
+
+    fun applyAmoledTheme(scheme: ColorScheme): ColorScheme = scheme.copy(
+        background = AmoledBlack,
+        surface = AmoledBlack,
+        surfaceDim = AmoledBlack,
+        surfaceContainerLowest = AmoledBlack,
+        surfaceContainerLow = AmoledSurfaceContainerLow,
+        surfaceContainer = AmoledSurfaceContainer,
+        surfaceContainerHigh = AmoledSurfaceContainerHigh,
+        surfaceContainerHighest = AmoledSurfaceContainerHighest,
+        surfaceVariant = AmoledSurfaceVariant,
+        surfaceBright = AmoledSurfaceBright,
+        inverseSurface = AmoledSurfaceContainerHighest,
+        inverseOnSurface = Color.White,
+    )
+
+    /**
+     * (dark, light) schemes for now-playing artwork using a single major dominant color.
+     */
+    fun buildArtworkSchemes(seed: String, @Suppress("UNUSED_PARAMETER") second: String? = null, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
+        val darkScheme = generateDynamicScheme(seed, isDark = true).toComposeColorScheme().let {
+            if (amoled) applyAmoledTheme(it) else it
+        }
+        val lightScheme = generateDynamicScheme(seed, isDark = false).toComposeColorScheme()
+        return darkScheme to lightScheme
+    }
+
+    /** Full dynamic dark scheme, seeded from [hex]. */
     @Suppress("UNUSED_PARAMETER")
     fun buildScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
         buildDarkScheme(hex, amoled, liquidGlass)
 
-    /** Dark scheme, seeded from [hex]'s hue. */
-    fun buildDarkScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme {
-        val h = hueOf(hex)
-        val hT = (h + 60) % 360
-        return build(
-            primaryHue = h,
-            secondaryHue = h,
-            tertiaryHue = hT,
-            neutralHue = h,
-            amoled = amoled,
-        )
-    }
-
-    /** Full dynamic light scheme, seeded from [hex]'s hue. */
+    /** Dark scheme, seeded from [hex]. */
     @Suppress("UNUSED_PARAMETER")
-    fun buildLightScheme(hex: String, liquidGlass: Boolean = false): ColorScheme {
-        val h = hueOf(hex)
-        val hT = (h + 60) % 360
-        return buildLight(
-            primaryHue = h,
-            secondaryHue = h,
-            tertiaryHue = hT,
-            neutralHue = h,
-            monochrome = false,
-        )
+    fun buildDarkScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme {
+        val darkScheme = generateDynamicScheme(hex, isDark = true).toComposeColorScheme()
+        return if (amoled) applyAmoledTheme(darkScheme) else darkScheme
     }
 
-    /** Pure grayscale dark scheme (all chroma = 0). Matches _applyMonochromeScheme(). */
+    /** Full dynamic light scheme, seeded from [hex]. */
+    @Suppress("UNUSED_PARAMETER")
+    fun buildLightScheme(hex: String, liquidGlass: Boolean = false): ColorScheme =
+        generateDynamicScheme(hex, isDark = false).toComposeColorScheme()
+
+    /** Pure grayscale dark scheme. */
     @Suppress("UNUSED_PARAMETER")
     fun buildMonochromeScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
         buildMonochromeDarkScheme(amoled, liquidGlass)
 
     /** Pure grayscale dark scheme. */
-    fun buildMonochromeDarkScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme = build(
-        primaryHue = 0,
-        secondaryHue = 0,
-        tertiaryHue = 0,
-        neutralHue = 0,
-        amoled = amoled,
-        monochrome = true,
-    )
-
-    /** Pure grayscale light scheme (all chroma = 0). */
     @Suppress("UNUSED_PARAMETER")
-    fun buildMonochromeLightScheme(liquidGlass: Boolean = false): ColorScheme = buildLight(
-        primaryHue = 0,
-        secondaryHue = 0,
-        tertiaryHue = 0,
-        neutralHue = 0,
-        monochrome = true,
-    )
+    fun buildMonochromeDarkScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
+        buildDarkScheme("#777777", amoled, liquidGlass)
+
+    /** Pure grayscale light scheme. */
+    @Suppress("UNUSED_PARAMETER")
+    fun buildMonochromeLightScheme(liquidGlass: Boolean = false): ColorScheme =
+        buildLightScheme("#777777", liquidGlass)
 
     /**
-     * LastWave Signature Dark Scheme built specifically around the official app logo colors:
-     * Electric Lime (#C9FB00) and Deep Obsidian Teal (#012226).
+     * LastWave Signature Dark Scheme built specifically around the official app logo colors.
      */
     fun buildLastWaveDarkScheme(amoled: Boolean, @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
         val brandLime = Color(0xFFC9FB00)
         val darkTeal = Color(0xFF012226)
         val deepTeal = Color(0xFF01181B)
 
-        val backgroundCol = if (amoled) Color.Black else deepTeal
-        val surfaceCol = if (amoled) Color.Black else darkTeal
-        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF011E22)
-        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF001214)
+        val backgroundCol = if (amoled) Color.Black else DarkBackground
+        val surfaceCol = if (amoled) Color.Black else DarkSurface
+        val surfaceLowCol = if (amoled) Color.Black else DarkSurfaceContainerLow
+        val surfaceLowestCol = if (amoled) Color.Black else DarkSurfaceContainerLowest
 
         return darkColorScheme(
             primary = brandLime,
@@ -175,12 +311,12 @@ object Md3SchemeBuilder {
             onBackground = Color(0xFFE4F8F8),
             surface = surfaceCol,
             onSurface = Color(0xFFE4F8F8),
-            surfaceContainer = Color(0xFF02272C),
-            surfaceContainerHigh = Color(0xFF04333A),
-            surfaceContainerHighest = Color(0xFF073F47),
+            surfaceContainer = if (amoled) AmoledSurfaceContainer else Color(0xFF02272C),
+            surfaceContainerHigh = if (amoled) AmoledSurfaceContainerHigh else Color(0xFF04333A),
+            surfaceContainerHighest = if (amoled) AmoledSurfaceContainerHighest else Color(0xFF073F47),
             surfaceContainerLow = surfaceLowCol,
             surfaceContainerLowest = surfaceLowestCol,
-            surfaceVariant = Color(0xFF063B42),
+            surfaceVariant = if (amoled) AmoledSurfaceVariant else Color(0xFF063B42),
             onSurfaceVariant = Color(0xFFA1CACE),
 
             outline = Color(0xFF23656E),
@@ -200,7 +336,7 @@ object Md3SchemeBuilder {
         val brandLime = Color(0xFFC9FB00)
         val darkTeal = Color(0xFF012226)
 
-        return androidx.compose.material3.lightColorScheme(
+        return lightColorScheme(
             primary = Color(0xFF486300),
             onPrimary = Color.White,
             primaryContainer = Color(0xFFE0FE5B),
@@ -243,170 +379,10 @@ object Md3SchemeBuilder {
         )
     }
 
-    private fun build(
-        primaryHue: Int,
-        secondaryHue: Int,
-        tertiaryHue: Int,
-        neutralHue: Int,
-        amoled: Boolean,
-        monochrome: Boolean = false,
-        chromaBoost: Int = 0,
-    ): ColorScheme {
-        val cP = if (monochrome) 0 else CHROMA_PRIMARY + chromaBoost
-        val cS = if (monochrome) 0 else CHROMA_SECONDARY + chromaBoost / 2
-        val cT = if (monochrome) 0 else CHROMA_TERTIARY + chromaBoost / 2
-        val cN = if (monochrome) 0 else CHROMA_NEUTRAL
-        val cNV = if (monochrome) 0 else CHROMA_NEUTRAL_VARIANT
-
-        val bgL = if (amoled) 0 else 6
-        val sc1L = if (amoled) 4 else 11
-        val sc2L = if (amoled) 8 else 16
-        val sc3L = if (amoled) 12 else 20
-
-        val backgroundCol = if (amoled) Color.Black else hsl(neutralHue, cN, bgL)
-        val surfaceCol = if (amoled) Color.Black else hsl(neutralHue, cN, bgL)
-        val surfaceLowCol = if (amoled) Color.Black else hsl(neutralHue, cN, bgL)
-        val surfaceLowestCol = if (amoled) Color.Black else hsl(neutralHue, cN, (bgL - 2).coerceAtLeast(0))
-
-        val scheme = darkColorScheme(
-            primary = hsl(primaryHue, cP, 82),
-            onPrimary = hsl(primaryHue, cP, 16),
-            primaryContainer = hsl(primaryHue, cP, if (amoled) 24 else 30),
-            onPrimaryContainer = hsl(primaryHue, (cP - 5).coerceAtLeast(0), 90),
-
-            secondary = hsl(secondaryHue, cS, 80),
-            onSecondary = hsl(secondaryHue, cS, 16),
-            secondaryContainer = hsl(secondaryHue, cS, if (amoled) 22 else 28),
-            onSecondaryContainer = hsl(secondaryHue, (cS - 4).coerceAtLeast(0), 90),
-
-            tertiary = hsl(tertiaryHue, cT, 80),
-            onTertiary = hsl(tertiaryHue, cT, 16),
-            tertiaryContainer = hsl(tertiaryHue, cT, if (amoled) 22 else 28),
-            onTertiaryContainer = hsl(tertiaryHue, (cT - 6).coerceAtLeast(0), 90),
-
-            error = hsl(0, if (monochrome) 45 else 45, 80),
-            errorContainer = hsl(0, if (monochrome) 30 else 30, 25),
-            onErrorContainer = hsl(0, if (monochrome) 25 else 25, 88),
-            onError = hsl(0, 45, 16),
-
-            background = backgroundCol,
-            onBackground = hsl(neutralHue, cNV, 90),
-            surface = surfaceCol,
-            onSurface = hsl(neutralHue, cNV, 90),
-            surfaceContainer = hsl(neutralHue, cN, sc1L),
-            surfaceContainerHigh = hsl(neutralHue, cN, sc2L),
-            surfaceContainerHighest = hsl(neutralHue, cN, sc3L),
-            surfaceContainerLow = surfaceLowCol,
-            surfaceContainerLowest = surfaceLowestCol,
-            surfaceVariant = hsl(neutralHue, cNV, sc2L + 4),
-            onSurfaceVariant = hsl(neutralHue, cNV, 80),
-
-            outline = hsl(neutralHue, cNV, 60),
-            outlineVariant = hsl(neutralHue, cNV, 28),
-
-            inverseSurface = hsl(neutralHue, cNV, 90),
-            inverseOnSurface = hsl(neutralHue, cNV, 20),
-            inversePrimary = hsl(primaryHue, cP, 40),
-            scrim = Color.Black,
-        )
-
-        return scheme
-    }
-
-    private fun buildLight(
-        primaryHue: Int,
-        secondaryHue: Int,
-        tertiaryHue: Int,
-        neutralHue: Int,
-        monochrome: Boolean = false,
-        chromaBoost: Int = 0,
-    ): ColorScheme {
-        val cP = if (monochrome) 0 else CHROMA_PRIMARY + 15 + chromaBoost
-        val cS = if (monochrome) 0 else CHROMA_SECONDARY + 8 + chromaBoost / 2
-        val cT = if (monochrome) 0 else CHROMA_TERTIARY + 12 + chromaBoost / 2
-        val cN = if (monochrome) 0 else 4
-        val cNV = if (monochrome) 0 else 6
-
-        return androidx.compose.material3.lightColorScheme(
-            primary = hsl(primaryHue, cP, 40),
-            onPrimary = Color.White,
-            primaryContainer = hsl(primaryHue, cP, 90),
-            onPrimaryContainer = hsl(primaryHue, cP, 10),
-
-            secondary = hsl(secondaryHue, cS, 40),
-            onSecondary = Color.White,
-            secondaryContainer = hsl(secondaryHue, cS, 90),
-            onSecondaryContainer = hsl(secondaryHue, cS, 10),
-
-            tertiary = hsl(tertiaryHue, cT, 40),
-            onTertiary = Color.White,
-            tertiaryContainer = hsl(tertiaryHue, cT, 90),
-            onTertiaryContainer = hsl(tertiaryHue, cT, 10),
-
-            error = hsl(0, 70, 40),
-            errorContainer = hsl(0, 70, 90),
-            onErrorContainer = hsl(0, 70, 12),
-            onError = Color.White,
-
-            background = hsl(neutralHue, cN, 98),
-            onBackground = hsl(neutralHue, cNV, 10),
-            surface = hsl(neutralHue, cN, 98),
-            onSurface = hsl(neutralHue, cNV, 10),
-            surfaceContainerLowest = Color.White,
-            surfaceContainerLow = hsl(neutralHue, cN, 96),
-            surfaceContainer = hsl(neutralHue, cN, 94),
-            surfaceContainerHigh = hsl(neutralHue, cN, 92),
-            surfaceContainerHighest = hsl(neutralHue, cN, 90),
-            surfaceVariant = hsl(neutralHue, cNV, 90),
-            onSurfaceVariant = hsl(neutralHue, cNV, 30),
-
-            outline = hsl(neutralHue, cNV, 50),
-            outlineVariant = hsl(neutralHue, cNV, 80),
-
-            inverseSurface = hsl(neutralHue, cNV, 20),
-            inverseOnSurface = hsl(neutralHue, cNV, 95),
-            inversePrimary = hsl(primaryHue, cP, 80),
-            scrim = Color.Black,
-        )
-    }
-
     internal fun contrast(a: Color, b: Color): Double {
         val la = a.luminance() + 0.05
         val lb = b.luminance() + 0.05
         return maxOf(la, lb) / minOf(la, lb)
-    }
-
-    /**
-     * HSL(h in 0-360, s in 0-100, l in 0-100) -> Compose Color.
-     * Standard conversion — must match browsers' CSS hsl() exactly so every
-     * token lines up with the values app.css previously rendered.
-     */
-    private fun hsl(h: Int, s: Int, l: Int): Color {
-        val hf = ((h % 360) + 360) % 360 / 360f
-        val sf = (s.coerceIn(0, 100)) / 100f
-        val lf = (l.coerceIn(0, 100)) / 100f
-
-        if (sf == 0f) return Color(lf, lf, lf)
-
-        val q = if (lf < 0.5f) lf * (1 + sf) else lf + sf - lf * sf
-        val p = 2 * lf - q
-
-        fun hueToRgb(t: Float): Float {
-            var tt = t
-            if (tt < 0f) tt += 1f
-            if (tt > 1f) tt -= 1f
-            return when {
-                tt < 1f / 6f -> p + (q - p) * 6f * tt
-                tt < 1f / 2f -> q
-                tt < 2f / 3f -> p + (q - p) * (2f / 3f - tt) * 6f
-                else -> p
-            }
-        }
-
-        val r = hueToRgb(hf + 1f / 3f)
-        val g = hueToRgb(hf)
-        val b = hueToRgb(hf - 1f / 3f)
-        return Color(r, g, b)
     }
 }
 

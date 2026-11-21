@@ -173,7 +173,7 @@ fun ExpressiveHeader(
                     Column(Modifier.weight(1f)) {
                         Text(
                             title,
-                            style = if (onBack != null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+                            style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (useGlass) (if (isDark) Color.White else Color.Black)
                             else MaterialTheme.colorScheme.onSurface,

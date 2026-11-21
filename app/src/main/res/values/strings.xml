@@ -127,6 +127,8 @@
     <string name="settings_app_font_sub">A custom look across the whole app</string>
     <string name="settings_bold_font">Use Bold Font</string>
     <string name="settings_bold_font_sub">Makes all text thicker, lyrics included</string>
+    <string name="settings_collapsing_nav_bar">Collapsing Navigation Bar</string>
+    <string name="settings_collapsing_nav_bar_sub">Shrink the bar to a tab icon and dock the mini player beside it while scrolling</string>
     <string name="settings_section_accent">Accent</string>
 
     <string name="settings_section_experimental">Experimental</string>
@@ -161,6 +163,10 @@
     <string name="settings_wavy_seekbar">Wavy Seekbar</string>
     <string name="settings_wavy_seekbar_on">Multi-layer fluid wavy progress slider</string>
     <string name="settings_wavy_seekbar_off">Classic standard progress slider</string>
+    <string name="settings_seekbar_style">Seekbar Style</string>
+    <string name="settings_seekbar_style_default">Default</string>
+    <string name="settings_seekbar_style_wavy">Wavy</string>
+    <string name="settings_seekbar_style_waveform">Waveform</string>
     <string name="settings_rotating_background">Rotating Background</string>
     <string name="settings_rotating_background_on">Animate fluid rotating artwork in player and lyrics view</string>
     <string name="settings_rotating_background_off">Static blurred background (recommended for Android 11 and below)</string>
@@ -781,6 +787,8 @@
     <string name="feed_see_all">See all</string>
     <string name="feed_discover">Discover New Music</string>
     <string name="feed_discover_sub">Handpicked tracks matched to your taste</string>
+    <string name="feed_discover_empty">No recommendations available</string>
+    <string name="feed_section_not_in_refresh">Not in the latest refresh</string>
     <string name="feed_fresh">Fresh finds</string>
     <string name="feed_fresh_sub">New tracks beyond your usual rotation</string>
     <string name="feed_jump">Jump back in</string>
@@ -1448,4 +1456,19 @@
     <string name="spotify_playlists_section_title">Spotify</string>
     <string name="spotify_liked_songs_title">Liked Songs</string>
     <string name="spotify_liked_songs_sub">Your Spotify likes</string>
+    <string name="recognize_music">Identify music</string>
+    <string name="recognize_listening">Listening…</string>
+    <string name="recognize_listening_hint">Hold your phone near the music</string>
+    <string name="recognize_identifying">Identifying…</string>
+    <string name="recognize_cancel">Cancel</string>
+    <string name="recognize_close">Close</string>
+    <string name="recognize_search">Search in LastWave</string>
+    <string name="recognize_retry">Try again</string>
+    <string name="recognize_open_settings">Open settings</string>
+    <string name="recognize_error_permission">Microphone access is needed to listen for music.</string>
+    <string name="recognize_error_mic">The microphone is not available. Close other apps that use it and try again.</string>
+    <string name="recognize_error_silence">Nothing was heard. Turn the music up or move closer and try again.</string>
+    <string name="recognize_error_no_match">This song could not be recognised. Move closer to the music and try again.</string>
+    <string name="recognize_error_rate_limited">Too many attempts. Wait a moment and try again.</string>
+    <string name="recognize_error_network">The recognition service could not be reached. Check your connection and try again.</string>
 </resources>

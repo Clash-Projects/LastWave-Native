@@ -3,6 +3,7 @@ package com.lastwave.app.data.video
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import com.lastwave.app.data.download.YOUTUBE_RANGE_BYTES
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import okhttp3.OkHttpClient
@@ -12,7 +13,6 @@ import java.io.IOException
 import java.nio.ByteOrder
 import kotlin.math.sqrt
 
-private const val DOWNLOAD_CHUNK_BYTES = 1024L * 1024L
 private const val CODEC_TIMEOUT_US = 10_000L
 
 /** Downloads the start of an audio stream and reduces it to a loudness envelope. */
@@ -35,13 +35,14 @@ internal class AudioEnvelopeReader(
         }
     }
 
-    /** Fetches bounded ranges, as the player does, because YouTube throttles open-ended ones. */
+    /** Fetches bounded ranges, as the player does: googlevideo throttles or 403s open-ended
+     *  ones and ranges over 512 KB. */
     private suspend fun download(url: String, headers: Map<String, String>, maxBytes: Long, file: File) {
         file.outputStream().use { output ->
             var position = 0L
             while (position < maxBytes) {
                 currentCoroutineContext().ensureActive()
-                val end = minOf(position + DOWNLOAD_CHUNK_BYTES, maxBytes) - 1
+                val end = minOf(position + YOUTUBE_RANGE_BYTES, maxBytes) - 1
                 val request = Request.Builder()
                     .url(url)
                     .header("Accept-Encoding", "identity")

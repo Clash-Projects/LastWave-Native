@@ -20,10 +20,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -234,12 +236,16 @@ class PlaylistRepository @Inject constructor(
     private suspend fun readAllOrNull(failureLog: String): List<SavedPlaylistEntity>? =
         orNull(failureLog) { dao.getAll() }
 
-    private fun List<SavedPlaylistEntity>.toDomainSorted(): List<SavedPlaylist> =
-        mapNotNull { entity ->
-            runCatching { entity.toDomain() }.getOrNull()
+    // Room resumes on the caller's dispatcher, which for screens is Main: decoding
+    // every playlist's track JSON there dropped frames on large libraries.
+    private suspend fun List<SavedPlaylistEntity>.toDomainSorted(): List<SavedPlaylist> =
+        withContext(Dispatchers.Default) {
+            mapNotNull { entity ->
+                runCatching { entity.toDomain() }.getOrNull()
+            }
+                .sortedByDescending { it.createdAtMillis }
+                .also { backfillMissingVideoIdsOnce(it) }
         }
-            .sortedByDescending { it.createdAtMillis }
-            .also { backfillMissingVideoIdsOnce(it) }
 
     suspend fun getById(id: Long): SavedPlaylist? {
         return try {
@@ -436,8 +442,7 @@ class PlaylistRepository @Inject constructor(
         }
     }
 
-    suspend fun getLocalSongs(): SavedPlaylist? =
-        getAll().firstOrNull { it.mode == LOCAL_SONGS_MODE }
+    suspend fun getLocalSongs(): SavedPlaylist? = newestOfMode(LOCAL_SONGS_MODE)
 
     /** Creates the built-in "Local songs" playlist (pinned) when absent. */
     suspend fun ensureLocalSongs(): SavedPlaylist = likedSongsMutex.withLock {
@@ -488,8 +493,18 @@ class PlaylistRepository @Inject constructor(
         }
     }
 
-    suspend fun getLikedSongs(): SavedPlaylist? =
-        getAll().firstOrNull { it.mode == LIKED_SONGS_MODE }
+    suspend fun getLikedSongs(): SavedPlaylist? = newestOfMode(LIKED_SONGS_MODE)
+
+    /** Every like and local import looks this up: read the one row instead of
+     *  decoding the whole library. A failed read takes the full path, which retries. */
+    private suspend fun newestOfMode(mode: String): SavedPlaylist? = try {
+        dao.getNewestByMode(mode)?.toDomain()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        Log.w(TAG, "Direct $mode playlist read failed", error)
+        getAll().firstOrNull { it.mode == mode }
+    }
 
     /** Creates the built-in local playlist only when it is genuinely absent. */
     suspend fun ensureLikedSongs(): SavedPlaylist = likedSongsMutex.withLock {
@@ -631,8 +646,25 @@ class PlaylistRepository @Inject constructor(
         }
     }
 
+    // Conflated: a burst of edits (bulk likes, an import) queued one full-library
+    // write each. Every write re-reads Room, so one pass after the current one
+    // still lands the newest state.
+    private val mirrorRequests = Channel<Unit>(Channel.CONFLATED).also { requests ->
+        exportScope.launch {
+            for (request in requests) {
+                // A failed pass (Room read) must not end the writer for the session.
+                try {
+                    syncPublicMirror()
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    Log.e(TAG, "Public playlist JSON sync failed", error)
+                }
+            }
+        }
+    }
+
     private fun syncPublicMirrorInBackground() {
-        exportScope.launch { syncPublicMirror() }
+        mirrorRequests.trySend(Unit)
     }
 
     private fun SavedPlaylistEntity.toDomain(): SavedPlaylist {

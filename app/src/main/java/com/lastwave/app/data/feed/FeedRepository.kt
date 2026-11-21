@@ -26,15 +26,16 @@ import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.recommend.RecommendationRepository
 import com.lastwave.app.data.repository.HomeRepository
+import com.lastwave.app.data.ytmusic.YtConnection
 import com.lastwave.app.data.ytmusic.YtMusicAuthManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -116,7 +117,16 @@ data class FeedData(
     val podcastShows: List<PodcastShow> = emptyList(),
     val podcastShelfTitle: String? = null,
     val lastUpdatedMillis: Long = 0L,
-)
+) {
+    val hasContent: Boolean get() =
+        nativeShelves.any { it.items.isNotEmpty() } ||
+            quickTiles.isNotEmpty() || mixes.isNotEmpty() || topArtists.isNotEmpty() ||
+            quickPicks.isNotEmpty() || jumpBackIn.isNotEmpty() || recentAlbums.isNotEmpty() ||
+            heavyRotation.isNotEmpty() || ytLikedSongs.isNotEmpty() || ytRecentSongs.isNotEmpty() ||
+            (becauseYouListenTo?.items?.isNotEmpty() == true) || freshFinds.isNotEmpty() ||
+            spotlight != null || charts.isNotEmpty() || newReleases.isNotEmpty() || friends.isNotEmpty() ||
+            podcastShows.isNotEmpty()
+}
 
 @Singleton
 class FeedRepository @Inject constructor(
@@ -129,22 +139,23 @@ class FeedRepository @Inject constructor(
     private val podcastRepository: PodcastRepository,
     private val settingsPreferences: SettingsPreferences,
 ) {
-    private var cachedFeed: FeedData? = null
-    private var cachedKey: String? = null
+    @Volatile private var cached: Pair<String, FeedData>? = null
     private val artistEntityCache = ConcurrentHashMap<String, FeedArtist>()
 
-    fun getCachedFeed(): FeedData? = cachedFeed
+    fun getCachedFeed(): FeedData? = cached?.second
+
+    fun getCachedFeed(username: String?, connection: YtConnection): FeedData? =
+        cached?.takeIf { it.first.startsWith("${username.orEmpty()}|$connection|") }?.second
 
     suspend fun loadFeed(
         username: String?,
         onUpdate: (FeedData) -> Unit = {},
-    ): FeedData = coroutineScope {
+    ): FeedData = withContext(Dispatchers.Default) {
         val connectionPre = ytAuth.awaitLoadedConnection()
         val settingsSnapshot = settingsPreferences.settings.first()
         val podcastsEnabled = settingsSnapshot.podcastsEnabled
         val cacheKey = "${username.orEmpty()}|$connectionPre|podcasts=$podcastsEnabled|rec=${settingsSnapshot.recommendationSource.id}"
-        val previous = cachedFeed?.takeIf { cachedKey == cacheKey }
-        previous?.let(onUpdate)
+        val previous = cached?.takeIf { it.first == cacheKey }?.second
         val random = kotlin.random.Random(System.nanoTime())
         val connection = connectionPre
         val isYtConnected = connection.isConnected
@@ -237,13 +248,24 @@ class FeedRepository @Inject constructor(
             } else emptyList()
         }
 
+        val homePage = homePageDef.await()
+        if (homePage.shelves.any { it.items.isNotEmpty() }) {
+            onUpdate((previous ?: FeedData()).copy(
+                isYtConnected = isYtConnected,
+                ytAccountName = connection.accountName.takeIf { isYtConnected },
+                userName = username,
+                nativeShelves = homePage.shelves,
+                homeChips = homePage.chips.ifEmpty { previous?.homeChips.orEmpty() },
+                homeContinuationToken = homePage.continuationToken ?: previous?.homeContinuationToken,
+            ))
+        }
+
         val releaseCandidates = newReleasesDef.await()
         val charts = chartsDef.await()
         val homePlaylists = homeMixesDef.await().filter {
             it.id.startsWith("PL") || it.id.startsWith("RD") || it.id.startsWith("OLAK") || it.id == "LM"
         }
         val homeSongs = homeSongsDef.await()
-        val homePage = homePageDef.await()
         val nativeShelves = homePage.shelves.ifEmpty {
             runCatching { innerTube.fetchHomeShelves() }.getOrDefault(emptyList())
         }
@@ -264,15 +286,15 @@ class FeedRepository @Inject constructor(
         // Guest/disconnected: local-first â€” liked + saved Room tracks plus
         // accountless public trending (homeSongs/charts). Account-only
         // shelves (ytLikedSongs) stay empty so the UI suppresses them.
-        val ytLikedSongs = ytTaste?.likedTracks.orEmpty().ifEmpty { previous?.ytLikedSongs.orEmpty() }
+        val ytLikedSongs = ytTaste?.likedTracks.orEmpty()
             .takeIf { isYtConnected } .orEmpty()
-        val ytRecentSongs = ytTaste?.recentTracks.orEmpty().ifEmpty { previous?.ytRecentSongs.orEmpty() }
+        val ytRecentSongs = ytTaste?.recentTracks.orEmpty()
             .takeIf { isYtConnected } .orEmpty()
         val ytQuickPicks = if (isYtConnected) {
-            ytTaste?.feedTracks.orEmpty().ifEmpty { homeSongs }.ifEmpty { previous?.quickPicks.orEmpty() }
+            ytTaste?.feedTracks.orEmpty().ifEmpty { homeSongs }
         } else {
             // Guest: local liked + public trending, never account-only.
-            (localQuickPicks + homeSongs).ifEmpty { previous?.quickPicks.orEmpty() }
+            localQuickPicks + homeSongs
         }
 
         val affinity = tasteProfile?.artistAffinity.orEmpty()
@@ -342,9 +364,8 @@ class FeedRepository @Inject constructor(
                             limit = 30,
                             durationSeconds = seed.durationSeconds,
                         )
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
                     } catch (_: Exception) {
+                        ensureActive()
                         emptyList()
                     }
                 }
@@ -394,7 +415,10 @@ class FeedRepository @Inject constructor(
         // Discovery: blends fresh picks over the familiar ones once the
         // round-trips land, and feeds Fresh Finds / Mixes below. It overlaps
         // with the artist fetches that follow instead of blocking paint.
-        val discoveryBatches = withTimeoutOrNull(3000L) { discoveryDef.await() } ?: emptyList()
+        val discoveryBatches = withTimeoutOrNull(3000L) { discoveryDef.await() } ?: run {
+            discoveryDef.cancel()
+            emptyList()
+        }
         val discoveryResults = discoverySeeds.zip(
             if (discoveryBatches.size == discoverySeeds.size) discoveryBatches else List(discoverySeeds.size) { emptyList<YouTubeMusicTrack>() }
         )
@@ -498,7 +522,6 @@ class FeedRepository @Inject constructor(
         }.awaitAll()
 
         val newReleases = (matchedReleases.ifEmpty { releaseCandidates })
-            .ifEmpty { previous?.newReleases.orEmpty() }
             .distinctBy { it.id }.take(15)
 
         val familiarIds = (ytLikedSongs + ytRecentSongs + regularPicks).mapTo(mutableSetOf()) { it.videoId }
@@ -619,7 +642,7 @@ class FeedRepository @Inject constructor(
         val lastFmArtByKey = lastFmTopAlbums.associate { top ->
             "${top.artist.trim().lowercase()}_${top.name.trim().lowercase()}" to top.artworkUrl
         }
-        val ytRealAlbums = topArtists
+        val ytRealAlbumsDef = async(Dispatchers.IO) { topArtists
             .filter { !it.browseId.isNullOrBlank() }
             .take(6)
             .map { artist ->
@@ -650,10 +673,10 @@ class FeedRepository @Inject constructor(
                             }
                     }
                 }
-            }.awaitAll().flatten()
+            }.awaitAll().flatten() }
         // Last.fm top albums â†’ strict YT Music verification. No exact
         // title+artist MPRE match = dropped, never guessed.
-        val lastFmRealAlbums = lastFmTopAlbums
+        val lastFmRealAlbumsDef = async(Dispatchers.IO) { lastFmTopAlbums
             .filter { it.name.isNotBlank() && it.artist.isNotBlank() }
             .distinctBy { "${it.artist.trim().lowercase()}_${it.name.trim().lowercase()}" }
             .take(20)
@@ -680,8 +703,8 @@ class FeedRepository @Inject constructor(
                         )
                     }
                 }
-            }.awaitAll().filterNotNull()
-        val recentAlbums = blend(ytRealAlbums, lastFmRealAlbums)
+            }.awaitAll().filterNotNull() }
+        val recentAlbums = blend(ytRealAlbumsDef.await(), lastFmRealAlbumsDef.await())
             .distinctBy { "${it.artist.trim().lowercase()}_${it.title.trim().lowercase()}" }
             .filter { !it.browseId.isNullOrBlank() }
             // Cover-art backfill: a card without a real cover is dropped, so
@@ -701,11 +724,6 @@ class FeedRepository @Inject constructor(
             }.awaitAll()
             .filter { ArtworkNormalizer.isRealImage(it.artworkUrl) }
             .take(12)
-            .ifEmpty {
-                previous?.recentAlbums.orEmpty()
-                    .filter { !it.browseId.isNullOrBlank() && ArtworkNormalizer.isRealImage(it.artworkUrl) }
-                    .take(12)
-            }
 
         val topSpotlightArtist = topArtists.filterNot { it.name == previous?.spotlight?.artistName }
             .randomOrNull(random) ?: topArtists.firstOrNull()
@@ -886,8 +904,7 @@ class FeedRepository @Inject constructor(
             lastUpdatedMillis = System.currentTimeMillis(),
         )
         ensureActive()
-        cachedFeed = result
-        cachedKey = cacheKey
+        cached = cacheKey to result
         result
     }
 

@@ -220,6 +220,8 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
                         ) {
                             LastWaveNavHost(navController)
                         }
+                        // Desktop-style in-app update dialog, shared by every screen.
+                        com.lastwave.app.ui.update.AppUpdateDialogHost()
                     }
                 }
             }
@@ -335,7 +337,7 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent == null) return
         if (intent.getStringExtra("widget_navigation") == "search") {
-            runCatching { appRouteNavigator.get().navigateTo(Screen.Search.route) }
+            runCatching { appRouteNavigator.get().navigateTo(Screen.Search.createRoute()) }
             return
         }
         if (intent.action == com.lastwave.app.widget.wave.WaveWidgetNavigation.ACTION_OPEN_NOW_PLAYING) {
@@ -344,7 +346,7 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
         }
         val uri = intent.data
         val isJamDeepLink = (uri?.scheme == "lastwave" && (uri.host == "jam" || uri.host == "sync")) ||
-            ((uri?.scheme == "https" || uri?.scheme == "http") && uri?.host == "jam.clashprojects.qd.je")
+            ((uri?.scheme == "https" || uri?.scheme == "http") && (uri?.host == "jam.clashgram.org" || uri?.host == "jam.clashprojects.qd.je"))
         if (isJamDeepLink) {
             val code = uri?.getQueryParameter("code")
             runCatching { appRouteNavigator.get().navigateTo(Screen.Jam.createRoute(code)) }

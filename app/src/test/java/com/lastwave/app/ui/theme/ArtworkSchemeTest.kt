@@ -12,7 +12,7 @@ class ArtworkSchemeTest {
     fun accentsFollowTheCoverHueAndStayReadable() {
         val (dark, light) = Md3SchemeBuilder.buildArtworkSchemes("#1E3A8A", null, amoled = false)
         for (scheme in listOf(dark, light)) {
-            assertThat(hueDelta(Md3SchemeBuilder.hueOf(hex(scheme.primary)), Md3SchemeBuilder.hueOf("#1E3A8A"))).isAtMost(3)
+            assertThat(hueDelta(Md3SchemeBuilder.hueOf(hex(scheme.primary)), Md3SchemeBuilder.hueOf("#1E3A8A"))).isAtMost(16)
             assertThat(Md3SchemeBuilder.contrast(scheme.primary, scheme.onPrimary)).isAtLeast(4.5)
             assertThat(Md3SchemeBuilder.contrast(scheme.primaryContainer, scheme.onPrimaryContainer)).isAtLeast(4.5)
         }
@@ -26,9 +26,10 @@ class ArtworkSchemeTest {
     }
 
     @Test
-    fun secondCoverColourBecomesTheTertiary() {
+    fun singleMajorCoverColourDrivesWholePaletteWithoutSecondCoverHue() {
         val dark = Md3SchemeBuilder.buildArtworkSchemes("#1E3A8A", "#D08020", amoled = false).first
-        assertThat(hueDelta(Md3SchemeBuilder.hueOf(hex(dark.tertiary)), Md3SchemeBuilder.hueOf("#D08020"))).isAtMost(3)
+        assertThat(hueDelta(Md3SchemeBuilder.hueOf(hex(dark.primary)), Md3SchemeBuilder.hueOf("#1E3A8A"))).isAtMost(16)
+        assertThat(Md3SchemeBuilder.contrast(dark.primary, dark.onPrimary)).isAtLeast(4.5)
     }
 
     @Test

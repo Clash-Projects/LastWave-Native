@@ -87,11 +87,7 @@ internal fun pickArtworkAccent(swatches: List<Pair<Int, Int>>): ArtworkAccent? {
         .sortedByDescending { (rgb, population) -> population * (0.5f + hslOf(rgb)[1]) }
         .map { it.first }
     val best = ranked.firstOrNull() ?: return ArtworkAccent(hexOf(grey(dominant, hsl)))
-    val bestHue = hslOf(best)[0].toInt()
-    val second = ranked.firstOrNull {
-        com.lastwave.app.ui.theme.hueDelta(hslOf(it)[0].toInt(), bestHue) >= MIN_SECOND_HUE_DELTA
-    }
-    return ArtworkAccent(hexOf(best), second?.let(::hexOf))
+    return ArtworkAccent(hexOf(best), null)
 }
 
 private fun grey(rgb: Int, hsl: FloatArray): Int {

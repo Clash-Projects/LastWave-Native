@@ -296,42 +296,32 @@ data class PlaybackProgressState(
 
 internal const val EXCLUSIVE_DRIFT_ABORT_PPM = 20_000.0
 internal const val EXCLUSIVE_DRIFT_ABORT_TICKS = 2
-internal const val YOUTUBE_PROMOTE_BUDGET_MS = 12_000L
-internal const val MISSING_ARTIST_METADATA_TIMEOUT_MS = 1_200L
-internal const val YT_RESOLVE_TOTAL_TIMEOUT_MS = 30_000L
-internal const val RECOVERY_RESOLVE_TIMEOUT_MS = 35_000L
-internal const val SEAMLESS_URL_REFRESH_TIMEOUT_MS = 12_000L
-internal const val MAX_REFRESHED_URL_ENTRIES = 64
-internal const val DISCOVER_QUEUE_BATCH_SIZE = 16
-internal const val DISCOVER_QUEUE_REFILL_THRESHOLD = 8
-internal const val RADIO_QUEUE_BATCH_SIZE = 35
-internal const val RADIO_QUEUE_REFILL_THRESHOLD = 14
 internal const val POSITION_PERSIST_INTERVAL_MS = 5_000L
 internal const val MAX_PERSISTED_QUEUE_SIZE = 200
 internal const val RESTORED_PREVIOUS_TRACKS = 50
-internal const val PLAYBACK_PREFERENCES_NAME = "lastwave_playback_session"
 internal const val PLAYBACK_SESSION_KEY = "active_session"
+/** Persisted Bit-Perfect volume session (survives process restarts). */
 internal const val KEY_VOLUME_MANAGED = "bitperfect_volume_managed"
 internal const val KEY_VOLUME_SAVED = "bitperfect_volume_saved"
-internal const val TICKER_PERSIST_INTERVAL_MS = 2_000L
-internal const val BACKGROUND_TICKER_CADENCE_MS = 250L
-internal const val APP_VOLUME_PERSIST_DEBOUNCE_MS = 400L
-internal const val PODCAST_PROGRESS_INTERVAL_MS = 10_000L
-internal const val PODCAST_FINISHED_RATIO = 0.95
-internal const val SEEK_SETTLE_WINDOW_MS = 400L
-internal const val SIGNAL_PATH_TICK_MS = 1_000L
-internal const val MAX_PLAYBACK_RETRIES = 3
 internal const val LOSSLESS_STARTUP_WAIT_MS = 8_000L
-internal const val LOSSLESS_BACKGROUND_BUDGET_MS = 30_000L
-internal const val HOT_SWAP_PROBE_SPEED = 4f
-internal const val HOT_SWAP_PROBE_TIMEOUT_MS = 8_000L
 
 
 typealias ResolvedStream = MusicPlayer.ResolvedStream
 
+/** Buffered lead kept for the crossfade standby: the next track is
+ *  resolved and prepared this far ahead of the fade window, so the
+ *  hand-off only ever has to wait for STATE_READY. */
 internal const val CROSSFADE_ARM_LEAD_MS = 10_000L
+/** Extra headroom on top of [CROSSFADE_ARM_LEAD_MS] for re-requesting a
+ *  next-track stream whose signed URL is dead or inside the expiry
+ *  margin. Provider modules / addons mint short-TTL FLAC URLs, so a
+ *  resolve started at track start reads expired by the time the window
+ *  opens; re-requesting at the window edge left no time to prepare and
+ *  turned every such fade into a hard cut. */
 internal const val CROSSFADE_PREP_REFRESH_LEAD_MS = 30_000L
+/** Rate limit for the per-tick crossfade decision log. */
 internal const val CROSSFADE_LOG_THROTTLE_MS = 5_000L
+/** Minimum gap between next-track resolve kicks for the same item. */
 internal const val CROSSFADE_RESOLVE_RETRY_MS = 8_000L
 internal val PERMANENT_PLAYBACK_ERROR_CODES = setOf(
     androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,

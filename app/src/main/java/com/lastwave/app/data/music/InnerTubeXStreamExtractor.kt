@@ -70,7 +70,11 @@ class InnerTubeXStreamExtractor @Inject constructor(
             // clients need to play a whole song. With it off, InnerTubeX
             // skipped those clients entirely.
             val constrainedHints = withCapabilities.invoke(hints, true, false, true)
-            val quality = if (maxBitrateBps == null) "HIGH" else "LOW"
+            // AUTO ranks Opus (webm) first, then the best of it; HIGH is a plain
+            // max-by-listed-bitrate that kept landing on AAC 128 (itag 140) when
+            // YouTube listed it a few kbps above Opus. HIGH only matters for
+            // InnerTubeX's Premium path, which is not used here.
+            val quality = if (maxBitrateBps == null) "AUTO" else "LOW"
             val audioQuality = enumValue("com.metrolist.innertubex.extraction.AudioQuality", quality)
             val now = System.currentTimeMillis()
             failedProfilesUntil.entries.removeIf { it.value <= now }

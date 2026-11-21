@@ -186,8 +186,7 @@ private const val TEXTURE_PX = 256
 private const val TEXTURE_CACHE = 3
 private const val CROSSFADE_MS = 1400
 private const val APPEAR_MS = 800
-private const val FRAME_SECONDS = 1f / 30f
-private const val FRAME_SLEEP_MS = 20L
+private const val FRAME_INTERVAL_MS = 66L
 
 private val textureCache = LinkedHashMap<String, Bitmap>()
 
@@ -405,19 +404,15 @@ fun FluidArtworkBackground(
     // + blur while paused or under the shade used most of a CPU core.
     LaunchedEffect(motionActive) {
         if (!motionActive) return@LaunchedEffect
-        var last = 0L
-        var pending = 0f
+        // Each step redraws the whole blurred screen and the 60 ms seek-bar
+        // ticker adds its own frames, so 30 Hz kept the full player at every
+        // vsync. Steps at 15 Hz move < 30 px under an 80+ px blur: no visible change.
+        var last = withFrameNanos { it }
         while (true) {
-            withFrameNanos { now ->
-                if (last != 0L) pending += ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
-                last = now
-            }
-            if (pending >= FRAME_SECONDS) {
-                seconds += pending
-                pending = 0f
-                // Effect advances at 30 Hz: sleep through ~2 vsyncs instead of requesting every frame (keeps 120 Hz panels idle).
-                delay(FRAME_SLEEP_MS)
-            }
+            delay(FRAME_INTERVAL_MS)
+            val now = withFrameNanos { it }
+            seconds += ((now - last) / 1_000_000_000f).coerceIn(0f, 0.1f)
+            last = now
         }
     }
 

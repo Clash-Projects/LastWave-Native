@@ -135,9 +135,7 @@ internal suspend fun InnerTubeMusicApi.resolveAudioStreamImpl(
             // Hard cap on one full resolution: without it a bad network could
             // chain every fallback stage into a 60-90s wait before the caller
             // ever got a chance to retry with fresh state.
-            kotlinx.coroutines.withTimeoutOrNull(STREAM_RESOLVE_TOTAL_TIMEOUT_MS) {
-                shared.deferred.await()
-            } ?: throw IOException("Timed out resolving audio stream for $videoId")
+            shared.deferred.awaitSharedStream(STREAM_RESOLVE_TOTAL_TIMEOUT_MS, videoId)
         } finally {
             shared.waiters.decrementAndGet()
             // Do not cancel the shared deferred when the last waiter leaves.
@@ -882,6 +880,9 @@ internal suspend fun InnerTubeMusicApi.resolveDirectClientStream(
                 // bitrate, so bitrate alone kept picking the quiet variant.
                 compareBy<YouTubeAudioStream> { it.isDrc }
                     .thenBy { it.isAdaptive }
+                    // Opus (webm) before AAC: at YouTube's ~130-160 kbps it is the
+                    // better codec, and listed bitrates differ by only a few kbps.
+                    .thenByDescending { it.mimeType?.contains("webm", ignoreCase = true) == true }
                     .thenByDescending { it.bitrate },
             )
         noteAttempt("client=${client.name} compatibleCandidates=${candidates.size} cipherAllowed=$allowCipherFormats")
@@ -1194,8 +1195,9 @@ internal suspend fun InnerTubeMusicApi.findBestMatchOrNullImpl(
         title: String,
         artist: String,
         prefetchStreams: Boolean = false,
+        expectedDurationMs: Long? = null,
     ): YouTubeMusicTrack? = try {
-        findBestMatchImpl(title, artist, prefetchStreams)
+        findBestMatchImpl(title, artist, prefetchStreams, expectedDurationMs = expectedDurationMs)
     } catch (cancellation: kotlinx.coroutines.CancellationException) {
         throw cancellation
     } catch (_: Exception) {

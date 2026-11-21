@@ -4,10 +4,9 @@
  */
 package com.lastwave.app.ui.feed.cards
 
+import com.lastwave.app.ui.common.rememberAmbientFloat
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,9 +33,8 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 private fun rememberShimmerPulse(): State<Float> {
-    val transition = rememberInfiniteTransition(label = "shelfSkeleton")
     // State, not value: read in drawBehind so the pulse repaints without recomposing every skeleton row.
-    return transition.animateFloat(
+    return rememberAmbientFloat(
         initialValue = 0.45f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(animation = tween(900), repeatMode = RepeatMode.Reverse),

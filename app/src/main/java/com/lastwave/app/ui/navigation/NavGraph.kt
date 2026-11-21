@@ -293,7 +293,7 @@ fun LastWaveNavHost(
                 onOpenSettings = {
                     navController.navigate(Screen.Settings.route) { launchSingleTop = true }
                 },
-                onOpenSearch = { navController.navigate(Screen.Search.route) },
+                onOpenSearch = { navController.navigate(Screen.Search.createRoute()) },
                 onOpenDiscover = { navController.navigate(Screen.Discover.route) },
                 onOpenGenres = { navController.navigate(Screen.Genres.route) },
                 onOpenFriends = { navController.navigate(Screen.Friends.route) },
@@ -571,7 +571,15 @@ fun LastWaveNavHost(
         }
 
 
-        composable(Screen.Search.route) { backStackEntry ->
+        composable(
+            route = Screen.Search.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("q") {
+                    type = androidx.navigation.NavType.StringType
+                    defaultValue = ""
+                },
+            ),
+        ) { backStackEntry ->
             PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 SearchScreen(
                     onBack = { navController.safePopBackStack(backStackEntry) },

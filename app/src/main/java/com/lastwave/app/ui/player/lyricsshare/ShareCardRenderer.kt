@@ -20,6 +20,7 @@ import android.text.TextPaint
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import com.lastwave.app.R
+import com.lastwave.app.ui.theme.BOLD_FONT_BOOST
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -87,17 +88,19 @@ object ShareCardRenderer {
         return bitmap
     }
 
-    fun getTypeface(context: Context, weight: Int): Typeface {
-        return try {
-            val base = ResourcesCompat.getFont(context, R.font.google_sans_flex)
-            if (base != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                Typeface.create(base, weight, false)
-            } else {
-                base ?: Typeface.create(Typeface.DEFAULT, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL)
-            }
-        } catch (_: Throwable) {
-            Typeface.create(Typeface.DEFAULT, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL)
+    /**
+     * Sets a real instance of the bundled variable Google Sans Flex, the same axes the
+     * lyrics screen uses (ui/theme/Type.kt). Typeface.create(base, weight) only
+     * fake-bolded the 400 default instance, so cards looked like plain system text.
+     */
+    private fun TextPaint.applyFlex(context: Context, weight: Float, opticalSize: Float, width: Float = 100f) {
+        val base = runCatching { ResourcesCompat.getFont(context, R.font.google_sans_flex) }.getOrNull()
+        if (base != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            typeface = base
+            val axes = "'wght' ${weight.coerceAtMost(1000f)}, 'wdth' $width, 'opsz' $opticalSize, 'ROND' 0"
+            if (runCatching { setFontVariationSettings(axes) }.getOrDefault(false)) return
         }
+        typeface = Typeface.create(base ?: Typeface.DEFAULT, if (weight >= 600f) Typeface.BOLD else Typeface.NORMAL)
     }
 
     fun wrapTextToWidth(
@@ -180,8 +183,7 @@ object ShareCardRenderer {
         scale: Float,
         maxAllowedHeight: Int,
     ): LayoutPlan {
-        val boldTypeface = getTypeface(context, 700)
-        val regularTypeface = getTypeface(context, 450)
+        val boost = if (spec.boldFont) BOLD_FONT_BOOST else 0f
 
         val topPadding = (60 * scale).roundToInt()
         val bottomPadding = (60 * scale).roundToInt()
@@ -194,14 +196,14 @@ object ShareCardRenderer {
             val textWidth = (contentWidth - thumbSize - textGap).coerceAtLeast(100)
 
             val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                typeface = boldTypeface
+                applyFlex(context, 700f + boost, 24f)
                 textSize = BASE_TITLE_FONT_SIZE * scale
                 color = spec.derivedColors.lyricsTextColor
             }
             val titleLayout = createStaticLayout(spec.title, titlePaint, textWidth, spec.isRtl, 1.15f)
 
             val artistPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                typeface = regularTypeface
+                applyFlex(context, 520f + boost, 16f)
                 textSize = BASE_ARTIST_FONT_SIZE * scale
                 color = spec.derivedColors.secondaryTextColor
             }
@@ -220,7 +222,7 @@ object ShareCardRenderer {
 
             while (fontSize >= floor) {
                 val lyricPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                    typeface = boldTypeface
+                    applyFlex(context, 760f + boost, 40f)
                     textSize = fontSize
                     color = spec.derivedColors.lyricsTextColor
                 }
@@ -258,14 +260,14 @@ object ShareCardRenderer {
             val heroToTitle = (28 * scale).roundToInt()
 
             val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                typeface = boldTypeface
+                applyFlex(context, 700f + boost, 24f)
                 textSize = BASE_TITLE_FONT_SIZE * scale
                 color = spec.derivedColors.lyricsTextColor
             }
             val titleLayout = createStaticLayout(spec.title, titlePaint, contentWidth, spec.isRtl, 1.15f)
 
             val artistPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                typeface = regularTypeface
+                applyFlex(context, 520f + boost, 16f)
                 textSize = BASE_ARTIST_FONT_SIZE * scale
                 color = spec.derivedColors.secondaryTextColor
             }
@@ -282,7 +284,7 @@ object ShareCardRenderer {
 
             while (fontSize >= floor) {
                 val lyricPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                    typeface = boldTypeface
+                    applyFlex(context, 760f + boost, 40f)
                     textSize = fontSize
                     color = spec.derivedColors.lyricsTextColor
                 }
@@ -347,23 +349,8 @@ object ShareCardRenderer {
             }
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrimGrad)
         } else {
-            // Rich flat / subtle same-hue gradient (YT style - no muddy blur)
-            val topColor = spec.derivedColors.backgroundColor or 0xFF000000.toInt()
-            val hsv = FloatArray(3)
-            AndroidColor.colorToHSV(topColor, hsv)
-            hsv[2] = (hsv[2] * 0.82f).coerceAtLeast(0.08f) // slightly deeper shade at bottom
-            val bottomColor = AndroidColor.HSVToColor(0xFF, hsv) or 0xFF000000.toInt()
-
-            canvas.drawColor(topColor) // Explicit opaque fill
-            val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = LinearGradient(
-                    0f, 0f, 0f, height.toFloat(),
-                    intArrayOf(topColor, bottomColor),
-                    null,
-                    Shader.TileMode.CLAMP,
-                )
-            }
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+            // Flat picked colour, like YouTube Music's card; a darkening gradient turned light swatches grey.
+            canvas.drawColor(spec.derivedColors.backgroundColor or 0xFF000000.toInt())
         }
 
         var currentY = (60 * scale)
@@ -452,23 +439,8 @@ object ShareCardRenderer {
         scale: Float,
         plan: LayoutPlan,
     ) {
-        // 1. Background: rich flat / subtle gradient of selected swatch (NO muddy blur!)
-        val topColor = spec.derivedColors.backgroundColor or 0xFF000000.toInt()
-        val hsv = FloatArray(3)
-        AndroidColor.colorToHSV(topColor, hsv)
-        hsv[2] = (hsv[2] * 0.82f).coerceAtLeast(0.08f)
-        val bottomColor = AndroidColor.HSVToColor(0xFF, hsv) or 0xFF000000.toInt()
-
-        canvas.drawColor(topColor) // Explicit opaque fill
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(
-                0f, 0f, 0f, height.toFloat(),
-                intArrayOf(topColor, bottomColor),
-                null,
-                Shader.TileMode.CLAMP,
-            )
-        }
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+        // 1. Background: the flat picked colour
+        canvas.drawColor(spec.derivedColors.backgroundColor or 0xFF000000.toInt())
 
         var currentY = (60 * scale)
 
@@ -546,23 +518,22 @@ object ShareCardRenderer {
         brandColor: Int,
     ) {
         val footerY = height - (60 * scale)
-        val logoSize = (64 * scale).roundToInt()
-        val gap = (14 * scale)
+        val logoSize = (72 * scale).roundToInt()
+        val gap = (12 * scale)
 
+        // Heaviest, slightly wide cut of the app font so the wordmark reads as a logo, not a caption.
         val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = getTypeface(context, 750)
+            applyFlex(context, 1000f, 64f, width = 112f)
             textSize = 64f * scale
+            letterSpacing = -0.02f
             color = brandColor
         }
 
-        // Draw tintable logo mark
-        drawLogoMark(canvas, context, x + (logoSize / 2f), footerY - (logoSize / 2f), logoSize, brandColor)
-
-        // Draw "LastWave" text aligned horizontally with logo
-        val brandName = "LastWave"
-        val textX = x + logoSize + gap
-        val textY = footerY - (logoSize * 0.18f)
-        canvas.drawText(brandName, textX, textY, textPaint)
+        val centerY = footerY - (logoSize / 2f)
+        drawLogoMark(canvas, context, x + (logoSize / 2f), centerY, logoSize, brandColor)
+        // Baseline that centres the glyphs on the mark instead of a fixed guess.
+        val textY = centerY - (textPaint.ascent() + textPaint.descent()) / 2f
+        canvas.drawText("LastWave", x + logoSize + gap, textY, textPaint)
     }
 
     private fun drawLogoMark(

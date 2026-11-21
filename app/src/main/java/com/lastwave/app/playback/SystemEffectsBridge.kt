@@ -59,12 +59,8 @@ class SystemEffectsBridge(private val appContext: Context) {
             putExtra(AudioEffect.EXTRA_PACKAGE_NAME, appContext.packageName)
             putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
         }
-        // No effect panel installed (or a ROM that hides it): stay silent
-        // instead of broadcasting into the void on every track.
-        val hasPanel = runCatching {
-            open.resolveActivity(appContext.packageManager) != null
-        }.getOrDefault(false)
-        if (!hasPanel) return
+        // Always broadcast: effect apps listen with receivers (not activities)
+        // that package visibility hides, so any "is one installed?" probe says no.
         runCatching { appContext.sendBroadcast(open) }
             .onSuccess {
                 publishedSessionId = lastSessionId

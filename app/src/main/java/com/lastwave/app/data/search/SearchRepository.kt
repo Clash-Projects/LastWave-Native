@@ -1,5 +1,6 @@
 package com.lastwave.app.data.search
 
+import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import androidx.compose.runtime.Immutable
 import com.lastwave.app.data.generate.GenerateJson
 import com.lastwave.app.data.generate.GeneratedTrack
@@ -77,19 +78,14 @@ class SearchRepository @Inject constructor(
                 .url(url)
                 .header("User-Agent", YOUTUBE_WEB_USER_AGENT)
                 .build()
-            try {
-                http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use
-                    val body = response.body?.string() ?: return@use
-                    val array = json.parseToJsonElement(body) as? JsonArray ?: return@use
-                    if (array.size < 2) return@use
-                    val suggestions = array[1] as? JsonArray ?: return@use
-                    val parsed = suggestions.mapNotNull { (it as? JsonPrimitive)?.content }
-                    if (parsed.isNotEmpty()) return@withContext parsed
-                }
-            } catch (_: Exception) {
-                // Try alternate suggestion endpoint
-            }
+            // Cancellable: each keystroke cancels the previous lookup, and a blocking
+            // execute() kept that request running (and then tried the next endpoint).
+            val body = http.newCall(request).awaitSuccessfulBodyOrNull() ?: continue
+            val parsed = runCatching {
+                ((json.parseToJsonElement(body) as? JsonArray)?.getOrNull(1) as? JsonArray)
+                    ?.mapNotNull { (it as? JsonPrimitive)?.content }
+            }.getOrNull()
+            if (!parsed.isNullOrEmpty()) return@withContext parsed
         }
         emptyList()
     }

@@ -36,6 +36,21 @@ object Diagnostics {
 
             AppLog.i(TAG, "Diagnostics starting (pid=${android.os.Process.myPid()})")
 
+            // Off the startup path: the exit-history binder query, and after a crash
+            // decoding its tombstone or ANR trace, ran here before the first frame.
+            Thread({ recordPreviousSessionEnd(context, uncleanSession) }, "lastwave-exit-reasons").apply {
+                isDaemon = true
+                start()
+            }
+
+            startAnrWatchdog()
+        }.onFailure {
+            android.util.Log.e(TAG, "Diagnostics unavailable; continuing without it", it)
+        }
+    }
+
+    private fun recordPreviousSessionEnd(context: Context, uncleanSession: String?) {
+        runCatching {
             // A native crash, a low-memory kill, or a system-recorded ANR leave
             // no Java stack trace for the crash handler to see. Android 11+
             // records them itself and this surfaces them as crash files.
@@ -59,10 +74,8 @@ object Diagnostics {
                     },
                 )
             }
-
-            startAnrWatchdog()
         }.onFailure {
-            android.util.Log.e(TAG, "Diagnostics unavailable; continuing without it", it)
+            android.util.Log.e(TAG, "Previous session exit records unavailable", it)
         }
     }
 

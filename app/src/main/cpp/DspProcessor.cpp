@@ -667,6 +667,11 @@ void DspProcessor::process(
         samples[offset] = outputLeft;
         if (channelCount == 2) samples[offset + 1U] = outputRight;
     }
+    for (auto& band : equalizerBands_) band.settle();
+    for (Biquad* filter : {&subBassHighPass_, &bassFoundation_, &lowMidSeparation_, &boxinessControl_,
+             &presenceDetail_, &airDetail_, &monoBassFilter_, &airExciterFilter_}) {
+        filter->settle();
+    }
 
     if (target == 0.0F && currentWet_ == 0.0F && clarityChainActive_) {
         // Once bypass has fully crossfaded, stop burning CPU on a result that

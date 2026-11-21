@@ -54,6 +54,11 @@ class ExclusiveUsbOutput @Inject constructor(
     private var stream: UsbAudioStream? = null
     private val pcmLock = Object()
     private val pcmQueue = ArrayDeque<QueuedPcm>()
+    // Arrays the writer has finished with (guarded by pcmLock). Media3 hands over
+    // equal-sized chunks, so steady playback reuses these instead of allocating
+    // a new array per chunk. The native write copies and releases them in-call.
+    private val spareFloats = ArrayDeque<FloatArray>()
+    private val spareBytes = ArrayDeque<ByteArray>()
     @Volatile private var queuedBytes = 0
     @Volatile private var flushRequested = false
     @Volatile private var writerStop = false
@@ -372,14 +377,17 @@ class ExclusiveUsbOutput @Inject constructor(
         // Queued unscaled: gain is applied by the writer as each chunk leaves
         // the queue, so a volume change is heard now, not ~3 s of queue later.
         val chunk = if (isFloatBuffer) {
-            val floats = FloatArray(size / Float.SIZE_BYTES)
+            val count = size / Float.SIZE_BYTES
+            val floats = synchronized(pcmLock) { spareFloats.removeFirstOrNull() }
+                ?.takeIf { it.size == count } ?: FloatArray(count)
             buffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floats)
             buffer.position(buffer.limit())
             QueuedPcm(floats, null, 0, size)
         } else {
             val encoding = writeRawEncoding(sourceEncoding)
             if (encoding < 0) return false
-            val bytes = ByteArray(size)
+            val bytes = synchronized(pcmLock) { spareBytes.removeFirstOrNull() }
+                ?.takeIf { it.size == size } ?: ByteArray(size)
             buffer.get(bytes)
             QueuedPcm(null, bytes, encoding, size)
         }
@@ -951,6 +959,10 @@ class ExclusiveUsbOutput @Inject constructor(
                 writingInProgress = false
                 lastWriteElapsedMs = SystemClock.elapsedRealtime()
             }
+            synchronized(pcmLock) {
+                next.floats?.let { if (spareFloats.size < MAX_SPARE_CHUNKS) spareFloats.addLast(it) }
+                next.raw?.let { if (spareBytes.size < MAX_SPARE_CHUNKS) spareBytes.addLast(it) }
+            }
         }
     }
 
@@ -1055,6 +1067,7 @@ class ExclusiveUsbOutput @Inject constructor(
         const val RAW_PCM24 = 0x15
         const val RAW_PCM32 = 0x16
         const val MAX_QUEUED_BYTES = 512 * 1024
+        const val MAX_SPARE_CHUNKS = 4
         val FLUSH_MARKER = QueuedPcm(null, null, -1, 0)
         val IDLE_MARKER = QueuedPcm(null, null, -2, 0)
 

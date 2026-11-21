@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.search
 
 import androidx.compose.runtime.Immutable
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lastwave.app.data.generate.LocalAudioFormats
@@ -43,6 +44,7 @@ data class SearchUiState(
  */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val repository: SearchRepository,
     private val historyRepository: SearchHistoryRepository,
     private val musicPlayer: MusicPlayer,
@@ -58,6 +60,8 @@ class SearchViewModel @Inject constructor(
     private var lastIssuedQuery: String = ""
 
     init {
+        // Opened with a ready-made query (e.g. from music recognition).
+        savedStateHandle.get<String>("q")?.takeIf { it.isNotBlank() }?.let(::executeSearch)
         viewModelScope.launch {
             historyRepository.history.collect { history ->
                 _uiState.update { it.copy(recentSearches = history) }

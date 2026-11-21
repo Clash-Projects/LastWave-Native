@@ -367,54 +367,22 @@ internal fun AccentPresetGrid(
 }
 
 /**
- * Four coordinated shades derived from one preset hex via HSV — Dark,
- * Medium, Light, and a punchier Accent tone — used to render a real
- * multi-tone palette preview inside each Accent tile instead of one flat
- * swatch. Order returned: [dark, medium, light, accent].
- *
- * Tuned for a muted, Material You / Monet feel rather than raw HSV
- * vibrance: saturation is capped well below 100% even for the "accent"
- * shade (Monet's HCT-derived tonal palettes rarely reach full chroma —
- * that's what read as neon here), and the value range is narrower so
- * "dark" and "light" stay closer to the preset's own character instead of
- * swinging to near-black/near-white extremes.
+ * Renders a preset's solid accent swatch cleanly filling the tile,
+ * avoiding mixed-up multi-color slices.
  */
-internal fun accentShades(hex: String): List<Color> {
-    val argb = android.graphics.Color.parseColor(hex)
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(argb, hsv)
-    val (h, s, v) = hsv
-    val mutedBase = s * 0.72f // the single biggest lever for "less neon"
-
-    fun shade(saturation: Float, value: Float): Color {
-        val arr = floatArrayOf(h, saturation.coerceIn(0f, 0.82f), value.coerceIn(0.2f, 0.92f))
-        return Color(android.graphics.Color.HSVToColor(arr))
-    }
-
-    return listOf(
-        shade(mutedBase.coerceAtLeast(0.42f), v * 0.62f), // dark
-        shade(mutedBase, v * 0.80f), // medium — closest to the preset's own tone
-        shade((mutedBase * 0.55f), (v + (1f - v) * 0.45f).coerceAtLeast(0.78f)), // light
-        shade((mutedBase * 1.15f), (v * 0.95f)), // accent — a touch richer, never maxed out
-    )
-}
-
-/** Renders a preset's four shades as a 2x2 block grid filling the tile,
- *  so selecting a preset previews its whole coordinated palette rather
- *  than one flat color. */
 @Composable
 internal fun PaletteTilePreview(hex: String) {
-    val shades = remember(hex) { accentShades(hex) }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[0]))
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[1]))
-        }
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[2]))
-            Box(Modifier.weight(1f).fillMaxHeight().background(shades[3]))
-        }
+    val color = remember(hex) {
+        val argb = runCatching {
+            android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
+        }.getOrDefault(0xFFE03030.toInt())
+        Color(argb)
     }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(color),
+    )
 }
 
 
