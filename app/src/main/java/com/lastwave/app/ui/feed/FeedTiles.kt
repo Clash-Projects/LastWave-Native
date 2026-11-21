@@ -768,20 +768,20 @@ internal fun QuickPicksRows(
     val sizeClass = rememberWindowSizeClass()
     val haptics = LocalHapticFeedback.current
     val widthFraction = when (sizeClass) {
-        WindowSizeClass.COMPACT -> 0.88f
+        WindowSizeClass.COMPACT -> 0.92f
         WindowSizeClass.MEDIUM -> 0.48f
         WindowSizeClass.EXPANDED -> 0.32f
     }
     val columns = remember(tracks) { tracks.chunked(3) }
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.padding(top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 8.dp),
     ) {
         itemsIndexed(columns) { columnIndex, column ->
             Column(
                 modifier = Modifier.fillParentMaxWidth(widthFraction),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 column.forEachIndexed { rowIndex, track ->
                     val overallIndex = columnIndex * 3 + rowIndex
@@ -804,17 +804,17 @@ internal fun QuickPicksRows(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Box(modifier = Modifier.size(54.dp)) {
+                            Box(modifier = Modifier.size(64.dp)) {
                                 ArtworkImage(
                                     name = track.title,
                                     artist = ArtistHelper.primaryArtist(track.artist),
                                     embeddedUrl = track.artworkUrl,
                                     fallbackIcon = Icons.Filled.MusicNote,
-                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)),
+                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)),
                                 )
                                 if (isCurrent && isPlaying) {
                                     PlayingWaveBars(
@@ -828,7 +828,7 @@ internal fun QuickPicksRows(
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(
                                     track.title,
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.5.sp),
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
                                     fontWeight = FontWeight.SemiBold,
                                     // One line keeps every row the same height; a long
                                     // title wrapping to two made its row taller than the rest.

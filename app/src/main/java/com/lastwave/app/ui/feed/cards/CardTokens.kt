@@ -42,8 +42,8 @@ object CardTokens {
     /** Consistent horizontal gap between cards in a feed row (10-12dp). */
     val cardGap: Dp = 12.dp
 
-    /** Reduced vertical gap between feed sections (halved from legacy 40dp to 16dp). */
-    val sectionGap: Dp = 16.dp
+    /** Reduced vertical gap between feed sections (legacy 40dp, then 16dp). */
+    val sectionGap: Dp = 12.dp
 
     /** Vertical gap between cover artwork and text container. */
     val coverToTextGap: Dp = 8.dp

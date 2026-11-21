@@ -46,7 +46,6 @@ internal fun HomeMoodsSection(
             tiles.isNotEmpty() -> MoodMosaic(
                 tiles = tiles,
                 onTileClick = viewModel::openTile,
-                pastelGlass = true,
             )
             else -> MoodsLoadMessage(failed = state.failed, onRetry = viewModel::refresh)
         }
