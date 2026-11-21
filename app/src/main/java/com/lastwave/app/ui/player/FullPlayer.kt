@@ -435,7 +435,6 @@ internal fun FullPlayer(
     val fullBleedBlocked = isTabletLandscape
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !fullBleedBlocked
     val showSleeveCanvas = isCanvasActive && !showFullBleed && !isVideoActive
-    val beatRhythm by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
     // activeCanvas is the single gate every render branch below keys off, so it also
     // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
     // asynchronously, so without this a disabled toggle still paints one frame of
@@ -726,49 +725,6 @@ internal fun FullPlayer(
                 animationSpec = tween(350),
                 label = "lyricsVeil",
             )
-            // Beat sync only: its black-screen guard. The default background never
-            // needed these layers, and drawing them is extra overdraw every frame.
-            if (fluidBeatSyncEnabled) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.radialGradient(
-                                0f to ambientColor.copy(alpha = 0.58f),
-                                0.45f to ambientColor.copy(alpha = 0.22f),
-                                1f to Color.Transparent,
-                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
-                                radius = bgMaxDimension * 0.85f,
-                            )
-                        )
-                )
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.radialGradient(
-                                0f to ambientCompanion.copy(alpha = 0.52f),
-                                0.50f to ambientCompanion.copy(alpha = 0.20f),
-                                1f to Color.Transparent,
-                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
-                                radius = bgMaxDimension * 0.78f,
-                            )
-                        )
-                )
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.radialGradient(
-                                0f to ambientDeep.copy(alpha = 0.42f),
-                                0.55f to ambientDeep.copy(alpha = 0.14f),
-                                1f to Color.Transparent,
-                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
-                                radius = bgMaxDimension * 0.70f,
-                            )
-                        )
-                )
-            }
             // Kept out of the glass capture: every motion step re-blurred each glass
             // control (~2x frame cost). The fluid is already blurred, so it shows through.
             FluidArtworkBackground(
@@ -878,67 +834,37 @@ internal fun FullPlayer(
                         bgMaxDimension = bgMaxDimension,
                     )
                 }
-                // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors).
-                // The lighter variant is beat sync's; the default keeps the original scrim.
-                val beatScrim = showFullBleed && fluidBeatSyncEnabled
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0.00f to Color.Black.copy(alpha = if (beatScrim) 0.18f else 0.35f),
-                                0.28f to Color.Black.copy(alpha = if (beatScrim) 0.05f else 0.15f),
-                                (if (beatScrim) 0.60f else 0.65f) to Color.Black.copy(alpha = if (beatScrim) 0.12f else 0.40f),
-                                1.00f to Color.Black.copy(alpha = if (beatScrim) 0.32f else 0.72f),
-                            )
-                        )
-                )
-                // Subtle edge vignette
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.radialGradient(
-                                0f to Color.Transparent,
-                                0.65f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.30f),
-                                center = androidx.compose.ui.geometry.Offset(
-                                    bgWidth * 0.50f,
-                                    bgHeight * 0.40f,
-                                ),
-                                radius = bgMaxDimension * 0.80f,
-                            ),
-                        ),
-                )
-                if (showFullBleed && fluidBeatSyncEnabled) {
-                    // Prominent beat-reactive ambient visualizer wave under full-screen artwork
+                // Beat sync skips both, as Lyra does: its shader already dims the flow.
+                if (!fluidBeatSyncEnabled) {
+                    // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors).
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .graphicsLayer {
-                                @Suppress("UNUSED_VARIABLE")
-                                val observed = beatRhythm
-                                val r = if (state.isPlaying && fluidBeatSyncEnabled) {
-                                    com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
-                                } else {
-                                    0f
-                                }
-                                alpha = (0.35f + r * 0.65f).coerceIn(0f, 1f)
-                                val pulseScale = 1.0f + r * 0.38f
-                                scaleX = pulseScale
-                                scaleY = pulseScale
-                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1.0f)
-                            }
                             .background(
-                                Brush.radialGradient(
-                                    0.0f to ambientColor.copy(alpha = 0.90f),
-                                    0.35f to ambientCompanion.copy(alpha = 0.60f),
-                                    0.70f to ambientDeep.copy(alpha = 0.35f),
-                                    1.0f to Color.Transparent,
-                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.50f, bgHeight * 0.90f),
-                                    radius = bgMaxDimension * 0.85f,
+                                Brush.verticalGradient(
+                                    0.00f to Color.Black.copy(alpha = 0.35f),
+                                    0.28f to Color.Black.copy(alpha = 0.15f),
+                                    0.65f to Color.Black.copy(alpha = 0.40f),
+                                    1.00f to Color.Black.copy(alpha = 0.72f),
                                 )
                             )
+                    )
+                    // Subtle edge vignette
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    0f to Color.Transparent,
+                                    0.65f to Color.Transparent,
+                                    1f to Color.Black.copy(alpha = 0.30f),
+                                    center = androidx.compose.ui.geometry.Offset(
+                                        bgWidth * 0.50f,
+                                        bgHeight * 0.40f,
+                                    ),
+                                    radius = bgMaxDimension * 0.80f,
+                                ),
+                            ),
                     )
                 }
                 if (showFullBleed) {
