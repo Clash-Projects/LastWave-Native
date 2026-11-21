@@ -339,6 +339,7 @@ internal fun QueuePanel(
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var draggingKey by remember { mutableStateOf<String?>(null) }
+    var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var dragStartOffsetY by remember { mutableFloatStateOf(0f) }
     var menuIndex by remember { mutableStateOf<Int?>(null) }
@@ -370,7 +371,9 @@ internal fun QueuePanel(
         val source = currentQueueKeys.indexOf(key)
         val visible = listState.layoutInfo.visibleItemsInfo
         val draggedInfo = visible.firstOrNull { it.key == key } ?: return
-        if (source !in currentQueue.indices || draggedInfo.index != source) return
+        // Wait for both composition and layout to acknowledge the last move; otherwise
+        // another pointer/scroll callback can move the neighbor now at the old index.
+        if (source !in currentQueue.indices || source != draggingIndex || draggedInfo.index != source) return
         val center = dragStartOffsetY + dragOffsetY + draggedInfo.size / 2f
         val target = visible.firstOrNull { info ->
             info.index != source && info.index in currentQueue.indices &&
@@ -380,6 +383,7 @@ internal fun QueuePanel(
         } ?: return
         // Keep the viewport fixed when the first visible song changes index.
         listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+        draggingIndex = target.index
         player.moveQueueItem(source, target.index)
         runCatching { haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick) }
     }
@@ -754,6 +758,7 @@ internal fun QueuePanel(
                                                             val info = listState.layoutInfo.visibleItemsInfo
                                                                 .firstOrNull { it.key == stableKey } ?: return@detectDragGestures
                                                             draggingKey = stableKey
+                                                            draggingIndex = info.index
                                                             dragStartOffsetY = info.offset + rowOffsetY.value
                                                             dragOffsetY = 0f
                                                             cancelEdgeScroll()

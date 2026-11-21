@@ -46,24 +46,6 @@ private val LONG_PREFERENCE_NAMES = setOf(
     "ytm_last_sync_at",
 )
 
-/**
- * Credentials and tokens that must never be written into an exported backup
- * file. Backups are plaintext JSON the user shares/copies around, so a leaked
- * cookie, API secret, session token, or addon URL (which embeds an access
- * token) would be a full account compromise. These keys are excluded from
- * buildBackup(); restoring therefore clears them and the user re-authenticates
- * (the web-auth restore flow preserves the signed-in session separately via
- * AUTH_PREFERENCE_NAMES).
- */
-private val SENSITIVE_PREFERENCE_NAMES = setOf(
-    "ytm_cookies",
-    "lw_apikey",
-    "lw_apisecret",
-    "lw_sessionkey",
-    "lw_addon_url",
-)
-
-
 @Serializable
 data class BackupPrefsSnapshot(
     val strings: Map<String, String> = emptyMap(),
@@ -300,7 +282,6 @@ class BackupRepository @Inject constructor(
         val stringSets = mutableMapOf<String, Set<String>>()
         for (entry in asMap()) {
             val key = entry.key.name
-            if (key in SENSITIVE_PREFERENCE_NAMES) continue
             when (val value = entry.value) {
                 is String -> strings[key] = value
                 is Boolean -> booleans[key] = value
