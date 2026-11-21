@@ -128,13 +128,13 @@
                     android:src="@drawable/ic_widget_skip_next" />
 
                 <ImageButton
-                    android:id="@+id/notification_shuffle"
+                    android:id="@+id/notification_repeat"
                     android:layout_width="40dp"
                     android:layout_height="40dp"
                     android:background="@android:color/transparent"
-                    android:contentDescription="@string/desc_shuffle"
+                    android:contentDescription="@string/desc_repeat"
                     android:padding="9dp"
-                    android:src="@drawable/ic_widget_shuffle" />
+                    android:src="@drawable/ic_repeat" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
