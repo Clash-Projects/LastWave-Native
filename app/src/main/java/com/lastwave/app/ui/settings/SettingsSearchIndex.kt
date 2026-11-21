@@ -552,7 +552,7 @@ object SettingsSearchIndex {
                 SettingsEntry(
                     id = "appearance.legacy_track_menu",
                     title = "Use Classic Song Menu",
-                    subtitle = "Use the classic card-based song options menu instead of the redesigned sheet",
+                    subtitle = "Use the newer song options sheet instead of the default menu",
                     keywords = listOf(
                         "classic song menu", "legacy track menu", "old song menu", "3 dots menu", "context menu", "track menu"
                     ),
