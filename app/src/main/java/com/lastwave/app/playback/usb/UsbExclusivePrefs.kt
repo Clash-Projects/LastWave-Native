@@ -15,7 +15,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val USB_EXCLUSIVE_PREFS_NAME = "usb_exclusive_prefs"
 
-private val Context.usbExclusiveDataStore: DataStore<Preferences> by preferencesDataStore(
+internal val Context.usbExclusiveDataStore: DataStore<Preferences> by preferencesDataStore(
     name = USB_EXCLUSIVE_PREFS_NAME,
 )
 
