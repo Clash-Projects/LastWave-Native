@@ -701,22 +701,43 @@ internal fun ContentDrawScope.drawWithSyllableLift(
         val li = l.getLineForOffset(wordStart)
         if (li != l.getLineForOffset(wordEnd - 1)) continue
 
-        val xs = l.getHorizontalPosition(wordStart, true)
-        val xe = if (wordEnd < textLength && l.getLineForOffset(wordEnd) == li) {
-            l.getHorizontalPosition(wordEnd, true)
-        } else if (isRtl) l.getLineLeft(li) else l.getLineRight(li)
-
-        val wordLeft = minOf(xs, xe)
-        val wordRight = maxOf(xs, xe)
-
-        wordsByLine.getOrPut(li) { ArrayList() }.add(
-            LiftWord(
-                wordLeft = wordLeft,
-                wordRight = wordRight,
-                translateY = translateY,
-                scaleX = scaleX,
+        fun addSegment(from: Int, to: Int, segY: Float, segScaleX: Float) {
+            val xs = l.getHorizontalPosition(from, true)
+            val xe = if (to < textLength && l.getLineForOffset(to) == li) {
+                l.getHorizontalPosition(to, true)
+            } else if (isRtl) l.getLineLeft(li) else l.getLineRight(li)
+            wordsByLine.getOrPut(li) { ArrayList() }.add(
+                LiftWord(
+                    wordLeft = minOf(xs, xe),
+                    wordRight = maxOf(xs, xe),
+                    translateY = segY,
+                    scaleX = segScaleX,
+                )
             )
-        )
+        }
+
+        // Default motion: the word's lift rolls letter by letter across its sung
+        // duration. Joined scripts (Indic headline, Arabic) keep the whole-word lift
+        // because slicing between their letters would tear the connecting stroke.
+        val letterLevel = themeSpec?.wordGlideEffect != true && themeSpec?.wordWobbleEffect != true &&
+            !fullText.substring(wordStart, wordEnd).hasNonLatinScript()
+        if (letterLevel) {
+            val dur = syl.durationMs.coerceAtLeast(1L)
+            // Accents, surrogate halves and joiners stay attached to their base letter.
+            val starts = (wordStart until wordEnd).filter { c ->
+                val ch = fullText[c]
+                c == wordStart || !(ch.isLowSurrogate() || ch == '‍' || ch == '‌' ||
+                    Character.getType(ch).let { it == Character.NON_SPACING_MARK.toInt() || it == Character.COMBINING_SPACING_MARK.toInt() || it == Character.ENCLOSING_MARK.toInt() })
+            }
+            for (k in starts.indices) {
+                val offset = if (starts.size > 1) (dur * 0.65f * k / (starts.size - 1)).toLong() else 0L
+                val letter = LyricSyllable(syl.timeMs + offset, (dur - offset).coerceAtLeast(1L), "")
+                val letterY = (-syllableLift(letter, pos) * liftPx).coerceAtLeast(-maxUpwardLift)
+                addSegment(starts[k], starts.getOrElse(k + 1) { wordEnd }, letterY, 1f)
+            }
+        } else {
+            addSegment(wordStart, wordEnd, translateY, scaleX)
+        }
     }
 
     // 2. For each line, sort words horizontally and place clip boundaries at the midpoints of whitespace gaps.
