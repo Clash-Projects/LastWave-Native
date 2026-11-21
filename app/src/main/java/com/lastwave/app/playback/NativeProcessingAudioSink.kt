@@ -166,6 +166,12 @@ class NativeProcessingAudioSink(
      * (DefaultAudioSink skips custom AudioProcessors on the float path).
      */
     var hapticsAnalyzer: com.lastwave.app.playback.haptics.MusicHapticsAnalyzer? = null
+    /** AutoMix EQ automation on the processed float output; idle outside a mix. */
+    val deckEq = com.lastwave.app.playback.automix.engine.DeckEqStage()
+    /** AutoMix live kick timing for beat lock; off outside a mix. */
+    val kicks = com.lastwave.app.playback.automix.engine.KickTap()
+    /** Renderer timestamps minus this are media time, the clock AutoMix schedules in. */
+    private var streamOffsetUs = 0L
     /** Buffer already analysed: Media3 retries the same object until consumed. */
     private var hapticsBuffer: ByteBuffer? = null
     // Same onset detector as haptics, driving the beat-synced fluid background.
@@ -869,7 +875,7 @@ class NativeProcessingAudioSink(
             processor.queueInput(buffer.duplicate())
             pendingInputLimit = buffer.limit()
             val output = processor.getOutput()
-            applyLoudness(output)
+            applyLoudness(output, presentationTimeUs)
             pendingOutput = output
             pendingPresentationTimeUs = presentationTimeUs
             pendingAccessUnitCount = encodedAccessUnitCount
@@ -892,10 +898,14 @@ class NativeProcessingAudioSink(
         return true
     }
 
-    private fun applyLoudness(output: ByteBuffer) {
+    private fun applyLoudness(output: ByteBuffer, presentationTimeUs: Long) {
         // Bit-Perfect promises an untouched signal even on its compat path.
         if (bitPerfectRequested) return
         loudness?.process(output, outputChannelCount, processor.nativeOutputSampleRate)
+        val mediaUs = presentationTimeUs - streamOffsetUs
+        // Before the EQ: a deck coming in with its bass cut still shows its kicks.
+        kicks.process(output, outputChannelCount, processor.nativeOutputSampleRate, mediaUs)
+        deckEq.process(output, outputChannelCount, processor.nativeOutputSampleRate, mediaUs)
     }
 
     override fun playToEndOfStream() {
@@ -916,7 +926,7 @@ class NativeProcessingAudioSink(
         try {
             if (!endOfStreamQueued) {
                 processor.queueEndOfStream()
-                endOfStreamOutput = processor.getOutput().also(this::applyLoudness)
+                endOfStreamOutput = processor.getOutput().also { applyLoudness(it, nextOutputPresentationTimeUs) }
                 endOfStreamQueued = true
             }
             val tail = endOfStreamOutput
@@ -1600,6 +1610,7 @@ class NativeProcessingAudioSink(
     }
 
     override fun setOutputStreamOffsetUs(outputStreamOffsetUs: Long) {
+        streamOffsetUs = outputStreamOffsetUs
         enhancedDelegate.setOutputStreamOffsetUs(outputStreamOffsetUs)
         fallbackDelegate.setOutputStreamOffsetUs(outputStreamOffsetUs)
     }
@@ -1682,6 +1693,8 @@ class NativeProcessingAudioSink(
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.flush() }
         runCatching { rhythmAnalyzer.flush() }
+        deckEq.resetFilter()
+        kicks.reset()
         clearPending()
         clearEndOfStream()
         exclusiveEnded = false

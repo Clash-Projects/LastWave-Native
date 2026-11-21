@@ -526,14 +526,14 @@ internal fun AutoMixControlsCard(
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        "DJ Spectral Filter Sweeps",
+                        "Bass swap",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps",
+                        "Hands the low end over on the beat so basslines never stack",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

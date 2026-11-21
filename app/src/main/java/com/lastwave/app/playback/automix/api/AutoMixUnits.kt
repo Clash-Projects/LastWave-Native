@@ -2,50 +2,6 @@ package com.lastwave.app.playback.automix.api
 
 import androidx.compose.runtime.Immutable
 
-/**
- * Type-safe value class wrappers for physical and musical units.
- */
-@JvmInline
-@Immutable
-value class Bpm(val value: Float) : Comparable<Bpm> {
-    init {
-        require(value.isNaN() || value in 0f..400f) { "BPM must be in realistic range (0..400) or NaN: $value" }
-    }
-
-    override fun compareTo(other: Bpm): Int = value.compareTo(other.value)
-    fun isValid(): Boolean = !value.isNaN() && value in 40f..260f
-
-    companion object {
-        val UNKNOWN = Bpm(Float.NaN)
-        val DEFAULT = Bpm(120.0f)
-    }
-}
-
-@JvmInline
-@Immutable
-value class DecibelLufs(val value: Float) : Comparable<DecibelLufs> {
-    override fun compareTo(other: DecibelLufs): Int = value.compareTo(other.value)
-
-    companion object {
-        val SILENCE = DecibelLufs(-70.0f)
-        val TARGET = DecibelLufs(-14.0f) // Standard streaming target
-    }
-}
-
-@JvmInline
-@Immutable
-value class Millis(val value: Long) : Comparable<Millis> {
-    override fun compareTo(other: Millis): Int = value.compareTo(other.value)
-
-    operator fun plus(other: Millis): Millis = Millis(value + other.value)
-    operator fun minus(other: Millis): Millis = Millis(value - other.value)
-    operator fun times(scalar: Double): Millis = Millis((value * scalar).toLong())
-
-    companion object {
-        val ZERO = Millis(0L)
-    }
-}
-
 @JvmInline
 @Immutable
 value class CamelotKey(val code: String) {

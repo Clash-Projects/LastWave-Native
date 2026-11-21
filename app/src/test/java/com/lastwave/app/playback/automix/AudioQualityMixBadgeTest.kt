@@ -12,7 +12,7 @@ import org.junit.Test
 class AudioQualityMixBadgeTest {
 
     @Test
-    fun telemetry_isBlendingActiveOnlyDuringBlendAndLoopPhases() {
+    fun telemetry_isBlendingActiveOnlyWhileBlending() {
         val idle = DeckBlendTelemetry(phase = BlendPhase.IDLE)
         assertFalse(idle.isBlendingActive)
 
@@ -21,9 +21,6 @@ class AudioQualityMixBadgeTest {
 
         val blending = DeckBlendTelemetry(phase = BlendPhase.BLENDING)
         assertTrue(blending.isBlendingActive)
-
-        val loopLocked = DeckBlendTelemetry(phase = BlendPhase.LOOP_LOCKED)
-        assertTrue(loopLocked.isBlendingActive)
 
         val completed = DeckBlendTelemetry(phase = BlendPhase.MIX_COMPLETED)
         assertFalse(completed.isBlendingActive)
