@@ -304,6 +304,9 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
         val isLiked = state.current?.let { trackLikeController.isLiked(it) } == true
         val likeIcon = if (isLiked) R.drawable.ic_wave_widget_favorite_filled else R.drawable.ic_wave_widget_favorite
         val likeLabel = if (isLiked) "Unlike song" else "Like song"
+        val repeatState = NotificationRepeatAction.resolveRepeatState(state.repeatMode)
+        val repeatIcon = repeatState.iconRes
+        val repeatLabel = repeatState.contentDescription
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
@@ -322,16 +325,6 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
             val mediaStyle = Notification.MediaStyle()
                 .setShowActionsInCompactView(1, 2, 3)
             platformSessionToken?.let { mediaStyle.setMediaSession(it) }
-
-            val repeatIcon = when (state.repeatMode) {
-                androidx.media3.common.Player.REPEAT_MODE_ONE -> R.drawable.ic_widget_repeat_one
-                else -> R.drawable.ic_widget_repeat
-            }
-            val repeatLabel = when (state.repeatMode) {
-                androidx.media3.common.Player.REPEAT_MODE_ONE -> "Repeat one"
-                androidx.media3.common.Player.REPEAT_MODE_ALL -> "Repeat all"
-                else -> "Repeat off"
-            }
 
             // Hosts that can't render custom views (cars, watches, DeX text
             // rows) show these titles verbatim — "Play or pause" looked broken,
@@ -355,8 +348,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
                 .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_previous, "Previous", serviceAction(ACTION_PREVIOUS, 1)).build())
                 .addAction(Notification.Action.Builder(if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play, playPauseLabel, serviceAction(ACTION_TOGGLE, 2)).build())
                 .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_next, "Next", serviceAction(ACTION_NEXT, 3)).build())
-                .addAction(Notification.Action.Builder(R.drawable.ic_widget_shuffle, if (state.shuffleEnabled) "Shuffle on" else "Shuffle off", serviceAction(ACTION_SHUFFLE, 5)).build())
-                .addAction(Notification.Action.Builder(repeatIcon, repeatLabel, serviceAction(ACTION_REPEAT, 6)).build())
+                .addAction(Notification.Action.Builder(repeatIcon, repeatLabel, serviceAction(ACTION_TOGGLE_REPEAT, 6)).build())
                 .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Stop", serviceAction(ACTION_STOP, 4)).build())
                 .apply {
                     // setColorized is API 26+; calling it on Android 7.x throws
@@ -425,21 +417,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
             .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_previous, "Previous", serviceAction(ACTION_PREVIOUS, 1)).build())
             .addAction(Notification.Action.Builder(if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play, if (state.isPlaying) "Pause" else "Play", serviceAction(ACTION_TOGGLE, 2)).build())
             .addAction(Notification.Action.Builder(R.drawable.ic_widget_skip_next, "Next", serviceAction(ACTION_NEXT, 3)).build())
-            .addAction(Notification.Action.Builder(R.drawable.ic_widget_shuffle, if (state.shuffleEnabled) "Shuffle on" else "Shuffle off", serviceAction(ACTION_SHUFFLE, 5)).build())
-            .addAction(
-                Notification.Action.Builder(
-                    when (state.repeatMode) {
-                        androidx.media3.common.Player.REPEAT_MODE_ONE -> R.drawable.ic_widget_repeat_one
-                        else -> R.drawable.ic_widget_repeat
-                    },
-                    when (state.repeatMode) {
-                        androidx.media3.common.Player.REPEAT_MODE_ONE -> "Repeat one"
-                        androidx.media3.common.Player.REPEAT_MODE_ALL -> "Repeat all"
-                        else -> "Repeat off"
-                    },
-                    serviceAction(ACTION_REPEAT, 6),
-                ).build(),
-            )
+            .addAction(Notification.Action.Builder(repeatIcon, repeatLabel, serviceAction(ACTION_TOGGLE_REPEAT, 6)).build())
             .addAction(Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Stop", serviceAction(ACTION_STOP, 4)).build())
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) setColorized(true)
@@ -487,11 +465,13 @@ internal fun MusicPlaybackService.notificationRemoteViews(
                 if (liked) R.drawable.ic_wave_widget_favorite_filled else R.drawable.ic_wave_widget_favorite)
             setContentDescription(R.id.notification_like, if (liked) "Unlike song" else "Like song")
             setInt(R.id.notification_like, "setColorFilter", if (liked) palette.primary else palette.onSurface)
-            setImageViewResource(R.id.notification_shuffle, R.drawable.ic_widget_shuffle)
-            setContentDescription(R.id.notification_shuffle, if (state.shuffleEnabled) "Turn shuffle off" else "Turn shuffle on")
-            setInt(R.id.notification_shuffle, "setColorFilter", if (state.shuffleEnabled) palette.primary else palette.onSurface)
+            val repeatState = NotificationRepeatAction.resolveRepeatState(state.repeatMode)
+            setImageViewResource(R.id.notification_repeat, repeatState.iconRes)
+            setContentDescription(R.id.notification_repeat, repeatState.contentDescription)
+            val isRepeatActive = state.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF
+            setInt(R.id.notification_repeat, "setColorFilter", if (isRepeatActive) palette.primary else palette.onSurface)
             setOnClickPendingIntent(R.id.notification_like, serviceAction(ACTION_LIKE, 7))
-            setOnClickPendingIntent(R.id.notification_shuffle, serviceAction(ACTION_SHUFFLE, 5))
+            setOnClickPendingIntent(R.id.notification_repeat, serviceAction(ACTION_TOGGLE_REPEAT, 6))
         }
         setInt(R.id.notification_previous, "setColorFilter", palette.onSurface)
         setInt(R.id.notification_next, "setColorFilter", palette.onSurface)

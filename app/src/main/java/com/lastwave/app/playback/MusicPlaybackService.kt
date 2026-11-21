@@ -99,6 +99,7 @@ internal const val ACTION_NEXT = "com.lastwave.app.playback.NEXT"
 internal const val ACTION_LIKE = "com.lastwave.app.playback.LIKE"
 internal const val ACTION_SHUFFLE = "com.lastwave.app.playback.SHUFFLE"
 internal const val ACTION_REPEAT = "com.lastwave.app.playback.REPEAT"
+internal const val ACTION_TOGGLE_REPEAT = "com.lastwave.app.playback.TOGGLE_REPEAT"
 internal const val ACTION_STOP = "com.lastwave.app.playback.STOP"
 
 internal val TOPIC_SUFFIX_REGEX = Regex("""(?i)\s*-\s*topic$""")
@@ -281,6 +282,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
                     override fun onCustomAction(action: String?, extras: Bundle?) {
                         when (action) {
                             ACTION_LIKE -> toggleNotificationLike()
+                            ACTION_REPEAT, ACTION_TOGGLE_REPEAT -> musicPlayer.cycleRepeatMode()
                             ACTION_SHUFFLE -> musicPlayer.toggleShuffle()
                             OriginOsMusicCard.ACTION_PLAY_MODE ->
                                 setOriginOsLoopMode(extras?.getInt(OriginOsMusicCard.KEY_LOOP_MODE) ?: 0)
@@ -673,7 +675,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             ACTION_NEXT -> musicPlayer.next()
             ACTION_LIKE -> toggleNotificationLike()
             ACTION_SHUFFLE -> musicPlayer.toggleShuffle()
-            ACTION_REPEAT -> musicPlayer.cycleRepeatMode()
+            ACTION_REPEAT, ACTION_TOGGLE_REPEAT -> musicPlayer.cycleRepeatMode()
             ACTION_STOP -> musicPlayer.stopAndClear()
         }
         return START_NOT_STICKY
@@ -760,6 +762,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         const val ACTION_LIKE = "com.lastwave.app.playback.LIKE"
         const val ACTION_SHUFFLE = "com.lastwave.app.playback.SHUFFLE"
         const val ACTION_REPEAT = "com.lastwave.app.playback.REPEAT"
+        const val ACTION_TOGGLE_REPEAT = "com.lastwave.app.playback.TOGGLE_REPEAT"
         const val ACTION_STOP = "com.lastwave.app.playback.STOP"
     }
 }

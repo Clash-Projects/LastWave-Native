@@ -951,6 +951,10 @@ class MusicPlayer @Inject constructor(
                 refresh(player)
             }
         }
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            if (player !== this@MusicPlayer.player) return
+            _state.update { it.copy(repeatMode = repeatMode) }
+        }
         override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
             if (player !== this@MusicPlayer.player) return
             val audioFormats = tracks.groups
