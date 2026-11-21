@@ -48,8 +48,40 @@ internal object OriginOsMusicCard {
     const val EXTRA_KEY_LYRIC = "vivomusicmix.extra.key.lyric"
     const val EXTRA_KEY_MEDIA_ID = "vivomusicmix.extra.key.meidia_id"
 
-    /** The card drops lyrics it has not heard about for a while; resend this often. */
-    const val LYRICS_RESEND_INTERVAL_MS = 25_000L
+    /**
+     * The Origin Island and the lock screen widget forget the lyrics whenever
+     * they are drawn again (the screen locks, the island collapses), and the
+     * card never asks the app for them again, so they are resent this often.
+     * The card in the notification shade keeps its own copy, which is why
+     * lyrics can show there while the island stays empty.
+     */
+    const val LYRICS_RESEND_INTERVAL_MS = 4_000L
+
+    /**
+     * The lyrics screen publishes the result of each provider as it answers,
+     * often several within a second or two, and the card starts the lyrics
+     * over with each one, so the card waits this long for them to settle.
+     */
+    const val PLAYER_LYRICS_SETTLE_MS = 2_000L
+
+    /** Lines the lyrics screen settled on, for the track with [trackKey]. */
+    data class PlayerLyrics(val trackKey: String, val lines: List<com.lastwave.app.data.lyrics.LyricLine>)
+
+    private val _playerLyrics = kotlinx.coroutines.flow.MutableStateFlow<PlayerLyrics?>(null)
+
+    /**
+     * What the lyrics screen shows, so the card shows the same lyrics: they
+     * are sanitized and re-timed, and come from the provider the user picked.
+     * Null until the lyrics screen has loaded synced lyrics.
+     */
+    val playerLyrics: kotlinx.coroutines.flow.StateFlow<PlayerLyrics?> = _playerLyrics
+
+    fun publishPlayerLyrics(track: PlayableTrack, lines: List<com.lastwave.app.data.lyrics.LyricLine>) {
+        _playerLyrics.value = PlayerLyrics(trackKeyOf(track), lines)
+    }
+
+    /** Identifies a track the same way [mediaIdOf] does, without its queue index. */
+    fun trackKeyOf(track: PlayableTrack): String = track.videoId ?: "${track.title}|${track.artist}"
 
     /** Only vivo / iQOO run the card; other phones never fetch lyrics for it. */
     fun isSupportedDevice(manufacturer: String = android.os.Build.MANUFACTURER): Boolean {
@@ -110,7 +142,7 @@ internal object OriginOsMusicCard {
      * queue starts, so the track is part of it.
      */
     fun mediaIdOf(index: Int, track: PlayableTrack): String {
-        val identity = track.videoId ?: "${track.title}|${track.artist}"
+        val identity = trackKeyOf(track)
         return "$QUEUE_PREFIX$index:${Integer.toHexString(identity.hashCode())}"
     }
 
