@@ -96,7 +96,9 @@ internal class CastPlayback(
         loading = true
         requestedPlaying = autoplay
         owner.castBuffering(autoplay)
-        client?.stop()
+        // After a natural end the receiver is already IDLE/FINISHED: a stop() there gets no
+        // reply, and the load queued right behind it could hang with the spinner forever.
+        client?.takeIf { it.playerState != MediaStatus.PLAYER_STATE_IDLE }?.stop()
         loadJob = scope.launch(Dispatchers.Main.immediate) {
             try {
                 val resolved = owner.resolveCastStream(track)
