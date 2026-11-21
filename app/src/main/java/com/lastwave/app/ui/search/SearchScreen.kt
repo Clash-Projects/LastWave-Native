@@ -743,7 +743,7 @@ private fun TopResultCard(
             Box(
                 modifier = Modifier
                     .size(68.dp)
-                    .clip(if (tab == SearchTab.ARTISTS) CircleShape else RoundedCornerShape(14.dp)),
+                    .clip(if (tab == SearchTab.ARTISTS) CircleShape else RoundedCornerShape(6.dp)),
             ) {
                 ArtworkImage(
                     name = item.name,
@@ -1019,7 +1019,7 @@ private fun SearchResultRow(
                 onClick = onClick,
                 onLongClick = if (tab == SearchTab.TRACKS || tab == SearchTab.LOCAL) onLongClick else onMenu,
             )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val fallback = when (tab) {
@@ -1035,13 +1035,13 @@ private fun SearchResultRow(
             SearchTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
             SearchTab.USERS -> Icons.Filled.Person
         }
-        Box(modifier = Modifier.size(44.dp)) {
+        Box(modifier = Modifier.size(48.dp)) {
             ArtworkImage(
                 name = item.name,
                 artist = item.artist.orEmpty(),
                 embeddedUrl = item.artworkUrl,
                 fallbackIcon = fallback,
-                modifier = Modifier.fillMaxSize().clip(if (tab == SearchTab.ARTISTS || tab == SearchTab.USERS) CircleShape else RoundedCornerShape(10.dp)),
+                modifier = Modifier.fillMaxSize().clip(if (tab == SearchTab.ARTISTS || tab == SearchTab.USERS) CircleShape else RoundedCornerShape(4.dp)),
             )
             if (isPlaying) {
                 com.lastwave.app.ui.player.PlayingWaveBars(

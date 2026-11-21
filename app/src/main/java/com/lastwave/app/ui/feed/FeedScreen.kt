@@ -369,7 +369,7 @@ fun FeedScreen(
         val topBarHeight = with(androidx.compose.ui.platform.LocalDensity.current) { topBarHeightPx.toDp() }
         val listTopInset = if (useFeedGlass) topBarHeight else 0.dp
         val feedCornerDensity = androidx.compose.ui.platform.LocalDensity.current
-        val feedCornerInsetPx = with(feedCornerDensity) { 16.dp.toPx() }
+        val feedCornerInsetPx = with(feedCornerDensity) { 8.dp.toPx() }
         val feedCornerRadiusPx = with(feedCornerDensity) { 28.dp.toPx() }
         val feedCornerTopPx = with(feedCornerDensity) { listTopInset.toPx() }
         val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()

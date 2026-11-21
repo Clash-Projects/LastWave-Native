@@ -57,7 +57,6 @@ internal fun MoodsScreen(onBack: () -> Unit, viewModel: MoodsViewModel = hiltVie
                                 tiles = group.tiles,
                                 onTileClick = viewModel::openTile,
                                 wrapVertically = true,
-                                pastelGlass = true,
                             )
                         }
                     }

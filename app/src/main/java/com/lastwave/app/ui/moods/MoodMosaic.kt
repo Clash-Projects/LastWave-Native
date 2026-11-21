@@ -48,7 +48,6 @@ fun MoodMosaic(
     onTileClick: (MoodTile) -> Unit,
     modifier: Modifier = Modifier,
     wrapVertically: Boolean = false,
-    pastelGlass: Boolean = false,
 ) {
     if (tiles.isEmpty()) return
     val density = LocalDensity.current
@@ -57,7 +56,7 @@ fun MoodMosaic(
         color = Color.White,
         fontSize = CardTokens.titleFontSize,
         lineHeight = CardTokens.titleLineHeight,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Bold,
     )
     val minimumCellSize = remember(tiles, textMeasurer, labelStyle, density) {
         moodTileMinimumSize(tiles.map { it.label }, textMeasurer, labelStyle, density)
@@ -86,7 +85,7 @@ fun MoodMosaic(
             val pattern = remember(tiles.size, availableWidthDp, cellHeight) {
                 moodMosaicVerticalPattern(tiles.size, availableWidthDp, cellHeight)
             }
-            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick, pastelGlass, Modifier.fillMaxWidth())
+            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick, Modifier.fillMaxWidth())
         }
     } else {
         val pattern = remember(tiles.size, minimumCellSize) {
@@ -96,7 +95,7 @@ fun MoodMosaic(
             modifier = modifier.horizontalScroll(rememberScrollState())
                 .semantics { isTraversalGroup = true }.padding(horizontal = 16.dp),
         ) {
-            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick, pastelGlass)
+            MoodMosaicTiles(tiles, tileKeys, pattern, labelStyle, onTileClick)
         }
     }
 }
@@ -108,7 +107,6 @@ private fun MoodMosaicTiles(
     pattern: List<MoodTilePlacement>,
     labelStyle: TextStyle,
     onTileClick: (MoodTile) -> Unit,
-    pastelGlass: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val width = pattern.maxOf { it.startDp + it.widthDp }.dp
@@ -120,7 +118,6 @@ private fun MoodMosaicTiles(
                 MoodMosaicTile(
                     tile = tile,
                     labelStyle = labelStyle,
-                    pastelGlass = pastelGlass,
                     onClick = { onTileClick(tile) },
                     modifier = Modifier
                         .offset(x = placement.startDp.dp, y = placement.topDp.dp)
@@ -137,32 +134,27 @@ private fun MoodMosaicTiles(
 private fun MoodMosaicTile(
     tile: MoodTile,
     labelStyle: TextStyle,
-    pastelGlass: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colours = remember(tile.colorArgb, tile.key, pastelGlass) {
-        if (pastelGlass) homeMoodTileColors(tile.colorArgb, tile.key)
-        else moodTileColors(tile.colorArgb, tile.key)
-    }
+    val colours = remember(tile.colorArgb, tile.key) { moodTileColors(tile.colorArgb, tile.key) }
     Surface(
         modifier = modifier.cardPressable(onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = tile.label },
-        shape = RoundedCornerShape(CardTokens.coverCornerRadius),
-        color = if (pastelGlass) Color.Transparent else colours.surfaceBottom,
+        shape = RoundedCornerShape(12.dp),
+        color = colours.surfaceBottom,
         contentColor = colours.content,
-        border = BorderStroke(0.5.dp, if (pastelGlass) Color.White.copy(alpha = 0.32f)
-            else colours.accent.copy(alpha = 0.24f)),
+        border = BorderStroke(1.dp, colours.accent.copy(alpha = 0.45f)),
     ) {
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(colours.surfaceTop, colours.surfaceBottom)),
+                Brush.linearGradient(listOf(colours.surfaceTop, colours.surfaceBottom)),
             ).drawBehind {
                 // Keep the glass highlight subtle, including when a long label wraps upward.
                 drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            if (pastelGlass) Color.White.copy(alpha = 0.14f) else colours.accent.copy(alpha = 0.06f),
+                            colours.accent.copy(alpha = 0.06f),
                             Color.Transparent,
                         ),
                         center = Offset(size.width * 0.8f, 0f),

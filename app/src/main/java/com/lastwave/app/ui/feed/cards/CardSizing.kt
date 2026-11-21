@@ -19,8 +19,16 @@ import androidx.compose.runtime.remember
 @Composable
 fun rememberCardDimensions(): CardDimensions {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    return remember(screenWidth) {
-        calculateCardDimensions(screenWidth)
+    val peekWidth = with(LocalDensity.current) { 20.toDp() }
+    return remember(screenWidth, peekWidth) {
+        // Two square covers plus a peek must fit; capping the shared cover height here keeps
+        // wide cards exactly as tall as square ones on narrow screens (no row jitter).
+        val fitsTwoCards = (screenWidth - 48.dp - CardTokens.cardGap * 2 - peekWidth) / 2
+        calculateCardDimensions(
+            screenWidth,
+            minCoverHeight = minOf(CardTokens.MIN_COVER_HEIGHT, fitsTwoCards),
+            maxCoverHeight = minOf(CardTokens.MAX_COVER_HEIGHT, fitsTwoCards),
+        )
     }
 }
 
@@ -31,12 +39,7 @@ fun rememberCoverHeight(): Dp = rememberCardDimensions().coverHeight
 /** Square card width: two full cards with a small third-cover peek on phones. */
 @Composable
 fun rememberSquareCardWidth(): Dp {
-    val dimensions = rememberCardDimensions()
-    val peekWidth = with(LocalDensity.current) { 20.toDp() }
-    // Reserve the existing section margins, row start inset, and two card gaps.
-    val widthForTwoCards =
-        (dimensions.screenWidth - 48.dp - CardTokens.cardGap * 2 - peekWidth) / 2
-    return dimensions.squareWidth.coerceAtMost(widthForTwoCards)
+    return rememberCardDimensions().squareWidth
 }
 
 /** Wide 16:9 card width: equals coverHeight * 16/9. */

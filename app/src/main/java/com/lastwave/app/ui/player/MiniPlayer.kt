@@ -487,7 +487,13 @@ internal fun MiniPlayer(
                     ) {
                         Box(Modifier.collapseSquare(56.dp, 40.dp, compactProgress)) {
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                // Capsule bar: the art's leading edge is a half circle that
+                                // nests in the bar's curve; the trailing edge stays soft.
+                                shape = if (edgeToEdge && !isTablet) RoundedCornerShape(18.dp)
+                                else RoundedCornerShape(
+                                    topStartPercent = 50, bottomStartPercent = 50,
+                                    topEndPercent = 22, bottomEndPercent = 22,
+                                ),
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 tonalElevation = 2.dp,
                                 modifier = Modifier.fillMaxSize(),
@@ -495,7 +501,7 @@ internal fun MiniPlayer(
                                 PlayerArtwork(
                                     track = track,
                                     modifier = Modifier.fillMaxSize(),
-                                    corner = 18.dp,
+                                    corner = 0.dp,
                                 )
                             }
                         }

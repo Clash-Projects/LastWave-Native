@@ -1,7 +1,6 @@
 package com.lastwave.app.ui.moods
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 
 internal data class MoodTileColors(
     val accent: Color,
@@ -28,22 +27,12 @@ internal fun moodTileColors(argb: Long, key: String): MoodTileColors {
         }
         (sector * 60f + 360f) % 360f
     }
-    val toneSaturation = (0.70f + saturation * 0.12f).coerceAtMost(0.82f)
+    // Vivid top-left fading to a deep, hue-shifted corner; the top value stays under the
+    // white-label contrast limit (4.5:1) for every hue.
+    val toneSaturation = (0.80f + saturation * 0.10f).coerceAtMost(0.90f)
     return MoodTileColors(
         accent = Color.hsv(hue, 0.64f, 0.96f),
-        surfaceTop = Color.hsv(hue, toneSaturation, 0.43f),
-        surfaceBottom = Color.hsv((hue + 8f) % 360f, toneSaturation, 0.23f),
-    )
-}
-
-/** Muted, translucent tiles keep the category hue on Home and the genres page. */
-internal fun homeMoodTileColors(argb: Long, key: String): MoodTileColors {
-    val accent = moodTileColors(argb, key).accent
-    val warmBase = Color(0xFFE8E5E0)
-    return MoodTileColors(
-        accent = lerp(warmBase, accent, 0.56f),
-        surfaceTop = lerp(warmBase, accent, 0.14f).copy(alpha = 0.86f),
-        surfaceBottom = lerp(warmBase, accent, 0.24f).copy(alpha = 0.84f),
-        content = Color(0xFF242832),
+        surfaceTop = Color.hsv(hue, toneSaturation, 0.42f),
+        surfaceBottom = Color.hsv((hue + 24f) % 360f, toneSaturation, 0.22f),
     )
 }
