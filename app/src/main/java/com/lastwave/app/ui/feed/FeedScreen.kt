@@ -1258,16 +1258,18 @@ fun FeedScreen(
                                                     .fillMaxWidth()
                                                     .padding(top = 10.dp, bottom = 10.dp),
                                             ) {
-                                                SpotlightHeroCard(
-                                                    spotlight = spotlight,
-                                                    onPlayRadio = {
-                                                        viewModel.playArtistRadio(FeedArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId, spotlight.artworkUrl))
-                                                    },
-                                                    onOpenArtist = {
-                                                        artistAlbumNavigator.openArtist(ArtistHelper.primaryArtist(spotlight.artistName), spotlight.browseId ?: "")
-                                                    },
-                                                    onLongClick = { sectionMenuTarget = "spotlight_hero" to "Artist Spotlight" },
-                                                )
+                                                SpotlightPager(listOf(spotlight) + spotlight.more) { item ->
+                                                    SpotlightHeroCard(
+                                                        spotlight = item,
+                                                        onPlayRadio = {
+                                                            viewModel.playArtistRadio(FeedArtist(ArtistHelper.primaryArtist(item.artistName), item.browseId, item.artworkUrl))
+                                                        },
+                                                        onOpenArtist = {
+                                                            artistAlbumNavigator.openArtist(ArtistHelper.primaryArtist(item.artistName), item.browseId ?: "")
+                                                        },
+                                                        onLongClick = { sectionMenuTarget = "spotlight_hero" to "Artist Spotlight" },
+                                                    )
+                                                }
                                             }
                                         }
                                     }

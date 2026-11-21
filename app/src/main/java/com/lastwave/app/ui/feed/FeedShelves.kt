@@ -85,6 +85,13 @@ import androidx.compose.ui.layout.onSizeChanged
 import com.lastwave.app.ui.theme.liquidGlassSource
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -432,6 +439,53 @@ internal fun PodcastGuestEmptyState(
     }
 }
 
+private const val SPOTLIGHT_AUTO_ADVANCE_MS = 5_000L
+
+/** Pages through [items]; auto-slides every 5s unless touched, backgrounded or animations are off. */
+@Composable
+internal fun SpotlightPager(items: List<FeedSpotlight>, card: @Composable (FeedSpotlight) -> Unit) {
+    if (items.size < 2) {
+        items.firstOrNull()?.let { card(it) }
+        return
+    }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    // Endless pager so the last card slides forward into the first one.
+    val start = Int.MAX_VALUE / 2 - (Int.MAX_VALUE / 2) % items.size
+    val pagerState = rememberPagerState(initialPage = start) { Int.MAX_VALUE }
+    val dragged by pagerState.interactionSource.collectIsDraggedAsState()
+    var touching by remember { mutableStateOf(false) }
+    var resumed by remember { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val reduceMotion = remember {
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    val active = resumed && !dragged && !touching && !reduceMotion
+    // Off-screen cards leave the lazy list, which cancels this effect. Keyed on the settled page
+    // so a manual swipe restarts the 5s timer.
+    LaunchedEffect(active, pagerState.settledPage) {
+        if (!active) return@LaunchedEffect
+        delay(SPOTLIGHT_AUTO_ADVANCE_MS)
+        pagerState.animateScrollToPage(pagerState.settledPage + 1, animationSpec = tween(600))
+    }
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    touching = awaitPointerEvent(PointerEventPass.Initial).changes.any { it.pressed }
+                }
+            }
+        },
+    ) { page -> card(items[page % items.size]) }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun SpotlightHeroCard(
@@ -452,7 +506,7 @@ internal fun SpotlightHeroCard(
         end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
     )
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp,
         modifier = Modifier
