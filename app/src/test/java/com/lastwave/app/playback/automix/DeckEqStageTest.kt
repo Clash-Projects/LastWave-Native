@@ -1,8 +1,9 @@
 package com.lastwave.app.playback.automix
 
-import com.lastwave.app.playback.automix.engine.BassSwapStage
+import com.lastwave.app.playback.automix.engine.DeckEqStage
+import com.lastwave.app.playback.automix.engine.EqAutomation
 import com.lastwave.app.playback.automix.engine.MixCurve
-import com.lastwave.app.playback.automix.engine.MixShape
+import com.lastwave.app.playback.automix.api.MixShape
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -12,7 +13,7 @@ import java.nio.ByteOrder
 import kotlin.math.log10
 import kotlin.math.sqrt
 
-class BassSwapStageTest {
+class DeckEqStageTest {
     private val rate = 48_000
 
     private fun buffer(samples: FloatArray): ByteBuffer =
@@ -32,7 +33,7 @@ class BassSwapStageTest {
     }
 
     /** Mono run of [seconds] in 10 ms buffers starting at media time 0. */
-    private fun run(stage: BassSwapStage, input: FloatArray): FloatArray {
+    private fun run(stage: DeckEqStage, input: FloatArray): FloatArray {
         val out = FloatArray(input.size)
         val chunk = rate / 100
         var offset = 0
@@ -49,12 +50,12 @@ class BassSwapStageTest {
     @Test
     fun idleStage_isBitExact() {
         val input = AutoMixSignals.sine(50.0, 1.0, rate)
-        assertArrayEquals(input, run(BassSwapStage(), input), 0f)
+        assertArrayEquals(input, run(DeckEqStage(), input), 0f)
     }
 
     @Test
     fun cut_removesBassKeepsMidsAndLeavesTheSignalBeforeItUntouched() {
-        val stage = BassSwapStage().apply { schedule(atMediaUs = 500_000, from = 1f, to = 0f, rampUs = 100_000) }
+        val stage = DeckEqStage().apply { schedule(bass = EqAutomation(500_000, 1f, 0f, 100_000), treble = null) }
         val bass = AutoMixSignals.sine(50.0, 1.5, rate)
         val bassOut = run(stage, bass)
         assertArrayEquals(bass.copyOf(rate / 2), bassOut.copyOf(rate / 2), 0f)
@@ -62,14 +63,14 @@ class BassSwapStageTest {
         assertTrue("50 Hz only $cut dB down", cut <= -15.0)
 
         val mids = AutoMixSignals.sine(1_000.0, 1.5, rate)
-        val midStage = BassSwapStage().apply { schedule(500_000, 1f, 0f, 100_000) }
+        val midStage = DeckEqStage().apply { schedule(bass = EqAutomation(500_000, 1f, 0f, 100_000), treble = null) }
         val midLoss = rmsDb(run(midStage, mids), rate, rate * 3 / 2) - rmsDb(mids, rate, rate * 3 / 2)
         assertEquals(0.0, midLoss, 0.3)
     }
 
     @Test
     fun restore_returnsToBitExactPassThrough() {
-        val stage = BassSwapStage().apply { schedule(0, 0f, 0f, 1) }
+        val stage = DeckEqStage().apply { schedule(bass = EqAutomation(0, 0f, 0f, 1), treble = EqAutomation(0, 0f, 0f, 1)) }
         val input = AutoMixSignals.sine(60.0, 2.0, rate)
         run(stage, input.copyOf(rate / 2))
         stage.restore(rampUs = 100_000)
@@ -90,11 +91,21 @@ class BassSwapStageTest {
 
     @Test
     fun unreportedTimebase_isPassedThrough() {
-        val stage = BassSwapStage().apply { schedule(0, 0f, 0f, 1) }
+        val stage = DeckEqStage().apply { schedule(bass = EqAutomation(0, 0f, 0f, 1), treble = null) }
         val input = AutoMixSignals.sine(50.0, 0.1, rate)
         val buf = buffer(input)
         stage.process(buf, 1, rate, 1_000_000_000_000L)
         assertArrayEquals(input, read(buf), 0f)
+    }
+
+    @Test
+    fun trebleCut_removesHighsKeepsMids() {
+        val closed = { DeckEqStage().apply { schedule(bass = null, treble = EqAutomation(0, 0f, 0f, 1)) } }
+        val highs = AutoMixSignals.sine(8_000.0, 1.0, rate)
+        val highLoss = rmsDb(run(closed(), highs), rate / 2, rate) - rmsDb(highs, rate / 2, rate)
+        assertTrue("8 kHz only $highLoss dB down", highLoss <= -10.0)
+        val mids = AutoMixSignals.sine(1_000.0, 1.0, rate)
+        assertEquals(0.0, rmsDb(run(closed(), mids), rate / 2, rate) - rmsDb(mids, rate / 2, rate), 0.5)
     }
 
     @Test

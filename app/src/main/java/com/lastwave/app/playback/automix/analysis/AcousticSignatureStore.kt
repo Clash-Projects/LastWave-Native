@@ -9,7 +9,7 @@ import java.io.File
 import java.security.MessageDigest
 
 /** Bump when analysis output changes meaning: older files are then ignored, never misread. */
-const val ANALYSIS_VERSION = 1
+const val ANALYSIS_VERSION = 2
 
 @Serializable
 data class VocalSpan(val startMs: Long, val endMs: Long)

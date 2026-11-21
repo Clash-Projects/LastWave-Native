@@ -66,4 +66,25 @@ class TrackAnalyzerTest {
         assertEquals(EndingStyle.COLD, cold.ending)
         assertEquals(IntroStyle.COLD, cold.intro)
     }
+
+    @Test
+    fun sectionChange_isAPhraseStart() {
+        val barS = 4 * 60.0 / 124
+        val quiet = AutoMixSignals.song(124.0, 16 * barS, seed = 8)
+        val loud = AutoMixSignals.song(124.0, 16 * barS, seed = 9)
+        val pcm = FloatArray(quiet.size + loud.size)
+        for (i in quiet.indices) pcm[i] = quiet[i] * 0.3f
+        loud.copyInto(pcm, quiet.size)
+        val analysis = TrackAnalyzer.analyze(pcm, RATE, 0.0)
+        val boundary = quiet.size * 1000L / RATE
+        val mark = analysis.phrases.maxByOrNull { it.strengthDb }
+        assertTrue("phrases ${analysis.phrases}", mark != null && abs(mark.ms - boundary) <= 150 && mark.strengthDb >= 5f)
+    }
+
+    @Test
+    fun bands_coverTheWindow() {
+        val analysis = TrackAnalyzer.analyze(AutoMixSignals.song(120.0, 20.0), RATE, 0.0)
+        assertTrue("columns ${analysis.bands.size}", abs(analysis.bands.size - 200) <= 2)
+        assertTrue(analysis.bands.any { (it shr 16) and 0xFF > 150 })
+    }
 }

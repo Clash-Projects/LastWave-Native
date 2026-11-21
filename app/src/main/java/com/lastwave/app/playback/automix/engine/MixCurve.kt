@@ -1,22 +1,9 @@
 package com.lastwave.app.playback.automix.engine
 
+import com.lastwave.app.playback.automix.api.MixShape
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
-
-enum class MixShape {
-    /** Constant-power crossfade. */
-    EQUAL_POWER,
-    /**
-     * DJ blend around a mid-point bass swap: the incoming deck rises (bass
-     * cut) while the outgoing one holds, then the outgoing (bass cut) falls
-     * while the incoming holds. The deck that owns the low end stays at full
-     * level; dipping it with an equal-power curve sagged kick-led music ~4 dB.
-     */
-    BASS_SWAP,
-    /** The outgoing song keeps its level and ends on its own (cold endings). */
-    HOLD_OUTGOING,
-}
 
 object MixCurve {
     /**

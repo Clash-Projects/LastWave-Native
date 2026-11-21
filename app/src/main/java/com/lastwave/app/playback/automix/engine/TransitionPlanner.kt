@@ -10,6 +10,7 @@ import com.lastwave.app.playback.automix.analysis.HarmonicCompatibilityTier
 import com.lastwave.app.playback.automix.analysis.IntroStyle
 import com.lastwave.app.playback.automix.analysis.WindowAnalysis
 import com.lastwave.app.playback.automix.api.AutoMixSettings
+import com.lastwave.app.playback.automix.api.MixShape
 import com.lastwave.app.playback.automix.api.CamelotKey
 import com.lastwave.app.playback.automix.api.TransitionDurationMode
 import com.lastwave.app.playback.automix.api.TransitionStyle
@@ -44,6 +45,10 @@ data class MixPlan(
     val keyPair: String? = null,
     /** False only when lyrics say both songs sing during the overlap. */
     val vocalSafe: Boolean = true,
+    /** Beat-locked mixes: the grids the lock aligns, and the phrase length in bars. */
+    val outGrid: BeatGrid? = null,
+    val inGrid: BeatGrid? = null,
+    val bars: Int? = null,
 ) : MixDecision {
     val endOutMs: Long get() = cueOutMs + overlapMs
 
@@ -132,17 +137,19 @@ object TransitionPlanner {
         val candidates = listOf(16, 8, 4).filter { it <= if (clash) 4 else preferred }
         for (bars in candidates) {
             val overlap = bars * barMs
-            val cueOut = outGrid.downbeatAtOrBefore(outEnd - overlap)
-            if (cueOut < outro.startMs || cueOut < input.outgoingDurationMs * 0.5) continue
             val cueIn = inGrid.downbeatAtOrAfter(inStart.toDouble())
             // The incoming grid is only known inside its analysed window.
             if (cueIn + overlap * ratio > intro.endMs) continue
-            val outLong = cueOut.roundToLong()
             val inLong = cueIn.roundToLong()
             val overlapLong = overlap.roundToLong()
-            val outVocals = input.outgoingSignature?.hasVocalsBetween(outLong, outLong + overlapLong)
             val inVocals = input.incomingSignature?.hasVocalsBetween(inLong, inLong + (overlap * ratio).roundToLong())
-            if (outVocals == true && inVocals == true) continue
+            val cueOut = phraseCues(outGrid, outro, outEnd - overlap, overlap, input.outgoingDurationMs * 0.5)
+                .firstOrNull { start ->
+                    val vocals = input.outgoingSignature?.hasVocalsBetween(start.roundToLong(), (start + overlap).roundToLong())
+                    !(vocals == true && inVocals == true)
+                } ?: continue
+            val outLong = cueOut.roundToLong()
+            val outVocals = input.outgoingSignature?.hasVocalsBetween(outLong, outLong + overlapLong)
             val swapAt = if (input.settings.spectralFilterSweepsEnabled) {
                 (cueOut + bars / 2 * barMs).roundToLong()
             } else {
@@ -161,9 +168,29 @@ object TransitionPlanner {
                 bpm = outGrid.bpm,
                 keyPair = keys?.let { "${it.first} → ${it.second}" },
                 vocalSafe = outVocals != null && inVocals != null,
+                outGrid = outGrid,
+                inGrid = inGrid,
+                bars = bars,
             )
         }
         return null
+    }
+
+    /**
+     * Candidate mix starts on outgoing downbeats, best first. A start that
+     * opens a new section, or a mix that ends exactly where one begins, lands
+     * the blend on the song's own phrasing; otherwise the latest bar that fits.
+     * Never earlier than [MAX_PHRASE_SEARCH_BARS] before the latest, never in
+     * the first half of the song or outside the analysed window.
+     */
+    private fun phraseCues(grid: BeatGrid, outro: WindowAnalysis, latestStart: Double, overlap: Double, earliest: Double): List<Double> {
+        val latest = grid.downbeatAtOrBefore(latestStart)
+        val tolerance = grid.barMs / 4
+        fun strengthAt(time: Double) = outro.phrases.filter { abs(it.ms - time) <= tolerance }.maxOfOrNull { it.strengthDb } ?: 0f
+        return (0..MAX_PHRASE_SEARCH_BARS)
+            .map { latest - it * grid.barMs }
+            .filter { it >= outro.startMs && it >= earliest }
+            .sortedWith(compareByDescending<Double> { strengthAt(it) + strengthAt(it + overlap) }.thenByDescending { it })
     }
 
     private fun fade(
@@ -231,4 +258,6 @@ object TransitionPlanner {
     }
 
     private const val VOCAL_CLASH_MS = 4_000L
+    // Each bar earlier drops that much of the outgoing outro; four bars is a DJ-sized trade.
+    private const val MAX_PHRASE_SEARCH_BARS = 4
 }

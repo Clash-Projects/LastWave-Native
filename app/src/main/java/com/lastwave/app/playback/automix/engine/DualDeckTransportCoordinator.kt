@@ -8,11 +8,16 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.automix.analysis.AcousticSignatureExtractor
+import com.lastwave.app.playback.automix.analysis.AcousticSignature
 import com.lastwave.app.playback.automix.analysis.AnalysisInput
+import com.lastwave.app.playback.automix.analysis.WindowAnalysis
 import com.lastwave.app.playback.automix.api.AutoMixPreferences
 import com.lastwave.app.playback.automix.api.AutoMixSettings
+import com.lastwave.app.playback.automix.api.MixShape
 import com.lastwave.app.playback.automix.api.BlendPhase
 import com.lastwave.app.playback.automix.api.DeckBlendTelemetry
+import com.lastwave.app.playback.automix.api.MixDeckView
+import com.lastwave.app.playback.automix.api.MixView
 import com.lastwave.app.playback.automix.api.TrackChromeSummary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,8 +65,10 @@ class DualDeckTransportCoordinator @Inject constructor(
         val incoming: ExoPlayer,
         val plan: MixPlan,
         val userParameters: PlaybackParameters,
-        val outgoingStage: BassSwapStage?,
-        val incomingStage: BassSwapStage?,
+        val outgoingEq: DeckEqStage?,
+        val incomingEq: DeckEqStage?,
+        val outgoingKicks: KickTap?,
+        val incomingKicks: KickTap?,
         val startedAtMs: Long,
     ) {
         var handedOver = false
@@ -87,7 +94,8 @@ class DualDeckTransportCoordinator @Inject constructor(
     var onPerformDeckSwap: ((outgoing: ExoPlayer, incoming: ExoPlayer) -> Unit)? = null
     var onTransitionComplete: (() -> Unit)? = null
     var analysisInput: ((MediaItem) -> AnalysisInput?)? = null
-    var bassStage: ((ExoPlayer) -> BassSwapStage?)? = null
+    /** The deck's EQ stage and kick tap; null when its sink is not on the processed float path. */
+    var deckSink: ((ExoPlayer) -> Pair<DeckEqStage, KickTap>?)? = null
 
     private var pairKey: String? = null
     private var decision: MixDecision? = null
@@ -97,6 +105,17 @@ class DualDeckTransportCoordinator @Inject constructor(
     private var tempoRestore: Job? = null
     private var tempoOwned: Pair<ExoPlayer, PlaybackParameters>? = null
     private var swapping = false
+    private var armedKicks: KickTap? = null
+    /** The songs and analysis the current decision was made from, for the mix view. */
+    private var planContext: PlanContext? = null
+
+    private class PlanContext(
+        val outgoing: PlayableTrack,
+        val incoming: PlayableTrack,
+        val outgoingDurationMs: Long,
+        val outgoingSignature: AcousticSignature?,
+        val incomingSignature: AcousticSignature?,
+    )
 
     init {
         scope.launch {
@@ -197,6 +216,7 @@ class DualDeckTransportCoordinator @Inject constructor(
                     userPitch = userParameters.pitch,
                 ),
             ).also { logDecision(current, next, it) }
+            planContext = PlanContext(current, next, tick.durationMs, outSignature, inSignature)
             cuedStandbyFor = null
         }
         publishPlan(next)
@@ -210,6 +230,9 @@ class DualDeckTransportCoordinator @Inject constructor(
         if (cuedStandbyFor != pair && !standby.isPlaying) {
             if (abs(standby.currentPosition - startIn) > CUE_TOLERANCE_MS) standby.seekTo(startIn)
             cuedStandbyFor = pair
+            // The outgoing deck's kicks are measured ahead of the mix; the
+            // incoming one's during the silent lock-in.
+            if (plan.beatLocked) armedKicks = deckSink?.invoke(tick.primary)?.second?.also { it.enabled = true }
         }
         if (transportPaused || !tick.primary.playWhenReady || standby.playbackState != Player.STATE_READY) return
         val startOutAt = plan.cueOutMs - ((plan.cueInMs - startIn) / plan.tempoRatio).toLong()
@@ -242,23 +265,37 @@ class DualDeckTransportCoordinator @Inject constructor(
     private fun start(outgoing: ExoPlayer, incoming: ExoPlayer, plan: MixPlan, startIn: Long) {
         finishTempoGlide()
         val userParameters = outgoing.playbackParameters
-        val outStage = bassStage?.invoke(outgoing)
-        val inStage = bassStage?.invoke(incoming)
+        val outSink = deckSink?.invoke(outgoing)
+        val inSink = deckSink?.invoke(incoming)
         incoming.volume = 0f
         if (abs(incoming.currentPosition - startIn) > CUE_TOLERANCE_MS) incoming.seekTo(startIn)
         incoming.playbackParameters = if (plan.beatLocked) PlaybackParameters(plan.tempoRatio, 1f) else userParameters
         plan.bassSwapAtMs?.let { swapAt ->
             val rampUs = plan.bassSwapRampMs * 1000
-            outStage?.schedule(atMediaUs = swapAt * 1000, from = 1f, to = 0f, rampUs = rampUs)
-            inStage?.schedule(
-                atMediaUs = plan.incomingTimeFor(swapAt) * 1000,
-                from = 0f,
-                to = 1f,
-                rampUs = (rampUs * plan.tempoRatio).toLong(),
+            val swapInUs = plan.incomingTimeFor(swapAt) * 1000
+            outSink?.first?.schedule(bass = EqAutomation(swapAt * 1000, 1f, 0f, rampUs), treble = null)
+            // The incoming song enters on its mids: highs open over the first
+            // half, the bass arrives on the swap downbeat.
+            val trebleOpens = plan.shape == MixShape.BASS_SWAP
+            inSink?.first?.schedule(
+                bass = EqAutomation(swapInUs, 0f, 1f, (rampUs * plan.tempoRatio).toLong()),
+                treble = if (trebleOpens) {
+                    EqAutomation(plan.cueInMs * 1000, 0f, 1f, (swapInUs - plan.cueInMs * 1000).coerceAtLeast(1L))
+                } else {
+                    null
+                },
             )
         }
+        if (plan.beatLocked) {
+            outSink?.second?.enabled = true
+            inSink?.second?.enabled = true
+        }
         incoming.play()
-        val started = Session(outgoing, incoming, plan, userParameters, outStage, inStage, SystemClock.elapsedRealtime())
+        val started = Session(
+            outgoing, incoming, plan, userParameters,
+            outSink?.first, inSink?.first, outSink?.second, inSink?.second,
+            SystemClock.elapsedRealtime(),
+        )
         session = started
         _telemetry.update {
             it.copy(
@@ -270,6 +307,7 @@ class DualDeckTransportCoordinator @Inject constructor(
                 syncedBpm = plan.bpm,
                 harmonicKeyPair = plan.keyPair,
                 isVocalProtected = plan.vocalSafe,
+                view = mixView(plan),
             )
         }
         Log.i(TAG, "Blend start: ${describe(plan)} incomingAt=${startIn}ms")
@@ -277,7 +315,7 @@ class DualDeckTransportCoordinator @Inject constructor(
     }
 
     private suspend fun run(active: Session) {
-        val lock = if (active.plan.beatLocked) PhaseLock(active.plan) else null
+        val lock = if (active.plan.beatLocked) PhaseLock(active.plan, active.outgoingKicks, active.incomingKicks) else null
         while (scope.isActive) {
             delay(TICK_MS)
             if (transportPaused) {
@@ -329,10 +367,11 @@ class DualDeckTransportCoordinator @Inject constructor(
         if (session !== active) return
         if (!active.handedOver) handOver(active)
         session = null
+        stopKickTaps(active)
         silence(active.outgoing)
         active.incoming.volume = baseVolume
-        active.outgoingStage?.clear()
-        active.incomingStage?.restore()
+        active.outgoingEq?.clear()
+        active.incomingEq?.restore()
         if (active.plan.beatLocked) glideTempo(active.incoming, active.userParameters)
         runCatching { onTransitionComplete?.invoke() }
         Log.i(TAG, "Blend complete")
@@ -363,23 +402,29 @@ class DualDeckTransportCoordinator @Inject constructor(
         }
         session = null
         active.job?.cancel()
+        stopKickTaps(active)
         if (active.handedOver) {
             silence(active.outgoing)
             active.incoming.volume = baseVolume
             if (active.plan.beatLocked) runCatching { active.incoming.playbackParameters = active.userParameters }
-            active.outgoingStage?.clear()
-            active.incomingStage?.restore()
+            active.outgoingEq?.clear()
+            active.incomingEq?.restore()
             runCatching { onTransitionComplete?.invoke() }
             Log.i(TAG, "Blend interrupted after hand-over: committed")
         } else {
             silence(active.incoming)
             runCatching { active.incoming.playbackParameters = active.userParameters }
             active.outgoing.volume = baseVolume
-            active.incomingStage?.clear()
-            active.outgoingStage?.restore()
+            active.incomingEq?.clear()
+            active.outgoingEq?.restore()
             Log.i(TAG, "Blend interrupted before hand-over: reverted")
         }
         resetPlan()
+    }
+
+    private fun stopKickTaps(active: Session) {
+        active.outgoingKicks?.enabled = false
+        active.incomingKicks?.enabled = false
     }
 
     private fun silence(deck: ExoPlayer) {
@@ -439,18 +484,58 @@ class DualDeckTransportCoordinator @Inject constructor(
                 spliceDurationMs = current.overlapMs,
                 incomingTrackPreview = preview,
                 isVocalProtected = current.vocalSafe,
+                view = mixView(current),
             )
         }
     }
 
     private fun resetPlan(keepTelemetry: Boolean = false) {
+        armedKicks?.enabled = false
+        armedKicks = null
         pairKey = null
         decision = null
         decisionInputs = null
         cuedStandbyFor = null
+        planContext = null
         if (!keepTelemetry && _telemetry.value.phase != BlendPhase.MIX_COMPLETED) {
             _telemetry.value = DeckBlendTelemetry.IDLE
         }
+    }
+
+    /** Null unless both songs have analysed waveforms around their cue points. */
+    private fun mixView(plan: MixPlan): MixView? {
+        val context = planContext ?: return null
+        val outro = context.outgoingSignature?.outro?.takeIf { it.bands.isNotEmpty() } ?: return null
+        val intro = context.incomingSignature?.intro?.takeIf { it.bands.isNotEmpty() } ?: return null
+        fun deck(track: PlayableTrack, durationMs: Long, window: WindowAnalysis, bpm: Float?) = MixDeckView(
+            title = track.title,
+            artist = track.artist,
+            artworkUrl = track.artworkUrl,
+            durationMs = durationMs,
+            bpm = bpm,
+            camelotKey = window.camelotKey?.takeIf { window.keyConfidence >= KEY_DISPLAY_CONFIDENCE },
+            bandsStartMs = window.startMs,
+            bands = window.bands,
+        )
+        return MixView(
+            outgoing = deck(context.outgoing, context.outgoingDurationMs, outro, outro.grid?.takeIf { it.confidence >= BPM_DISPLAY_CONFIDENCE }?.bpm),
+            incoming = deck(
+                context.incoming,
+                context.incomingSignature.durationMs,
+                intro,
+                intro.grid?.takeIf { it.confidence >= BPM_DISPLAY_CONFIDENCE }?.bpm,
+            ),
+            cueOutMs = plan.cueOutMs,
+            cueInMs = plan.cueInMs,
+            overlapMs = plan.overlapMs,
+            tempoRatio = plan.tempoRatio,
+            shape = plan.shape,
+            bassSwapAtMs = plan.bassSwapAtMs,
+            bassSwapRampMs = plan.bassSwapRampMs,
+            downbeatMs = plan.outGrid?.downbeatMs,
+            barMs = plan.outGrid?.barMs,
+            bars = plan.bars,
+        )
     }
 
     private fun logDecision(outgoing: PlayableTrack, incoming: PlayableTrack, decision: MixDecision) {
@@ -472,8 +557,16 @@ class DualDeckTransportCoordinator @Inject constructor(
      * expected and actual incoming position is the audible flam. A large gap
      * is fixed by a seek while the incoming deck is still near silent; the
      * rest by nudging its speed at most 1.5 %.
+     *
+     * The target is corrected by where each deck's kicks really land in its
+     * playback ([KickTap]) relative to its analysed grid, so a fixed offset
+     * between the analysis decode and playback (codec priming) cannot flam.
      */
-    private class PhaseLock(private val plan: MixPlan) {
+    private class PhaseLock(
+        private val plan: MixPlan,
+        private val outgoingKicks: KickTap?,
+        private val incomingKicks: KickTap?,
+    ) {
         private var smoothed = 0.0
         private var samples = 0
         private var seeks = 0
@@ -483,6 +576,8 @@ class DualDeckTransportCoordinator @Inject constructor(
         /** How long a seek takes to become audible; learned from the first seek's miss. */
         private var seekLatencyMs = 0.0
         private var measuringSeek = false
+        private var correctionMs = 0.0
+        private var loggedCorrection = false
 
         fun reset() {
             samples = 0
@@ -497,7 +592,8 @@ class DualDeckTransportCoordinator @Inject constructor(
                 samples = 0
                 return
             }
-            val error = (incoming.currentPosition - plan.incomingTimeFor(outgoing.currentPosition)).toDouble()
+            updateCorrection()
+            val error = incoming.currentPosition - plan.incomingTimeFor(outgoing.currentPosition) - correctionMs
             smoothed = if (samples == 0) error else smoothed * 0.7 + error * 0.3
             if (++samples < SETTLE_SAMPLES) return
             if (measuringSeek) {
@@ -527,6 +623,23 @@ class DualDeckTransportCoordinator @Inject constructor(
             setSpeed(incoming, (plan.tempoRatio * (1.0 + correction)).toFloat())
         }
 
+        /**
+         * Incoming target shift: real incoming kicks sit [inOffset] after its
+         * grid beats, real outgoing kicks [outOffset] after theirs, so aligning
+         * real kicks moves the incoming target by inOffset - outOffset * ratio.
+         */
+        private fun updateCorrection() {
+            val outGrid = plan.outGrid ?: return
+            val inGrid = plan.inGrid ?: return
+            val inOffset = KickTiming.offsetMs(incomingKicks?.onsetsSince(0L), inGrid) ?: return
+            val outOffset = KickTiming.offsetMs(outgoingKicks?.onsetsSince(0L), outGrid) ?: return
+            correctionMs = inOffset - outOffset * plan.tempoRatio
+            if (!loggedCorrection) {
+                loggedCorrection = true
+                Log.i(TAG, "Live kick correction ${"%.1f".format(correctionMs)}ms (in=${"%.1f".format(inOffset)} out=${"%.1f".format(outOffset)})")
+            }
+        }
+
         private fun setSpeed(incoming: ExoPlayer, speed: Float) {
             if (abs(speed - lastSpeed) < MIN_SPEED_STEP) return
             lastSpeed = speed
@@ -535,15 +648,15 @@ class DualDeckTransportCoordinator @Inject constructor(
 
         private companion object {
             const val SETTLE_SAMPLES = 8
-            const val SEEK_THRESHOLD_MS = 35.0
+            const val SEEK_THRESHOLD_MS = 25.0
             const val MAX_SEEKS = 3
             const val MAX_SEEK_LATENCY_MS = 400.0
             const val SEEK_WINDOW_PROGRESS = 0.15f
             const val RELEASE_PROGRESS = 0.9f
-            const val DEADBAND_MS = 6.0
-            const val CORRECTION_HORIZON_MS = 2_000.0
+            const val DEADBAND_MS = 4.0
+            const val CORRECTION_HORIZON_MS = 1_500.0
             const val MAX_NUDGE = 0.015
-            const val MIN_SPEED_STEP = 0.0015f
+            const val MIN_SPEED_STEP = 0.001f
             const val GIVE_UP_MS = 120.0
             const val GIVE_UP_AFTER_MS = 4_000L
         }
@@ -557,7 +670,7 @@ class DualDeckTransportCoordinator @Inject constructor(
         /** Pending analysis gives way to a safe plan once the song is this close to its end. */
         private const val DECIDE_BY_REMAINING_MS = 35_000L
         /** Beat-locked mixes start the silent incoming deck early to settle the lock. */
-        private const val LOCK_LEAD_MS = 1_500L
+        private const val LOCK_LEAD_MS = 3_000L
         private const val CUE_TOLERANCE_MS = 40L
         private const val LATE_START_TOLERANCE_MS = 1_000L
         private const val MIN_LATE_FADE_MS = 2_000L
@@ -566,6 +679,8 @@ class DualDeckTransportCoordinator @Inject constructor(
         private const val COMPLETED_BADGE_MS = 1_500L
         private const val GLIDE_STEPS = 40
         private const val GLIDE_STEP_MS = 100L
+        private const val BPM_DISPLAY_CONFIDENCE = 0.6f
+        private const val KEY_DISPLAY_CONFIDENCE = 0.5f
 
         /** One stream, one analysis: the cache key the player itself uses, else the media id. */
         fun analysisKey(item: MediaItem): String = item.localConfiguration?.customCacheKey ?: item.mediaId

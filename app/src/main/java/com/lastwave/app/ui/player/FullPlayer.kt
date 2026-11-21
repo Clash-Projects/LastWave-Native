@@ -1699,15 +1699,35 @@ internal fun FullPlayer(
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                PlayerArtwork(
-                                                    track = track,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    corner = 22.dp,
-                                                    canvas = if (showSleeveCanvas) canvas else null,
-                                                    isPlaying = state.isPlaying,
-                                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                                    onAspectRatioChanged = { canvasAspect = it },
-                                                )
+                                                // During an AutoMix blend the sleeve shows both decks instead.
+                                                val mixTelemetry = state.deckBlendTelemetry
+                                                val mixView = mixTelemetry.view?.takeIf {
+                                                    mixTelemetry.isBlendingActive ||
+                                                        mixTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
+                                                }
+                                                androidx.compose.animation.Crossfade(
+                                                    targetState = mixView,
+                                                    animationSpec = tween(400),
+                                                    label = "autoMixSleeve",
+                                                ) { shownMix ->
+                                                    if (shownMix != null) {
+                                                        com.lastwave.app.ui.player.automix.AutoMixDeckView(
+                                                            view = shownMix,
+                                                            progress = mixTelemetry.clampedProgress,
+                                                            modifier = Modifier.fillMaxSize(),
+                                                        )
+                                                    } else {
+                                                        PlayerArtwork(
+                                                            track = track,
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            corner = 22.dp,
+                                                            canvas = if (showSleeveCanvas) canvas else null,
+                                                            isPlaying = state.isPlaying,
+                                                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                            onAspectRatioChanged = { canvasAspect = it },
+                                                        )
+                                                    }
+                                                }
                                             }
                                             }
                                         }

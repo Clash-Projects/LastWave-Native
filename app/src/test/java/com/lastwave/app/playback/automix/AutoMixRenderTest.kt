@@ -5,7 +5,9 @@ import com.lastwave.app.playback.automix.AutoMixSignals.RATE
 import com.lastwave.app.playback.automix.analysis.AcousticSignature
 import com.lastwave.app.playback.automix.analysis.TrackAnalyzer
 import com.lastwave.app.playback.automix.api.AutoMixSettings
-import com.lastwave.app.playback.automix.engine.BassSwapStage
+import com.lastwave.app.playback.automix.api.MixShape
+import com.lastwave.app.playback.automix.engine.DeckEqStage
+import com.lastwave.app.playback.automix.engine.EqAutomation
 import com.lastwave.app.playback.automix.engine.MixCurve
 import com.lastwave.app.playback.automix.engine.MixPlan
 import com.lastwave.app.playback.automix.engine.PlanInput
@@ -98,11 +100,16 @@ class AutoMixRenderTest {
             ),
         ) as MixPlan
 
-        val outStage = BassSwapStage()
-        val inStage = BassSwapStage()
+        // Same EQ moves the coordinator schedules.
+        val outStage = DeckEqStage()
+        val inStage = DeckEqStage()
         plan.bassSwapAtMs?.let { at ->
-            outStage.schedule(at * 1000, 1f, 0f, plan.bassSwapRampMs * 1000)
-            inStage.schedule(plan.incomingTimeFor(at) * 1000, 0f, 1f, (plan.bassSwapRampMs * 1000 * plan.tempoRatio).toLong())
+            val swapInUs = plan.incomingTimeFor(at) * 1000
+            outStage.schedule(EqAutomation(at * 1000, 1f, 0f, plan.bassSwapRampMs * 1000), null)
+            inStage.schedule(
+                EqAutomation(swapInUs, 0f, 1f, (plan.bassSwapRampMs * 1000 * plan.tempoRatio).toLong()),
+                if (plan.shape == MixShape.BASS_SWAP) EqAutomation(plan.cueInMs * 1000, 0f, 1f, swapInUs - plan.cueInMs * 1000) else null,
+            )
         }
         val startOut = plan.cueOutMs - 4_000.0
         val endOut = plan.endOutMs + 4_000.0
@@ -127,7 +134,7 @@ class AutoMixRenderTest {
         return Rendered(mix, plan, startOut)
     }
 
-    private fun BassSwapStage.processMono(block: FloatArray, rate: Int, mediaUs: Long) {
+    private fun DeckEqStage.processMono(block: FloatArray, rate: Int, mediaUs: Long) {
         val buffer = ByteBuffer.allocateDirect(block.size * 4).order(ByteOrder.nativeOrder())
         buffer.asFloatBuffer().put(block)
         process(buffer, 1, rate, mediaUs)

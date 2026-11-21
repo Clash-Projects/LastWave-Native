@@ -64,7 +64,19 @@ data class WindowAnalysis(
     val ending: EndingStyle,
     val fadeStartMs: Long?,
     val intro: IntroStyle,
+    /** Bar starts where a new section begins (energy shift across 4-bar groups), for cueing on phrases. */
+    val phrases: List<PhraseMark> = emptyList(),
+    /**
+     * Waveform for display: one column per [BAND_COLUMN_MS], each packed as
+     * low << 16 | mid << 8 | high, 0..255 relative to the window's loudest band.
+     */
+    val bands: List<Int> = emptyList(),
 )
+
+@Serializable
+data class PhraseMark(val ms: Long, val strengthDb: Float)
+
+const val BAND_COLUMN_MS = 100
 
 /**
  * Tempo, beat phase, bar phase, key and level contour from decoded mono PCM.
@@ -81,6 +93,9 @@ object TrackAnalyzer {
     private const val MIN_ANALYSIS_SECONDS = 6
     private const val SILENCE_FLOOR_DB = -50.0
     private const val SILENCE_BELOW_PEAK_DB = 35.0
+    private const val PHRASE_SPAN = 4
+    private const val PHRASE_MIN_DB = 2.0
+    private const val BAND_RANGE_DB = 48.0
 
     fun analyze(pcm: FloatArray, sampleRate: Int, startMs: Double): WindowAnalysis {
         val endMs = startMs + pcm.size * 1000.0 / sampleRate
@@ -121,10 +136,63 @@ object TrackAnalyzer {
             },
             fadeStartMs = fadeStartFrame?.let { frameCenterMs(it.toDouble()).toLong() },
             intro = if (level.startsCold()) IntroStyle.COLD else IntroStyle.BUILD,
+            phrases = grid?.let { phraseMarks(it, onsets.rmsDb, frameCenterMs) }.orEmpty(),
+            bands = bandColumns(onsets.bandEnergy, frameMs),
         )
     }
 
-    private class Onsets(val novelty: FloatArray, val bassNovelty: FloatArray, val rmsDb: FloatArray)
+    private class Onsets(
+        val novelty: FloatArray,
+        val bassNovelty: FloatArray,
+        val rmsDb: FloatArray,
+        /** Per frame: low (< 200 Hz), mid, high (> 2 kHz) linear energy. */
+        val bandEnergy: Array<DoubleArray>,
+    )
+
+    /** Downbeats where the 4 bars after differ from the 4 before by at least [PHRASE_MIN_DB]. */
+    private fun phraseMarks(grid: BeatGrid, rmsDb: FloatArray, frameMs: (Double) -> Double): List<PhraseMark> {
+        if (rmsDb.isEmpty()) return emptyList()
+        val first = frameMs(0.0)
+        val last = frameMs((rmsDb.size - 1).toDouble())
+        val bars = generateSequence(grid.downbeatAtOrAfter(first)) { it + grid.barMs }
+            .takeWhile { it + grid.barMs <= last }
+            .toList()
+        val levels = bars.map { start ->
+            val from = ((start - first) / (last - first) * (rmsDb.size - 1)).toInt().coerceIn(0, rmsDb.lastIndex)
+            val until = ((start + grid.barMs - first) / (last - first) * (rmsDb.size - 1)).toInt().coerceIn(from + 1, rmsDb.size)
+            var power = 0.0
+            for (i in from until until) power += Math.pow(10.0, rmsDb[i] / 10.0)
+            10.0 * log10(power / (until - from) + 1e-12)
+        }
+        return (PHRASE_SPAN until bars.size - PHRASE_SPAN + 1).mapNotNull { k ->
+            val before = levels.subList(k - PHRASE_SPAN, k).average()
+            val after = levels.subList(k, k + PHRASE_SPAN).average()
+            val shift = abs(after - before)
+            if (shift >= PHRASE_MIN_DB) PhraseMark(bars[k].toLong(), shift.toFloat()) else null
+        }
+    }
+
+    private fun bandColumns(bandEnergy: Array<DoubleArray>, frameMs: Double): List<Int> {
+        val perColumn = (BAND_COLUMN_MS / frameMs).roundToInt().coerceAtLeast(1)
+        val columns = bandEnergy[0].size / perColumn
+        if (columns == 0) return emptyList()
+        val db = Array(3) { band ->
+            DoubleArray(columns) { column ->
+                var sum = 0.0
+                for (i in column * perColumn until (column + 1) * perColumn) sum += bandEnergy[band][i]
+                10.0 * log10(sum / perColumn + 1e-12)
+            }
+        }
+        val top = db.maxOf { it.max() }
+        return List(columns) { column ->
+            var packed = 0
+            for (band in 0 until 3) {
+                val value = ((db[band][column] - (top - BAND_RANGE_DB)) / BAND_RANGE_DB * 255).roundToInt().coerceIn(0, 255)
+                packed = packed or (value shl (16 - band * 8))
+            }
+            packed
+        }
+    }
 
     /** Log-magnitude spectral flux (all bins and the kick band), plus per-frame RMS. */
     private fun onsetFrames(pcm: FloatArray, sampleRate: Int): Onsets {
@@ -132,6 +200,9 @@ object TrackAnalyzer {
         val novelty = FloatArray(count)
         val bass = FloatArray(count)
         val rmsDb = FloatArray(count)
+        val bandEnergy = Array(3) { DoubleArray(count) }
+        val lowBin = (200.0 * ONSET_FFT / sampleRate).toInt()
+        val highBin = (2_000.0 * ONSET_FFT / sampleRate).toInt()
         val window = hann(ONSET_FFT)
         val re = DoubleArray(ONSET_FFT)
         val im = DoubleArray(ONSET_FFT)
@@ -157,7 +228,9 @@ object TrackAnalyzer {
                 val rise = magnitude - previous[bin]
                 if (frame > 0 && rise > 0) flux += rise
                 previous[bin] = magnitude
-                if (bin <= bassBin) bassEnergy += linear * linear
+                val power = linear * linear
+                if (bin <= bassBin) bassEnergy += power
+                bandEnergy[if (bin <= lowBin) 0 else if (bin <= highBin) 1 else 2][frame] += power
             }
             novelty[frame] = flux.toFloat()
             // Kick detection wants linear energy: log flux makes a snare's
@@ -165,7 +238,7 @@ object TrackAnalyzer {
             bass[frame] = (bassEnergy - previousBassEnergy).coerceAtLeast(0.0).toFloat()
             previousBassEnergy = bassEnergy
         }
-        return Onsets(adaptiveThreshold(novelty), adaptiveThreshold(bass), rmsDb)
+        return Onsets(adaptiveThreshold(novelty), adaptiveThreshold(bass), rmsDb, bandEnergy)
     }
 
     /** Removes the local mean so sustained loud passages do not read as onsets. */

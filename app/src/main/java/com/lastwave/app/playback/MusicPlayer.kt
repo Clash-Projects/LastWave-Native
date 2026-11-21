@@ -2155,7 +2155,7 @@ class MusicPlayer @Inject constructor(
             toStop?.clearMediaItems()
         }
         autoMixCoord.analysisInput = ::autoMixAnalysisInput
-        autoMixCoord.bassStage = { deck -> playerToSink[deck]?.bassSwap }
+        autoMixCoord.deckSink = { deck -> playerToSink[deck]?.let { it.deckEq to it.kicks } }
         setupSpatializerListener()
         runCatching { restorePlaybackSession() }.getOrElse { error ->
             // A corrupt session or OEM media-stack failure must not become a

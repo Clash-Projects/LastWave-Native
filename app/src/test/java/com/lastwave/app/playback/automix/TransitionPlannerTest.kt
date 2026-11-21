@@ -6,6 +6,7 @@ import com.lastwave.app.playback.automix.analysis.AcousticSignature
 import com.lastwave.app.playback.automix.analysis.BeatGrid
 import com.lastwave.app.playback.automix.analysis.EndingStyle
 import com.lastwave.app.playback.automix.analysis.IntroStyle
+import com.lastwave.app.playback.automix.analysis.PhraseMark
 import com.lastwave.app.playback.automix.analysis.VocalSpan
 import com.lastwave.app.playback.automix.analysis.WindowAnalysis
 import com.lastwave.app.playback.automix.api.AutoMixSettings
@@ -14,7 +15,7 @@ import com.lastwave.app.playback.automix.api.TransitionStyle
 import com.lastwave.app.playback.automix.engine.MixBypass
 import com.lastwave.app.playback.automix.engine.MixDecision
 import com.lastwave.app.playback.automix.engine.MixPlan
-import com.lastwave.app.playback.automix.engine.MixShape
+import com.lastwave.app.playback.automix.api.MixShape
 import com.lastwave.app.playback.automix.engine.PlanInput
 import com.lastwave.app.playback.automix.engine.TransitionPlanner
 import org.junit.Assert.assertEquals
@@ -201,5 +202,19 @@ class TransitionPlannerTest {
         assertTrue(plan.beatLocked)
         assertEquals(4 * 4 * 60_000.0 / 124, plan.overlapMs.toDouble(), 2.0)
         assertEquals("8A → 3B", plan.keyPair)
+    }
+
+    @Test
+    fun beatmix_startsOnAPhraseWhenOneIsClose() {
+        val bar = 4 * 60_000.0 / 124
+        val latest = 160_120 + 11 * bar
+        val phraseStart = latest - 2 * bar
+        val outro = beatOutro.copy(phrases = listOf(PhraseMark(phraseStart.toLong(), 6f)))
+        val plan = plan(outSig(outro), inSig(beatIntro)) as MixPlan
+        assertEquals(phraseStart, plan.cueOutMs.toDouble(), 1.0)
+        assertEquals(8, plan.bars)
+        // Too far back to be worth the lost outro: the latest bar wins.
+        val far = beatOutro.copy(phrases = listOf(PhraseMark((latest - 6 * bar).toLong(), 6f)))
+        assertEquals(latest, (plan(outSig(far), inSig(beatIntro)) as MixPlan).cueOutMs.toDouble(), 1.0)
     }
 }

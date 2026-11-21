@@ -166,8 +166,10 @@ class NativeProcessingAudioSink(
      * (DefaultAudioSink skips custom AudioProcessors on the float path).
      */
     var hapticsAnalyzer: com.lastwave.app.playback.haptics.MusicHapticsAnalyzer? = null
-    /** AutoMix bass hand-over on the processed float output; idle outside a mix. */
-    val bassSwap = com.lastwave.app.playback.automix.engine.BassSwapStage()
+    /** AutoMix EQ automation on the processed float output; idle outside a mix. */
+    val deckEq = com.lastwave.app.playback.automix.engine.DeckEqStage()
+    /** AutoMix live kick timing for beat lock; off outside a mix. */
+    val kicks = com.lastwave.app.playback.automix.engine.KickTap()
     /** Renderer timestamps minus this are media time, the clock AutoMix schedules in. */
     private var streamOffsetUs = 0L
     /** Buffer already analysed: Media3 retries the same object until consumed. */
@@ -900,7 +902,10 @@ class NativeProcessingAudioSink(
         // Bit-Perfect promises an untouched signal even on its compat path.
         if (bitPerfectRequested) return
         loudness?.process(output, outputChannelCount, processor.nativeOutputSampleRate)
-        bassSwap.process(output, outputChannelCount, processor.nativeOutputSampleRate, presentationTimeUs - streamOffsetUs)
+        val mediaUs = presentationTimeUs - streamOffsetUs
+        // Before the EQ: a deck coming in with its bass cut still shows its kicks.
+        kicks.process(output, outputChannelCount, processor.nativeOutputSampleRate, mediaUs)
+        deckEq.process(output, outputChannelCount, processor.nativeOutputSampleRate, mediaUs)
     }
 
     override fun playToEndOfStream() {
@@ -1688,7 +1693,8 @@ class NativeProcessingAudioSink(
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.flush() }
         runCatching { rhythmAnalyzer.flush() }
-        bassSwap.resetFilter()
+        deckEq.resetFilter()
+        kicks.reset()
         clearPending()
         clearEndOfStream()
         exclusiveEnded = false
