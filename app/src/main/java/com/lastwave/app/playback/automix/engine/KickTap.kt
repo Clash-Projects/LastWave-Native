@@ -35,6 +35,8 @@ class KickTap {
     private var fastDecay = 0.0
     private var slowDecay = 0.0
     private var lastOnsetUs = Long.MIN_VALUE
+    /** Blocks left before onsets count: right after a reset the slow average is 0 and any sound reads as a kick. */
+    private var warmupBlocks = 0
     private var blockStartUs = 0L
 
     /** Onsets (media us) at or after [sinceUs], oldest first. */
@@ -56,6 +58,7 @@ class KickTap {
         fast = 0.0
         slow = 0.0
         lastOnsetUs = Long.MIN_VALUE
+        warmupBlocks = (SLOW_MS / BLOCK_MS).toInt()
     }
 
     fun process(output: ByteBuffer, channelCount: Int, sampleRate: Int, mediaUs: Long) {
@@ -82,6 +85,10 @@ class KickTap {
         fast = fast * fastDecay + energy * (1 - fastDecay)
         val rising = fast > slow * ONSET_RATIO && fast > MIN_ENERGY
         slow = slow * slowDecay + energy * (1 - slowDecay)
+        if (warmupBlocks > 0) {
+            warmupBlocks--
+            return
+        }
         // MIN_VALUE means none yet; subtracting it would overflow and block every onset.
         if (rising && (lastOnsetUs == Long.MIN_VALUE || blockStartUs - lastOnsetUs > REFRACTORY_US)) {
             lastOnsetUs = blockStartUs
