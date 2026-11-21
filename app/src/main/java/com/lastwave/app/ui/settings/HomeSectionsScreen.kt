@@ -15,9 +15,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -72,6 +80,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -149,8 +158,10 @@ data class UniversalSectionItem(
 )
 
 val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
+    UniversalSectionItem("quick_tiles", titleRes = R.string.home_section_quick_tiles_title, subtitleRes = R.string.home_section_quick_tiles_sub, isYouTube = false, icon = Icons.Filled.Dashboard),
     UniversalSectionItem("taste_strip", titleRes = R.string.home_section_taste_strip_title, subtitleRes = R.string.home_section_taste_strip_sub, isYouTube = false, icon = Icons.Filled.Sell),
-    UniversalSectionItem("discover_new_music", rawTitle = "Discover new music", rawSubtitle = "Rotates fresh songs on refresh", isYouTube = false, icon = Icons.Filled.Explore),
+    UniversalSectionItem("discover_new_music", titleRes = R.string.home_section_discover_title, subtitleRes = R.string.home_section_discover_sub, isYouTube = false, icon = Icons.Filled.Explore),
+    UniversalSectionItem("preview_queues", titleRes = R.string.home_section_preview_queues_title, subtitleRes = R.string.home_section_preview_queues_sub, isYouTube = false, icon = Icons.Filled.QueueMusic),
     UniversalSectionItem("quick_picks", titleRes = R.string.home_section_quick_picks_title, subtitleRes = R.string.home_section_quick_picks_sub, isYouTube = false, icon = Icons.Filled.Bolt),
     UniversalSectionItem("because_you_listen_to", titleRes = R.string.home_section_because_title, subtitleRes = R.string.home_section_because_sub, isYouTube = false, icon = Icons.Filled.History),
     UniversalSectionItem("fresh_finds", titleRes = R.string.home_section_fresh_title, subtitleRes = R.string.home_section_fresh_sub, isYouTube = false, icon = Icons.Filled.Whatshot),
@@ -226,7 +237,7 @@ class HomeSectionsViewModel @Inject constructor(
             } else {
                 val itemMap = defaultList.associateBy { it.id }
                 val list = storedOrder
-                    .filter { it != "hero_greeting" && it != "infinite_radio" && it != "quick_tiles" }
+                    .filter { it != "hero_greeting" && it != "infinite_radio" }
                     .mapNotNull { itemMap[it] }
                     .toMutableList()
                 for (defaultItem in defaultList) {
@@ -387,12 +398,7 @@ fun HomeSectionsScreen(
                 return@Column
             }
 
-            Text(
-                text = "Drag the handle to reorder sections, pin favorites to top, and toggle visibility for both LastWave and YouTube Music shelves.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-            )
+            Spacer(Modifier.height(4.dp))
 
             val listState = rememberLazyListState()
             val haptics = LocalHapticFeedback.current

@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -70,6 +71,12 @@ data class FeedUiState(
     val homeChips: List<HomeChip> get() = feedData.homeChips
 }
 
+// Paging starts with the first shelves, while the rest of the feed is still
+// loading (waiting for all of it left the list ending for 10 s+). Once paging
+// has moved past page 1, a later feed update must not rewind the token.
+private fun FeedUiState.continuationAfterUpdate(fresh: String?): String? =
+    if (pagedShelves.isNotEmpty() && defaultContinuationToken != null) defaultContinuationToken else fresh
+
 @HiltViewModel
 class FeedViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
@@ -83,12 +90,28 @@ class FeedViewModel @Inject constructor(
     private val homeRepository: com.lastwave.app.data.repository.HomeRepository,
     private val discoverRepository: com.lastwave.app.data.discover.DiscoverRepository,
     private val genresRepository: com.lastwave.app.data.generate.GenresRepository,
+    private val previewQueueRepository: com.lastwave.app.data.queue.PreviewQueueRepository? = null,
 ) : ViewModel() {
 
+    val previewQueues: StateFlow<List<com.lastwave.app.data.queue.PreviewQueue>> =
+        previewQueueRepository?.previewQueues ?: MutableStateFlow(emptyList())
+
+    fun playPreviewQueue(queue: com.lastwave.app.data.queue.PreviewQueue) {
+        musicPlayer.playQueue(queue.tracks, 0, sourceLabel = queue.title)
+    }
+
+    private val recommendationExclusionKeys = discoverRepository.observeRecommendationExclusions()
+        .map { exclusions -> exclusions.mapTo(mutableSetOf()) { it.trackKey } }
+        .distinctUntilChanged()
+        .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
     private val _uiState = MutableStateFlow(FeedUiState())
-    val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<FeedUiState> = combine(_uiState, recommendationExclusionKeys) { state, keys ->
+        state.withRecommendationExclusions(keys)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, FeedUiState())
     private val _discoveryTracks = MutableStateFlow<List<GeneratedTrack>>(emptyList())
-    val discoveryTracks: StateFlow<List<GeneratedTrack>> = _discoveryTracks.asStateFlow()
+    val discoveryTracks: StateFlow<List<GeneratedTrack>> = combine(_discoveryTracks, recommendationExclusionKeys) { tracks, keys ->
+        tracks.filterNot { it.key in keys }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val _isDiscoveryLoading = MutableStateFlow(false)
     val isDiscoveryLoading: StateFlow<Boolean> = _isDiscoveryLoading.asStateFlow()
     @Volatile private var discoveryGeneration = 0L
@@ -239,11 +262,12 @@ class FeedViewModel @Inject constructor(
     }
 
     fun playInfiniteRadio() {
-        val state = _uiState.value
+        val state = uiState.value
         val feed = if (state.isFeedUpdating) state.feedData else state.lastCompletedFeed ?: state.feedData
-        (feedQuickPicks(feed) + feed.ytLikedSongs + feed.freshFinds).randomOrNull()?.let {
-            playTrack(it, "Infinite Radio")
-        }
+        val excluded = recommendationExclusionKeys.replayCache.lastOrNull().orEmpty()
+        (feedQuickPicks(feed) + feed.ytLikedSongs + feed.freshFinds)
+            .filterNot { GeneratedTrack(it.title, it.artist).key in excluded }
+            .randomOrNull()?.let { playTrack(it, "Infinite Radio") }
     }
 
     fun playMix(mix: FeedMix) = playTrack(mix.seed, mix.title)
@@ -284,7 +308,7 @@ class FeedViewModel @Inject constructor(
                             it.copy(
                                 feedData = visible,
                                 pagedShelves = pages,
-                                defaultContinuationToken = visible.homeContinuationToken ?: it.defaultContinuationToken,
+                                defaultContinuationToken = it.continuationAfterUpdate(visible.homeContinuationToken ?: it.defaultContinuationToken),
                                 isLoading = false,
                                 isRefreshIndicatorVisible = false,
                             )
@@ -306,7 +330,7 @@ class FeedViewModel @Inject constructor(
                         pagedShelves = pages,
                         lastCompletedFeed = data,
                         freshPagedShelfTitles = emptySet(),
-                        defaultContinuationToken = data.homeContinuationToken,
+                        defaultContinuationToken = it.continuationAfterUpdate(data.homeContinuationToken),
                         error = null,
                     )
                 }
@@ -416,7 +440,7 @@ class FeedViewModel @Inject constructor(
      */
     fun loadMoreHomeShelves() {
         val state = _uiState.value
-        if ((!state.isChipActive && state.isFeedUpdating) || state.isLoadingMore || state.isChipLoading || state.isLoading || state.isRefreshing) return
+        if (state.isLoadingMore || state.isChipLoading || state.isLoading || state.isRefreshing) return
 
         val isChipActive = state.selectedChip != null
         val token = if (isChipActive) {
@@ -579,6 +603,11 @@ class FeedViewModel @Inject constructor(
         )
     }
 
+    private suspend fun filterRecommendedSongs(tracks: List<YouTubeMusicTrack>): List<YouTubeMusicTrack> {
+        val excluded = discoverRepository.recommendationExclusionKeys()
+        return tracks.filterNot { GeneratedTrack(it.title, it.artist).key in excluded }
+    }
+
     fun playArtistRadio(artist: FeedArtist) {
         viewModelScope.launch {
             val seeds = try {
@@ -606,7 +635,7 @@ class FeedViewModel @Inject constructor(
                     emptyList()
                 }
             }.orEmpty()
-            val songs = (listOfNotNull(seed) + related).distinctBy(YouTubeMusicTrack::videoId)
+            val songs = filterRecommendedSongs((listOfNotNull(seed) + related).distinctBy(YouTubeMusicTrack::videoId))
             if (songs.isNotEmpty()) {
                 playTracksQueue(songs, startIndex = 0, sourceLabel = "${artist.name} Radio")
             }
@@ -645,7 +674,7 @@ class FeedViewModel @Inject constructor(
                         emptyList()
                     }
                     if (searchResults.isNotEmpty()) {
-                        playTracksQueue(searchResults, sourceLabel = title)
+                        playTracksQueue(filterRecommendedSongs(searchResults), sourceLabel = title)
                     }
                 }
             } finally {

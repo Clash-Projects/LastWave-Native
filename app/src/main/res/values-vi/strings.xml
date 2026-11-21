@@ -593,7 +593,6 @@
     <string name="menu_copy_link">Sao chép liên kết</string>
     <string name="link_copied">Đã sao chép liên kết vào bộ nhớ tạm</string>
     <string name="menu_refresh_artwork">Làm mới ảnh bìa</string>
-    <string name="menu_copy_song">Sao chép bài hát</string>
     <string name="menu_details_specs">Chi tiết &amp; thông số âm thanh</string>
     <string name="menu_dont_recommend">Không đề xuất lại</string>
     <string name="menu_remove_from_playlist">Xóa khỏi danh sách phát</string>

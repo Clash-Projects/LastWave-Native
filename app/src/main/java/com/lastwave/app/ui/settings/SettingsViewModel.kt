@@ -510,6 +510,7 @@ class SettingsViewModel @Inject constructor(
     fun setLastWaveTheme(enabled: Boolean) = launchSettingsAction("update LastWave signature theme") { themeRepository.setLastWaveTheme(enabled) }
     fun setAppIcon(icon: AppIcon) = launchSettingsAction("update app icon") { themeRepository.setAppIcon(icon) }
     fun setAmoled(enabled: Boolean) = launchSettingsAction("update AMOLED mode") { themeRepository.setAmoled(enabled) }
+    fun setLegacyColors(enabled: Boolean) = launchSettingsAction("update legacy colors") { themeRepository.setLegacyColors(enabled) }
     fun setLiquidGlass(enabled: Boolean) = launchSettingsAction("update Liquid Glass") { themeRepository.setLiquidGlass(enabled) }
     fun setMd3NavBar(enabled: Boolean) = launchSettingsAction("update MD3 Navigation Bar") { themeRepository.setMd3NavBar(enabled) }
     fun setHideNavTabs(enabled: Boolean) = launchSettingsAction("update Hide Navigation Tabs") { themeRepository.setHideNavTabs(enabled) }
@@ -527,6 +528,8 @@ class SettingsViewModel @Inject constructor(
     fun setUseCustomFont(enabled: Boolean) = launchSettingsAction("update the app font") { settingsPreferences.setUseCustomFont(enabled) }
     fun setUseBoldFont(enabled: Boolean) = launchSettingsAction("update font weight") { settingsPreferences.setUseBoldFont(enabled) }
     fun setCollapsingNavBar(enabled: Boolean) = launchSettingsAction("update nav bar collapse") { settingsPreferences.setCollapsingNavBar(enabled) }
+    fun setLegacyTrackMenu(enabled: Boolean) = launchSettingsAction("update classic song menu") { settingsPreferences.setLegacyTrackMenu(enabled) }
+    fun setMenuBlur(enabled: Boolean) = launchSettingsAction("update menu blur") { settingsPreferences.setMenuBlur(enabled) }
     fun setPreferLosslessStreaming(enabled: Boolean) = launchSettingsAction("update streaming preference") { settingsPreferences.setPreferLosslessStreaming(enabled) }
     fun setHiResStart(mode: com.lastwave.app.data.local.HiResStart) = launchSettingsAction("update hi-res start") { settingsPreferences.setHiResStart(mode) }
     fun setWifiStreamingQuality(quality: Int) = launchSettingsAction("update Wi-Fi streaming quality") { settingsPreferences.setWifiStreamingQuality(quality) }
@@ -569,6 +572,10 @@ class SettingsViewModel @Inject constructor(
     /** Synced Music Video (Settings -> Experimental, default OFF). */
     fun setMusicVideoEnabled(enabled: Boolean) = launchSettingsAction("update music video setting") {
         settingsPreferences.setMusicVideoEnabled(enabled)
+    }
+
+    fun setMusicVideoNowPlayingButtonEnabled(enabled: Boolean) = launchSettingsAction("update music video now playing button setting") {
+        settingsPreferences.setMusicVideoNowPlayingButtonEnabled(enabled)
     }
 
     fun setShowAutoEqInVolumePanel(enabled: Boolean) = launchSettingsAction("update show autoeq in volume panel") {
@@ -710,6 +717,10 @@ class SettingsViewModel @Inject constructor(
         launchSettingsAction("update stop playback on recents setting") {
             settingsPreferences.setStopPlaybackOnTaskRemoved(enabled)
         }
+    fun setPauseOnZeroVolume(enabled: Boolean) =
+        launchSettingsAction("update pause on zero volume setting") {
+            settingsPreferences.setPauseOnZeroVolume(enabled)
+        }
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
@@ -771,6 +782,9 @@ class SettingsViewModel @Inject constructor(
     }
     fun setLyricsRotatingBackgroundEnabled(enabled: Boolean) = launchSettingsAction("update lyrics rotating background") {
         settingsPreferences.setLyricsRotatingBackgroundEnabled(enabled)
+    }
+    fun setFluidBeatSyncEnabled(enabled: Boolean) = launchSettingsAction("update fluid beat sync") {
+        settingsPreferences.setFluidBeatSyncEnabled(enabled)
     }
     fun setKeepLyricsScreenAwake(enabled: Boolean) = launchSettingsAction("update keep lyrics screen awake") {
         settingsPreferences.setKeepLyricsScreenAwake(enabled)

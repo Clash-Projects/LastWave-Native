@@ -18,15 +18,25 @@ internal fun playlistTrackDisplayIndices(
     // Locale collation so "Émile" sorts with "E", like YouTube Music; unknowns always last.
     val collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
     fun by(text: (GeneratedTrack) -> String): Comparator<Int> =
-        Comparator { a, b -> collator.compare(text(tracks[a]), text(tracks[b])) }
+        Comparator { a, b ->
+            val sa = text(tracks[a]).trim()
+            val sb = text(tracks[b]).trim()
+            val c = collator.compare(sa, sb)
+            if (c != 0) c else sa.compareTo(sb, ignoreCase = true).let { if (it != 0) it else sa.compareTo(sb) }
+        }
     val sorted = when (sort) {
         PlaylistTrackSort.CUSTOM -> if (ascending) indices else indices.reversed()
         PlaylistTrackSort.DATE_ADDED -> if (ascending != newestFirst) indices else indices.reversed()
-        PlaylistTrackSort.NAME -> indices.sortedWith(by { it.name }.let { if (ascending) it else it.reversed() })
-        PlaylistTrackSort.ARTIST -> indices.sortedWith(by { it.artist }.let { if (ascending) it else it.reversed() })
+        PlaylistTrackSort.NAME -> indices.sortedWith(
+            (by { it.name }.thenComparing(by { it.artist })).let { if (ascending) it else it.reversed() }
+        )
+        PlaylistTrackSort.ARTIST -> indices.sortedWith(
+            (by { it.artist }.thenComparing(by { it.name })).let { if (ascending) it else it.reversed() }
+        )
         PlaylistTrackSort.PLAY_TIME -> indices.sortedWith(
             compareBy<Int> { tracks[it].durationMs == null }
-                .then(compareBy<Int> { tracks[it].durationMs }.let { if (ascending) it else it.reversed() }),
+                .then(compareBy<Int> { tracks[it].durationMs ?: 0L }.let { if (ascending) it else it.reversed() })
+                .thenComparing(by { it.name }),
         )
     }
     if (query.isBlank()) return sorted

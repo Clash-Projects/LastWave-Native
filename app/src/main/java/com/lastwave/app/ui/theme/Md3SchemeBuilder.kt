@@ -85,8 +85,18 @@ object Md3SchemeBuilder {
     /** True for grey/black/white seeds: their hue is meaningless ([hueOf] gives 0, red). */
     fun isAchromatic(hex: String): Boolean = saturationOf(hex) < 0.1f
 
-    private fun DynamicScheme.toComposeColorScheme(): ColorScheme {
+    private fun DynamicScheme.toComposeColorScheme(useLegacyColors: Boolean = false): ColorScheme {
         return if (this.isDark) {
+            val bg = if (useLegacyColors) Color(mdc.background().getArgb(this)) else DarkBackground
+            val surf = if (useLegacyColors) Color(mdc.surface().getArgb(this)) else DarkSurface
+            val surfDim = if (useLegacyColors) Color(mdc.surfaceDim().getArgb(this)) else DarkSurfaceDim
+            val surfBright = if (useLegacyColors) Color(mdc.surfaceBright().getArgb(this)) else DarkSurfaceBright
+            val surfContainerLowest = if (useLegacyColors) Color(mdc.surfaceContainerLowest().getArgb(this)) else DarkSurfaceContainerLowest
+            val surfContainerLow = if (useLegacyColors) Color(mdc.surfaceContainerLow().getArgb(this)) else DarkSurfaceContainerLow
+            val surfContainer = if (useLegacyColors) Color(mdc.surfaceContainer().getArgb(this)) else DarkSurfaceContainer
+            val surfContainerHigh = if (useLegacyColors) Color(mdc.surfaceContainerHigh().getArgb(this)) else DarkSurfaceContainerHigh
+            val surfContainerHighest = if (useLegacyColors) Color(mdc.surfaceContainerHighest().getArgb(this)) else DarkSurfaceContainerHighest
+            val surfVariant = if (useLegacyColors) Color(mdc.surfaceVariant().getArgb(this)) else DarkSurfaceVariant
             ColorScheme(
                 primary = Color(primaryPalette.tone(72)),
                 onPrimary = Color(primaryPalette.tone(10)),
@@ -101,11 +111,11 @@ object Md3SchemeBuilder {
                 onTertiary = Color(tertiaryPalette.tone(10)),
                 tertiaryContainer = Color(tertiaryPalette.tone(22)),
                 onTertiaryContainer = Color(tertiaryPalette.tone(85)),
-                background = DarkBackground,
+                background = bg,
                 onBackground = Color(neutralPalette.tone(90)),
-                surface = DarkSurface,
+                surface = surf,
                 onSurface = Color(neutralPalette.tone(90)),
-                surfaceVariant = DarkSurfaceVariant,
+                surfaceVariant = surfVariant,
                 onSurfaceVariant = Color(neutralVariantPalette.tone(75)),
                 surfaceTint = Color(primaryPalette.tone(72)),
                 inverseSurface = Color(neutralPalette.tone(90)),
@@ -117,13 +127,13 @@ object Md3SchemeBuilder {
                 outline = Color(neutralVariantPalette.tone(45)),
                 outlineVariant = Color(neutralVariantPalette.tone(25)),
                 scrim = Color.Black,
-                surfaceBright = DarkSurfaceBright,
-                surfaceContainer = DarkSurfaceContainer,
-                surfaceContainerHigh = DarkSurfaceContainerHigh,
-                surfaceContainerHighest = DarkSurfaceContainerHighest,
-                surfaceContainerLow = DarkSurfaceContainerLow,
-                surfaceContainerLowest = DarkSurfaceContainerLowest,
-                surfaceDim = DarkSurfaceDim,
+                surfaceBright = surfBright,
+                surfaceContainer = surfContainer,
+                surfaceContainerHigh = surfContainerHigh,
+                surfaceContainerHighest = surfContainerHighest,
+                surfaceContainerLow = surfContainerLow,
+                surfaceContainerLowest = surfContainerLowest,
+                surfaceDim = surfDim,
             )
         } else {
             ColorScheme(
@@ -233,23 +243,28 @@ object Md3SchemeBuilder {
     /**
      * (dark, light) schemes for now-playing artwork using a single major dominant color.
      */
-    fun buildArtworkSchemes(seed: String, @Suppress("UNUSED_PARAMETER") second: String? = null, amoled: Boolean): Pair<ColorScheme, ColorScheme> {
-        val darkScheme = generateDynamicScheme(seed, isDark = true).toComposeColorScheme().let {
+    fun buildArtworkSchemes(
+        seed: String,
+        @Suppress("UNUSED_PARAMETER") second: String? = null,
+        amoled: Boolean,
+        useLegacyColors: Boolean = false,
+    ): Pair<ColorScheme, ColorScheme> {
+        val darkScheme = generateDynamicScheme(seed, isDark = true).toComposeColorScheme(useLegacyColors).let {
             if (amoled) applyAmoledTheme(it) else it
         }
-        val lightScheme = generateDynamicScheme(seed, isDark = false).toComposeColorScheme()
+        val lightScheme = generateDynamicScheme(seed, isDark = false).toComposeColorScheme(useLegacyColors)
         return darkScheme to lightScheme
     }
 
     /** Full dynamic dark scheme, seeded from [hex]. */
     @Suppress("UNUSED_PARAMETER")
-    fun buildScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
-        buildDarkScheme(hex, amoled, liquidGlass)
+    fun buildScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false, useLegacyColors: Boolean = false): ColorScheme =
+        buildDarkScheme(hex, amoled, liquidGlass, useLegacyColors)
 
     /** Dark scheme, seeded from [hex]. */
     @Suppress("UNUSED_PARAMETER")
-    fun buildDarkScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false): ColorScheme {
-        val darkScheme = generateDynamicScheme(hex, isDark = true).toComposeColorScheme()
+    fun buildDarkScheme(hex: String, amoled: Boolean, liquidGlass: Boolean = false, useLegacyColors: Boolean = false): ColorScheme {
+        val darkScheme = generateDynamicScheme(hex, isDark = true).toComposeColorScheme(useLegacyColors)
         return if (amoled) applyAmoledTheme(darkScheme) else darkScheme
     }
 
@@ -260,13 +275,13 @@ object Md3SchemeBuilder {
 
     /** Pure grayscale dark scheme. */
     @Suppress("UNUSED_PARAMETER")
-    fun buildMonochromeScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
-        buildMonochromeDarkScheme(amoled, liquidGlass)
+    fun buildMonochromeScheme(amoled: Boolean, liquidGlass: Boolean = false, useLegacyColors: Boolean = false): ColorScheme =
+        buildMonochromeDarkScheme(amoled, liquidGlass, useLegacyColors)
 
     /** Pure grayscale dark scheme. */
     @Suppress("UNUSED_PARAMETER")
-    fun buildMonochromeDarkScheme(amoled: Boolean, liquidGlass: Boolean = false): ColorScheme =
-        buildDarkScheme("#777777", amoled, liquidGlass)
+    fun buildMonochromeDarkScheme(amoled: Boolean, liquidGlass: Boolean = false, useLegacyColors: Boolean = false): ColorScheme =
+        buildDarkScheme("#777777", amoled, liquidGlass, useLegacyColors)
 
     /** Pure grayscale light scheme. */
     @Suppress("UNUSED_PARAMETER")
@@ -276,15 +291,19 @@ object Md3SchemeBuilder {
     /**
      * LastWave Signature Dark Scheme built specifically around the official app logo colors.
      */
-    fun buildLastWaveDarkScheme(amoled: Boolean, @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
+    fun buildLastWaveDarkScheme(
+        amoled: Boolean,
+        @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false,
+        useLegacyColors: Boolean = false,
+    ): ColorScheme {
         val brandLime = Color(0xFFC9FB00)
         val darkTeal = Color(0xFF012226)
         val deepTeal = Color(0xFF01181B)
 
-        val backgroundCol = if (amoled) Color.Black else DarkBackground
-        val surfaceCol = if (amoled) Color.Black else DarkSurface
-        val surfaceLowCol = if (amoled) Color.Black else DarkSurfaceContainerLow
-        val surfaceLowestCol = if (amoled) Color.Black else DarkSurfaceContainerLowest
+        val backgroundCol = if (amoled) Color.Black else deepTeal
+        val surfaceCol = if (amoled) Color.Black else darkTeal
+        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF011E22)
+        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF001214)
 
         return darkColorScheme(
             primary = brandLime,

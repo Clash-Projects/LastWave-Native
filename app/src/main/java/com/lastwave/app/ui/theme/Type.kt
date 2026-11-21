@@ -67,11 +67,79 @@ private fun gsFlex(
  */
 const val BOLD_FONT_BOOST = 120f
 
-private val LyricsLeadFontFamily: FontFamily = gsFlex(weight = 760f, width = 100f, round = 0f, opticalSize = 40f)
-private val LyricsBackingFontFamily: FontFamily = gsFlex(weight = 700f, width = 100f, round = 0f, opticalSize = 24f)
+private fun lyricsFamilyWithWeights(
+    boldWeight: Float,
+    extraBoldWeight: Float,
+    width: Float = 100f,
+    opticalSize: Float,
+): FontFamily = FontFamily(
+    Font(
+        R.font.google_sans_flex,
+        weight = FontWeight.Normal,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight((boldWeight - 200f).toInt().coerceIn(1, 1000)),
+            FontVariation.width(width),
+            FontVariation.Setting("ROND", 0f),
+            FontVariation.Setting("opsz", opticalSize),
+        ),
+    ),
+    Font(
+        R.font.google_sans_flex,
+        weight = FontWeight.SemiBold,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight((boldWeight - 80f).toInt().coerceIn(1, 1000)),
+            FontVariation.width(width),
+            FontVariation.Setting("ROND", 0f),
+            FontVariation.Setting("opsz", opticalSize),
+        ),
+    ),
+    Font(
+        R.font.google_sans_flex,
+        weight = FontWeight.Bold,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight(boldWeight.toInt().coerceIn(1, 1000)),
+            FontVariation.width(width),
+            FontVariation.Setting("ROND", 0f),
+            FontVariation.Setting("opsz", opticalSize),
+        ),
+    ),
+    Font(
+        R.font.google_sans_flex,
+        weight = FontWeight.ExtraBold,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight(extraBoldWeight.toInt().coerceIn(1, 1000)),
+            FontVariation.width(width),
+            FontVariation.Setting("ROND", 0f),
+            FontVariation.Setting("opsz", opticalSize),
+        ),
+    ),
+    Font(
+        R.font.google_sans_flex,
+        weight = FontWeight.Black,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight((extraBoldWeight + 50f).toInt().coerceIn(1, 1000)),
+            FontVariation.width(width),
+            FontVariation.Setting("ROND", 0f),
+            FontVariation.Setting("opsz", opticalSize),
+        ),
+    ),
+)
+
+private val LyricsLeadFontFamily: FontFamily = lyricsFamilyWithWeights(boldWeight = 760f, extraBoldWeight = 850f, width = 100f, opticalSize = 40f)
+private val LyricsBackingFontFamily: FontFamily = lyricsFamilyWithWeights(boldWeight = 700f, extraBoldWeight = 780f, width = 100f, opticalSize = 24f)
 private val LyricsSubLineFontFamily: FontFamily = gsFlex(weight = 560f, width = 100f, round = 0f, opticalSize = 16f)
-private val LyricsLeadBoldFontFamily: FontFamily = gsFlex(weight = (760f + BOLD_FONT_BOOST).coerceAtMost(1000f), width = 100f, round = 0f, opticalSize = 40f)
-private val LyricsBackingBoldFontFamily: FontFamily = gsFlex(weight = (700f + BOLD_FONT_BOOST).coerceAtMost(1000f), width = 100f, round = 0f, opticalSize = 24f)
+private val LyricsLeadBoldFontFamily: FontFamily = lyricsFamilyWithWeights(
+    boldWeight = (760f + BOLD_FONT_BOOST).coerceAtMost(1000f),
+    extraBoldWeight = (850f + BOLD_FONT_BOOST).coerceAtMost(1000f),
+    width = 100f,
+    opticalSize = 40f,
+)
+private val LyricsBackingBoldFontFamily: FontFamily = lyricsFamilyWithWeights(
+    boldWeight = (700f + BOLD_FONT_BOOST).coerceAtMost(1000f),
+    extraBoldWeight = (780f + BOLD_FONT_BOOST).coerceAtMost(1000f),
+    width = 100f,
+    opticalSize = 24f,
+)
 private val LyricsSubLineBoldFontFamily: FontFamily = gsFlex(weight = (560f + BOLD_FONT_BOOST).coerceAtMost(1000f), width = 100f, round = 0f, opticalSize = 16f)
 
 fun lyricsLeadFontFamily(bold: Boolean): FontFamily = if (bold) LyricsLeadBoldFontFamily else LyricsLeadFontFamily

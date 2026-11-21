@@ -16,6 +16,8 @@ import com.lastwave.app.data.lyrics.isRtlText
  *   pulls focus or scroll away from the lead singer.
  * - [LyricInterlude]: an instrumental break of [INTERLUDE_MIN_MS] or more,
  *   drawn as the three-dot countdown.
+ * - [LyricIntro]: the song intro, [LYRICS_INTRO_MIN_MS] or longer, drawn as
+ *   the LastWave signature card.
  *
  * Timing is never changed here: every item starts at a provider timestamp
  * (or at a provider line end for interludes), so focus moves exactly when
@@ -83,6 +85,15 @@ internal data class LyricInterlude(
     val role: VocalRole,
     override val stanzaGapAfter: Boolean = false,
 ) : LyricsItem
+
+/** Song intro before the first sung row, drawn as the LastWave signature card. */
+@Immutable
+internal data class LyricIntro(
+    override val endMs: Long,
+) : LyricsItem {
+    override val startMs: Long get() = 0L
+    override val stanzaGapAfter: Boolean get() = false
+}
 
 @Immutable
 internal class LyricsStage(
@@ -227,9 +238,9 @@ internal fun buildLyricsStage(lines: List<LyricLine>): LyricsStage {
         }
     }
 
-    // Intro: dots count in until the first sung row.
-    val first = drafts.first()
-    interlude(0L, first.startMs, first.role)
+    // Intro: the signature card holds the stage until the first sung row.
+    val firstStart = drafts.first().startMs
+    if (firstStart >= LYRICS_INTRO_MIN_MS) items += LyricIntro(endMs = firstStart)
 
     drafts.forEachIndexed { i, d ->
         val next = drafts.getOrNull(i + 1)

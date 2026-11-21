@@ -256,14 +256,18 @@ internal fun MusicPlayer.shuffledUnplayedFirst(indices: List<Int>, keyAt: (Int) 
         return indices.shuffled().sortedBy { keyAt(it) in played }
     }
 
-internal fun MusicPlayer.nextQueueIndex(state: MusicPlayerState): Int {
+/** [wrap] = false stops at the end of the queue (shuffle: no replays) instead
+ *  of starting the songs over; manual next keeps wrapping. */
+internal fun MusicPlayer.nextQueueIndex(state: MusicPlayerState, wrap: Boolean = true): Int {
         val queue = state.queue
         if (queue.isEmpty()) return C.INDEX_UNSET
         val start = (state.currentIndex + 1).coerceAtLeast(0)
         val ordered = if (state.shuffleEnabled) {
+            val played = if (wrap) emptySet() else synchronized(playHistory) { playHistory.toHashSet() }
             shuffledUnplayedFirst(queue.indices.toList()) { queue[it].mediaIdKey() }
+                .filter { queue[it].mediaIdKey() !in played }
         } else {
-            (start until queue.size) + (0 until start)
+            (start until queue.size) + if (wrap) (0 until start) else emptyList()
         }
         return ordered.firstOrNull { it != state.currentIndex && queue[it].mediaIdKey() !in unavailableMediaIds }
             ?: C.INDEX_UNSET

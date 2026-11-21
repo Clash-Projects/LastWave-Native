@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MusicNote
@@ -95,6 +96,7 @@ fun TrackMiniTraySheet(
     onDismiss: () -> Unit,
     downloadViewModel: DownloadMenuViewModel = hiltViewModel(),
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
+    exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
@@ -267,6 +269,13 @@ fun TrackMiniTraySheet(
                             artistAlbumViewModel.openArtist(art)
                             onDismiss()
                         }
+                    }
+                }
+                // 8. Don't recommend again
+                add { pos ->
+                    MiniTrayRow(Icons.Filled.Block, "Don't recommend again", position = pos) {
+                        exclusionViewModel.exclude(playable)
+                        onDismiss()
                     }
                 }
             }

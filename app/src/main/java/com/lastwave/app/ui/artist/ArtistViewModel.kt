@@ -22,10 +22,21 @@ import com.lastwave.app.data.canvas.CanvasArtwork
 import com.lastwave.app.data.canvas.CanvasRepository
 import javax.inject.Inject
 
+import com.lastwave.app.data.local.db.DownloadedTrackDao
+import com.lastwave.app.data.playlist.TrackLikeController
+import kotlinx.coroutines.flow.combine
+import com.lastwave.app.data.local.db.SongPlayStatsDao
+import kotlinx.coroutines.flow.map
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.SettingsPreferences
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+
+data class KnownSongSignals(
+    val likedKeys: Set<String> = emptySet(),
+    val downloadedTitlesAndIds: Set<String> = emptySet(),
+    val playedTitlesAndIds: Set<String> = emptySet(),
+)
 
 sealed interface ArtistUiState {
     data object Loading : ArtistUiState
@@ -41,10 +52,38 @@ class ArtistViewModel @Inject constructor(
     private val mixLauncher: MixLauncher,
     private val settingsPreferences: SettingsPreferences,
     private val canvasRepository: CanvasRepository,
+    private val songPlayStatsDao: SongPlayStatsDao,
+    private val downloadedTrackDao: DownloadedTrackDao,
+    val trackLikeController: TrackLikeController,
 ) : ViewModel() {
 
     val settings: StateFlow<MiscSettings> = settingsPreferences.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MiscSettings())
+
+    val knownSignals: StateFlow<KnownSongSignals> = combine(
+        trackLikeController.likedTrackKeys,
+        downloadedTrackDao.getAll(),
+        songPlayStatsDao.observeTopPlayed(2000),
+    ) { likedKeys, downloads, played ->
+        val dlSet = buildSet {
+            downloads.forEach { dt ->
+                add(dt.title.trim().lowercase())
+                add("${dt.title.trim().lowercase()}|${dt.artist.trim().lowercase()}")
+            }
+        }
+        val playedSet = buildSet {
+            played.forEach { sp ->
+                add(sp.title.trim().lowercase())
+                add(sp.trackKey.trim().lowercase())
+                sp.videoId?.let { add(it) }
+            }
+        }
+        KnownSongSignals(
+            likedKeys = likedKeys,
+            downloadedTitlesAndIds = dlSet,
+            playedTitlesAndIds = playedSet,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KnownSongSignals())
 
     private val _uiState = MutableStateFlow<ArtistUiState>(ArtistUiState.Loading)
     val uiState: StateFlow<ArtistUiState> = _uiState.asStateFlow()

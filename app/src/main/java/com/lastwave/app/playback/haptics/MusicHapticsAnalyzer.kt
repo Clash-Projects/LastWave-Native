@@ -28,6 +28,12 @@ interface HapticPulseListener {
 
     /** Seek / flush: any pulse still scheduled belongs to audio that will never play. */
     fun onAnalysisFlushed() {}
+
+    /**
+     * Every 10 ms window: how far bass sits above its running average, 0..1
+     * against the recent peak. The beat-synced background follows this.
+     */
+    fun onBassLevel(level: Float, leadTimeMs: Long) {}
 }
 
 /**
@@ -231,6 +237,10 @@ class MusicHapticsAnalyzer(
         val normBass = (fastBassEnv / bassPeak).coerceIn(0f, 1f)
         val normVocal = (fastVocalEnv / vocalPeak).coerceIn(0f, 1f)
         val bassRatio = fastBassEnv / max(slowBassEnv, 0.004f)
+        val bassLevel = if (fastBassEnv > 0.006f) {
+            ((fastBassEnv - slowBassEnv) / max(bassPeak - slowBassEnv, MIN_PEAK)).coerceIn(0f, 1f)
+        } else 0f
+        lead()?.let { pulseListener.onBassLevel(bassLevel, it) }
         val vocalRatio = fastVocalEnv / max(slowVocalEnv, 0.004f)
 
         // Relative (gain-independent) onset tests plus a small absolute floor
@@ -289,7 +299,8 @@ class MusicHapticsAnalyzer(
 
     private companion object {
         const val DECIMATION = 2
-        const val MAX_LEAD_MS = 1_500L
+        // Tablets buffer ~2.7 s of PCM ahead of the speaker; 1.5 s dropped every pulse.
+        const val MAX_LEAD_MS = 5_000L
         /** A pulse this late still lands within the motor's own spin-up time. */
         const val MAX_LATE_MS = 30L
         const val BASS_COOLDOWN_S = 0.110f

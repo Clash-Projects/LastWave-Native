@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -170,7 +171,8 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenDiscover: () -> Unit,
-    onOpenGenres: () -> Unit,
+    onOpenGenres: () -> Unit = {},
+    onOpenListeningStats: () -> Unit = {},
     onOpenFriends: () -> Unit,
     onOpenDownloads: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
@@ -198,7 +200,6 @@ fun HomeScreen(
                     modifier = Modifier.adaptiveContentWidth(maxWidth = 860.dp),
                     actions = {
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
-                        com.lastwave.app.ui.recognition.MusicRecognitionButton(key = "recognition_stats")
                         IconButton(onClick = onOpenSettings) {
                             ProfileAvatar(avatarUrl = uiState.stats?.avatarUrl, modifier = Modifier.size(38.dp))
                         }
@@ -217,6 +218,10 @@ fun HomeScreen(
             return@Scaffold
         }
 
+        // Hoisted so the stats header can tell when the list is back at its top.
+        val listState = rememberLazyListState()
+        val statsCollapse = rememberStatsHeaderCollapse()
+        val statsScrollConnection = remember(statsCollapse, listState) { statsCollapse.connection(listState) }
         Box(
             modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
             contentAlignment = Alignment.TopCenter,
@@ -225,7 +230,8 @@ fun HomeScreen(
                 Modifier
                     .fillMaxSize()
                     .adaptiveContentWidth(maxWidth = 860.dp)
-                    .safeHorizontalContentPadding(),
+                    .safeHorizontalContentPadding()
+                    .nestedScroll(statsScrollConnection),
             ) {
             HeaderRow(
                 displayUsername = when {
@@ -240,7 +246,8 @@ fun HomeScreen(
             )
             Spacer(Modifier.height(2.dp))
 
-            if (uiState.isLocalStatsMode && !uiState.isViewingFriend) {
+            val showLocalBanner = uiState.isLocalStatsMode && !uiState.isViewingFriend
+            val localBanner: @Composable () -> Unit = {
                 LocalStatsBanner(
                     isOfflineFallback = uiState.isLastFmConnected,
                     onClick = if (uiState.isLastFmConnected) viewModel::refresh else onOpenSettings,
@@ -248,16 +255,43 @@ fun HomeScreen(
                 )
             }
 
-            uiState.stats?.let { stats ->
-                StatsCard(
-                    scrobbles = stats.scrobbles,
-                    trackCount = stats.trackCount,
-                    artistCount = stats.artistCount,
-                    albumCount = stats.albumCount,
-                    // Honest label: local Room aggregates are plays, not global scrobbles.
-                    headlineLabel = if (uiState.isLocalStatsMode && !uiState.isViewingFriend) "Plays" else "Scrobbles",
-                    onOpenGenres = onOpenGenres,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp),
+            val stats = uiState.stats
+            if (stats == null) {
+                if (showLocalBanner) localBanner()
+            } else {
+                // Honest label: local Room aggregates are plays, not global scrobbles.
+                val headlineLabel = if (uiState.isLocalStatsMode && !uiState.isViewingFriend) "Plays" else "Scrobbles"
+                // Banner and card condense into one row as the list scrolls up,
+                // and open again when the list is scrolled back to its top.
+                CollapsingStatsHeader(
+                    state = statsCollapse,
+                    listState = listState,
+                    expanded = {
+                        Column {
+                            if (showLocalBanner) localBanner()
+                            StatsCard(
+                                scrobbles = stats.scrobbles,
+                                trackCount = stats.trackCount,
+                                artistCount = stats.artistCount,
+                                albumCount = stats.albumCount,
+                                headlineLabel = headlineLabel,
+                                onOpenGenres = onOpenGenres,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 0.dp),
+                            )
+                        }
+                    },
+                    compact = {
+                        StatsCompactRow(
+                            scrobbles = stats.scrobbles,
+                            trackCount = stats.trackCount,
+                            artistCount = stats.artistCount,
+                            albumCount = stats.albumCount,
+                            headlineLabel = headlineLabel,
+                            onExpand = statsCollapse::expand,
+                            onOpenGenres = onOpenGenres,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    },
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -268,7 +302,6 @@ fun HomeScreen(
                 onRefresh = viewModel::refresh,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
-                val listState = rememberLazyListState()
                 LaunchedEffect(listState, uiState.allTracks.size) {
                     snapshotFlowNearEnd(listState) { viewModel.loadNextPage() }
                 }
@@ -439,7 +472,7 @@ fun HomeScreen(
     menuTrack?.let { track ->
         com.lastwave.app.ui.common.TrackContextMenuSheet(
             target = com.lastwave.app.ui.common.TrackMenuTarget.Track(track.name, track.artist, track.artworkUrl.orEmpty()),
-            capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = true),
+            capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(showDeleteScrobble = true),
             playbackSourceLabel = "Home",
             onDismiss = { menuTrack = null },
         )

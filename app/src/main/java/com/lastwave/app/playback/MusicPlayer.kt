@@ -195,6 +195,7 @@ class MusicPlayer @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val ytMusicAuthManager: YtMusicAuthManager,
     private val loudnessPrefs: LoudnessPrefs,
+    internal val previewQueueRepository: dagger.Lazy<com.lastwave.app.data.queue.PreviewQueueRepository>,
 ) {
 
     private class VpnYoutubeLoginRequiredException(message: String) : java.io.IOException(message)
@@ -448,6 +449,10 @@ class MusicPlayer @Inject constructor(
     val stopPlaybackOnTaskRemoved: Boolean
         get() = stopPlaybackOnTaskRemovedPref
     internal var activePlayer: ExoPlayer? = null
+        set(value) {
+            field = value
+            com.lastwave.app.playback.rhythm.FluidRhythmEngine.liveSink = value?.let { playerToSink[it] }
+        }
     internal var secondaryPlayer: ExoPlayer? = null
     internal var secondaryNativeEngine: NativeAudioEngine? = null
     internal var secondaryEffects: AudioEffectsEngine? = null
@@ -567,6 +572,20 @@ class MusicPlayer @Inject constructor(
     internal var lastCachedSysVolume: Int = 0
     @Volatile
     internal var lastSysVolumeCheckMs: Long = 0L
+
+    @Volatile
+    internal var pauseOnZeroVolumePref: Boolean = false
+
+    internal val zeroVolumePlaybackObserver: ZeroVolumePlaybackObserver by lazy {
+        ZeroVolumePlaybackObserver(
+            context = appContext,
+            audioManager = audioManager,
+            isPauseOnZeroVolumeEnabled = { pauseOnZeroVolumePref },
+            isPlaying = { _state.value.isPlaying },
+            onPausePlayback = { pauseInternal(focusInitiated = false, zeroVolumeInitiated = true) },
+            onResumePlayback = { resume() },
+        )
+    }
     // ---- App-owned audio focus -------------------------------------------------
     // The player is built with handleAudioFocus=false (see createPlayer), so
     // Media3 never answers a focus change itself. Its automatic handling parks
@@ -1093,6 +1112,14 @@ class MusicPlayer @Inject constructor(
             // paths don't record â€” manual seeks arrive as SEEK, not AUTO.
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                 recordHistory(_state.value.current?.mediaIdKey())
+                // Repeat-all + shuffle wrapped to the first shuffled song: deal a
+                // new order, or every round replays the same "shuffled" sequence.
+                if (player.shuffleModeEnabled && player.repeatMode == Player.REPEAT_MODE_ALL &&
+                    player.mediaItemCount > 2 &&
+                    player.currentMediaItemIndex == player.currentTimeline.getFirstWindowIndex(true)
+                ) {
+                    reshuffleFrom(player.currentMediaItemIndex)
+                }
             }
             losslessBypassMediaIds.retainAll(setOf(mediaItem.mediaId))
             silentRecoveries.remove(mediaItem.mediaId)
@@ -2044,6 +2071,7 @@ class MusicPlayer @Inject constructor(
 
     @MainThread
     fun release() {
+        zeroVolumePlaybackObserver.unregister()
         cancelCrossfade()
         activePlayer?.removeListener(listener)
         activePlayer?.release()
@@ -2055,6 +2083,7 @@ class MusicPlayer @Inject constructor(
     }
 
     init {
+        zeroVolumePlaybackObserver.register()
         applicationScope.launch {
             autoMixCoordinator.get().telemetry.collect { tel ->
                 _state.update { it.copy(deckBlendTelemetry = tel) }
@@ -2459,6 +2488,7 @@ class MusicPlayer @Inject constructor(
                 autoplaySimilarEnabled = settings.autoplaySimilarEnabled
                 crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 stopPlaybackOnTaskRemovedPref = settings.stopPlaybackOnTaskRemoved
+                pauseOnZeroVolumePref = settings.pauseOnZeroVolume
                 if (settings.wifiStreamingQuality != previousPlaybackSettings.wifiStreamingQuality ||
                     settings.cellularStreamingQuality != previousPlaybackSettings.cellularStreamingQuality
                 ) {
@@ -2606,6 +2636,8 @@ class MusicPlayer @Inject constructor(
         startPositionMs: Long = 0L,
         playWhenReady: Boolean = true,
     ) {
+        if (playWhenReady && zeroVolumePlaybackObserver.shouldBlockPlayAction()) return
+        zeroVolumePlaybackObserver.onManualAction()
         pendingRestoredSession = null
         disableDiscoverQueue()
         disableRadioQueue()
@@ -2698,6 +2730,9 @@ class MusicPlayer @Inject constructor(
         enableRadioContinuation: Boolean = false,
     ) {
         if (tracks.isEmpty()) return
+        if (tracks.size >= 2) {
+            runCatching { previewQueueRepository.get().recordQueue(tracks, sourceLabel) }
+        }
         pendingRestoredSession = null
         discoverQueueLoadJob?.cancel()
         discoverQueueActive = endlessDiscover
@@ -2738,6 +2773,8 @@ class MusicPlayer @Inject constructor(
         startShuffled: Boolean = false,
         playWhenReady: Boolean = true,
     ) {
+        if (playWhenReady && zeroVolumePlaybackObserver.shouldBlockPlayAction()) return
+        if (playWhenReady) zeroVolumePlaybackObserver.onManualAction()
         val selectedTrack = tracks[selectedIndex].withYoutubeArtwork()
         PlaybackStartupLog.begin(
             trackId = selectedTrack.internalTrackId?.takeIf { it.isNotBlank() } ?: selectedTrack.videoId.orEmpty(),
@@ -3149,6 +3186,8 @@ class MusicPlayer @Inject constructor(
     }
 
     fun resume() = onMain {
+        if (zeroVolumePlaybackObserver.shouldBlockPlayAction()) return@onMain
+        zeroVolumePlaybackObserver.onManualAction()
         // An explicit resume replaces any focus-induced pause we owed.
         focusPauseAwaitingRecovery = false
         exclusiveUsbOutput.setPaused(false)
@@ -3227,7 +3266,10 @@ class MusicPlayer @Inject constructor(
      *   request, so abandoning it here would strand [pauseForAudioFocus]'s
      *   recovery and a brief interruption would never resume.
      */
-    private fun pauseInternal(focusInitiated: Boolean) {
+    private fun pauseInternal(focusInitiated: Boolean, zeroVolumeInitiated: Boolean = false) {
+        if (!zeroVolumeInitiated) {
+            zeroVolumePlaybackObserver.onManualAction()
+        }
         // A deliberate pause supersedes a focus-induced one, so a later
         // AUDIOFOCUS_GAIN must not resurrect playback the user stopped.
         if (!focusInitiated) focusPauseAwaitingRecovery = false
@@ -3435,6 +3477,7 @@ class MusicPlayer @Inject constructor(
         return _state.value.positionMs
     }
     fun seekTo(positionMs: Long) = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         if (isCasting) {
             castPlayback?.seek(positionMs.coerceAtLeast(0))
             return@onMain
@@ -3672,6 +3715,7 @@ class MusicPlayer @Inject constructor(
         }
     }
     fun previous() = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         if (isCasting) {
             if (_state.value.positionMs > 5_000) seekTo(0)
             else seekToQueueItem(previousQueueIndex(_state.value))
@@ -3734,6 +3778,7 @@ class MusicPlayer @Inject constructor(
     }
 
     fun next() = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         if (isCasting) {
             seekToQueueItem(nextQueueIndex(_state.value))
             return@onMain
@@ -3860,15 +3905,18 @@ class MusicPlayer @Inject constructor(
         if (player.shuffleModeEnabled == enabled && _state.value.shuffleEnabled == enabled) return@onMain
         cancelCrossfade()
         if (enabled && player.mediaItemCount > 1) {
-            val current = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0
-            val rest = shuffledUnplayedFirst((0 until player.mediaItemCount).filter { it != current }) { player.getMediaItemAt(it).mediaId }
-            val order = (listOf(current) + rest).toIntArray()
-            player.setShuffleOrder(DefaultShuffleOrder(order, Random.nextLong()))
+            reshuffleFrom(player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0)
         }
         player.shuffleModeEnabled = enabled
         preloadNextQueueItem(player.currentMediaItemIndex)
         _state.update { it.copy(shuffleEnabled = enabled) }
         persistPlaybackSession()
+    }
+
+    /** A fresh shuffle order that keeps [current] playing first. */
+    private fun reshuffleFrom(current: Int) {
+        val rest = shuffledUnplayedFirst((0 until player.mediaItemCount).filter { it != current }) { player.getMediaItemAt(it).mediaId }
+        player.setShuffleOrder(DefaultShuffleOrder((listOf(current) + rest).toIntArray(), Random.nextLong()))
     }
 
     fun cycleRepeatMode() = setRepeatMode(
@@ -3984,6 +4032,7 @@ class MusicPlayer @Inject constructor(
      *   time the app opens.
      */
     fun stopAndClear(clearSession: Boolean = true) = onMain {
+        zeroVolumePlaybackObserver.onManualAction()
         // Captured before the player is torn down: afterwards it reports 0.
         val stoppedAtMs = runCatching {
             if (playerDelegate.isInitialized() && player.mediaItemCount > 0) player.currentPosition else null
@@ -4755,6 +4804,7 @@ class MusicPlayer @Inject constructor(
                 durationSeconds = candidateTrack.durationMs?.let { (it / 1000L).toInt() },
             )
             return PureRadioQueue.filterStrictYtmRadioBatch(
+                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                 incomingTracks = seeded.map { it.toPlayableTrack() },
                 existingVideoIds = knownVideoIds,
                 existingKeys = knownKeys,
@@ -4771,6 +4821,7 @@ class MusicPlayer @Inject constructor(
             currentRadioContinuationToken = reseedResult.continuationToken
             currentRadioAutomixPlaylistId = reseedResult.automixPlaylistId
             val filtered = PureRadioQueue.filterStrictYtmRadioBatch(
+                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                 incomingTracks = reseedResult.tracks.map { it.toPlayableTrack() },
                 existingVideoIds = knownVideoIds,
                 existingKeys = knownKeys,
@@ -4782,6 +4833,7 @@ class MusicPlayer @Inject constructor(
             )
             if (filtered.isEmpty()) {
                 PureRadioQueue.filterStrictYtmRadioBatch(
+                    excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                     incomingTracks = reseedResult.tracks.map { it.toPlayableTrack() },
                     existingVideoIds = knownVideoIds,
                     existingKeys = knownKeys,
@@ -4845,6 +4897,7 @@ class MusicPlayer @Inject constructor(
                         )
                         if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@withLock
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = seeded.map { it.toPlayableTrack() },
                             existingVideoIds = existingVideoIds,
                             existingKeys = existingKeys,
@@ -4862,6 +4915,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioContinuationToken = radioResult.continuationToken
                             currentRadioAutomixPlaylistId = radioResult.automixPlaylistId
                             PureRadioQueue.filterStrictYtmRadioBatch(
+                                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                                 incomingTracks = radioResult.tracks.map { it.toPlayableTrack() },
                                 existingVideoIds = existingVideoIds,
                                 existingKeys = existingKeys,
@@ -4880,6 +4934,7 @@ class MusicPlayer @Inject constructor(
                                 currentRadioContinuationToken = automixResult.continuationToken
                                 currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                                 PureRadioQueue.filterStrictYtmRadioBatch(
+                                    excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                                     incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
                                     existingVideoIds = existingVideoIds,
                                     existingKeys = existingKeys,
@@ -4899,6 +4954,7 @@ class MusicPlayer @Inject constructor(
                         val artistTracks = retryRadioRequest { innerTube.searchSongs(seed.artist, limit = 25) }
                         if (expectedGeneration != playRequestGeneration.get() || !radioQueueActive) return@withLock
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = (artistTracks ?: emptyList()).map { it.toPlayableTrack() },
                             existingVideoIds = existingVideoIds,
                             existingKeys = existingKeys,
@@ -4996,6 +5052,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioAutomixPlaylistId = result.automixPlaylistId
                         }
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = result.tracks.map { it.toPlayableTrack() },
                             existingVideoIds = knownVideoIds,
                             existingKeys = knownKeys,
@@ -5017,6 +5074,7 @@ class MusicPlayer @Inject constructor(
                             currentRadioContinuationToken = automixResult.continuationToken
                             currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                             PureRadioQueue.filterStrictYtmRadioBatch(
+                                excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                                 incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
                                 existingVideoIds = knownVideoIds,
                                 existingKeys = knownKeys,
@@ -5044,6 +5102,7 @@ class MusicPlayer @Inject constructor(
                         currentRadioContinuationToken = automixResult.continuationToken
                         currentRadioAutomixPlaylistId = automixResult.automixPlaylistId
                         PureRadioQueue.filterStrictYtmRadioBatch(
+                            excludedSongKeys = discoverRepository.recommendationExclusionKeys(),
                             incomingTracks = automixResult.tracks.map { it.toPlayableTrack() },
                             existingVideoIds = knownVideoIds,
                             existingKeys = knownKeys,
@@ -5197,7 +5256,8 @@ class MusicPlayer @Inject constructor(
                 return
             } else if (isRepeatAll && player.mediaItemCount > 0) {
                 nextIndex = if (player.shuffleModeEnabled) {
-                    timeline.getFirstWindowIndex(true).takeIf { it != C.INDEX_UNSET } ?: 0
+                    (timeline.getFirstWindowIndex(true).takeIf { it != C.INDEX_UNSET } ?: 0)
+                        .also { if (player.mediaItemCount > 2) reshuffleFrom(it) }
                 } else {
                     0
                 }
@@ -5694,7 +5754,7 @@ class MusicPlayer @Inject constructor(
             unavailableMediaIds += failedMediaId
             if (!hasTimeline) {
                 unavailableSkipJob = null
-                val nextIndex = nextQueueIndex(snapshot)
+                val nextIndex = nextQueueIndex(snapshot, wrap = snapshot.repeatMode == Player.REPEAT_MODE_ALL)
                 if (nextIndex == C.INDEX_UNSET) {
                     player.pause()
                     player.stop()
@@ -5718,7 +5778,9 @@ class MusicPlayer @Inject constructor(
                 visited++
             }
             if (visited >= player.mediaItemCount) nextIndex = C.INDEX_UNSET
-            if (nextIndex == C.INDEX_UNSET && player.mediaItemCount > 1) {
+            // Wrap past the end only on repeat-all: a failed last song used to
+            // restart the playlist from the top even with repeat off.
+            if (nextIndex == C.INDEX_UNSET && player.mediaItemCount > 1 && repeatMode == Player.REPEAT_MODE_ALL) {
                 val candidateIndices = if (player.shuffleModeEnabled) {
                     shuffledUnplayedFirst((0 until player.mediaItemCount).toList()) { player.getMediaItemAt(it).mediaId }
                 } else {

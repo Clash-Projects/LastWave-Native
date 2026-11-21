@@ -6,73 +6,11 @@ import com.lastwave.app.data.music.HomeShelfItem
 import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.music.YouTubePlaylistSummary
 
-internal val feedSectionsAwaitingData = setOf(
-    "quick_picks", "because_you_listen_to", "fresh_finds", "jump_back_in",
-    "mixed_for_you", "mixes", "spotlight_hero", "spotlight", "top_artists",
-    "heavy_rotation", "albums_in_rotation", "albums", "trending_charts", "charts",
-    "new_releases", "friends_activity", "friends", "podcast_shelf", "podcasts",
-)
-
-internal class FeedSectionOrder {
-    private var visible = emptyList<String>()
-
-    fun update(available: List<String>, ready: List<String>): List<String> {
-        val availableKeys = available.toSet()
-        val retained = visible.filter { it in availableKeys }
-        val retainedKeys = retained.toSet()
-        visible = retained + ready.filterNot { it in retainedKeys }
-        return visible
-    }
-}
-
-internal fun readyFeedSections(
-    ordered: List<String>,
-    available: Set<String>,
-    isPending: (String) -> Boolean,
-): List<String> = buildList {
-    for (key in ordered) {
-        if (key in available) add(key)
-        else if (isPending(key)) break
-    }
-}
-
 internal fun mergeFeedShelves(previous: List<HomeShelf>, fresh: List<HomeShelf>): List<HomeShelf> {
     val previousTitles = previous.map { it.title.trim().lowercase() }.toSet()
     val freshByTitle = fresh.filter { it.items.isNotEmpty() }.associateBy { it.title.trim().lowercase() }
     return previous.map { old -> freshByTitle[old.title.trim().lowercase()]?.copy(title = old.title) ?: old } +
         fresh.filter { it.items.isNotEmpty() && it.title.trim().lowercase() !in previousTitles }
-}
-
-internal fun hasFreshFeedSection(
-    key: String,
-    fresh: FeedData?,
-    freshPagedTitles: Set<String>,
-    shelfTitle: String? = null,
-): Boolean {
-    if (fresh == null) return true
-    fun freshNative(title: String?): Boolean {
-        val normalized = title?.trim()?.lowercase() ?: return false
-        return normalized in freshPagedTitles || fresh.nativeShelves.any {
-            it.title.trim().lowercase() == normalized && it.items.isNotEmpty()
-        }
-    }
-    return when (key) {
-        "infinite_radio", "quick_picks" -> feedQuickPicks(fresh).isNotEmpty()
-        "quick_tiles" -> fresh.quickTiles.isNotEmpty()
-        "because_you_listen_to" -> fresh.becauseYouListenTo?.items?.isNotEmpty() == true
-        "fresh_finds" -> fresh.freshFinds.isNotEmpty()
-        "jump_back_in" -> fresh.jumpBackIn.isNotEmpty()
-        "mixed_for_you", "mixes" -> fresh.mixes.isNotEmpty()
-        "spotlight_hero", "spotlight" -> fresh.spotlight != null
-        "top_artists" -> fresh.topArtists.isNotEmpty()
-        "heavy_rotation" -> fresh.heavyRotation.isNotEmpty()
-        "albums_in_rotation", "albums" -> fresh.recentAlbums.isNotEmpty()
-        "trending_charts", "charts" -> fresh.charts.isNotEmpty()
-        "new_releases" -> feedNewReleases(fresh).isNotEmpty()
-        "friends_activity", "friends" -> fresh.friends.isNotEmpty()
-        "podcast_shelf", "podcasts" -> fresh.podcastShows.isNotEmpty()
-        else -> if (key.startsWith("yt:") || key.startsWith("paged_shelf_")) freshNative(shelfTitle) else true
-    }
 }
 
 internal fun feedQuickPicks(feed: FeedData): List<YouTubeMusicTrack> {

@@ -2,6 +2,7 @@ package com.lastwave.app.ui.settings
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestartAlt
@@ -264,6 +267,23 @@ object SettingsSearchIndex {
                         "continue playing", "task removed", "kill app", "close app"
                     ),
                     icon = Icons.Filled.StopCircle,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.pause_on_zero_volume",
+                    title = "Pause Playback at Volume 0",
+                    subtitle = "Automatically pause playback when media volume reaches 0",
+                    keywords = listOf(
+                        "pause", "volume", "zero volume", "mute", "silent",
+                        "auto pause", "media volume", "volume 0"
+                    ),
+                    icon = Icons.AutoMirrored.Rounded.VolumeOff,
                     iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.AUDIO,
@@ -513,6 +533,55 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.legacy_colors",
+                    title = "Use Legacy Colours",
+                    subtitle = "Use authentic Material You background and surface tones instead of deep obsidian surfaces",
+                    keywords = listOf(
+                        "legacy colors", "legacy colours", "material you background", "base colour", "original background",
+                        "bright background", "solid background", "monet"
+                    ),
+                    icon = Icons.Filled.Palette,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.legacy_track_menu",
+                    title = "Use Classic Song Menu",
+                    subtitle = "Use the classic card-based song options menu instead of the redesigned sheet",
+                    keywords = listOf(
+                        "classic song menu", "legacy track menu", "old song menu", "3 dots menu", "context menu", "track menu"
+                    ),
+                    icon = Icons.Filled.MoreVert,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.menu_blur",
+                    title = "Use Blur in Menus",
+                    subtitle = "Blur the background behind song options and context menus",
+                    keywords = listOf(
+                        "menu blur", "blur", "translucent menu", "glass menu", "3 dots blur", "backdrop blur"
+                    ),
+                    icon = Icons.Filled.BlurOn,
+                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.dynamic_color",
                     title = "Dynamic Color (Material You)",
                     subtitle = "Match UI accent colors to wallpaper and system palette",
@@ -728,6 +797,24 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.RestartAlt,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.fluid_beat_sync",
+                    title = "Beat-Synced Fluid Motion",
+                    subtitle = "Fluid artwork pulses and swirls in sync with musical beats",
+                    keywords = listOf(
+                        "beat synced fluid motion", "beat sync", "fluid motion", "beat pulse",
+                        "fluid beat", "audio reactive", "fluid animation", "per beat",
+                        "beat animation", "kick pulse", "music beat"
+                    ),
+                    icon = Icons.Filled.Waves,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Experimental & Features",
                     type = EntryType.TOGGLE,

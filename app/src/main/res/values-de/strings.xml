@@ -446,7 +446,6 @@
     <string name="menu_add_queue">Zur Warteschlange hinzufügen</string>
     <string name="menu_open_lastfm">Öffnen im Last.fm</string>
     <string name="menu_refresh_artwork">Coverbild aktualisieren</string>
-    <string name="menu_copy_song">Lied kopieren</string>
     <string name="menu_details_specs">Details und Audio-Spezifikationen</string>
     <string name="menu_dont_recommend">Nicht noch einmal empfehlen</string>
     <string name="menu_remove_from_playlist">Aus Playlist entfernen</string>

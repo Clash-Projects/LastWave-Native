@@ -168,6 +168,10 @@ class NativeProcessingAudioSink(
     var hapticsAnalyzer: com.lastwave.app.playback.haptics.MusicHapticsAnalyzer? = null
     /** Buffer already analysed: Media3 retries the same object until consumed. */
     private var hapticsBuffer: ByteBuffer? = null
+    // Same onset detector as haptics, driving the beat-synced fluid background.
+    private val rhythmAnalyzer = com.lastwave.app.playback.haptics.MusicHapticsAnalyzer(
+        com.lastwave.app.playback.rhythm.FluidRhythmEngine,
+    )
 
     var onConfiguredFormat: ((sampleRateHz: Int, pcmEncoding: Int, channelCount: Int) -> Unit)? = null
     var bitDepthHintProvider: (() -> Int?)? = null
@@ -609,18 +613,22 @@ class NativeProcessingAudioSink(
                 return true
             }
         }
-        val analyzer = hapticsAnalyzer
-        if (analyzer != null && hapticsBuffer !== buffer) {
+        if (hapticsBuffer !== buffer) {
             hapticsBuffer = buffer
+            rhythmAnalyzer.isAnalysisActive = com.lastwave.app.playback.rhythm.FluidRhythmEngine.let {
+                it.isEnabled && it.liveSink === this
+            }
             // Read-only (works on a duplicate) and before the EQ so it sees the source signal.
-            runCatching {
-                analyzer.analyze(
-                    buffer = buffer,
-                    format = configuredFormat,
-                    presentationTimeUs = presentationTimeUs,
-                    positionUs = { getCurrentPositionUs(false) },
-                    playbackSpeed = { getPlaybackParameters().speed },
-                )
+            for (analyzer in arrayOf(hapticsAnalyzer, rhythmAnalyzer)) {
+                runCatching {
+                    analyzer?.analyze(
+                        buffer = buffer,
+                        format = configuredFormat,
+                        presentationTimeUs = presentationTimeUs,
+                        positionUs = { getCurrentPositionUs(false) },
+                        playbackSpeed = { getPlaybackParameters().speed },
+                    )
+                }
             }
         }
         // A copy in flight stays the routed buffer until consumed, even if the
@@ -1673,6 +1681,7 @@ class NativeProcessingAudioSink(
         eqCopySource = null
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.flush() }
+        runCatching { rhythmAnalyzer.flush() }
         clearPending()
         clearEndOfStream()
         exclusiveEnded = false
@@ -1717,6 +1726,7 @@ class NativeProcessingAudioSink(
         eqCopy = null
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.reset() }
+        runCatching { rhythmAnalyzer.reset() }
         usbOutput?.setFormat(null)
         if (usbExclusive && exclusiveWanted) {
             exclusiveUsb?.prepareForNextItem()

@@ -367,22 +367,41 @@ internal fun AccentPresetGrid(
 }
 
 /**
- * Renders a preset's solid accent swatch cleanly filling the tile,
- * avoiding mixed-up multi-color slices.
+ * Four coordinated Monet tones derived from one preset hex — Container (dark),
+ * Base Accent (medium), Light Muted Tone, and Container Highlight — matching
+ * the wallpaper / Material You palette engine. Order returned: [dark, medium, light, accent].
+ */
+internal fun accentShades(hex: String): List<Color> {
+    val argb = runCatching {
+        android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
+    }.getOrDefault(0xFFE03030.toInt())
+    val core = com.google.android.material.color.utilities.CorePalette.of(argb)
+    return listOf(
+        Color(core.a1.tone(24)), // dark container tone
+        Color(core.a1.tone(45)), // medium tone
+        Color(core.a1.tone(68)), // muted dark accent tone
+        Color(core.a1.tone(85)), // highlight tone
+    )
+}
+
+/**
+ * Renders a preset's four shades as a 2x2 block grid filling the tile,
+ * so selecting a preset previews its whole coordinated palette rather
+ * than one flat color.
  */
 @Composable
 internal fun PaletteTilePreview(hex: String) {
-    val color = remember(hex) {
-        val argb = runCatching {
-            android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
-        }.getOrDefault(0xFFE03030.toInt())
-        Color(argb)
+    val shades = remember(hex) { accentShades(hex) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.weight(1f).fillMaxHeight().background(shades[0]))
+            Box(Modifier.weight(1f).fillMaxHeight().background(shades[1]))
+        }
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.weight(1f).fillMaxHeight().background(shades[2]))
+            Box(Modifier.weight(1f).fillMaxHeight().background(shades[3]))
+        }
     }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(color),
-    )
 }
 
 

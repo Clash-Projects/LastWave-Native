@@ -77,7 +77,7 @@ enum class GroupPosition { SINGLE, TOP, MIDDLE, BOTTOM }
 val GroupOuterRadius = 28.dp
 val GroupInnerRadius = 6.dp
 val GroupGap = 3.dp
-private val GroupIconBadgeShape = RoundedCornerShape(14.dp)
+internal val GroupIconBadgeShape = RoundedCornerShape(14.dp)
 
 fun groupShape(
     position: GroupPosition,

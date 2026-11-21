@@ -2,7 +2,9 @@ package com.lastwave.app.ui.player
 
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -10,9 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -64,7 +63,6 @@ import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.MusicPlayerState
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.PlaybackProgressState
-import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.player.lyricsshare.ShareLyricsDialog
 import com.lastwave.app.ui.player.lyricsshare.TrackInfo
@@ -193,7 +191,9 @@ internal fun PlayerInlineLyrics(
     displayMode: LyricsDisplayMode,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
+    val track = state.current ?: return
     // Sub-lines grow in and out together, as on the lyrics screen.
     val subReveal = remember { Animatable(if (subLines != null) 1f else 0f) }
     var shownSubLines by remember { mutableStateOf(subLines) }
@@ -207,28 +207,17 @@ internal fun PlayerInlineLyrics(
         }
     }
     val progressInitial = PlaybackProgressState(positionMs = state.positionMs, durationMs = state.durationMs)
-    Crossfade(
-        targetState = lyricsState,
-        animationSpec = tween(ExpressiveMotion.Quick * 2),
+    LyricsStateContent(
+        lyricsState = lyricsState,
+        signature = rememberLyricsSignature(track, lyricsState, accentColor),
+        transitionSpec = { fadeIn(tween(ExpressiveMotion.Quick * 2)) togetherWith fadeOut(tween(ExpressiveMotion.Quick * 2)) },
         label = "playerLyricsState",
         modifier = modifier,
     ) { target ->
         when (target) {
             is LyricsUiState.Idle -> Box(Modifier.fillMaxSize())
-            is LyricsUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    ExpressiveInlineLoadingIndicator(size = 42.dp, strokeWidth = 3.5.dp, color = Color.White)
-                    Text(
-                        "Finding lyrics...",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.White.copy(alpha = 0.70f),
-                    )
-                }
-            }
-            is LyricsUiState.Empty, is LyricsUiState.Error -> ModernEmptyLyricsView(isInstrumental = false, onRetry = onRetry)
+            is LyricsUiState.Loading -> LyricsSignatureStatus(SignatureMode.Loading)
+            is LyricsUiState.Empty, is LyricsUiState.Error -> LyricsSignatureStatus(SignatureMode.NotFound, onRetry)
             is LyricsUiState.Success -> when {
                 target.isInstrumental -> ModernEmptyLyricsView(isInstrumental = true, onRetry = onRetry)
                 target.isSynced && target.lines.isNotEmpty() -> {
@@ -244,25 +233,29 @@ internal fun PlayerInlineLyrics(
                     val currentTextStyle = LocalTextStyle.current
                     val useAppFont = MaterialTheme.typography.bodyLarge.fontFamily != FontFamily.Default
                     val boldFont = LocalUseBoldFont.current
-                    val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * fontScale
-                    val normalStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont) {
+                    val lyricsStyle = LocalLyricsStyleState.current.style
+                    val themeSpec = remember(lyricsStyle) { lyricsStyle.toThemeSpec() }
+                    val chosenLeadFont = themeSpec.fontFamily ?: if (useAppFont) lyricsLeadFontFamily(boldFont) else FontFamily.Default
+                    val chosenBackingFont = themeSpec.fontFamily ?: if (useAppFont) lyricsBackingFontFamily(boldFont) else FontFamily.Default
+                    val baseSize = (if (isAppleMusic) 30f else if (isWordSynced) 34f else 32f) * fontScale * themeSpec.fontSizeMultiplier
+                    val normalStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont, lyricsStyle) {
                         currentTextStyle.copy(
-                            fontFamily = if (useAppFont) lyricsLeadFontFamily(boldFont) else FontFamily.Default,
+                            fontFamily = chosenLeadFont,
                             fontSize = baseSize.sp,
-                            lineHeight = (baseSize * 1.20f).sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.6).sp,
+                            lineHeight = (baseSize * themeSpec.lineHeightMultiplier).sp,
+                            fontWeight = themeSpec.activeFontWeight,
+                            letterSpacing = themeSpec.letterSpacing ?: (-0.6).sp,
                             textMotion = TextMotion.Animated,
                         )
                     }
-                    val accompanimentStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont) {
+                    val accompanimentStyle = remember(currentTextStyle, baseSize, useAppFont, boldFont, lyricsStyle) {
                         val size = baseSize * 0.65f
                         currentTextStyle.copy(
-                            fontFamily = if (useAppFont) lyricsBackingFontFamily(boldFont) else FontFamily.Default,
+                            fontFamily = chosenBackingFont,
                             fontSize = size.sp,
-                            lineHeight = (size * 1.22f).sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.3).sp,
+                            lineHeight = (size * themeSpec.lineHeightMultiplier).sp,
+                            fontWeight = themeSpec.inactiveFontWeight,
+                            letterSpacing = themeSpec.letterSpacing ?: (-0.3).sp,
                             textMotion = TextMotion.Animated,
                         )
                     }
@@ -293,6 +286,7 @@ internal fun PlayerInlineLyrics(
                             state = state,
                             player = player,
                             lyricsOffsetMs = lyricsOffsetMs,
+                            lyricsStyle = lyricsStyle,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -302,7 +296,7 @@ internal fun PlayerInlineLyrics(
                     lyricsFontScale = fontScale,
                     modifier = Modifier.fillMaxSize(),
                 )
-                else -> ModernEmptyLyricsView(isInstrumental = false, onRetry = onRetry)
+                else -> LyricsSignatureStatus(SignatureMode.NotFound, onRetry)
             }
         }
     }

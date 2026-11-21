@@ -477,7 +477,6 @@
     <string name="menu_add_queue">Aggiungi alla coda</string>
     <string name="menu_open_lastfm">Apri in Last.fm</string>
     <string name="menu_refresh_artwork">Aggiorna copertina</string>
-    <string name="menu_copy_song">Copia brano</string>
     <string name="menu_details_specs">Dettagli e specifiche audio</string>
     <string name="menu_dont_recommend">Non consigliare più</string>
     <string name="menu_remove_from_playlist">Rimuovi dalla playlist</string>

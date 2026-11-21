@@ -443,7 +443,6 @@ internal fun AudioControlsSheet(
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -500,7 +499,6 @@ internal fun AudioControlsSheet(
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -765,11 +763,12 @@ internal fun AudioControlsSheet(
             val hapticsConfig by player.hapticsController.config.collectAsStateWithLifecycle()
             val isUsbActive = player.isUsbExclusiveActive
             val isHardwareAvailable = player.hapticsController.isHardwareHapticGeneratorAvailable()
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            if (hapticsConfig.enabled) {
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1087,6 +1086,7 @@ internal fun AudioControlsSheet(
                     }
                 }
             }
+        }
         }
     }
 }

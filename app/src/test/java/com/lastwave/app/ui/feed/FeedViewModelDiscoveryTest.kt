@@ -6,6 +6,7 @@ import com.lastwave.app.data.feed.FeedData
 import com.lastwave.app.data.feed.FeedRepository
 import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.generate.GenresRepository
+import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.data.local.SessionData
 import com.lastwave.app.data.local.SessionPreferences
 import com.lastwave.app.data.local.SettingsPreferences
@@ -49,10 +50,12 @@ class FeedViewModelDiscoveryTest {
     private val homeRepository: HomeRepository = mockk(relaxed = true)
     private val discoverRepository: DiscoverRepository = mockk(relaxed = true)
     private val genresRepository: GenresRepository = mockk(relaxed = true)
+    private val previewQueueRepository: com.lastwave.app.data.queue.PreviewQueueRepository = mockk(relaxed = true)
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        coEvery { discoverRepository.observeRecommendationExclusions() } returns MutableStateFlow(emptyList<RecommendationExclusionEntity>())
         coEvery { ytAuth.connection } returns MutableStateFlow(YtConnection())
         coEvery { ytAuth.awaitLoadedConnection() } returns YtConnection()
         coEvery { sessionPreferences.session } returns MutableStateFlow(SessionData(username = "test_user"))
@@ -73,6 +76,7 @@ class FeedViewModelDiscoveryTest {
         val vm = FeedViewModel(
             context, feedRepository, sessionPreferences, settingsPreferences, musicPlayer, innerTube,
             recommendationRepository, ytAuth, homeRepository, discoverRepository, genresRepository,
+            previewQueueRepository,
         )
         fun waitForDiscovery() {
             val deadline = System.currentTimeMillis() + 2_000
@@ -103,6 +107,7 @@ class FeedViewModelDiscoveryTest {
             homeRepository,
             discoverRepository,
             genresRepository,
+            previewQueueRepository,
         )
 
         assertThat(viewModel.discoveryTracks.value).containsExactly(mockTrack)
@@ -125,6 +130,7 @@ class FeedViewModelDiscoveryTest {
             homeRepository,
             discoverRepository,
             genresRepository,
+            previewQueueRepository,
         )
 
         assertThat(viewModel.discoveryTracks.value).isEmpty()

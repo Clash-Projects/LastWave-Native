@@ -48,6 +48,7 @@ data class ThemePrefs(
     val uiHaptics: Boolean = true,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val lastWaveTheme: Boolean = false,
+    val useLegacyColors: Boolean = false,
     val appIcon: AppIcon = AppIcon.DEFAULT,
 )
 
@@ -66,6 +67,7 @@ class ThemePreferences @Inject constructor(
         val HIDE_NAV_TABS = booleanPreferencesKey("lw_hideNavTabs")
         val UI_HAPTICS = booleanPreferencesKey("lw_ui_haptics")
         val LASTWAVE_THEME = booleanPreferencesKey("lw_lastwave_theme")
+        val USE_LEGACY_COLORS = booleanPreferencesKey("lw_useLegacyColors")
         val APP_ICON = stringPreferencesKey("lw_app_icon")
     }
 
@@ -83,6 +85,7 @@ class ThemePreferences @Inject constructor(
                 hideNavTabs = p.readSafely(Keys.HIDE_NAV_TABS) ?: false,
                 uiHaptics = p.readSafely(Keys.UI_HAPTICS) ?: true,
                 lastWaveTheme = p.readSafely(Keys.LASTWAVE_THEME) ?: false,
+                useLegacyColors = p.readSafely(Keys.USE_LEGACY_COLORS) ?: false,
                 appIcon = AppIcon.fromId(p.readSafely(Keys.APP_ICON)),
             )
         }
@@ -127,6 +130,10 @@ class ThemePreferences @Inject constructor(
 
     suspend fun setUiHaptics(enabled: Boolean) {
         dataStore.edit { it[Keys.UI_HAPTICS] = enabled }
+    }
+
+    suspend fun setLegacyColors(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_LEGACY_COLORS] = enabled }
     }
 
     suspend fun setLastWaveTheme(enabled: Boolean) {

@@ -446,7 +446,6 @@
     <string name="menu_add_queue">대기열에 추가</string>
     <string name="menu_open_lastfm">Last.fm에서 열기</string>
     <string name="menu_refresh_artwork">표지 아트 새로 고침</string>
-    <string name="menu_copy_song">노래 복사</string>
     <string name="menu_details_specs">세부정보 및 오디오 사양</string>
     <string name="menu_dont_recommend">다시는 추천하지 않음</string>
     <string name="menu_remove_from_playlist">재생목록에서 제거</string>

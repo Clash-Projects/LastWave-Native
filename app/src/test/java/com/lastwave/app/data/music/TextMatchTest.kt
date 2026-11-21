@@ -175,4 +175,12 @@ class TextMatchTest {
         assertTrue(!TextMatch.isSevereDurationMismatch(null, 600))
         assertTrue(!TextMatch.isSevereDurationMismatch(200_000L, null))
     }
+
+    @Test
+    fun runtimeConfirmedTitleMatch_acceptsSameTitleAndRuntime_only() {
+        assertTrue(TextMatch.isRuntimeConfirmedTitleMatch("Ee Paradevana", "Ee Paradevana (From \"Kaantha\")", 240_000L, 243))
+        assertTrue(!TextMatch.isRuntimeConfirmedTitleMatch("Ee Paradevana", "Ee Paradevana", 240_000L, 252))
+        assertTrue(!TextMatch.isRuntimeConfirmedTitleMatch("Ee Paradeva", "Ee Paradevana", 240_000L, 240))
+        assertTrue(!TextMatch.isRuntimeConfirmedTitleMatch("Ee Paradevana", "Ee Paradevana", null, 240))
+    }
 }

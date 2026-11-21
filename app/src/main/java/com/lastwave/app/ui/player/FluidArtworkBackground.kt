@@ -318,9 +318,29 @@ fun FluidArtworkBackground(
     extraBlur: Boolean = false,
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
+    fluidBeatSyncEnabled: Boolean = false,
     artworkViewModel: ArtworkViewModel = com.lastwave.app.ui.common.LocalArtworkViewModel.current ?: hiltViewModel(),
     fallback: @Composable () -> Unit,
 ) {
+    // Also switches the analyser off when the setting is turned off: the
+    // beat-sync background that would reset it has left composition by then.
+    LaunchedEffect(fluidBeatSyncEnabled) {
+        com.lastwave.app.playback.rhythm.FluidRhythmEngine.isEnabled = fluidBeatSyncEnabled
+    }
+    if (fluidBeatSyncEnabled) {
+        BeatSyncFluidArtworkBackground(
+            track = track,
+            isPlaying = isPlaying,
+            modifier = modifier,
+            extraBlur = extraBlur,
+            rotatingBackgroundEnabled = rotatingBackgroundEnabled,
+            lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
+            fluidBeatSyncEnabled = true,
+            artworkViewModel = artworkViewModel,
+            fallback = fallback,
+        )
+        return
+    }
     val fluidSupported = isFluidSupported()
     val isEnabled = if (extraBlur) lyricsRotatingBackgroundEnabled && rotatingBackgroundEnabled else rotatingBackgroundEnabled
     if (!isEnabled || !fluidSupported) {

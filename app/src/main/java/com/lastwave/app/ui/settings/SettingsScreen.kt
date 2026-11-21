@@ -97,6 +97,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
@@ -138,6 +139,8 @@ import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.HighQuality
@@ -148,6 +151,20 @@ import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.QueuePlayNext
+import androidx.compose.material.icons.filled.StayCurrentPortrait
+import androidx.compose.material.icons.filled.Downloading
+import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.filled.SurroundSound
+import androidx.compose.material.icons.filled.LinearScale
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.VerticalAlignBottom
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayCircle
@@ -317,14 +334,14 @@ enum class SettingsTab(
         subtitleRes = R.string.set_cat_spotify_sub,
         title = "Spotify",
         subtitle = "Account connection, Canvas, Playlist imports & Liked Songs sync",
-        icon = Icons.Filled.PlayCircle,
+        icon = QualityGlyphs.Spotify,
     ),
     LAST_FM(
         titleRes = R.string.set_cat_lfm,
         subtitleRes = R.string.set_cat_lfm_sub,
         title = "Last.fm",
         subtitle = "Account connection, Scrobbling sync & API credentials",
-        icon = Icons.Filled.Album,
+        icon = QualityGlyphs.LastFm,
     ),
     LIBRARY(
         titleRes = R.string.set_cat_lib,
@@ -516,7 +533,11 @@ fun SettingsScreen(
         ExpressiveHeader(
             modifier = headerModifier,
             backdrop = headerBackdrop,
-            title = if (searchQuery.isNotBlank()) stringResource(R.string.settings_search_title) else (activeTab?.title ?: stringResource(R.string.settings)),
+            title = if (searchQuery.isNotBlank()) {
+                stringResource(R.string.settings_search_title)
+            } else {
+                activeTab?.let { stringResource(it.titleRes) } ?: stringResource(R.string.settings)
+            },
             onBack = {
                 if (searchQuery.isNotBlank() || isSearchBarVisible) {
                     viewModel.clearSearch()
@@ -666,7 +687,7 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "services.modules" || highlightedSettingId == "library.modules"),
                                         )
                                         1 -> SettingsActionCard(
-                                            icon = Icons.Filled.Album,
+                                            icon = QualityGlyphs.LastFm,
                                             iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.set_cat_lfm),
@@ -688,9 +709,9 @@ fun SettingsScreen(
                                             position = position,
                                         )
                                         else -> SettingsActionCard(
-                                            icon = Icons.Filled.PlayCircle,
-                                            iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                            iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            icon = QualityGlyphs.Spotify,
+                                            iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                            iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = stringResource(R.string.set_cat_spotify),
                                             subtitle = if (spotifyConnected) {
                                                 "Connected (sp_dc) • Canvas, playlist imports & Liked Songs sync"
@@ -867,7 +888,7 @@ fun SettingsScreen(
                         val hfSettings by viewModel.autoMixSettings.collectAsStateWithLifecycle()
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.Bolt,
+                                icon = QualityGlyphs.AutoMix,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = "AutoMix",
@@ -903,7 +924,7 @@ fun SettingsScreen(
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = "Music Haptics",
                                 subtitle = if (misc.musicHapticsEnabled) {
-                                    "${misc.musicHapticsMode.label} \u2022 ${misc.musicHapticsIntensity.label} intensity"
+                                    "Physical rhythm synchronization via phone's haptic motor (Active)"
                                 } else {
                                     "Physical rhythm synchronization via phone's haptic motor"
                                 },
@@ -913,23 +934,9 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.music_haptics"),
                             )
                         }
-                        if (misc.musicHapticsEnabled) {
-                            add { position ->
-                                MusicHapticsControlsCard(
-                                    config = misc.musicHapticsConfig,
-                                    isHardwareAvailable = viewModel.isHardwareHapticGeneratorAvailable,
-                                    isUsbExclusiveActive = viewModel.isUsbExclusiveActive,
-                                    onModeChange = viewModel::setMusicHapticsMode,
-                                    onIntensityChange = viewModel::setMusicHapticsIntensity,
-                                    onEngineModeChange = viewModel::setMusicHapticsEngineMode,
-                                    onBatterySaverChange = viewModel::setMusicHapticsPauseOnBatterySaver,
-                                    position = position,
-                                )
-                            }
-                        }
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.GraphicEq,
+                                icon = Icons.Filled.QueuePlayNext,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = "Autoplay similar songs",
@@ -937,7 +944,7 @@ fun SettingsScreen(
                                     "When the queue ends, keep playing similar songs"
                                 } else {
                                     "Stop when the queue ends; nothing is added automatically"
-                                },
+                                } ,
                                 checked = misc.autoplaySimilarEnabled,
                                 onCheckedChange = viewModel::setAutoplaySimilarEnabled,
                                 position = position,
@@ -945,7 +952,7 @@ fun SettingsScreen(
                         }
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.GraphicEq,
+                                icon = QualityGlyphs.Crossfade,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_crossfade),
@@ -974,7 +981,7 @@ fun SettingsScreen(
                         }
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.Lyrics,
+                                icon = Icons.Filled.StayCurrentPortrait,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_keep_lyrics_screen_awake),
@@ -1004,7 +1011,20 @@ fun SettingsScreen(
                         }
                         add { position ->
                             SettingsToggleCard(
-                                icon = Icons.Filled.Lyrics,
+                                icon = Icons.AutoMirrored.Rounded.VolumeOff,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_pause_on_zero_volume),
+                                subtitle = stringResource(R.string.settings_pause_on_zero_volume_desc),
+                                checked = misc.pauseOnZeroVolume,
+                                onCheckedChange = viewModel::setPauseOnZeroVolume,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.pause_on_zero_volume"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Downloading,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_download_lyrics),
@@ -1095,7 +1115,7 @@ fun SettingsScreen(
                             )
                             }
                             2 -> SettingsToggleCard(
-                                icon = Icons.Filled.VolumeUp,
+                                icon = Icons.Filled.VolumeDown,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_force_sw_volume),
@@ -1136,7 +1156,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.equalizer"),
                             )
                             5 -> SettingsToggleCard(
-                                icon = Icons.Filled.VolumeUp,
+                                icon = Icons.Filled.SurroundSound,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = stringResource(R.string.set_sys_fx_title),
@@ -1176,7 +1196,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.autoeq"),
                             )
                             8 -> SettingsToggleCard(
-                                icon = Icons.Filled.Tune,
+                                icon = Icons.Filled.LinearScale,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = "Show Auto EQ in volume panel",
@@ -1196,7 +1216,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 13) { index, position ->
+                    SettingsGroup(rowCount = 16) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1235,6 +1255,18 @@ fun SettingsScreen(
                             )
                             4 -> SettingsToggleCard(
                                 icon = Icons.Filled.Palette,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_legacy_colors),
+                                subtitle = stringResource(R.string.settings_legacy_colors_sub),
+                                checked = theme?.useLegacyColors ?: false,
+                                enabled = !(theme?.amoled ?: false),
+                                onCheckedChange = viewModel::setLegacyColors,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.legacy_colors"),
+                            )
+                            5 -> SettingsToggleCard(
+                                icon = Icons.Filled.Palette,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = stringResource(R.string.settings_dynamic_color),
@@ -1249,7 +1281,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_color"),
                             )
-                            5 -> SettingsToggleCard(
+                            6 -> SettingsToggleCard(
                                 icon = Icons.Filled.BubbleChart,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1260,7 +1292,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.liquid_glass"),
                             )
-                            6 -> SettingsToggleCard(
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.Apps,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1271,7 +1303,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.md3_nav_bar"),
                             )
-                            7 -> SettingsToggleCard(
+                            8 -> SettingsToggleCard(
                                 icon = Icons.Filled.VisibilityOff,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1282,8 +1314,8 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.hide_nav_tabs"),
                             )
-                            8 -> SettingsToggleCard(
-                                icon = Icons.Filled.Album,
+                            9 -> SettingsToggleCard(
+                                icon = Icons.Filled.ColorLens,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = stringResource(R.string.settings_dynamic_now_playing),
@@ -1293,7 +1325,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            9 -> SettingsToggleCard(
+                            10 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1304,7 +1336,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
-                            10 -> SettingsToggleCard(
+                            11 -> SettingsToggleCard(
                                 icon = Icons.Filled.FormatBold,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1314,7 +1346,7 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUseBoldFont,
                                 position = position,
                             )
-                            11 -> SettingsToggleCard(
+                            12 -> SettingsToggleCard(
                                 icon = Icons.Filled.Vibration,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1325,8 +1357,8 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.ui_haptics"),
                             )
-                            12 -> SettingsToggleCard(
-                                icon = Icons.Filled.Apps,
+                            13 -> SettingsToggleCard(
+                                icon = Icons.Filled.VerticalAlignBottom,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_collapsing_nav_bar),
@@ -1335,6 +1367,28 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setCollapsingNavBar,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.collapsing_nav_bar"),
+                            )
+                            14 -> SettingsToggleCard(
+                                icon = Icons.Filled.MoreVert,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_legacy_track_menu),
+                                subtitle = stringResource(R.string.settings_legacy_track_menu_sub),
+                                checked = misc.useLegacyTrackMenu,
+                                onCheckedChange = viewModel::setLegacyTrackMenu,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.legacy_track_menu"),
+                            )
+                            15 -> SettingsToggleCard(
+                                icon = Icons.Filled.BlurOn,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.settings_menu_blur),
+                                subtitle = stringResource(R.string.settings_menu_blur_sub),
+                                checked = misc.useMenuBlur,
+                                onCheckedChange = viewModel::setMenuBlur,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.menu_blur"),
                             )
                         }
                     }
@@ -1384,10 +1438,11 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    SettingsGroup(rowCount = 11) { index, position ->
+                    val experimentalRowCount = if (misc.musicVideoEnabled) 13 else 12
+                    SettingsGroup(rowCount = experimentalRowCount) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
-                                icon = Icons.Filled.Lyrics,
+                                icon = Icons.Filled.Subtitles,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 title = "Word-by-word lyrics",
@@ -1416,7 +1471,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.wavy_seekbar"),
                             )
                             2 -> SettingsToggleCard(
-                                icon = Icons.Filled.RestartAlt,
+                                icon = Icons.Filled.RotateRight,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = stringResource(R.string.settings_rotating_background),
@@ -1431,7 +1486,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "appearance.rotating_background"),
                             )
                             3 -> SettingsToggleCard(
-                                icon = Icons.Filled.RestartAlt,
+                                icon = Icons.Filled.Animation,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = stringResource(R.string.settings_lyrics_rotating_background),
@@ -1445,7 +1500,22 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_rotating_background"),
                             )
-                            4 -> SettingsActionCard(
+                            4 -> SettingsToggleCard(
+                                icon = Icons.Filled.Waves,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_fluid_beat_sync),
+                                subtitle = if (misc.fluidBeatSyncEnabled) {
+                                    stringResource(R.string.settings_fluid_beat_sync_on)
+                                } else {
+                                    stringResource(R.string.settings_fluid_beat_sync_off)
+                                },
+                                checked = misc.fluidBeatSyncEnabled,
+                                onCheckedChange = viewModel::setFluidBeatSyncEnabled,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.fluid_beat_sync"),
+                            )
+                            5 -> SettingsActionCard(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1455,7 +1525,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_provider"),
                             )
-                            5 -> SettingsActionCard(
+                            6 -> SettingsActionCard(
                                 icon = Icons.Filled.Timer,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1473,7 +1543,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_offset"),
                             )
-                            6 -> SettingsActionCard(
+                            7 -> SettingsActionCard(
                                 icon = Icons.Filled.FormatSize,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1492,7 +1562,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
                             )
-                            7 -> SettingsActionCard(
+                            8 -> SettingsActionCard(
                                 icon = Icons.Filled.VisibilityOff,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1509,7 +1579,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.lyrics_autohide"),
                             )
-                            8 -> SettingsActionCard(
+                            9 -> SettingsActionCard(
                                 icon = Icons.Filled.Translate,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1523,7 +1593,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.translation_language"),
                             )
-                            9 -> SettingsToggleCard(
+                            10 -> SettingsToggleCard(
                                 icon = Icons.Filled.SmartDisplay,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1538,7 +1608,36 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.music_video"),
                             )
-                            10 -> SettingsToggleCard(
+                            11 -> if (misc.musicVideoEnabled) {
+                                SettingsToggleCard(
+                                    icon = Icons.Filled.SmartDisplay,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = stringResource(R.string.settings_music_video_np_button),
+                                    subtitle = stringResource(R.string.settings_music_video_np_button_desc),
+                                    checked = misc.musicVideoNowPlayingButtonEnabled,
+                                    onCheckedChange = viewModel::setMusicVideoNowPlayingButtonEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "appearance.music_video_np_button"),
+                                )
+                            } else {
+                                SettingsToggleCard(
+                                    icon = Icons.Filled.PlayCircle,
+                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    title = "Button Now playing",
+                                    subtitle = if (misc.buttonNowPlayingEnabled) {
+                                        "Floating button mode active • Card hidden"
+                                    } else {
+                                        "Classic bottom now playing card"
+                                    },
+                                    checked = misc.buttonNowPlayingEnabled,
+                                    onCheckedChange = viewModel::setButtonNowPlayingEnabled,
+                                    position = position,
+                                    isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
+                                )
+                            }
+                            12 -> SettingsToggleCard(
                                 icon = Icons.Filled.PlayCircle,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1807,9 +1906,9 @@ fun SettingsScreen(
                                             )
                                         } else {
                                             SettingsActionCard(
-                                                icon = Icons.Filled.PlayCircle,
-                                                iconContainer = MaterialTheme.colorScheme.surfaceVariant,
-                                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                icon = QualityGlyphs.Spotify,
+                                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                 title = "Connect Spotify Account",
                                                 subtitle = "Sign in to enable official Spotify Canvas video loops & library sync",
                                                 onClick = onOpenSpotifyLogin,
@@ -1828,7 +1927,7 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "spotify.import"),
                                         )
                                         2 -> SettingsToggleCard(
-                                            icon = Icons.Filled.SmartDisplay,
+                                            icon = Icons.Filled.VideoLibrary,
                                             iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             title = "Spotify Canvas (Looping background videos)",
@@ -1839,7 +1938,7 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "spotify.canvas"),
                                         )
                                         3 -> SettingsToggleCard(
-                                            icon = Icons.Filled.AutoAwesome,
+                                            icon = Icons.Filled.Star,
                                             iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             title = "Prefer Spotify Canvas",
@@ -1983,7 +2082,7 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "library.home_sections"),
                                         )
                                         else -> SettingsActionCard(
-                                            icon = Icons.Filled.RestartAlt,
+                                            icon = Icons.Filled.Block,
                                             iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             title = stringResource(R.string.settings_excluded_songs),
@@ -2291,59 +2390,64 @@ fun SettingsScreen(
                         appIcon = theme?.appIcon ?: AppIcon.DEFAULT,
                     )
 
-                    SettingsActionCard(
-                        icon = Icons.Filled.CloudDownload,
-                        iconContainer = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer,
-                        title = if (updateInfo.isUpdateAvailable) "Update Ready (${updateInfo.latestVersion})" else "Check for Updates",
-                        subtitle = when {
-                            updateInfo.isChecking -> "Checking GitHub releases..."
-                            updateInfo.isUpdateAvailable -> {
-                                val fileName = updateInfo.downloadFileName
-                                if (!fileName.isNullOrBlank()) "Tap to download $fileName" else "Tap to download new version"
-                            }
-                            !updateInfo.message.isNullOrBlank() -> updateInfo.message.orEmpty()
-                            else -> "Current version: ${appVersionName(context)}"
-                        },
-                        onClick = {
-                            if (updateInfo.isUpdateAvailable) {
-                                viewModel.openUpdate(context)
-                            } else {
-                                viewModel.checkForUpdates()
-                            }
-                        },
-                        isHighlighted = (highlightedSettingId == "about.check_updates"),
-                    )
-
-                    SettingsActionCard(
-                        icon = Icons.Filled.Code,
-                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        title = stringResource(R.string.settings_source_code),
-                        subtitle = "github.com/Clash-Projects/LastWave-native",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-native"))
-                            if (!startActivitySafely(context, intent)) {
-                                viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
-                            }
-                        },
-                        isHighlighted = (highlightedSettingId == "about.source_code"),
-                    )
-
-                    SettingsActionCard(
-                        icon = Icons.Filled.Download,
-                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        title = stringResource(R.string.settings_desktop_app),
-                        subtitle = "github.com/Clash-Projects/LastWave-Desktop",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
-                            if (!startActivitySafely(context, intent)) {
-                                viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
-                            }
-                        },
-                        isHighlighted = (highlightedSettingId == "about.desktop_app"),
-                    )
+                    SettingsGroup(rowCount = 3) { index, position ->
+                        when (index) {
+                            0 -> SettingsActionCard(
+                                icon = Icons.Filled.CloudDownload,
+                                iconContainer = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = if (updateInfo.isUpdateAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = if (updateInfo.isUpdateAvailable) "Update Ready (${updateInfo.latestVersion})" else "Check for Updates",
+                                subtitle = when {
+                                    updateInfo.isChecking -> "Checking GitHub releases..."
+                                    updateInfo.isUpdateAvailable -> {
+                                        val fileName = updateInfo.downloadFileName
+                                        if (!fileName.isNullOrBlank()) "Tap to download $fileName" else "Tap to download new version"
+                                    }
+                                    !updateInfo.message.isNullOrBlank() -> updateInfo.message.orEmpty()
+                                    else -> "Current version: ${appVersionName(context)}"
+                                },
+                                onClick = {
+                                    if (updateInfo.isUpdateAvailable) {
+                                        viewModel.openUpdate(context)
+                                    } else {
+                                        viewModel.checkForUpdates()
+                                    }
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "about.check_updates"),
+                            )
+                            1 -> SettingsActionCard(
+                                icon = Icons.Filled.Code,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_source_code),
+                                subtitle = "github.com/Clash-Projects/LastWave-native",
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-native"))
+                                    if (!startActivitySafely(context, intent)) {
+                                        viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
+                                    }
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "about.source_code"),
+                            )
+                            else -> SettingsActionCard(
+                                icon = Icons.Filled.Download,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.settings_desktop_app),
+                                subtitle = "github.com/Clash-Projects/LastWave-Desktop",
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                                    if (!startActivitySafely(context, intent)) {
+                                        viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
+                                    }
+                                },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "about.desktop_app"),
+                            )
+                        }
+                    }
 
                     Spacer(Modifier.height(14.dp))
                     SectionLabel("More from us")

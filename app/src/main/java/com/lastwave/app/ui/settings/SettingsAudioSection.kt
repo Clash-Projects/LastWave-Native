@@ -17,7 +17,11 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
@@ -374,6 +378,7 @@ internal fun AutoMixControlsCard(
     val isInitialAuto = settings.durationMode == com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO
     var sliderValue by remember { mutableStateOf(if (isInitialAuto) 11f else settings.targetDurationSeconds.coerceIn(12, 30).toFloat()) }
     var isDragging by remember { mutableStateOf(false) }
+    var isExpanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(settings.durationMode, settings.targetDurationSeconds) {
         if (!isDragging) {
@@ -403,7 +408,10 @@ internal fun AutoMixControlsCard(
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { isExpanded = !isExpanded },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
@@ -430,57 +438,71 @@ internal fun AutoMixControlsCard(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                 }
+                Spacer(Modifier.width(4.dp))
+                IconButton(
+                    onClick = { isExpanded = !isExpanded },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Collapse transition duration" else "Expand transition duration",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
 
-            Spacer(Modifier.height(10.dp))
+            AnimatedVisibility(visible = isExpanded) {
+                Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { value ->
+                            isDragging = true
+                            val rounded = value.roundToInt()
+                            if (rounded != sliderValue.roundToInt()) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            }
+                            sliderValue = value
 
-            Slider(
-                value = sliderValue,
-                onValueChange = { value ->
-                    isDragging = true
-                    val rounded = value.roundToInt()
-                    if (rounded != sliderValue.roundToInt()) {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                    }
-                    sliderValue = value
+                            if (rounded <= 11) {
+                                if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
+                                    onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
+                                }
+                            } else {
+                                if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) {
+                                    onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
+                                }
+                                if (rounded != settings.targetDurationSeconds) {
+                                    onSecondsChange(rounded)
+                                }
+                            }
+                        },
+                        onValueChangeFinished = {
+                            isDragging = false
+                            val rounded = sliderValue.roundToInt()
+                            if (rounded <= 11) {
+                                sliderValue = 11f
+                                onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
+                            } else {
+                                sliderValue = rounded.toFloat()
+                                onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
+                                onSecondsChange(rounded)
+                            }
+                        },
+                        valueRange = 11f..30f,
+                        steps = 18,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
 
-                    if (rounded <= 11) {
-                        if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO) {
-                            onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
-                        }
-                    } else {
-                        if (settings.durationMode != com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL) {
-                            onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
-                        }
-                        if (rounded != settings.targetDurationSeconds) {
-                            onSecondsChange(rounded)
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Auto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        Text("20s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        Text("30s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
-                },
-                onValueChangeFinished = {
-                    isDragging = false
-                    val rounded = sliderValue.roundToInt()
-                    if (rounded <= 11) {
-                        sliderValue = 11f
-                        onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.AUTO)
-                    } else {
-                        sliderValue = rounded.toFloat()
-                        onDurationModeChange(com.lastwave.app.playback.automix.api.TransitionDurationMode.MANUAL)
-                        onSecondsChange(rounded)
-                    }
-                },
-                valueRange = 11f..30f,
-                steps = 18,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Auto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                Text("20s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                Text("30s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -488,7 +510,11 @@ internal fun AutoMixControlsCard(
             Spacer(Modifier.height(12.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onSpectralSweepsChange(!settings.spectralFilterSweepsEnabled) }
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -499,12 +525,34 @@ internal fun AutoMixControlsCard(
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("DJ Spectral Filter Sweeps", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    Text("3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "DJ Spectral Filter Sweeps",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
+                Spacer(Modifier.width(8.dp))
                 Switch(
                     checked = settings.spectralFilterSweepsEnabled,
                     onCheckedChange = onSpectralSweepsChange,
+                    thumbContent = if (settings.spectralFilterSweepsEnabled) {
+                        {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(androidx.compose.material3.SwitchDefaults.IconSize),
+                            )
+                        }
+                    } else null,
                 )
             }
         }

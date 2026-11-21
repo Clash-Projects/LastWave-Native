@@ -172,8 +172,31 @@ internal enum class LocalSortMode(val labelRes: Int) {
     ARTIST(R.string.local_sort_artist),
     ALBUM(R.string.local_sort_album),
     TRACK_NUMBER(R.string.local_sort_track_number),
+    DURATION(R.string.pd_sort_playtime),
     ADDED(R.string.local_sort_added),
     FORMAT(R.string.local_sort_format),
+}
+
+internal object LocalSortMemory {
+    private const val PREFS = "local_music_sort_prefs"
+    private const val KEY_MODE = "sort_mode"
+    private const val KEY_ASCENDING = "sort_ascending"
+
+    fun load(context: Context): Pair<LocalSortMode, Boolean> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val modeName = prefs.getString(KEY_MODE, null)
+        val mode = LocalSortMode.entries.firstOrNull { it.name == modeName } ?: LocalSortMode.TITLE
+        val asc = prefs.getBoolean(KEY_ASCENDING, true)
+        return mode to asc
+    }
+
+    fun save(context: Context, mode: LocalSortMode, ascending: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_MODE, mode.name)
+            .putBoolean(KEY_ASCENDING, ascending)
+            .apply()
+    }
 }
 
 internal sealed interface LocalDetailRoute {
@@ -353,8 +376,9 @@ fun LocalMusicHub(
     val playbackState by viewModel.musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
 
     var activeTab by rememberSaveable(playlist.id) { mutableStateOf(LocalHubTab.SONGS) }
-    var sortMode by rememberSaveable(playlist.id) { mutableStateOf(LocalSortMode.TITLE) }
-    var sortAscending by rememberSaveable(playlist.id) { mutableStateOf(true) }
+    val initialSort = remember { LocalSortMemory.load(context) }
+    var sortMode by rememberSaveable(playlist.id) { mutableStateOf(initialSort.first) }
+    var sortAscending by rememberSaveable(playlist.id) { mutableStateOf(initialSort.second) }
     var isGridView by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var isSearchActive by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var searchQuery by rememberSaveable(playlist.id) { mutableStateOf("") }
@@ -476,6 +500,8 @@ fun LocalMusicHub(
             sortAscending
         if (preservePlaylistOrder) {
             filtered
+        } else if (detailRoute is LocalDetailRoute.OfflinePlaylistDetail && sortMode == LocalSortMode.ADDED && !sortAscending) {
+            filtered.reversed()
         } else if (detailRoute is LocalDetailRoute.Album && sortMode == LocalSortMode.TITLE && sortAscending) {
             // Albums default nicely by disc + track number when user hasn't picked a custom sort override
             filtered.sortedWith(
@@ -842,6 +868,7 @@ fun LocalMusicHub(
                                                 sortMode = mode
                                                 sortAscending = true
                                             }
+                                            LocalSortMemory.save(context, sortMode, sortAscending)
                                             showSortMenu = false
                                         },
                                     )
@@ -921,7 +948,7 @@ fun LocalMusicHub(
                     } else {
                         itemsIndexed(
                             items = displayedSongs,
-                            key = { index, t -> "detail_${t.url}_$index" },
+                            key = { index, t -> if (t.url.isNotBlank()) "detail_${t.url}" else "detail_${t.name}_${t.artist}_$index" },
                             contentType = { _, _ -> "local_track_row" },
                         ) { index, track ->
                             val trackPlaying = playbackState.isPlaying &&
@@ -982,7 +1009,7 @@ fun LocalMusicHub(
                     } else {
                         itemsIndexed(
                             items = displayedSongs,
-                            key = { index, t -> "song_${t.url}_$index" },
+                            key = { index, t -> if (t.url.isNotBlank()) "song_${t.url}" else "song_${t.name}_${t.artist}_$index" },
                             contentType = { _, _ -> "local_track_row" },
                         ) { index, track ->
                             val trackPlaying = playbackState.isPlaying &&
@@ -1559,7 +1586,7 @@ fun LocalMusicHub(
         val activePlId = (detailRoute as? LocalDetailRoute.OfflinePlaylistDetail)?.playlistId
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playableTrack = track.toPlayableTrack(),
             playbackSourceLabel = sourceLabel,
             onDismiss = { menuTrack = null },
@@ -2629,7 +2656,7 @@ private fun sortLocalTracks(
     ascending: Boolean,
 ): List<GeneratedTrack> {
     val comparator: Comparator<LocalSortKey> = when (mode) {
-        LocalSortMode.TITLE -> compareBy<LocalSortKey> { it.name }
+        LocalSortMode.TITLE -> compareBy<LocalSortKey>({ it.name }, { it.artist })
         LocalSortMode.ARTIST -> compareBy<LocalSortKey>({ it.artist }, { it.name })
         LocalSortMode.ALBUM -> compareBy<LocalSortKey>(
             { it.album },
@@ -2642,7 +2669,8 @@ private fun sortLocalTracks(
             { it.track.trackNumber ?: Int.MAX_VALUE },
             { it.name },
         )
-        LocalSortMode.ADDED -> return if (ascending) tracks else tracks.reversed()
+        LocalSortMode.DURATION -> compareBy<LocalSortKey>({ it.track.durationMs ?: 0L }, { it.name })
+        LocalSortMode.ADDED -> compareBy<LocalSortKey> { it.addedOrder }
         LocalSortMode.FORMAT -> compareBy<LocalSortKey>({ it.format }, { it.name })
     }
     val base = tracks.map(::LocalSortKey).sortedWith(comparator).map { it.track }
@@ -2656,6 +2684,11 @@ private class LocalSortKey(val track: GeneratedTrack) {
     val artist by lazy(LazyThreadSafetyMode.NONE) { track.artist.lowercase() }
     val album by lazy(LazyThreadSafetyMode.NONE) { track.album?.lowercase().orEmpty() }
     val format by lazy(LazyThreadSafetyMode.NONE) { formatBadgeForTrack(track).orEmpty() }
+    val addedOrder by lazy(LazyThreadSafetyMode.NONE) {
+        track.url.substringAfterLast('/').toLongOrNull()
+            ?: runCatching { java.io.File(track.url).takeIf { it.exists() }?.lastModified() }.getOrNull()
+            ?: 0L
+    }
 }
 
 private fun albumKeyOf(track: GeneratedTrack): String {

@@ -164,6 +164,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -221,6 +222,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -347,10 +349,13 @@ internal fun FullPlayer(
     progressState: StateFlow<PlaybackProgressState>,
     player: MusicPlayer,
     lyricsState: LyricsUiState,
+    lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
+    onSetLyricsStyle: ((LyricsStyle) -> Unit)? = null,
     seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
     wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     rotatingBackgroundEnabled: Boolean = true,
     lyricsRotatingBackgroundEnabled: Boolean = false,
+    fluidBeatSyncEnabled: Boolean = false,
     lyricsOffsetMs: Long = 0L,
     onSetLyricsOffsetMs: ((Long) -> Unit)? = null,
     lyricsFontScale: Float = 1.0f,
@@ -366,6 +371,7 @@ internal fun FullPlayer(
     canvasFullBleedEnabled: Boolean = true,
     canvasGradientBlurEnabled: Boolean = false,
     musicVideoEnabled: Boolean = true,
+    musicVideoNowPlayingButtonEnabled: Boolean = false,
     showAutoEqInVolumePanel: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
@@ -429,6 +435,7 @@ internal fun FullPlayer(
     val fullBleedBlocked = isTabletLandscape
     val showFullBleed = canvasFullBleedEnabled && !isVideoActive && !fullBleedBlocked
     val showSleeveCanvas = isCanvasActive && !showFullBleed && !isVideoActive
+    val beatRhythm by com.lastwave.app.playback.rhythm.FluidRhythmEngine.rhythm.collectAsStateWithLifecycle()
     // activeCanvas is the single gate every render branch below keys off, so it also
     // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
     // asynchronously, so without this a disabled toggle still paints one frame of
@@ -612,6 +619,13 @@ internal fun FullPlayer(
         label = "playerAmbientDeep",
     )
 
+    val isThemeLight = remember(ambientColor, ambientCompanion, ambientDeep) {
+        val lumPrimary = ambientColor.luminance()
+        val lumDeep = ambientDeep.luminance()
+        val lumComp = ambientCompanion.luminance()
+        lumPrimary > 0.65f || (lumPrimary > 0.5f && lumDeep > 0.5f) || (lumPrimary > 0.55f && lumComp > 0.55f)
+    }
+
     fun Modifier.playerVerticalSwipe(enabled: Boolean): Modifier = if (!enabled) this else pointerInput(track.videoId, track.title, currentTab) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -679,6 +693,7 @@ internal fun FullPlayer(
         LocalLiquidGlassOverlayBackdrop provides if (fullGlass) playerBackdrop else null,
         LocalIsDarkTheme provides true,
         LocalLyricsAlignment provides LyricsAlignment(lyricsCentered, onSetLyricsCentered),
+        LocalLyricsStyleState provides LyricsStyleState(lyricsStyle, onSetLyricsStyle),
     ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -698,6 +713,7 @@ internal fun FullPlayer(
             val bgHeight = constraints.maxHeight.toFloat()
             val bgMaxDimension = maxOf(bgWidth, bgHeight, 1f)
             var heroBottomPx by remember { mutableFloatStateOf(0f) }
+            var heroTopPx by remember { mutableFloatStateOf(0f) }
 
             val isLyricsTab = currentTab == FullPlayerTab.LYRICS
             val showLyricsFluid = lyricsRotatingBackgroundEnabled && rotatingBackgroundEnabled
@@ -710,6 +726,49 @@ internal fun FullPlayer(
                 animationSpec = tween(350),
                 label = "lyricsVeil",
             )
+            // Beat sync only: its black-screen guard. The default background never
+            // needed these layers, and drawing them is extra overdraw every frame.
+            if (fluidBeatSyncEnabled) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to ambientColor.copy(alpha = 0.58f),
+                                0.45f to ambientColor.copy(alpha = 0.22f),
+                                1f to Color.Transparent,
+                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.25f, bgHeight * 0.20f),
+                                radius = bgMaxDimension * 0.85f,
+                            )
+                        )
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to ambientCompanion.copy(alpha = 0.52f),
+                                0.50f to ambientCompanion.copy(alpha = 0.20f),
+                                1f to Color.Transparent,
+                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.88f, bgHeight * 0.65f),
+                                radius = bgMaxDimension * 0.78f,
+                            )
+                        )
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                0f to ambientDeep.copy(alpha = 0.42f),
+                                0.55f to ambientDeep.copy(alpha = 0.14f),
+                                1f to Color.Transparent,
+                                center = androidx.compose.ui.geometry.Offset(bgWidth * 0.15f, bgHeight * 0.82f),
+                                radius = bgMaxDimension * 0.70f,
+                            )
+                        )
+                )
+            }
             // Kept out of the glass capture: every motion step re-blurred each glass
             // control (~2x frame cost). The fluid is already blurred, so it shows through.
             FluidArtworkBackground(
@@ -722,6 +781,7 @@ internal fun FullPlayer(
                 extraBlur = isLyricsTab,
                 rotatingBackgroundEnabled = if (isLyricsTab) showLyricsFluid else rotatingBackgroundEnabled,
                 lyricsRotatingBackgroundEnabled = lyricsRotatingBackgroundEnabled,
+                fluidBeatSyncEnabled = fluidBeatSyncEnabled,
                 fallback = {
                     val staticBlurTransform = remember(currentTab) {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -818,16 +878,18 @@ internal fun FullPlayer(
                         bgMaxDimension = bgMaxDimension,
                     )
                 }
-                // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors)
+                // Contrast scrim gradient (ensures text & controls are clear while preserving vibrant colors).
+                // The lighter variant is beat sync's; the default keeps the original scrim.
+                val beatScrim = showFullBleed && fluidBeatSyncEnabled
                 Box(
                     Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                0.00f to Color.Black.copy(alpha = 0.35f),
-                                0.28f to Color.Black.copy(alpha = 0.15f),
-                                0.65f to Color.Black.copy(alpha = 0.40f),
-                                1.00f to Color.Black.copy(alpha = 0.72f),
+                                0.00f to Color.Black.copy(alpha = if (beatScrim) 0.18f else 0.35f),
+                                0.28f to Color.Black.copy(alpha = if (beatScrim) 0.05f else 0.15f),
+                                (if (beatScrim) 0.60f else 0.65f) to Color.Black.copy(alpha = if (beatScrim) 0.12f else 0.40f),
+                                1.00f to Color.Black.copy(alpha = if (beatScrim) 0.32f else 0.72f),
                             )
                         )
                 )
@@ -848,7 +910,52 @@ internal fun FullPlayer(
                             ),
                         ),
                 )
+                if (showFullBleed && fluidBeatSyncEnabled) {
+                    // Prominent beat-reactive ambient visualizer wave under full-screen artwork
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                @Suppress("UNUSED_VARIABLE")
+                                val observed = beatRhythm
+                                val r = if (state.isPlaying && fluidBeatSyncEnabled) {
+                                    com.lastwave.app.playback.rhythm.FluidRhythmEngine.currentRhythmValue
+                                } else {
+                                    0f
+                                }
+                                alpha = (0.35f + r * 0.65f).coerceIn(0f, 1f)
+                                val pulseScale = 1.0f + r * 0.38f
+                                scaleX = pulseScale
+                                scaleY = pulseScale
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1.0f)
+                            }
+                            .background(
+                                Brush.radialGradient(
+                                    0.0f to ambientColor.copy(alpha = 0.90f),
+                                    0.35f to ambientCompanion.copy(alpha = 0.60f),
+                                    0.70f to ambientDeep.copy(alpha = 0.35f),
+                                    1.0f to Color.Transparent,
+                                    center = androidx.compose.ui.geometry.Offset(bgWidth * 0.50f, bgHeight * 0.90f),
+                                    radius = bgMaxDimension * 0.85f,
+                                )
+                            )
+                    )
+                }
                 if (showFullBleed) {
+                    // Player Lyrics over full-screen art: a light blur, only where the
+                    // lyrics sit, so the cover stops competing with the text while the
+                    // art under the title and controls stays sharp. Read only in the layer.
+                    val lyricsArtBlur = animateFloatAsState(
+                        targetValue = if (playerLyricsActive && currentTab == FullPlayerTab.NOW_PLAYING) 1f else 0f,
+                        animationSpec = tween(320),
+                        label = "playerLyricsArtBlur",
+                    )
+                    val lyricsArtBlurModifier = Modifier.graphicsLayer {
+                        val radius = 6.dp.toPx() * lyricsArtBlur.value
+                        renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && radius > 0.5f && heroBottomPx > heroTopPx) {
+                            lyricsAreaBlur(radius, heroTopPx, heroBottomPx, feather = 24.dp.toPx())
+                        } else null
+                    }
                     val isTallCanvas = remember(activeCanvas, canvasAspect, canvasGradientBlurEnabled) {
                         if (canvasGradientBlurEnabled || activeCanvas == null) false
                         else if (canvasAspect > 0f) {
@@ -882,38 +989,57 @@ internal fun FullPlayer(
                     // over as the canvas's own alpha climbs to full.
                     val heroCover =
                         if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f)
-                    StaticArtworkHero(
-                        name = track.title,
-                        artist = track.artist,
-                        embeddedUrl = track.artworkUrl,
-                        resolvedUrl = resolvedAmbientUrl,
-                        bottomFade = 0.38f,
-                        alpha = heroAlpha * heroCover,
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .fillMaxWidth()
                             .height(heroHeight),
-                    )
+                    ) {
+                        StaticArtworkHero(
+                            name = track.title,
+                            artist = track.artist,
+                            embeddedUrl = track.artworkUrl,
+                            resolvedUrl = resolvedAmbientUrl,
+                            bottomFade = 0.38f,
+                            alpha = heroAlpha * heroCover,
+                            modifier = Modifier.fillMaxSize().then(lyricsArtBlurModifier),
+                        )
+                    }
                     if (activeCanvas != null) {
-                        CanvasArtworkPlayer(
-                            canvas = activeCanvas,
-                            isPlaying = state.isPlaying,
-                            contentMode = CanvasContentMode.CROP,
-                            alignPortraitTop = true,
-                            bottomFade = if (isTallCanvas) 0f else 0.38f,
-                            presentationAlpha = { heroAlpha },
-                            onCoverChanged = { canvasCover = it },
-                            onAspectRatioChanged = { canvasAspect = it },
-                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                            modifier = if (isTallCanvas) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier
+                        if (isTallCanvas) {
+                            CanvasArtworkPlayer(
+                                canvas = activeCanvas,
+                                isPlaying = state.isPlaying,
+                                contentMode = CanvasContentMode.CROP,
+                                alignPortraitTop = true,
+                                bottomFade = 0f,
+                                presentationAlpha = { heroAlpha },
+                                onCoverChanged = { canvasCover = it },
+                                onAspectRatioChanged = { canvasAspect = it },
+                                pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                modifier = Modifier.fillMaxSize().then(lyricsArtBlurModifier),
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
-                                    .height(heroHeight)
-                            },
-                        )
+                                    .height(heroHeight),
+                            ) {
+                                CanvasArtworkPlayer(
+                                    canvas = activeCanvas,
+                                    isPlaying = state.isPlaying,
+                                    contentMode = CanvasContentMode.CROP,
+                                    alignPortraitTop = true,
+                                    bottomFade = 0.38f,
+                                    presentationAlpha = { heroAlpha },
+                                    onCoverChanged = { canvasCover = it },
+                                    onAspectRatioChanged = { canvasAspect = it },
+                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                    modifier = Modifier.fillMaxSize().then(lyricsArtBlurModifier),
+                                )
+                            }
+                        }
 
                         // For true full-bleed canvas: a subtle contrast gradient scrim so top header and
                         // bottom playback controls/title remain 100% legible without blurring the video
@@ -1072,8 +1198,8 @@ internal fun FullPlayer(
                                     }
                                 },
                                 shape = CircleShape,
-                                color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                contentColor = Color.White.copy(alpha = 0.94f),
+                                color = liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                contentColor = if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f),
                                 glassModifier = Modifier.liquidGlassChrome(
                                     CircleShape,
                                     LocalLiquidGlass.current,
@@ -1089,8 +1215,25 @@ internal fun FullPlayer(
                                     modifier = Modifier.size(26.dp),
                                 )
                             }
+                            // The Now Playing label fades after 10 s so the artwork stays clean;
+                            // a new song or tab brings it back.
+                            var headerLabelShown by remember(track.videoId, currentTab) { mutableStateOf(true) }
+                            if (currentTab == FullPlayerTab.NOW_PLAYING) {
+                                LaunchedEffect(track.videoId) {
+                                    delay(10_000L)
+                                    headerLabelShown = false
+                                }
+                            }
+                            val headerLabelAlpha by animateFloatAsState(
+                                targetValue = if (headerLabelShown) 1f else 0f,
+                                animationSpec = tween(400),
+                                label = "headerLabelAlpha",
+                            )
                             Column(
-                                Modifier.align(Alignment.Center).padding(horizontal = 96.dp),
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 96.dp)
+                                    .graphicsLayer { alpha = headerLabelAlpha },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Text(
@@ -1100,7 +1243,7 @@ internal fun FullPlayer(
                                         FullPlayerTab.QUEUE -> "PLAYING QUEUE"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White.copy(alpha = 0.95f),
+                                    color = if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.95f),
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.9.sp,
                                 )
@@ -1111,7 +1254,7 @@ internal fun FullPlayer(
                                         state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.70f),
+                                    color = if (isThemeLight) Color(0xFF444448) else Color.White.copy(alpha = 0.70f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -1126,8 +1269,8 @@ internal fun FullPlayer(
                                         onClick = hapticClick { showLyricsOffsetDialog = true },
                                         shape = CircleShape,
                                         color = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                                        else liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                        contentColor = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.94f),
+                                        else liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                        contentColor = if (lyricsOffsetMs != 0L) MaterialTheme.colorScheme.primary else (if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f)),
                                         glassModifier = Modifier.liquidGlassChrome(
                                             CircleShape,
                                             LocalLiquidGlass.current,
@@ -1142,11 +1285,57 @@ internal fun FullPlayer(
                                         )
                                     }
                                 }
+                                if (currentTab == FullPlayerTab.QUEUE) {
+                                    LiquidGlassSurface(
+                                        onClick = hapticClick {
+                                            isQueueLockedState = !isQueueLockedState
+                                        },
+                                        shape = CircleShape,
+                                        color = if (isQueueLockedState) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                        else liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                        contentColor = if (isQueueLockedState) MaterialTheme.colorScheme.primary
+                                        else (if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f)),
+                                        glassModifier = Modifier.liquidGlassChrome(
+                                            CircleShape,
+                                            LocalLiquidGlass.current,
+                                            LiquidGlassPreset.FloatingControls,
+                                        ),
+                                        modifier = Modifier.size(44.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isQueueLockedState) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                            contentDescription = if (isQueueLockedState) "Unlock queue" else "Lock queue",
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                }
+                                if (musicVideoEnabled && musicVideoNowPlayingButtonEnabled && onToggleSyncedVideo != null) {
+                                    LiquidGlassSurface(
+                                        onClick = hapticClick { onToggleSyncedVideo() },
+                                        shape = CircleShape,
+                                        color = if (isVideoActive) MaterialTheme.colorScheme.primaryContainer
+                                        else liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                        contentColor = if (isVideoActive) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else (if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f)),
+                                        glassModifier = Modifier.liquidGlassChrome(
+                                            CircleShape,
+                                            LocalLiquidGlass.current,
+                                            LiquidGlassPreset.FloatingControls,
+                                        ),
+                                        modifier = Modifier.size(44.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isVideoActive) Icons.Filled.SmartDisplay else Icons.Outlined.SmartDisplay,
+                                            contentDescription = "Watch video",
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                }
                                 LiquidGlassSurface(
                                     onClick = hapticClick { showTrackMenu = true },
                                     shape = CircleShape,
-                                    color = liquidGlassContainerColor(Color.White.copy(alpha = 0.14f)),
-                                    contentColor = Color.White.copy(alpha = 0.94f),
+                                    color = liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
+                                    contentColor = if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f),
                                     glassModifier = Modifier.liquidGlassChrome(
                                         CircleShape,
                                         LocalLiquidGlass.current,
@@ -1246,6 +1435,8 @@ internal fun FullPlayer(
                                     progressState = progressState,
                                     seekbarStyle = seekbarStyle,
                                     wavySeekbarEnabled = wavySeekbarEnabled,
+                                    lyricsStyle = lyricsStyle,
+                                    onLyricsStyleChange = onSetLyricsStyle ?: {},
                                     lyricsOffsetMs = lyricsOffsetMs,
                                     lyricsFontScale = lyricsFontScale,
                                     onLyricsFontScaleChange = onSetLyricsFontScale ?: {},
@@ -1375,6 +1566,7 @@ internal fun FullPlayer(
                                                 if (bottom > 0f && bottom != heroBottomPx) {
                                                     heroBottomPx = bottom
                                                 }
+                                                if (rootPos.y != heroTopPx) heroTopPx = rootPos.y
                                             }
                                             .pointerInput(track.videoId, track.title, isVideoActive, playerLyricsActive) {
                                                 // Lyric rows own taps in Player Lyrics: a double tap
@@ -1624,6 +1816,7 @@ internal fun FullPlayer(
                                                 displayMode = playerLyricsUi.displayMode,
                                                 onRetry = onRetryLyrics,
                                                 modifier = Modifier.fillMaxSize(),
+                                                accentColor = ambientColor,
                                             )
                                         }
 
@@ -1944,15 +2137,15 @@ internal fun FullPlayer(
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.title, track.artist, ""),
             capabilities = TrackMenuCapabilities(
-                showCopyActions = true,
                 showDeleteScrobble = false,
                 showRecommendationExclusion = true,
+                showPlayAction = false,
             ),
             playableTrack = track,
             onDismiss = { showTrackMenu = false },
             onPlayInLastWave = { player.play(track, sourceLabel = state.sourceLabel) },
             canWatchVideo = canWatchVideo,
-            onWatchVideo = if (canWatchVideo) ({ syncedVideoVm.setVideoActive(true) }) else null,
+            onWatchVideo = onToggleSyncedVideo,
         )
     }
 
@@ -1991,4 +2184,25 @@ internal fun FullPlayer(
         com.lastwave.app.ui.settings.autoeq.AutoEqDialog(onDismiss = { showAutoEq = false })
     }
 }
+}
+
+/** Blurs only the [top, bottom] band, feathered inside its edges, over the
+ *  sharp source. One layer, so a canvas TextureView still plays under it. */
+@androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+private fun lyricsAreaBlur(radius: Float, top: Float, bottom: Float, feather: Float): androidx.compose.ui.graphics.RenderEffect {
+    val edge = (feather / (bottom - top)).coerceAtMost(0.5f)
+    val band = android.graphics.RenderEffect.createShaderEffect(
+        android.graphics.LinearGradient(
+            0f, top, 0f, bottom,
+            intArrayOf(0, android.graphics.Color.BLACK, android.graphics.Color.BLACK, 0),
+            floatArrayOf(0f, edge, 1f - edge, 1f),
+            android.graphics.Shader.TileMode.CLAMP,
+        ),
+    )
+    val blur = android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
+    val blurredBand = android.graphics.RenderEffect.createBlendModeEffect(blur, band, android.graphics.BlendMode.DST_IN)
+    // A zero offset is the untouched source: the sharp art around the band.
+    val sharp = android.graphics.RenderEffect.createOffsetEffect(0f, 0f)
+    return android.graphics.RenderEffect.createBlendModeEffect(sharp, blurredBand, android.graphics.BlendMode.SRC_OVER)
+        .asComposeRenderEffect()
 }

@@ -129,6 +129,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -339,6 +340,7 @@ internal fun QueuePanel(
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var draggingKey by remember { mutableStateOf<String?>(null) }
+    var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var dragStartOffsetY by remember { mutableFloatStateOf(0f) }
     var menuIndex by remember { mutableStateOf<Int?>(null) }
@@ -370,7 +372,9 @@ internal fun QueuePanel(
         val source = currentQueueKeys.indexOf(key)
         val visible = listState.layoutInfo.visibleItemsInfo
         val draggedInfo = visible.firstOrNull { it.key == key } ?: return
-        if (source !in currentQueue.indices || draggedInfo.index != source) return
+        // Wait for both composition and layout to acknowledge the last move; otherwise
+        // another pointer/scroll callback can move the neighbor now at the old index.
+        if (source !in currentQueue.indices || source != draggingIndex || draggedInfo.index != source) return
         val center = dragStartOffsetY + dragOffsetY + draggedInfo.size / 2f
         val target = visible.firstOrNull { info ->
             info.index != source && info.index in currentQueue.indices &&
@@ -380,16 +384,21 @@ internal fun QueuePanel(
         } ?: return
         // Keep the viewport fixed when the first visible song changes index.
         listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+        draggingIndex = target.index
         player.moveQueueItem(source, target.index)
         runCatching { haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick) }
     }
     // Abort a stale drag if the queue itself changes underneath us
     // (track ended, clear-upcoming, fresh playQueue, …).
     LaunchedEffect(queueKeys) {
-        if (draggingKey != null && draggingKey !in queueKeys) {
+        val key = draggingKey ?: return@LaunchedEffect
+        if (key !in queueKeys) {
             cancelEdgeScroll()
             draggingKey = null
             dragOffsetY = 0f
+        } else {
+            // A rejected move would otherwise leave the move guard waiting on an index that never arrives.
+            draggingIndex = queueKeys.indexOf(key)
         }
     }
     // Follow the now-playing song in long queues: auto-scroll on every track
@@ -457,27 +466,6 @@ internal fun QueuePanel(
             }
             IconButton(
                 onClick = {
-                    isQueueLockedState = !isQueueLockedState
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                },
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        if (isQueueLocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                        else Color.White.copy(alpha = 0.14f)
-                    ),
-            ) {
-                Icon(
-                    imageVector = if (isQueueLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                    contentDescription = if (isQueueLocked) "Unlock queue" else "Lock queue",
-                    tint = if (isQueueLocked) MaterialTheme.colorScheme.primary
-                    else Color.White.copy(alpha = 0.90f),
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            IconButton(
-                onClick = {
                     userScrollHoldUntil = 0L
                     scope.launch { listState.animateScrollToItem(state.currentIndex.coerceAtLeast(0)) }
                 },
@@ -506,7 +494,7 @@ internal fun QueuePanel(
                     .background(Color.White.copy(alpha = 0.14f)),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.ClearAll,
+                    imageVector = Icons.Filled.Delete,
                     contentDescription = "Clear queue except playing song",
                     tint = if (state.queue.size > 1 && !isQueueLocked) Color.White.copy(alpha = 0.90f) else Color.White.copy(alpha = 0.35f),
                 )
@@ -754,6 +742,7 @@ internal fun QueuePanel(
                                                             val info = listState.layoutInfo.visibleItemsInfo
                                                                 .firstOrNull { it.key == stableKey } ?: return@detectDragGestures
                                                             draggingKey = stableKey
+                                                            draggingIndex = info.index
                                                             dragStartOffsetY = info.offset + rowOffsetY.value
                                                             dragOffsetY = 0f
                                                             cancelEdgeScroll()
@@ -873,7 +862,7 @@ internal fun QueuePanel(
         if (itemTrack != null) {
             com.lastwave.app.ui.common.TrackContextMenuSheet(
                 target = com.lastwave.app.ui.common.TrackMenuTarget.Track(itemTrack.title, itemTrack.artist, itemTrack.album ?: ""),
-                capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(showCopyActions = true),
+                capabilities = com.lastwave.app.ui.common.TrackMenuCapabilities(),
                 playableTrack = itemTrack,
                 onDismiss = { menuIndex = null },
                 onRemoveFromQueue = if (isQueueLocked) null else ({ player.removeQueueItem(index) })

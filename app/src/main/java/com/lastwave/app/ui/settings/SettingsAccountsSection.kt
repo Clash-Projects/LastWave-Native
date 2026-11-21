@@ -355,7 +355,7 @@ internal fun SpotifyAccountRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconBadge(
-                Icons.Filled.PlayCircle,
+                QualityGlyphs.Spotify,
                 MaterialTheme.colorScheme.primaryContainer,
                 MaterialTheme.colorScheme.primary,
             )
@@ -463,26 +463,17 @@ internal fun LastFmIntegrationCard(
                         )
                     } else {
                         IconBadge(
-                            Icons.Filled.CloudSync,
+                            QualityGlyphs.LastFm,
                             MaterialTheme.colorScheme.primaryContainer,
                             MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
                 } else {
-                    Box(
-                        Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            if (isConnected && username.isNotBlank()) username.take(1).uppercase() else "L",
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
+                    IconBadge(
+                        QualityGlyphs.LastFm,
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {

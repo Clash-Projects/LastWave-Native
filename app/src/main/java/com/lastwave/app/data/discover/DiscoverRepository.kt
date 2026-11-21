@@ -74,6 +74,10 @@ class DiscoverRepository @Inject constructor(
         allowed
     }
 
+    suspend fun recommendationExclusionKeys(): Set<String> = generateRepository.recommendationExclusionKeys()
+
+    fun observeRecommendationExclusions() = generateRepository.observeRecommendationExclusions()
+
     suspend fun filterRecommendationExclusions(tracks: List<GeneratedTrack>): List<GeneratedTrack> =
         generateRepository.filterRecommendationExclusions(tracks)
 

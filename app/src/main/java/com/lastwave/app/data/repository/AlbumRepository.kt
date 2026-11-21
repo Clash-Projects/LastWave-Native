@@ -87,11 +87,11 @@ class AlbumRepository @Inject constructor(
 
                 val finalTitle = ytData?.title?.takeIf(String::isNotBlank) ?: cleanTitle.ifBlank { "Album" }
                 val finalArtist = ytData?.artist?.takeIf(String::isNotBlank) ?: cleanArtist.ifBlank { "Various Artists" }
-                val artwork = ytData?.artworkUrl
+                var tracks = ytData?.tracks.orEmpty()
+                val artwork = ytData?.artworkUrl?.takeIf(String::isNotBlank)
+                    ?: tracks.firstNotNullOfOrNull { it.artworkUrl?.takeIf(String::isNotBlank) }
                 val description = ytData?.description?.takeIf(String::isNotBlank)
                 val releaseYear = ytData?.releaseYear
-
-                var tracks = ytData?.tracks.orEmpty()
 
                 // Fallback: only when the album page itself yielded no tracks,
                 // and only with songs strictly matching this album/artist.

@@ -41,9 +41,9 @@ fun safeDrawingBottomPadding(): Dp =
  * and hardware blur-behind on supported Android versions (API 31+).
  */
 @Composable
-fun EdgeToEdgeDialogWindow() {
+fun EdgeToEdgeDialogWindow(blurBehind: Boolean = true) {
     val view = LocalView.current
-    DisposableEffect(view) {
+    DisposableEffect(view, blurBehind) {
         var dialogWindow: Window? = null
         var isDialog = false
 
@@ -98,13 +98,20 @@ fun EdgeToEdgeDialogWindow() {
                 }
                 if (isDialog) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
                         val lp = w.attributes
-                        lp.setBlurBehindRadius(120)
-                        w.attributes = lp
-                        runCatching { w.setBackgroundBlurRadius(120) }
+                        if (blurBehind) {
+                            w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                            lp.setBlurBehindRadius(120)
+                            w.attributes = lp
+                            runCatching { w.setBackgroundBlurRadius(120) }
+                        } else {
+                            w.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                            lp.setBlurBehindRadius(0)
+                            w.attributes = lp
+                            runCatching { w.setBackgroundBlurRadius(0) }
+                        }
                     }
-                    w.setDimAmount(0.28f)
+                    w.setDimAmount(if (blurBehind) 0.28f else 0.45f)
                 }
             }
         }
@@ -113,8 +120,13 @@ fun EdgeToEdgeDialogWindow() {
             val lp = view.rootView.layoutParams as? WindowManager.LayoutParams
             if (lp != null && view.rootView != actDecor) {
                 runCatching {
-                    lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                    lp.setBlurBehindRadius(120)
+                    if (blurBehind) {
+                        lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                        lp.setBlurBehindRadius(120)
+                    } else {
+                        lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
+                        lp.setBlurBehindRadius(0)
+                    }
                     val wm = view.context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
                     wm?.updateViewLayout(view.rootView, lp)
                 }
@@ -122,7 +134,7 @@ fun EdgeToEdgeDialogWindow() {
         }
 
         var blurredView: View? = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && activity != null) {
+        if (blurBehind && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && activity != null) {
             val bgView = activity.findViewById<View>(android.R.id.content) ?: actDecor
             if (bgView != null && bgView != view.rootView) {
                 runCatching {
