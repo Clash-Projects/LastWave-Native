@@ -10,6 +10,17 @@ object ArtistHelper {
         RegexOption.IGNORE_CASE
     )
 
+    // Bands whose own name contains a separator ("Earth, Wind & Fire"). Without this they
+    // were split into several solo artists and opened as the first member only.
+    private val BAND_NAMES = listOf(
+        "Earth, Wind & Fire", "Earth, Wind and Fire", "Tyler, The Creator", "Crosby, Stills, Nash & Young",
+        "Crosby, Stills & Nash", "Simon & Garfunkel", "Hall & Oates", "Florence + the Machine",
+        "Mumford & Sons", "Kool & the Gang", "Sly & the Family Stone", "AC/DC", "Guns N' Roses",
+        "Of Monsters and Men", "Brooks & Dunn", "Bob Marley & The Wailers", "Echo & the Bunnymen",
+        "Huey Lewis and the News", "Hootie & the Blowfish", "Years & Years", "Coheed and Cambria",
+    ).map { Regex(Regex.escape(it), RegexOption.IGNORE_CASE) }
+    private val BAND_PLACEHOLDER = Regex("\u0000(\\d+)\u0000")
+
     // Matches "973 plays", "3.4K plays", "15M listens", "15 ml listens",
     // "15 mln listeners", "2.3M monthly listeners", "10K subscribers", etc.
     // Suffix covers K/M/B/T plus long "mln"/"mil"/"mn"/"ml" abbreviations
@@ -107,8 +118,14 @@ object ArtistHelper {
     fun splitArtists(rawArtist: String?): List<String> {
         if (rawArtist.isNullOrBlank() || isPlayCountOrStat(rawArtist)) return emptyList()
         val trimmed = rawArtist.trim()
-        val parts = trimmed.split(SEPARATOR_REGEX)
+        val bands = ArrayList<String>()
+        var masked = trimmed
+        for (band in BAND_NAMES) {
+            masked = band.replace(masked) { bands.add(it.value); "\u0000${bands.lastIndex}\u0000" }
+        }
+        val parts = masked.split(SEPARATOR_REGEX)
             .map { it.trim().trim(',', '&', '/', ';').trim() }
+            .map { part -> BAND_PLACEHOLDER.replace(part) { bands[it.groupValues[1].toInt()] } }
             .filter { it.isNotBlank() && !isPlayCountOrStat(it) }
             .distinct()
         return if (parts.isNotEmpty()) parts else listOf(trimmed)
