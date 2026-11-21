@@ -152,7 +152,7 @@ object TransitionPlanner {
                 cueOutMs = outLong,
                 cueInMs = inLong,
                 overlapMs = overlapLong,
-                shape = MixShape.EQUAL_POWER,
+                shape = if (swapAt != null) MixShape.BASS_SWAP else MixShape.EQUAL_POWER,
                 style = TransitionStyle.HARMONIC_BEATMIX,
                 tempoRatio = ratio,
                 beatLocked = true,
@@ -196,9 +196,10 @@ object TransitionPlanner {
             cueOut = outEnd - overlap
         }
         val swap = input.settings.spectralFilterSweepsEnabled && when (shape) {
-            MixShape.EQUAL_POWER -> overlap >= 6_000L
             MixShape.HOLD_OUTGOING -> overlap >= 1_500L
+            else -> overlap >= 6_000L
         }
+        if (swap && shape == MixShape.EQUAL_POWER) shape = MixShape.BASS_SWAP
         return MixPlan(
             cueOutMs = cueOut,
             cueInMs = inStart,
@@ -207,10 +208,10 @@ object TransitionPlanner {
             style = if (swap) TransitionStyle.SPECTRAL_SWEEP else TransitionStyle.PERCEPTUAL_FADE,
             bassSwapAtMs = when {
                 !swap -> null
-                shape == MixShape.EQUAL_POWER -> cueOut + overlap / 2
+                shape == MixShape.BASS_SWAP -> cueOut + overlap / 2
                 else -> cueOut + overlap
             },
-            bassSwapRampMs = if (shape == MixShape.EQUAL_POWER) 1_500L else 250L,
+            bassSwapRampMs = if (shape == MixShape.BASS_SWAP) 1_500L else 250L,
             keyPair = keyPair(outro, intro)?.let { "${it.first} → ${it.second}" },
             vocalSafe = !(outVocals == true && inVocals == true) && outVocals != null && inVocals != null,
         )

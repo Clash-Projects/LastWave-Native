@@ -89,7 +89,7 @@ class TransitionPlannerTest {
     @Test
     fun unknownAnalysis_isAPlainFadeAtTheEnd() {
         val plan = plan(null, null) as MixPlan
-        assertEquals(MixShape.EQUAL_POWER, plan.shape)
+        assertEquals(MixShape.BASS_SWAP, plan.shape)
         assertFalse(plan.beatLocked)
         assertEquals(outDuration, plan.endOutMs)
         assertEquals(0L, plan.cueInMs)
@@ -112,6 +112,7 @@ class TransitionPlannerTest {
         val plan = plan(outSig(beatOutro), inSig(beatIntro)) as MixPlan
         assertTrue(plan.beatLocked)
         assertEquals(TransitionStyle.HARMONIC_BEATMIX, plan.style)
+        assertEquals(MixShape.BASS_SWAP, plan.shape)
         assertEquals(124f / 126f, plan.tempoRatio, 1e-4f)
         val outBar = 4 * 60_000.0 / 124
         val inBar = 4 * 60_000.0 / 126
@@ -187,6 +188,7 @@ class TransitionPlannerTest {
         val off = AutoMixSettings(autoMixEnabled = true, spectralFilterSweepsEnabled = false)
         assertNull((plan(outSig(beatOutro), inSig(beatIntro), off) as MixPlan).bassSwapAtMs)
         assertNull((plan(null, null, off) as MixPlan).bassSwapAtMs)
+        assertEquals(MixShape.EQUAL_POWER, (plan(null, null, off) as MixPlan).shape)
         assertEquals(TransitionStyle.SPECTRAL_SWEEP, (plan(null, null) as MixPlan).style)
     }
 

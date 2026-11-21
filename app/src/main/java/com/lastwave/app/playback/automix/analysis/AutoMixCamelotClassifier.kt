@@ -68,43 +68,24 @@ object AutoMixCamelotClassifier {
             return CamelotKey("$num$letter")
         }
 
-        // Accidental and tonality normalization
-        var root = clean.lowercase()
+        // Spelled-out or symbol accidentals; the old chained replace() turned "minor" into "minoror".
+        val compact = clean.lowercase()
             .replace("sharp", "#")
             .replace("flat", "b")
             .replace("♯", "#")
             .replace("♭", "b")
-            .replace("maj", " major")
-            .replace("min", " minor")
-            .replace("m", " minor")
-            .trim()
-
-        val isMinor = root.contains("minor") || root.endsWith("m")
-        root = root.replace("minor", "").replace("major", "").trim()
-
-        val pitchClass = when (root) {
-            "c" -> 0
-            "c#", "db" -> 1
-            "d" -> 2
-            "d#", "eb" -> 3
-            "e" -> 4
-            "f" -> 5
-            "f#", "gb" -> 6
-            "g" -> 7
-            "g#", "ab" -> 8
-            "a" -> 9
-            "a#", "bb" -> 10
-            "b" -> 11
-            else -> return CamelotKey.UNKNOWN
-        }
-
-        val code = if (isMinor) {
-            PITCH_CLASS_TO_CAMELOT_MINOR[pitchClass] ?: return CamelotKey.UNKNOWN
-        } else {
-            PITCH_CLASS_TO_CAMELOT_MAJOR[pitchClass] ?: return CamelotKey.UNKNOWN
-        }
-
-        return CamelotKey(code)
+            .filterNot(Char::isWhitespace)
+        val match = Regex("""^([a-g])([#b]?)(major|maj|minor|min|m)?$""").matchEntire(compact)
+            ?: return CamelotKey.UNKNOWN
+        val (letter, accidental, mode) = match.destructured
+        val natural = mapOf('c' to 0, 'd' to 2, 'e' to 4, 'f' to 5, 'g' to 7, 'a' to 9, 'b' to 11).getValue(letter[0])
+        val pitchClass = (natural + when (accidental) {
+            "#" -> 1
+            "b" -> -1
+            else -> 0
+        }).mod(12)
+        val isMinor = mode.startsWith("m") && !mode.startsWith("maj")
+        return camelotFor(pitchClass, isMinor)?.let(::CamelotKey) ?: CamelotKey.UNKNOWN
     }
 
     /**

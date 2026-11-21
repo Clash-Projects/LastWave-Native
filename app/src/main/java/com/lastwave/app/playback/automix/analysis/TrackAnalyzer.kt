@@ -136,6 +136,7 @@ object TrackAnalyzer {
         val re = DoubleArray(ONSET_FFT)
         val im = DoubleArray(ONSET_FFT)
         val previous = DoubleArray(ONSET_FFT / 2)
+        var previousBassEnergy = 0.0
         val bassBin = (BASS_CUTOFF_HZ * ONSET_FFT / sampleRate).toInt().coerceAtLeast(1)
         for (frame in 0 until count) {
             val offset = frame * HOP
@@ -149,18 +150,20 @@ object TrackAnalyzer {
             rmsDb[frame] = (10.0 * log10(energy / ONSET_FFT + 1e-12)).toFloat()
             fft(re, im)
             var flux = 0.0
-            var bassFlux = 0.0
+            var bassEnergy = 0.0
             for (bin in 1 until ONSET_FFT / 2) {
-                val magnitude = ln(1.0 + 1_000.0 * hypot(re[bin], im[bin]))
+                val linear = hypot(re[bin], im[bin])
+                val magnitude = ln(1.0 + 1_000.0 * linear)
                 val rise = magnitude - previous[bin]
-                if (frame > 0 && rise > 0) {
-                    flux += rise
-                    if (bin <= bassBin) bassFlux += rise
-                }
+                if (frame > 0 && rise > 0) flux += rise
                 previous[bin] = magnitude
+                if (bin <= bassBin) bassEnergy += linear * linear
             }
             novelty[frame] = flux.toFloat()
-            bass[frame] = bassFlux.toFloat()
+            // Kick detection wants linear energy: log flux makes a snare's
+            // broadband noise rise as much in the bass bins as a kick does.
+            bass[frame] = (bassEnergy - previousBassEnergy).coerceAtLeast(0.0).toFloat()
+            previousBassEnergy = bassEnergy
         }
         return Onsets(adaptiveThreshold(novelty), adaptiveThreshold(bass), rmsDb)
     }
@@ -216,8 +219,7 @@ object TrackAnalyzer {
         // Bar phase: the beat slot carrying the most kick energy starts the bar.
         val slotScores = DoubleArray(BeatGrid.BEATS_PER_BAR)
         beats.forEachIndexed { index, frame ->
-            slotScores[index % BeatGrid.BEATS_PER_BAR] +=
-                peakNear(onsets.bassNovelty, frame) + 0.25 * peakNear(novelty, frame)
+            slotScores[index % BeatGrid.BEATS_PER_BAR] += peakNear(onsets.bassNovelty, frame)
         }
         val ranked = slotScores.indices.sortedByDescending { slotScores[it] }
         val top = slotScores[ranked[0]]

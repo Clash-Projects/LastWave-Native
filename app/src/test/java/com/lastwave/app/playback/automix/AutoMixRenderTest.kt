@@ -65,11 +65,13 @@ class AutoMixRenderTest {
     private fun assertHealthy(rendered: Rendered) {
         val peak = rendered.pcm.maxOf { abs(it) }
         assertTrue("summed peak $peak clips", peak <= 1f)
-        val block = RATE / 2
-        val levels = (0 until rendered.pcm.size / block).map { index ->
+        // About one bar per window: shorter ones swing 14 dB between kick and snare blocks.
+        val window = RATE * 2
+        val hop = RATE / 4
+        val levels = (0..(rendered.pcm.size - window) / hop).map { index ->
             var sum = 0.0
-            for (i in index * block until (index + 1) * block) sum += rendered.pcm[i] * rendered.pcm[i]
-            20 * log10(sqrt(sum / block) + 1e-9)
+            for (i in index * hop until index * hop + window) sum += rendered.pcm[i] * rendered.pcm[i]
+            20 * log10(sqrt(sum / window) + 1e-9)
         }
         val median = levels.sorted()[levels.size / 2]
         val worst = levels.min()

@@ -7,6 +7,13 @@ import kotlin.math.sin
 enum class MixShape {
     /** Constant-power crossfade. */
     EQUAL_POWER,
+    /**
+     * DJ blend around a mid-point bass swap: the incoming deck rises (bass
+     * cut) while the outgoing one holds, then the outgoing (bass cut) falls
+     * while the incoming holds. The deck that owns the low end stays at full
+     * level; dipping it with an equal-power curve sagged kick-led music ~4 dB.
+     */
+    BASS_SWAP,
     /** The outgoing song keeps its level and ends on its own (cold endings). */
     HOLD_OUTGOING,
 }
@@ -19,22 +26,30 @@ object MixCurve {
      */
     const val MAX_SUM = 1.2f
 
+    /** With the bass swapped only one deck carries the low end, where the biggest peaks live. */
+    const val MAX_SUM_BASS_SWAP = 1.4f
+
     /** Gains (outgoing, incoming) at progress [p] in 0..1. */
     fun gains(p: Float, shape: MixShape): Pair<Float, Float> {
         val t = p.coerceIn(0f, 1f)
-        val incoming = sin(t * PI / 2).toFloat()
-        val outgoing = when (shape) {
-            MixShape.EQUAL_POWER -> cos(t * PI / 2).toFloat()
-            MixShape.HOLD_OUTGOING -> 1f - t * t * t * t
+        val (outgoing, incoming) = when (shape) {
+            MixShape.EQUAL_POWER -> cos(t * PI / 2).toFloat() to sin(t * PI / 2).toFloat()
+            MixShape.HOLD_OUTGOING -> (1f - t * t * t * t) to sin(t * PI / 2).toFloat()
+            MixShape.BASS_SWAP -> if (t < 0.5f) {
+                1f to sin(t * PI).toFloat()
+            } else {
+                cos((t - 0.5f) * PI).toFloat() to 1f
+            }
         }
+        val cap = if (shape == MixShape.BASS_SWAP) MAX_SUM_BASS_SWAP else MAX_SUM
         val sum = incoming + outgoing
-        val trim = if (sum > MAX_SUM) MAX_SUM / sum else 1f
+        val trim = if (sum > cap) cap / sum else 1f
         return outgoing * trim to incoming * trim
     }
 
     /** Progress at which the incoming deck becomes the one the UI shows. */
     fun handOverPoint(shape: MixShape): Float = when (shape) {
-        MixShape.EQUAL_POWER -> 0.5f
+        MixShape.EQUAL_POWER, MixShape.BASS_SWAP -> 0.5f
         MixShape.HOLD_OUTGOING -> 0.85f
     }
 }

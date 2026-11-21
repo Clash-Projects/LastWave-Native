@@ -109,7 +109,8 @@ class BassSwapStageTest {
             var lastIn = 0f
             for (step in 0..100) {
                 val (o, i) = MixCurve.gains(step / 100f, shape)
-                assertTrue("$shape sum ${o + i} at $step", o + i <= MixCurve.MAX_SUM + 1e-5f)
+                val cap = if (shape == MixShape.BASS_SWAP) MixCurve.MAX_SUM_BASS_SWAP else MixCurve.MAX_SUM
+                assertTrue("$shape sum ${o + i} at $step", o + i <= cap + 1e-5f)
                 assertTrue("$shape incoming must only rise", i >= lastIn - 1e-6f)
                 lastIn = i
             }
