@@ -420,11 +420,12 @@ internal fun MusicPlaybackService.publishSystemState(state: MusicPlayerState) {
                     )
                     .apply {
                         // Android 13+ takes the two outer buttons from session custom actions.
+                        // Places Favorite on the far left and Repeat on the far right (replacing Shuffle).
                         if (track != null) {
-                            addCustomAction(ACTION_LIKE, if (isLiked) "Unlike song" else "Like song",
-                                if (isLiked) R.drawable.ic_wave_widget_favorite_filled else R.drawable.ic_wave_widget_favorite)
-                            addCustomAction(ACTION_SHUFFLE, if (state.shuffleEnabled) "Turn shuffle off" else "Turn shuffle on",
-                                R.drawable.ic_widget_shuffle)
+                            val customActions = NotificationRepeatAction.buildCustomLayout(isLiked, state.repeatMode)
+                            for (ca in customActions) {
+                                addCustomAction(ca.action, ca.name, ca.iconRes)
+                            }
                         }
                     }
                     .setActiveQueueItemId(state.currentIndex.toLong())
