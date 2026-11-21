@@ -350,6 +350,8 @@ internal fun FullPlayerLandscape(
     wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     showSleeveCanvas: Boolean,
     canvas: com.lastwave.app.data.canvas.CanvasArtwork?,
+    /** Off = framed sleeve in the left pane, like the single-column layout. */
+    canvasFullBleed: Boolean = true,
     ambientColor: Color,
     ambientCompanion: Color,
     ambientDeep: Color,
@@ -383,6 +385,7 @@ internal fun FullPlayerLandscape(
             state = state,
             player = player,
             canvas = if (showSleeveCanvas) canvas else null,
+            fullBleed = canvasFullBleed,
             resolvedArtworkUrl = resolvedArtworkUrl,
             onDoubleTapLike = onDoubleTapLike,
             shownDismissY = shownDismissY,
@@ -575,6 +578,8 @@ internal fun LandscapeArtworkPane(
     isVideoActive: Boolean,
     onCloseVideo: () -> Unit,
     onEnterFullscreen: () -> Unit,
+    /** On = edge-to-edge art behind the controls; off = framed sleeve card. */
+    fullBleed: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -597,25 +602,6 @@ internal fun LandscapeArtworkPane(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    // A hint of the swipe under the finger; the art itself stays put.
-                    translationX = shownArtworkX * 0.35f
-                    compositingStrategy = CompositingStrategy.Offscreen
-                }
-                .drawWithContent {
-                    drawContent()
-                    // Fade to transparent rather than to a colour: the real
-                    // player background shows through, so the blend is exact.
-                    drawRect(
-                        Brush.horizontalGradient(0.58f to Color.Black, 1f to Color.Transparent),
-                        blendMode = BlendMode.DstIn,
-                    )
-                    // Same for the top and bottom, so the pane has no hard edges or corners.
-                    drawRect(
-                        Brush.verticalGradient(0f to Color.Transparent, 0.12f to Color.Black, 0.88f to Color.Black, 1f to Color.Transparent),
-                        blendMode = BlendMode.DstIn,
-                    )
-                }
                     .pointerInput(track.videoId, track.title, isVideoActive) {
                         if (isVideoActive) return@pointerInput
                         awaitEachGesture {
@@ -715,36 +701,73 @@ internal fun LandscapeArtworkPane(
                         }
                     },
         ) {
-            if (isVideoActive) {
-                SyncedCoverVideoPlayer(
-                    track = track,
-                    musicPlayer = player,
-                    onCloseVideo = onCloseVideo,
-                    onEnterFullscreen = onEnterFullscreen,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                // Static cover first, Canvas on top, handing over as the video fades in.
-                var canvasCover by remember(canvas?.url) { mutableFloatStateOf(0f) }
-                StaticArtworkHero(
-                    name = track.title,
-                    artist = track.artist,
-                    embeddedUrl = track.artworkUrl,
-                    resolvedUrl = resolvedArtworkUrl,
-                    bottomFade = 0f,
-                    alpha = if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f),
-                    modifier = Modifier.fillMaxSize(),
-                )
-                if (canvas != null) {
-                    CanvasArtworkPlayer(
+            if (fullBleed || isVideoActive) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            // A hint of the swipe under the finger; the art itself stays put.
+                            translationX = shownArtworkX * 0.35f
+                            compositingStrategy = CompositingStrategy.Offscreen
+                        }
+                        .drawWithContent {
+                            drawContent()
+                            // Fade to transparent rather than to a colour: the real
+                            // player background shows through, so the blend is exact.
+                            drawRect(
+                                Brush.horizontalGradient(0.58f to Color.Black, 1f to Color.Transparent),
+                                blendMode = BlendMode.DstIn,
+                            )
+                            // Same for the top and bottom, so the pane has no hard edges or corners.
+                            drawRect(
+                                Brush.verticalGradient(0f to Color.Transparent, 0.12f to Color.Black, 0.88f to Color.Black, 1f to Color.Transparent),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        },
+                ) {
+                    LandscapeArtworkContent(
+                        track = track,
+                        state = state,
+                        player = player,
                         canvas = canvas,
-                        isPlaying = state.isPlaying,
-                        contentMode = CanvasContentMode.CROP,
-                        alignPortraitTop = true,
+                        resolvedArtworkUrl = resolvedArtworkUrl,
+                        isVideoActive = isVideoActive,
                         pausedForTransition = shownDismissY > 1f,
-                        onCoverChanged = { canvasCover = it },
+                        onCloseVideo = onCloseVideo,
+                        onEnterFullscreen = onEnterFullscreen,
                         modifier = Modifier.fillMaxSize(),
                     )
+                }
+            } else {
+                // Full Screen Artwork off: the same rounded sleeve as the
+                // single-column layout, floating in the pane.
+                BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    val sleeveSize = (minOf(maxWidth, maxHeight) * 0.84f).coerceAtMost(560.dp)
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f),
+                        tonalElevation = 6.dp,
+                        shadowElevation = if (state.isPlaying) 28.dp else 12.dp,
+                        modifier = Modifier
+                            .size(sleeveSize)
+                            .graphicsLayer {
+                                translationX = shownArtworkX
+                                rotationZ = shownArtworkX / 80f
+                            },
+                    ) {
+                        LandscapeArtworkContent(
+                            track = track,
+                            state = state,
+                            player = player,
+                            canvas = canvas,
+                            resolvedArtworkUrl = resolvedArtworkUrl,
+                            isVideoActive = false,
+                            pausedForTransition = shownDismissY > 1f,
+                            onCloseVideo = onCloseVideo,
+                            onEnterFullscreen = onEnterFullscreen,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
@@ -838,5 +861,56 @@ internal fun LandscapeArtworkPane(
                     }
                 }
             }
+    }
+}
+
+/**
+ * Static cover with the Canvas crossfading over it, or the synced video —
+ * identical in the edge-to-edge pane and in the framed sleeve.
+ */
+@Composable
+private fun LandscapeArtworkContent(
+    track: PlayableTrack,
+    state: MusicPlayerState,
+    player: MusicPlayer,
+    canvas: com.lastwave.app.data.canvas.CanvasArtwork?,
+    resolvedArtworkUrl: String?,
+    isVideoActive: Boolean,
+    pausedForTransition: Boolean,
+    onCloseVideo: () -> Unit,
+    onEnterFullscreen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (isVideoActive) {
+        SyncedCoverVideoPlayer(
+            track = track,
+            musicPlayer = player,
+            onCloseVideo = onCloseVideo,
+            onEnterFullscreen = onEnterFullscreen,
+            modifier = modifier,
+        )
+        return
+    }
+    // Static cover first, Canvas on top, handing over as the video fades in.
+    var canvasCover by remember(canvas?.url) { mutableFloatStateOf(0f) }
+    StaticArtworkHero(
+        name = track.title,
+        artist = track.artist,
+        embeddedUrl = track.artworkUrl,
+        resolvedUrl = resolvedArtworkUrl,
+        bottomFade = 0f,
+        alpha = if (canvasCover >= 0.95f) 0f else (1f - canvasCover).coerceIn(0f, 1f),
+        modifier = modifier,
+    )
+    if (canvas != null) {
+        CanvasArtworkPlayer(
+            canvas = canvas,
+            isPlaying = state.isPlaying,
+            contentMode = CanvasContentMode.CROP,
+            alignPortraitTop = true,
+            pausedForTransition = pausedForTransition,
+            onCoverChanged = { canvasCover = it },
+            modifier = modifier,
+        )
     }
 }

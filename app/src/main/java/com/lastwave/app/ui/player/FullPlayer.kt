@@ -439,12 +439,14 @@ internal fun FullPlayer(
     // carries the Animated Album Canvas toggle. The ViewModel nulls canvasState
     // asynchronously, so without this a disabled toggle still paints one frame of
     // motion artwork over the cover.
-    val activeCanvas = remember(canvas, showFullBleed, canvasEnabled) {
+    val activeCanvas = remember(canvas, canvasFullBleedEnabled, canvasEnabled) {
         if (!canvasEnabled) {
             null
         } else {
             val tall = canvas?.tallUrl
-            if (showFullBleed && canvas != null && !tall.isNullOrBlank()) {
+            // Full Screen Artwork picks the tall clip in every layout, including
+            // the tablet's two-column pane.
+            if (canvasFullBleedEnabled && canvas != null && !tall.isNullOrBlank()) {
                 canvas.copy(url = tall)
             } else {
                 canvas
@@ -1349,6 +1351,7 @@ internal fun FullPlayer(
                                         isVideoActive = isVideoActive,
                                         onCloseVideo = { syncedVideoVm.setVideoActive(false) },
                                         onEnterFullscreen = { isVideoFullscreen = true },
+                                        fullBleed = canvasFullBleedEnabled,
                                         modifier = Modifier.weight(1f),
                                     )
                                 }
@@ -1433,6 +1436,7 @@ internal fun FullPlayer(
                                     wavySeekbarEnabled = wavySeekbarEnabled,
                                     showSleeveCanvas = showSleeveCanvas,
                                     canvas = activeCanvas ?: canvas,
+                                    canvasFullBleed = canvasFullBleedEnabled,
                                     ambientColor = ambientColor,
                                     ambientCompanion = ambientCompanion,
                                     ambientDeep = ambientDeep,
