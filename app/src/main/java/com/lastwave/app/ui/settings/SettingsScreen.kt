@@ -2769,7 +2769,7 @@ fun SettingsScreen(
                                 subtitle = "${misc.lyricsProvider.title} \u2022 ${misc.lyricsProvider.subtitle}",
                                 onClick = { showLyricsSettingsSheet = false; showLyricsProviderDialog = true },
                                 position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_provider"),
+                                isHighlighted = false,
                             )
                             1 -> SettingsActionCard(
                                 icon = Icons.Filled.Timer,
@@ -2787,7 +2787,7 @@ fun SettingsScreen(
                                 },
                                 onClick = { showLyricsSettingsSheet = false; showLyricsOffsetDialog = true },
                                 position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_offset"),
+                                isHighlighted = false,
                             )
                             2 -> SettingsActionCard(
                                 icon = Icons.Filled.FormatSize,
@@ -2806,7 +2806,7 @@ fun SettingsScreen(
                                 ),
                                 onClick = { showLyricsSettingsSheet = false; showLyricsSizeDialog = true },
                                 position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
+                                isHighlighted = false,
                             )
                             3 -> SettingsActionCard(
                                 icon = Icons.Filled.VisibilityOff,
@@ -2823,7 +2823,7 @@ fun SettingsScreen(
                                 },
                                 onClick = { showLyricsSettingsSheet = false; showLyricsAutoHideDialog = true },
                                 position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_autohide"),
+                                isHighlighted = false,
                             )
                     }
                 }

@@ -1132,12 +1132,6 @@ private fun ColumnScope.ModernTrackMenuContent(
                         dismissMenu()
                     }
                 }
-                if (capabilities.showCopyActions) add {
-                    ModernMenuActionRow(Icons.Outlined.ContentCopy, stringResource(R.string.menu_copy_song), quiet = true, enabled = !dismissing) {
-                        clipboard.setText(AnnotatedString(t.name + " \u2014 " + t.artist))
-                        dismissMenu()
-                    }
-                }
             }
             ModernMenuActionGrid(copyActions, tonal = false)
             if (onRefreshArtwork != null) {
