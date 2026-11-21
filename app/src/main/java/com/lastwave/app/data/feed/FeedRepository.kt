@@ -84,6 +84,8 @@ data class FeedSpotlight(
     val browseId: String? = null,
     val description: String? = null,
     val topTrackTitle: String? = null,
+    /** Further spotlight artists for the pager; empty means a single card. */
+    val more: List<FeedSpotlight> = emptyList(),
 )
 
 @Immutable
@@ -727,21 +729,23 @@ class FeedRepository @Inject constructor(
 
         val topSpotlightArtist = topArtists.filterNot { it.name == previous?.spotlight?.artistName }
             .randomOrNull(random) ?: topArtists.firstOrNull()
-        val spotlight = if (topSpotlightArtist != null) {
-            val topTrackTitle = heavyRotation
-                .firstOrNull { it.artist.equals(topSpotlightArtist.name, ignoreCase = true) }
+        fun spotlightFor(artist: FeedArtist) = FeedSpotlight(
+            artistName = artist.name,
+            artworkUrl = artist.artworkUrl,
+            browseId = artist.browseId,
+            description = "Spotlight Artist",
+            topTrackTitle = heavyRotation
+                .firstOrNull { it.artist.equals(artist.name, ignoreCase = true) }
                 ?.name
                 ?: artistSignalTracks
-                    .firstOrNull { it.artist.equals(topSpotlightArtist.name, ignoreCase = true) }
-                    ?.title
-            FeedSpotlight(
-                artistName = topSpotlightArtist.name,
-                artworkUrl = topSpotlightArtist.artworkUrl,
-                browseId = topSpotlightArtist.browseId,
-                description = "Spotlight Artist",
-                topTrackTitle = topTrackTitle,
+                    .firstOrNull { it.artist.equals(artist.name, ignoreCase = true) }
+                    ?.title,
+        )
+        val spotlight = topSpotlightArtist?.let { first ->
+            spotlightFor(first).copy(
+                more = topArtists.filterNot { it.name == first.name }.shuffled(random).take(4).map(::spotlightFor),
             )
-        } else null
+        }
 
         val topArtist = topArtistNames.firstOrNull()
         // Affinity-weighted radio seed: the strongest known artist among
