@@ -451,6 +451,7 @@ fun SettingsScreen(
     var showAutoEq by remember { mutableStateOf(false) }
     var showSeekbarStyleDialog by remember { mutableStateOf(false) }
     var showLyricsProviderDialog by remember { mutableStateOf(false) }
+    var showLyricsSettingsSheet by remember { mutableStateOf(false) }
     var showLyricsOffsetDialog by remember { mutableStateOf(false) }
     var showLyricsSizeDialog by remember { mutableStateOf(false) }
     var showLyricsAutoHideDialog by remember { mutableStateOf(false) }
@@ -1314,7 +1315,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.hide_nav_tabs"),
                             )
-                            9 -> SettingsToggleCard(
+                            6 -> SettingsToggleCard(
                                 icon = Icons.Filled.ColorLens,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1325,7 +1326,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            10 -> SettingsToggleCard(
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1336,7 +1337,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
-                            11 -> SettingsToggleCard(
+                            8 -> SettingsToggleCard(
                                 icon = Icons.Filled.FormatBold,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1346,7 +1347,7 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUseBoldFont,
                                 position = position,
                             )
-                            12 -> SettingsToggleCard(
+                            9 -> SettingsToggleCard(
                                 icon = Icons.Filled.Vibration,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1438,7 +1439,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    val experimentalRowCount = if (misc.musicVideoEnabled) 13 else 12
+                    val experimentalRowCount = if (misc.musicVideoEnabled) 10 else 9
                     SettingsGroup(rowCount = experimentalRowCount) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
@@ -1519,65 +1520,11 @@ fun SettingsScreen(
                                 icon = Icons.Filled.Lyrics,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.settings_lyrics_provider),
-                                subtitle = "${misc.lyricsProvider.title} \u2022 ${misc.lyricsProvider.subtitle}",
-                                onClick = { showLyricsProviderDialog = true },
+                                title = stringResource(R.string.settings_lyrics_settings),
+                                subtitle = stringResource(R.string.settings_lyrics_settings_sub),
+                                onClick = { showLyricsSettingsSheet = true },
                                 position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_provider"),
-                            )
-                            6 -> SettingsActionCard(
-                                icon = Icons.Filled.Timer,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.set_lyrics_offset_title),
-                                subtitle = if (misc.lyricsOffsetMs == 0L) {
-                                    stringResource(R.string.set_offset_off)
-                                } else {
-                                    stringResource(
-                                        R.string.set_offset_value,
-                                        if (misc.lyricsOffsetMs > 0) "+" else "",
-                                        misc.lyricsOffsetMs,
-                                    )
-                                },
-                                onClick = { showLyricsOffsetDialog = true },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_offset"),
-                            )
-                            7 -> SettingsActionCard(
-                                icon = Icons.Filled.FormatSize,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.set_lyrics_size_title),
-                                subtitle = stringResource(
-                                    R.string.set_size_value,
-                                    (misc.lyricsFontScale * 100).roundToInt(),
-                                    when {
-                                        misc.lyricsFontScale < 0.85f -> stringResource(R.string.set_size_small)
-                                        misc.lyricsFontScale in 0.85f..1.15f -> stringResource(R.string.set_size_standard)
-                                        misc.lyricsFontScale in 1.16f..1.35f -> stringResource(R.string.set_size_large)
-                                        else -> stringResource(R.string.set_size_xlarge)
-                                    },
-                                ),
-                                onClick = { showLyricsSizeDialog = true },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
-                            )
-                            8 -> SettingsActionCard(
-                                icon = Icons.Filled.VisibilityOff,
-                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.set_lyrics_autohide_title),
-                                subtitle = if (misc.lyricsButtonsAutoHideSeconds == 0) {
-                                    stringResource(R.string.set_lyrics_autohide_never)
-                                } else {
-                                    stringResource(
-                                        R.string.set_lyrics_autohide_value,
-                                        misc.lyricsButtonsAutoHideSeconds,
-                                    )
-                                },
-                                onClick = { showLyricsAutoHideDialog = true },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.lyrics_autohide"),
+                                isHighlighted = false,
                             )
                             9 -> SettingsActionCard(
                                 icon = Icons.Filled.Translate,
@@ -2803,6 +2750,86 @@ fun SettingsScreen(
     }
 
 
+
+    // -- Lyrics settings: provider, sync offset, text size and button auto-hide in one place --
+    if (showLyricsSettingsSheet) {
+        ModalBottomSheet(onDismissRequest = { showLyricsSettingsSheet = false }) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SectionLabel(stringResource(R.string.settings_lyrics_settings))
+                SettingsGroup(rowCount = 4) { index, position ->
+                    when (index) {
+                            0 -> SettingsActionCard(
+                                icon = Icons.Filled.Lyrics,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_lyrics_provider),
+                                subtitle = "${misc.lyricsProvider.title} \u2022 ${misc.lyricsProvider.subtitle}",
+                                onClick = { showLyricsSettingsSheet = false; showLyricsProviderDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lyrics_provider"),
+                            )
+                            1 -> SettingsActionCard(
+                                icon = Icons.Filled.Timer,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.set_lyrics_offset_title),
+                                subtitle = if (misc.lyricsOffsetMs == 0L) {
+                                    stringResource(R.string.set_offset_off)
+                                } else {
+                                    stringResource(
+                                        R.string.set_offset_value,
+                                        if (misc.lyricsOffsetMs > 0) "+" else "",
+                                        misc.lyricsOffsetMs,
+                                    )
+                                },
+                                onClick = { showLyricsSettingsSheet = false; showLyricsOffsetDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lyrics_offset"),
+                            )
+                            2 -> SettingsActionCard(
+                                icon = Icons.Filled.FormatSize,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.set_lyrics_size_title),
+                                subtitle = stringResource(
+                                    R.string.set_size_value,
+                                    (misc.lyricsFontScale * 100).roundToInt(),
+                                    when {
+                                        misc.lyricsFontScale < 0.85f -> stringResource(R.string.set_size_small)
+                                        misc.lyricsFontScale in 0.85f..1.15f -> stringResource(R.string.set_size_standard)
+                                        misc.lyricsFontScale in 1.16f..1.35f -> stringResource(R.string.set_size_large)
+                                        else -> stringResource(R.string.set_size_xlarge)
+                                    },
+                                ),
+                                onClick = { showLyricsSettingsSheet = false; showLyricsSizeDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lyrics_size"),
+                            )
+                            3 -> SettingsActionCard(
+                                icon = Icons.Filled.VisibilityOff,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = stringResource(R.string.set_lyrics_autohide_title),
+                                subtitle = if (misc.lyricsButtonsAutoHideSeconds == 0) {
+                                    stringResource(R.string.set_lyrics_autohide_never)
+                                } else {
+                                    stringResource(
+                                        R.string.set_lyrics_autohide_value,
+                                        misc.lyricsButtonsAutoHideSeconds,
+                                    )
+                                },
+                                onClick = { showLyricsSettingsSheet = false; showLyricsAutoHideDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "appearance.lyrics_autohide"),
+                            )
+                    }
+                }
+            }
+        }
+    }
 
     // -- Seekbar visual style selector (Default, Wavy, Waveform) --
     if (showSeekbarStyleDialog) {

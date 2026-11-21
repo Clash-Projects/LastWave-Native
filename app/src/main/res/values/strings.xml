@@ -163,6 +163,8 @@
     <string name="settings_ui_haptics_sub">Vibrate on taps, buttons, toggles and gestures</string>
     <string name="settings_lyrics_animation">Lyrics Animation</string>
     <string name="settings_lyrics_provider">Lyrics provider</string>
+    <string name="settings_lyrics_settings">Lyrics settings</string>
+    <string name="settings_lyrics_settings_sub">Provider, sync offset, text size and button hiding</string>
     <string name="settings_lyrics_provider_desc">Tried first for every song. If it returns nothing, the app automatically falls through to the other providers.</string>
     <string name="settings_equalizer">Equalizer</string>
     <string name="settings_equalizer_sub">Shape your sound across 15 frequencies</string>
