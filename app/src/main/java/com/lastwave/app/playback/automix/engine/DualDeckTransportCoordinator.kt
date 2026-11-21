@@ -1,19 +1,19 @@
 package com.lastwave.app.playback.automix.engine
 
-import android.content.Context
-import androidx.media3.common.C
+import android.os.SystemClock
+import android.util.Log
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.automix.analysis.AcousticSignatureExtractor
-import com.lastwave.app.playback.automix.api.AutoMixController
+import com.lastwave.app.playback.automix.analysis.AnalysisInput
 import com.lastwave.app.playback.automix.api.AutoMixPreferences
 import com.lastwave.app.playback.automix.api.AutoMixSettings
 import com.lastwave.app.playback.automix.api.BlendPhase
 import com.lastwave.app.playback.automix.api.DeckBlendTelemetry
 import com.lastwave.app.playback.automix.api.TrackChromeSummary
-import com.lastwave.app.playback.automix.api.TransitionStyle
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,421 +22,552 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 
+/**
+ * Sole owner of an AutoMix transition: analysis requests, the plan, the
+ * standby's cue, the blend, the hand-over and every way it can end. Main
+ * thread only.
+ *
+ * A running blend holds immutable references to its two decks, so nothing
+ * MusicPlayer does to `player` mid-blend can make it fade the wrong deck,
+ * and every interruption goes through [endTransition], which commits a blend
+ * that has already handed over and reverts one that has not.
+ */
 @Singleton
 class DualDeckTransportCoordinator @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val preferences: AutoMixPreferences,
-    private val signatureExtractor: AcousticSignatureExtractor,
-) : AutoMixController {
+    preferences: AutoMixPreferences,
+    private val analyzer: AcousticSignatureExtractor,
+) {
+    class Tick(
+        val primary: ExoPlayer,
+        val standby: ExoPlayer?,
+        val current: PlayableTrack?,
+        val currentItem: MediaItem?,
+        val next: PlayableTrack?,
+        val nextItem: MediaItem?,
+        val positionMs: Long,
+        val durationMs: Long,
+    )
+
+    private class Session(
+        val outgoing: ExoPlayer,
+        val incoming: ExoPlayer,
+        val plan: MixPlan,
+        val userParameters: PlaybackParameters,
+        val outgoingStage: BassSwapStage?,
+        val incomingStage: BassSwapStage?,
+        val startedAtMs: Long,
+    ) {
+        var handedOver = false
+        var job: Job? = null
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    var baseVolume: Float = 1.0f
+    private val _telemetry = MutableStateFlow(DeckBlendTelemetry.IDLE)
+    val telemetry: StateFlow<DeckBlendTelemetry> = _telemetry.asStateFlow()
+
+    private var settings = AutoMixSettings()
+    val isEnabled: Boolean get() = settings.autoMixEnabled
+    private var hardwareBypass = false
+    private var jamActive = false
+    private var transportPaused = false
+    var baseVolume = 1f
         private set
 
-    fun setBaseVolume(vol: Float) {
-        baseVolume = vol.coerceIn(0f, 1f)
-        if (activeSpliceJob == null || activeSpliceJob?.isActive != true) {
-            currentPrimaryPlayer?.volume = baseVolume
-        }
-    }
+    /** Both decks are audible and owned by AutoMix: neither may be re-armed or reused. */
+    val isBlending: Boolean get() = session != null
 
-    private val _telemetry = MutableStateFlow(DeckBlendTelemetry.IDLE)
-    override val telemetry: StateFlow<DeckBlendTelemetry> = _telemetry.asStateFlow()
-
-    private var currentSettings = AutoMixSettings()
-    val isEnabled: Boolean get() = currentSettings.autoMixEnabled
-    private var isHardwareBypassEngaged = false
-    private var isJamRoomActive = false
-
-    private var activeTrackKey: String? = null
-    private var activeSpliceJob: Job? = null
-    private var currentSplicePlan: SplicePlan? = null
-    /** Outgoing duration the current plan was built for. */
-    private var planDurationMs: Long = 0L
-    /** An explicit "mix now" request: fires regardless of time left. */
-    private var immediatePlan = false
-    private var currentPrimaryPlayer: ExoPlayer? = null
-    private var currentSecondaryPlayer: ExoPlayer? = null
-    /** User pause / audio-focus pause. A blend must hold still while it is set. */
-    private var transportPaused = false
-
-    /** True while a blend (both decks audible) is in progress. */
-    val isBlending: Boolean get() = activeSpliceJob?.isActive == true
-
-    /**
-     * Pause / resume coming from the player transport. During a blend both
-     * decks are paused and the blend clock stops, so the old song does not
-     * keep fading out and the next song is not handed over while paused;
-     * resume picks the blend up exactly where it stopped.
-     */
-    fun setTransportPaused(paused: Boolean) {
-        if (transportPaused == paused) return
-        transportPaused = paused
-        if (activeSpliceJob?.isActive != true) return
-        runCatching {
-            if (paused) {
-                currentPrimaryPlayer?.pause()
-                currentSecondaryPlayer?.pause()
-            } else {
-                currentPrimaryPlayer?.play()
-                currentSecondaryPlayer?.play()
-            }
-        }
-    }
-
-    // Track reference callbacks into MusicPlayer
+    /** MusicPlayer hooks, installed once at start-up. */
     var onPerformDeckSwap: ((outgoing: ExoPlayer, incoming: ExoPlayer) -> Unit)? = null
     var onTransitionComplete: (() -> Unit)? = null
+    var analysisInput: ((MediaItem) -> AnalysisInput?)? = null
+    var bassStage: ((ExoPlayer) -> BassSwapStage?)? = null
+
+    private var pairKey: String? = null
+    private var decision: MixDecision? = null
+    private var decisionInputs: String? = null
+    private var cuedStandbyFor: String? = null
+    private var session: Session? = null
+    private var tempoRestore: Job? = null
+    private var tempoOwned: Pair<ExoPlayer, PlaybackParameters>? = null
+    private var swapping = false
 
     init {
         scope.launch {
-            preferences.settings.collectLatest { settings ->
-                currentSettings = settings
-                if (!settings.autoMixEnabled) {
-                    cancelTransition(revertToPrimary = true)
-                }
+            preferences.settings.collect { latest ->
+                val changed = latest != settings
+                settings = latest
+                if (!latest.autoMixEnabled) endTransition() else if (changed && session == null) resetPlan()
             }
         }
     }
 
-    fun onTrackProgressTick(
-        primaryPlayer: ExoPlayer,
-        secondaryPlayer: ExoPlayer?,
-        currentTrack: PlayableTrack?,
-        nextTrack: PlayableTrack?,
-        positionMs: Long,
-        durationMs: Long,
-        nextTrackStreamUrl: String? = null,
-    ) {
-        if (!currentSettings.autoMixEnabled || isHardwareBypassEngaged || isJamRoomActive) {
-            if (_telemetry.value.phase != BlendPhase.IDLE) {
-                _telemetry.value = DeckBlendTelemetry.IDLE
+    fun setBaseVolume(volume: Float) {
+        baseVolume = volume.coerceIn(0f, 1f)
+    }
+
+    /** Pause/resume from the transport: a blend holds still instead of finishing unheard. */
+    fun setTransportPaused(paused: Boolean) {
+        if (transportPaused == paused) return
+        transportPaused = paused
+        val active = session ?: return
+        runCatching {
+            if (paused) {
+                active.outgoing.pause()
+                active.incoming.pause()
+            } else {
+                active.outgoing.play()
+                active.incoming.play()
             }
+        }
+    }
+
+    fun updateHardwareBypassState(active: Boolean) {
+        hardwareBypass = active
+        if (active) endTransition()
+    }
+
+    /** Listen Together keeps every listener on the same song edge: no mixing. */
+    fun setJamActive(active: Boolean) {
+        jamActive = active
+        if (active) endTransition()
+    }
+
+    /**
+     * The speed and pitch the user chose for [player], while AutoMix is
+     * stretching it for a beat match; null when AutoMix does not own its tempo.
+     */
+    fun userParametersFor(player: Player): PlaybackParameters? =
+        session?.takeIf { it.incoming === player && it.plan.beatLocked }?.userParameters
+            ?: tempoOwned?.takeIf { it.first === player }?.second
+
+    fun onTick(tick: Tick) {
+        if (session != null) return
+        if (!isEnabled || hardwareBypass || jamActive) {
+            resetPlan()
             return
         }
-
-        currentPrimaryPlayer = primaryPlayer
-        currentSecondaryPlayer = secondaryPlayer
-
-        if (currentTrack == null || durationMs <= 0L) return
-
-        // If a blend is actively running, do not interfere with the transition in progress
-        if (activeSpliceJob?.isActive == true) {
+        val current = tick.current
+        val currentItem = tick.currentItem
+        val next = tick.next
+        val nextItem = tick.nextItem
+        if (current == null || currentItem == null || next == null || nextItem == null || tick.durationMs <= 0L ||
+            tick.primary.repeatMode == Player.REPEAT_MODE_ONE || nextItem.mediaId == currentItem.mediaId
+        ) {
+            resetPlan()
             return
         }
-
-        val trackKey = currentTrack.videoId ?: "${currentTrack.artist}|${currentTrack.title}"
-        if (activeTrackKey != trackKey) {
-            activeTrackKey = trackKey
-            currentSplicePlan = null
-            immediatePlan = false
-            // Only reset telemetry if no blend is active or completing —
-            // the deck swap changes the current track mid-blend, which must
-            // not flicker the badge back to the quality label.
-            val currentPhase = _telemetry.value.phase
-            if (currentPhase != BlendPhase.BLENDING &&
-                currentPhase != BlendPhase.LOOP_LOCKED &&
-                currentPhase != BlendPhase.MIX_COMPLETED) {
-                _telemetry.value = DeckBlendTelemetry.IDLE
-            }
+        val outKey = analysisKey(currentItem)
+        val inKey = analysisKey(nextItem)
+        val pair = "$outKey>$inKey"
+        if (pair != pairKey) {
+            resetPlan()
+            pairKey = pair
         }
+        val remaining = tick.durationMs - tick.positionMs
+        if (tick.positionMs < tick.durationMs / 4 && remaining > LOOK_AHEAD_MS) return
 
-        // A plan built for a different length (the stream's real duration
-        // arrived after the plan) would open the mix at the wrong moment.
-        if (currentSplicePlan != null && !immediatePlan && kotlin.math.abs(planDurationMs - durationMs) > 1_500L) {
-            currentSplicePlan = null
-            if (_telemetry.value.phase == BlendPhase.ARMED) {
-                _telemetry.update { it.copy(phase = BlendPhase.PRE_ANALYZING) }
-            }
+        requestAnalysis(outKey, current, currentItem)
+        requestAnalysis(inKey, next, nextItem)
+        val outSignature = analyzer.signature(outKey)
+        val inSignature = analyzer.signature(inKey)
+        // Mid-glide after a beatmix the deck runs at the matched tempo, not the user's.
+        val userParameters = userParametersFor(tick.primary) ?: tick.primary.playbackParameters
+        val inputs = "${outSignature != null}|${inSignature != null}|${tick.durationMs / 1_000}|" +
+            "${userParameters.speed}|${userParameters.pitch}"
+        val settled = analyzer.isSettled(outKey) && analyzer.isSettled(inKey)
+        if (inputs != decisionInputs && (settled || remaining <= DECIDE_BY_REMAINING_MS)) {
+            decisionInputs = inputs
+            decision = TransitionPlanner.plan(
+                PlanInput(
+                    outgoing = current,
+                    incoming = next,
+                    outgoingDurationMs = tick.durationMs,
+                    incomingDurationMs = inSignature?.durationMs ?: next.durationMs ?: 0L,
+                    outgoingSignature = outSignature,
+                    incomingSignature = inSignature,
+                    settings = settings,
+                    userSpeed = userParameters.speed,
+                    userPitch = userParameters.pitch,
+                ),
+            ).also { logDecision(current, next, it) }
+            cuedStandbyFor = null
         }
+        publishPlan(next)
 
-        val remainingMs = durationMs - positionMs
-
-        // 1. Look-ahead pre-analysis trigger: 25% progress or 90s remaining
-        if ((positionMs > durationMs * 0.25f || remainingMs < 90_000L) && nextTrack != null) {
-            if (_telemetry.value.phase == BlendPhase.IDLE) {
-                _telemetry.update {
-                    it.copy(
-                        phase = BlendPhase.PRE_ANALYZING,
-                        incomingTrackPreview = TrackChromeSummary(
-                            title = nextTrack.title,
-                            artist = nextTrack.artist,
-                            artworkUrl = nextTrack.artworkUrl,
-                            durationMs = nextTrack.durationMs ?: 0L,
-                        )
-                    )
-                }
-
-                signatureExtractor.preAnalyzeTrack(nextTrack, nextTrackStreamUrl ?: nextTrack.playbackUrl) { sig ->
-                    // Analysis completes asynchronously (up to the extractor
-                    // timeout). By then the fallback plan may already have
-                    // started the blend, or the track may have changed. A late
-                    // result must never knock BLENDING/MIX_COMPLETED back to
-                    // ARMED: that flips the player badge from "AutoMix" back
-                    // to the quality label mid-mix.
-                    val phaseNow = _telemetry.value.phase
-                    if (activeTrackKey != trackKey ||
-                        activeSpliceJob?.isActive == true ||
-                        (phaseNow != BlendPhase.PRE_ANALYZING && phaseNow != BlendPhase.ARMED)
-                    ) {
-                        return@preAnalyzeTrack
-                    }
-                    val plan = SpliceTrajectorySynthesizer.synthesizePlan(
-                        outgoingTrack = currentTrack,
-                        outgoingSignature = null,
-                        incomingTrack = nextTrack,
-                        incomingSignature = sig,
-                        settings = currentSettings,
-                        outgoingDurationMs = durationMs,
-                        incomingDurationMs = nextTrack.durationMs,
-                    )
-                    currentSplicePlan = plan
-                    planDurationMs = durationMs
-
-                    if (!plan.isBypass) {
-                        _telemetry.update {
-                            it.copy(
-                                phase = BlendPhase.ARMED,
-                                spliceStartPositionMs = plan.cueOutStartMs,
-                                spliceDurationMs = plan.durationMs,
-                                activeTransitionStyle = plan.transitionStyle,
-                                harmonicKeyPair = sig.camelotKey.toString(),
-                                syncedBpm = sig.beatGrid.bpm.value,
-                            )
-                        }
-                    } else {
-                        // Do not drop to IDLE immediately; fallback will arm a safe transition
-                        _telemetry.update { it.copy(phase = BlendPhase.ARMED) }
-                    }
-                }
-            }
+        val plan = decision as? MixPlan ?: return
+        val standby = tick.standby ?: return
+        if (standby.currentMediaItem?.mediaId != nextItem.mediaId) return
+        val startIn = (plan.cueInMs - (if (plan.beatLocked) LOCK_LEAD_MS * plan.tempoRatio else 0f).toLong())
+            .coerceAtLeast(0L)
+        // Cue the standby while it is still idle so it is buffered at the cue point, not at 0:00.
+        if (cuedStandbyFor != pair && !standby.isPlaying) {
+            if (abs(standby.currentPosition - startIn) > CUE_TOLERANCE_MS) standby.seekTo(startIn)
+            cuedStandbyFor = pair
         }
-
-        // 2. Automatic Fallback Plan (Never miss a transition window)
-        val fallbackDurationMs = (currentSettings.targetDurationSeconds * 1000L).coerceIn(8_000L, 25_000L)
-        if (remainingMs <= fallbackDurationMs + 1000L && nextTrack != null) {
-            val plan = currentSplicePlan
-            if (plan == null || plan.isBypass) {
-                val safePlan = SplicePlan(
-                    cueOutStartMs = maxOf(0L, durationMs - fallbackDurationMs),
-                    cueInStartMs = 0L,
-                    durationMs = fallbackDurationMs,
-                    transitionStyle = TransitionStyle.PERCEPTUAL_FADE,
-                    isBypass = false,
-                )
-                currentSplicePlan = safePlan
-                planDurationMs = durationMs
-                _telemetry.update {
-                    it.copy(
-                        phase = BlendPhase.ARMED,
-                        spliceStartPositionMs = safePlan.cueOutStartMs,
-                        spliceDurationMs = safePlan.durationMs,
-                        activeTransitionStyle = safePlan.transitionStyle,
-                    )
-                }
-            }
+        if (transportPaused || !tick.primary.playWhenReady || standby.playbackState != Player.STATE_READY) return
+        val startOutAt = plan.cueOutMs - ((plan.cueInMs - startIn) / plan.tempoRatio).toLong()
+        if (tick.positionMs < startOutAt) return
+        val runPlan = if (tick.positionMs > plan.cueOutMs + LATE_START_TOLERANCE_MS) {
+            latePlan(plan, tick.positionMs) ?: return
+        } else {
+            plan
         }
-
-        // 3. Trigger Splice at Splice Horizon (never while paused: starting
-        // the incoming deck would play the next song behind the pause)
-        val plan = currentSplicePlan
-        if (!transportPaused && primaryPlayer.playWhenReady &&
-            plan != null && !plan.isBypass && (_telemetry.value.phase == BlendPhase.ARMED || _telemetry.value.phase == BlendPhase.PRE_ANALYZING)) {
-            // Never start a mix with more of the song left than the mix
-            // itself covers: an early cue point would skip the rest of it.
-            val shouldTrigger = immediatePlan || (
-                remainingMs <= plan.durationMs + 1_000L &&
-                    (positionMs >= plan.cueOutStartMs || remainingMs <= plan.durationMs)
-                )
-            if (shouldTrigger && secondaryPlayer != null) {
-                val isSecondaryReady = secondaryPlayer.playbackState == Player.STATE_READY
-                if (isSecondaryReady) {
-                    startBlendExecution(primaryPlayer, secondaryPlayer, plan)
-                }
-            }
-        }
+        // A beat-locked deck starts where the outgoing song actually is, not where the tick expected it.
+        val from = if (runPlan.beatLocked) runPlan.incomingTimeFor(tick.positionMs).coerceAtLeast(0L) else runPlan.cueInMs
+        start(tick.primary, standby, runPlan, from)
     }
 
-    private fun startBlendExecution(
-        primaryPlayer: ExoPlayer,
-        secondaryPlayer: ExoPlayer,
-        plan: SplicePlan,
-    ) {
-        activeSpliceJob?.cancel()
-        immediatePlan = false
-        currentPrimaryPlayer = primaryPlayer
-        currentSecondaryPlayer = secondaryPlayer
-        val durationMs = plan.durationMs.coerceAtLeast(1000L)
-
-        primaryPlayer.repeatMode = Player.REPEAT_MODE_OFF
-
-        _telemetry.update {
-            it.copy(
-                phase = if (plan.requiresPhraseLoop) BlendPhase.LOOP_LOCKED else BlendPhase.BLENDING,
-                blendProgress = 0.0f,
-                activeTransitionStyle = plan.transitionStyle,
-                loopBarsActive = if (plan.requiresPhraseLoop) plan.loopBarsCount else null,
-            )
-        }
-
-        primaryPlayer.setPlaybackSpeed(1.0f)
-        secondaryPlayer.setPlaybackSpeed(1.0f)
-
-        secondaryPlayer.volume = 0.0f
-        secondaryPlayer.seekTo(plan.cueInStartMs)
-        secondaryPlayer.play()
-
-        activeSpliceJob = scope.launch {
-            // Blend clock that only runs while playing: a pause freezes the
-            // fade instead of letting it finish (and swap songs) unheard.
-            var elapsed = 0L
-            var lastTick = android.os.SystemClock.elapsedRealtime()
-            var swapped = false
-
-            while (isActive) {
-                val now = android.os.SystemClock.elapsedRealtime()
-                if (!transportPaused) elapsed += now - lastTick
-                lastTick = now
-                if (transportPaused) {
-                    delay(20L)
-                    continue
-                }
-                val progress = (elapsed.toFloat() / durationMs.toFloat()).coerceIn(0.0f, 1.0f)
-
-                _telemetry.update { it.copy(blendProgress = progress) }
-
-                // Equal-power volume curve application with headroom trim
-                val gainOut = kotlin.math.cos(progress * Math.PI * 0.5).toFloat().coerceIn(0.0f, 1.0f)
-                val gainIn = kotlin.math.sin(progress * Math.PI * 0.5).toFloat().coerceIn(0.0f, 1.0f)
-                val sum = gainIn + gainOut
-                val trim = if (sum <= 1f) 1f else 1f / kotlin.math.sqrt(sum)
-                primaryPlayer.volume = (gainOut * trim * baseVolume).coerceIn(0f, 1f)
-                secondaryPlayer.volume = (gainIn * trim * baseVolume).coerceIn(0f, 1f)
-
-                // Dominant energy handoff point (65% through transition window):
-                if (progress >= 0.65f && !swapped) {
-                    swapped = true
-                    runCatching {
-                        onPerformDeckSwap?.invoke(primaryPlayer, secondaryPlayer)
-                    }.onFailure { e ->
-                        android.util.Log.e("DualDeckCoordinator", "Error during deck swap", e)
-                    }
-                }
-
-                if (progress >= 1.0f) break
-                delay(20L)
-            }
-
-            primaryPlayer.volume = 0.0f
-            secondaryPlayer.volume = baseVolume
-            runCatching { primaryPlayer.pause() }
-
-            _telemetry.update {
-                it.copy(
-                    phase = BlendPhase.MIX_COMPLETED,
-                    blendProgress = 1.0f,
-                )
-            }
-
-            runCatching { onTransitionComplete?.invoke() }
-
-            // Display MIXED ✓ for 1,500 ms before settling to IDLE
-            delay(1_500L)
-            _telemetry.update { DeckBlendTelemetry.IDLE }
-            currentSplicePlan = null
-            currentPrimaryPlayer = null
-            currentSecondaryPlayer = null
-        }
-    }
-
-    override fun cancelTransition(revertToPrimary: Boolean) {
-        activeSpliceJob?.cancel()
-        activeSpliceJob = null
-        currentSplicePlan = null
-        _telemetry.update { DeckBlendTelemetry.IDLE }
-        if (revertToPrimary) {
-            runCatching {
-                currentPrimaryPlayer?.volume = baseVolume
-                currentSecondaryPlayer?.volume = 0.0f
-                currentSecondaryPlayer?.pause()
-            }
-        }
-        currentPrimaryPlayer = null
-        currentSecondaryPlayer = null
-    }
-
-    override fun forceCommitTransition() {
-        activeSpliceJob?.cancel()
-        activeSpliceJob = null
-        val primary = currentPrimaryPlayer
-        val secondary = currentSecondaryPlayer
-        if (primary != null && secondary != null) {
-            runCatching {
-                onPerformDeckSwap?.invoke(primary, secondary)
-                primary.volume = 0.0f
-                secondary.volume = baseVolume
-                primary.pause()
-                onTransitionComplete?.invoke()
-            }
-        }
-        _telemetry.update {
-            it.copy(
-                phase = BlendPhase.MIX_COMPLETED,
-                blendProgress = 1.0f,
-            )
-        }
-        scope.launch {
-            delay(1_500L)
-            _telemetry.update { DeckBlendTelemetry.IDLE }
-            currentSplicePlan = null
-            currentPrimaryPlayer = null
-            currentSecondaryPlayer = null
-        }
-    }
-
-    override fun triggerImmediateTransition(customDurationMs: Long?) {
-        val duration = customDurationMs ?: (currentSettings.targetDurationSeconds * 1000L)
-        val plan = SplicePlan(
-            cueOutStartMs = 0L,
-            cueInStartMs = 0L,
-            durationMs = duration,
-            transitionStyle = TransitionStyle.HARMONIC_BEATMIX,
+    /** The user landed inside or past the window (seek, late resolve): a short clean fade from here. */
+    private fun latePlan(plan: MixPlan, positionMs: Long): MixPlan? {
+        val left = plan.endOutMs - positionMs
+        if (left < MIN_LATE_FADE_MS) return null
+        val late = MixPlan(
+            cueOutMs = positionMs,
+            cueInMs = plan.cueInMs,
+            overlapMs = minOf(left, LATE_FADE_MS),
+            shape = MixShape.EQUAL_POWER,
+            style = com.lastwave.app.playback.automix.api.TransitionStyle.PERCEPTUAL_FADE,
         )
-        currentSplicePlan = plan
-        immediatePlan = true
+        decision = late
+        return late
     }
 
-    override fun handleSeekEvent(targetPositionMs: Long) {
-        val plan = currentSplicePlan ?: return
-        if (_telemetry.value.phase == BlendPhase.BLENDING || _telemetry.value.phase == BlendPhase.LOOP_LOCKED) {
-            if (targetPositionMs < plan.cueOutStartMs) {
-                // Scrubbing before splice start: cancel incoming blend and restore primary to unity
-                cancelTransition(revertToPrimary = true)
-            } else if (targetPositionMs >= plan.cueOutStartMs + (plan.durationMs * 0.65f)) {
-                // Scrubbing past dominant handoff: immediately commit transition
-                forceCommitTransition()
+    private fun start(outgoing: ExoPlayer, incoming: ExoPlayer, plan: MixPlan, startIn: Long) {
+        finishTempoGlide()
+        val userParameters = outgoing.playbackParameters
+        val outStage = bassStage?.invoke(outgoing)
+        val inStage = bassStage?.invoke(incoming)
+        incoming.volume = 0f
+        if (abs(incoming.currentPosition - startIn) > CUE_TOLERANCE_MS) incoming.seekTo(startIn)
+        incoming.playbackParameters = if (plan.beatLocked) PlaybackParameters(plan.tempoRatio, 1f) else userParameters
+        plan.bassSwapAtMs?.let { swapAt ->
+            val rampUs = plan.bassSwapRampMs * 1000
+            outStage?.schedule(atMediaUs = swapAt * 1000, from = 1f, to = 0f, rampUs = rampUs)
+            inStage?.schedule(
+                atMediaUs = plan.incomingTimeFor(swapAt) * 1000,
+                from = 0f,
+                to = 1f,
+                rampUs = (rampUs * plan.tempoRatio).toLong(),
+            )
+        }
+        incoming.play()
+        val started = Session(outgoing, incoming, plan, userParameters, outStage, inStage, SystemClock.elapsedRealtime())
+        session = started
+        _telemetry.update {
+            it.copy(
+                phase = BlendPhase.BLENDING,
+                blendProgress = 0f,
+                activeTransitionStyle = plan.style,
+                spliceStartPositionMs = plan.cueOutMs,
+                spliceDurationMs = plan.overlapMs,
+                syncedBpm = plan.bpm,
+                harmonicKeyPair = plan.keyPair,
+                isVocalProtected = plan.vocalSafe,
+            )
+        }
+        Log.i(TAG, "Blend start: ${describe(plan)} incomingAt=${startIn}ms")
+        started.job = scope.launch { run(started) }
+    }
+
+    private suspend fun run(active: Session) {
+        val lock = if (active.plan.beatLocked) PhaseLock(active.plan) else null
+        while (scope.isActive) {
+            delay(TICK_MS)
+            if (transportPaused) {
+                lock?.reset()
+                continue
+            }
+            val outgoing = active.outgoing
+            val incoming = active.incoming
+            val elapsed = SystemClock.elapsedRealtime() - active.startedAtMs
+            val outgoingDone = outgoing.playbackState == Player.STATE_ENDED || outgoing.playerError != null
+            if (incoming.playerError != null) {
+                Log.w(TAG, "Incoming deck failed mid-blend", incoming.playerError)
+                endTransition()
+                return
+            }
+            val inPos = incoming.currentPosition
+            // Progress follows the incoming deck's own clock: if it stalls
+            // buffering, the blend waits instead of fading into silence.
+            val progress = ((inPos - active.plan.cueInMs).toFloat() /
+                (active.plan.overlapMs * active.plan.tempoRatio)).coerceIn(0f, 1f)
+            lock?.update(outgoing, incoming, progress)
+            val (outGain, inGain) = MixCurve.gains(progress, active.plan.shape)
+            outgoing.volume = if (outgoingDone) 0f else outGain * baseVolume
+            incoming.volume = inGain * baseVolume
+            _telemetry.update { it.copy(blendProgress = progress) }
+            if (!active.handedOver && (progress >= MixCurve.handOverPoint(active.plan.shape) || outgoingDone)) {
+                handOver(active)
+            }
+            // A deck that never starts must not hold the queue forever.
+            val overdue = elapsed > active.plan.overlapMs / active.plan.tempoRatio + LOCK_LEAD_MS + WATCHDOG_SLACK_MS
+            if (progress >= 1f || overdue) break
+        }
+        complete(active)
+    }
+
+    private fun handOver(active: Session) {
+        active.handedOver = true
+        swapping = true
+        try {
+            onPerformDeckSwap?.invoke(active.outgoing, active.incoming)
+        } catch (error: Exception) {
+            Log.e(TAG, "Deck hand-over failed", error)
+        } finally {
+            swapping = false
+        }
+    }
+
+    private fun complete(active: Session) {
+        if (session !== active) return
+        if (!active.handedOver) handOver(active)
+        session = null
+        silence(active.outgoing)
+        active.incoming.volume = baseVolume
+        active.outgoingStage?.clear()
+        active.incomingStage?.restore()
+        if (active.plan.beatLocked) glideTempo(active.incoming, active.userParameters)
+        runCatching { onTransitionComplete?.invoke() }
+        Log.i(TAG, "Blend complete")
+        resetPlan(keepTelemetry = true)
+        _telemetry.update { it.copy(phase = BlendPhase.MIX_COMPLETED, blendProgress = 1f) }
+        scope.launch {
+            delay(COMPLETED_BADGE_MS)
+            if (session == null && _telemetry.value.phase == BlendPhase.MIX_COMPLETED) {
+                _telemetry.value = DeckBlendTelemetry.IDLE
             }
         }
     }
 
-    override fun updateHardwareBypassState(isHardwareBypassActive: Boolean) {
-        isHardwareBypassEngaged = isHardwareBypassActive
-        if (isHardwareBypassActive) {
-            cancelTransition(revertToPrimary = true)
+    /**
+     * Ends whatever AutoMix is doing, right now. Called for every
+     * interruption (seek, skip, queue edit, speed, Cast, errors, release): a
+     * blend past its hand-over is committed to the new song, one before it is
+     * reverted to the old song at full level.
+     */
+    fun endTransition() {
+        // The hand-over itself replays MusicPlayer's transition callbacks.
+        if (swapping) return
+        finishTempoGlide()
+        val active = session
+        if (active == null) {
+            resetPlan()
+            return
+        }
+        session = null
+        active.job?.cancel()
+        if (active.handedOver) {
+            silence(active.outgoing)
+            active.incoming.volume = baseVolume
+            if (active.plan.beatLocked) runCatching { active.incoming.playbackParameters = active.userParameters }
+            active.outgoingStage?.clear()
+            active.incomingStage?.restore()
+            runCatching { onTransitionComplete?.invoke() }
+            Log.i(TAG, "Blend interrupted after hand-over: committed")
+        } else {
+            silence(active.incoming)
+            runCatching { active.incoming.playbackParameters = active.userParameters }
+            active.outgoing.volume = baseVolume
+            active.incomingStage?.clear()
+            active.outgoingStage?.restore()
+            Log.i(TAG, "Blend interrupted before hand-over: reverted")
+        }
+        resetPlan()
+    }
+
+    private fun silence(deck: ExoPlayer) {
+        runCatching {
+            deck.volume = 0f
+            deck.pause()
         }
     }
 
-    fun setJamRoomActive(active: Boolean) {
-        isJamRoomActive = active
-        if (active) {
-            cancelTransition(revertToPrimary = true)
+    /** Eases the incoming deck from the matched tempo back to the user's speed, too slowly to hear. */
+    private fun glideTempo(deck: ExoPlayer, target: PlaybackParameters) {
+        val from = deck.playbackParameters.speed
+        if (abs(from - target.speed) < 0.001f) {
+            runCatching { deck.playbackParameters = target }
+            return
         }
+        tempoOwned = deck to target
+        tempoRestore = scope.launch {
+            for (step in 1..GLIDE_STEPS) {
+                delay(GLIDE_STEP_MS)
+                val speed = from + (target.speed - from) * step / GLIDE_STEPS
+                runCatching { deck.playbackParameters = PlaybackParameters(speed, target.pitch) }
+            }
+            tempoOwned = null
+        }
+    }
+
+    private fun finishTempoGlide() {
+        val owned = tempoOwned ?: return
+        tempoRestore?.cancel()
+        tempoOwned = null
+        runCatching { owned.first.playbackParameters = owned.second }
+    }
+
+    private fun requestAnalysis(key: String, track: PlayableTrack, item: MediaItem) {
+        if (analyzer.isSettled(key)) return
+        val input = analysisInput?.invoke(item) ?: return
+        analyzer.request(key, track, input)
+    }
+
+    private fun publishPlan(next: PlayableTrack) {
+        val preview = TrackChromeSummary(
+            title = next.title,
+            artist = next.artist,
+            artworkUrl = next.artworkUrl,
+            durationMs = next.durationMs ?: 0L,
+        )
+        _telemetry.value = when (val current = decision) {
+            null -> DeckBlendTelemetry(phase = BlendPhase.PRE_ANALYZING, incomingTrackPreview = preview)
+            is MixBypass -> DeckBlendTelemetry.IDLE
+            is MixPlan -> DeckBlendTelemetry(
+                phase = BlendPhase.ARMED,
+                activeTransitionStyle = current.style,
+                syncedBpm = current.bpm,
+                harmonicKeyPair = current.keyPair,
+                spliceStartPositionMs = current.cueOutMs,
+                spliceDurationMs = current.overlapMs,
+                incomingTrackPreview = preview,
+                isVocalProtected = current.vocalSafe,
+            )
+        }
+    }
+
+    private fun resetPlan(keepTelemetry: Boolean = false) {
+        pairKey = null
+        decision = null
+        decisionInputs = null
+        cuedStandbyFor = null
+        if (!keepTelemetry && _telemetry.value.phase != BlendPhase.MIX_COMPLETED) {
+            _telemetry.value = DeckBlendTelemetry.IDLE
+        }
+    }
+
+    private fun logDecision(outgoing: PlayableTrack, incoming: PlayableTrack, decision: MixDecision) {
+        val detail = when (decision) {
+            is MixBypass -> "bypass (${decision.reason})"
+            is MixPlan -> describe(decision)
+        }
+        Log.i(TAG, "Plan '${outgoing.title}' -> '${incoming.title}': $detail")
+    }
+
+    private fun describe(plan: MixPlan) =
+        "${plan.style} ${plan.shape} out=${plan.cueOutMs}ms in=${plan.cueInMs}ms len=${plan.overlapMs}ms " +
+            "tempo=${plan.tempoRatio} bpm=${plan.bpm} keys=${plan.keyPair} bassSwap=${plan.bassSwapAtMs} " +
+            "vocalSafe=${plan.vocalSafe}"
+
+    /**
+     * Keeps the incoming deck on the outgoing deck's beat. ExoPlayer positions
+     * on both decks follow their own audio clocks, so the gap between the
+     * expected and actual incoming position is the audible flam. A large gap
+     * is fixed by a seek while the incoming deck is still near silent; the
+     * rest by nudging its speed at most 1.5 %.
+     */
+    private class PhaseLock(private val plan: MixPlan) {
+        private var smoothed = 0.0
+        private var samples = 0
+        private var seeks = 0
+        private var lastSpeed = plan.tempoRatio
+        private var givenUp = false
+        private var badSinceMs = 0L
+        /** How long a seek takes to become audible; learned from the first seek's miss. */
+        private var seekLatencyMs = 0.0
+        private var measuringSeek = false
+
+        fun reset() {
+            samples = 0
+        }
+
+        fun update(outgoing: ExoPlayer, incoming: ExoPlayer, progress: Float) {
+            if (givenUp || progress >= RELEASE_PROGRESS) {
+                setSpeed(incoming, plan.tempoRatio)
+                return
+            }
+            if (!incoming.isPlaying || !outgoing.isPlaying) {
+                samples = 0
+                return
+            }
+            val error = (incoming.currentPosition - plan.incomingTimeFor(outgoing.currentPosition)).toDouble()
+            smoothed = if (samples == 0) error else smoothed * 0.7 + error * 0.3
+            if (++samples < SETTLE_SAMPLES) return
+            if (measuringSeek) {
+                // The outgoing deck kept moving while the seek refilled: that delay shows as a lag.
+                measuringSeek = false
+                seekLatencyMs = (seekLatencyMs - smoothed / plan.tempoRatio).coerceIn(0.0, MAX_SEEK_LATENCY_MS)
+            }
+            val now = SystemClock.elapsedRealtime()
+            if (abs(smoothed) > SEEK_THRESHOLD_MS && seeks < MAX_SEEKS && progress < SEEK_WINDOW_PROGRESS) {
+                seeks++
+                samples = 0
+                measuringSeek = true
+                val target = incoming.currentPosition - smoothed + seekLatencyMs * plan.tempoRatio
+                incoming.seekTo(target.toLong().coerceAtLeast(0L))
+                return
+            }
+            if (abs(smoothed) > GIVE_UP_MS) {
+                if (badSinceMs == 0L) badSinceMs = now
+                if (now - badSinceMs > GIVE_UP_AFTER_MS) {
+                    Log.w(TAG, "Beat lock lost (${smoothed.toInt()}ms); continuing as a plain fade")
+                    givenUp = true
+                }
+            } else {
+                badSinceMs = 0L
+            }
+            val correction = if (abs(smoothed) < DEADBAND_MS) 0.0 else (-smoothed / CORRECTION_HORIZON_MS).coerceIn(-MAX_NUDGE, MAX_NUDGE)
+            setSpeed(incoming, (plan.tempoRatio * (1.0 + correction)).toFloat())
+        }
+
+        private fun setSpeed(incoming: ExoPlayer, speed: Float) {
+            if (abs(speed - lastSpeed) < MIN_SPEED_STEP) return
+            lastSpeed = speed
+            runCatching { incoming.playbackParameters = PlaybackParameters(speed, 1f) }
+        }
+
+        private companion object {
+            const val SETTLE_SAMPLES = 8
+            const val SEEK_THRESHOLD_MS = 35.0
+            const val MAX_SEEKS = 3
+            const val MAX_SEEK_LATENCY_MS = 400.0
+            const val SEEK_WINDOW_PROGRESS = 0.15f
+            const val RELEASE_PROGRESS = 0.9f
+            const val DEADBAND_MS = 6.0
+            const val CORRECTION_HORIZON_MS = 2_000.0
+            const val MAX_NUDGE = 0.015
+            const val MIN_SPEED_STEP = 0.0015f
+            const val GIVE_UP_MS = 120.0
+            const val GIVE_UP_AFTER_MS = 4_000L
+        }
+    }
+
+    companion object {
+        private const val TAG = "AutoMix"
+        private const val TICK_MS = 20L
+        /** Analysis starts at 25 % of the song or this close to its end. */
+        private const val LOOK_AHEAD_MS = 90_000L
+        /** Pending analysis gives way to a safe plan once the song is this close to its end. */
+        private const val DECIDE_BY_REMAINING_MS = 35_000L
+        /** Beat-locked mixes start the silent incoming deck early to settle the lock. */
+        private const val LOCK_LEAD_MS = 1_500L
+        private const val CUE_TOLERANCE_MS = 40L
+        private const val LATE_START_TOLERANCE_MS = 1_000L
+        private const val MIN_LATE_FADE_MS = 2_000L
+        private const val LATE_FADE_MS = 6_000L
+        private const val WATCHDOG_SLACK_MS = 20_000L
+        private const val COMPLETED_BADGE_MS = 1_500L
+        private const val GLIDE_STEPS = 40
+        private const val GLIDE_STEP_MS = 100L
+
+        /** One stream, one analysis: the cache key the player itself uses, else the media id. */
+        fun analysisKey(item: MediaItem): String = item.localConfiguration?.customCacheKey ?: item.mediaId
     }
 }

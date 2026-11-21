@@ -10,17 +10,16 @@ enum class BlendPhase {
     PRE_ANALYZING,
     ARMED,
     BLENDING,
-    LOOP_LOCKED,
     MIX_COMPLETED,
 }
 
-/**
- * Aesthetic DSP and rhythmic transition style.
- */
+/** How the two songs meet; every value names audio that is really produced. */
 enum class TransitionStyle {
+    /** Tempo-matched, beat-locked mix with a bass swap. */
     HARMONIC_BEATMIX,
-    LOOP_DROP,
+    /** Crossfade with the low end handed over mid-way. */
     SPECTRAL_SWEEP,
+    /** Plain crossfade. */
     PERCEPTUAL_FADE,
 }
 
@@ -46,11 +45,10 @@ data class DeckBlendTelemetry(
     val spliceStartPositionMs: Long = 0L,
     val spliceDurationMs: Long = 5_000L, // 1,000ms up to 30,000ms
     val incomingTrackPreview: TrackChromeSummary? = null,
-    val loopBarsActive: Int? = null,
     val isVocalProtected: Boolean = true,
 ) {
     val isBlendingActive: Boolean
-        get() = phase == BlendPhase.BLENDING || phase == BlendPhase.LOOP_LOCKED
+        get() = phase == BlendPhase.BLENDING
 
     val isArmedOrBlending: Boolean
         get() = phase == BlendPhase.ARMED || isBlendingActive
@@ -68,7 +66,6 @@ data class DeckBlendTelemetry(
             spliceStartPositionMs = 0L,
             spliceDurationMs = 5_000L,
             incomingTrackPreview = null,
-            loopBarsActive = null,
             isVocalProtected = true,
         )
     }

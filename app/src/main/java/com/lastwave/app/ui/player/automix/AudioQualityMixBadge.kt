@@ -53,7 +53,7 @@ fun AudioQualityMixBadge(
         modifier = modifier,
     ) { phase ->
         when (phase) {
-            BlendPhase.BLENDING, BlendPhase.LOOP_LOCKED -> {
+            BlendPhase.BLENDING -> {
                 val bpmText = telemetry.syncedBpm?.let { "${it.toInt()} BPM" } ?: ""
                 val mixingText = buildString {
                     append("AutoMix")

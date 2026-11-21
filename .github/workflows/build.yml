@@ -53,6 +53,7 @@ jobs:
           --tests 'com.lastwave.app.data.download.Fmp4IndexBuilderTest'
           --tests 'com.lastwave.app.playback.ChunkedRangeDataSourceTest'
           --tests 'com.lastwave.app.data.music.PlaybackCandidateRaceTest'
+          --tests 'com.lastwave.app.playback.automix.*'
           --stacktrace
 
       - name: Upload regression test results
@@ -63,6 +64,7 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
+            app/build/automix-renders/
           if-no-files-found: ignore
 
       - name: Build Release APK

@@ -900,7 +900,7 @@ fun SettingsScreen(
                                         "Active \u2022 Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
                                     }
                                 } else {
-                                    "Beat-matched, key-locked seamless dual-deck mixing"
+                                    "Beat-matched mixes when the songs allow, clean fades when not"
                                 },
                                 checked = hfSettings.autoMixEnabled,
                                 onCheckedChange = viewModel::setAutoMixEnabled,

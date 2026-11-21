@@ -54,10 +54,6 @@ add_library(
     SecretsBridge.cpp
     dsd/DsdDecimator.cpp
     dsd/DsdJniBridge.cpp
-    automix/AutoMixJniBridge.cpp
-    automix/LinkwitzRileyCrossover.cpp
-    automix/TransientPreservingStretcher.cpp
-    automix/LufsContourNormalizer.cpp
 )
 
 target_include_directories(
