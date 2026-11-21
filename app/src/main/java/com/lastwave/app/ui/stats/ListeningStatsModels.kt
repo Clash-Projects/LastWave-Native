@@ -3,10 +3,10 @@ package com.lastwave.app.ui.stats
 import androidx.compose.runtime.Immutable
 
 enum class StatsTimeRange(val label: String) {
+    ALL_TIME("All Time"),
     WEEK("Week"),
     MONTH_TO_DATE("Month"),
     YEAR_TO_DATE("Year"),
-    ALL_TIME("All Time"),
 }
 
 enum class TimelineMetric(val label: String) {
