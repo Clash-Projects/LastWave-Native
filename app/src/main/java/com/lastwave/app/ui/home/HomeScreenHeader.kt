@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -241,32 +242,54 @@ fun ProfileAvatar(avatarUrl: String?, modifier: Modifier = Modifier) {
         modifier = modifier
             .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
             .padding(2.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier.fillMaxSize(),
         ) {
-        if (!avatarUrl.isNullOrBlank()) {
-            ArtworkImage(
-                name = "profile",
-                artist = "avatar",
-                embeddedUrl = avatarUrl,
-                fallbackIcon = Icons.Filled.AccountCircle,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Filled.AccountCircle,
+            if (!avatarUrl.isNullOrBlank()) {
+                SubcomposeAsyncImage(
+                    model = avatarUrl,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                    error = {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    },
+                    loading = {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    },
                 )
+            } else {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
     }
-}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
