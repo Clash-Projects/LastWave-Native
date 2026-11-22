@@ -575,7 +575,18 @@ internal suspend fun InnerTubeMusicApi.resolveAudioStreamInternal(
         if (resolved == null) {
             noteAttempt("fallback=exhausted")
             logResolveAttempts(videoId, failed = true)
-            throw IOException("Unable to resolve a playable audio stream for $videoId")
+            // Name the block: a bot-checked network fails every client the same way,
+            // and the generic message read like a broken song.
+            val attempts = coroutineContext[ResolutionAttemptLog]?.summary().orEmpty()
+            val blocked = BOT_CHECK_MARKERS.any { attempts.contains(it, ignoreCase = true) }
+            throw IOException(
+                if (blocked) {
+                    "YouTube blocks this network (bot check) - turn off the VPN or set a proxy in Settings. " +
+                        "Unable to resolve a playable audio stream for $videoId"
+                } else {
+                    "Unable to resolve a playable audio stream for $videoId"
+                },
+            )
         }
         cacheResolvedStream(resolved, now, authScope, maxBitrateBps)
         lastResolvedStreams[resolutionKey(videoId, authScope, maxBitrateBps)] = resolved
@@ -640,7 +651,8 @@ internal suspend fun InnerTubeMusicApi.racePlayableFallback(
                     )
                     return@launch
                 }
-                if (probeStream(candidate, "innertubex-probe")) channel.trySend(candidate)
+                // A SABR placeholder has no URL to probe; its first chunk is the probe.
+                if (candidate.isSabr || probeStream(candidate, "innertubex-probe")) channel.trySend(candidate)
             },
             launch(Dispatchers.IO) {
                 var failed = false
@@ -1268,4 +1280,7 @@ internal suspend fun InnerTubeMusicApi.preWarmPlaybackImpl() {
     }
 
 private const val BOTGUARD_PREWARM_DELAY_MS = 4_000L
+
+/** Attempt-log text YouTube's bot check leaves (NewPipe's SignInConfirmNotBotException, the player's reason). */
+private val BOT_CHECK_MARKERS = listOf("NotBot", "not a bot")
 

@@ -781,12 +781,22 @@ class MusicPlayer @Inject constructor(
     private val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
         val defaultDataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(appContext, httpUpstreamFactory)
         val chunkedUpstreamFactory = androidx.media3.datasource.DataSource.Factory {
-            ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), refresher = ::refreshRejectedYouTubeUrl)
+            SabrDataSource(
+                sabrSessions,
+                ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), refresher = ::refreshRejectedYouTubeUrl),
+            )
         }
         CacheDataSource.Factory()
             .setCache(mediaCache)
             .setUpstreamDataSourceFactory(chunkedUpstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    /** SABR streams spooled for Media3; paced by the playhead of the track that is playing. */
+    private val sabrSessions: SabrSessions by lazy {
+        SabrSessions(innerTube.innerTubeXExtractor, java.io.File(appContext.cacheDir, "sabr_spool")) { videoId ->
+            _state.value.takeIf { it.current?.videoId == videoId }?.positionMs ?: 0L
+        }
     }
 
     /** Refused googlevideo URL -> the same-file replacement already minted for it. */
@@ -4550,7 +4560,7 @@ class MusicPlayer @Inject constructor(
         // own HTTP defaults so headers from the playing stream stay scoped.
         CacheDataSource.Factory()
             .setCache(mediaCache)
-            .setUpstreamDataSourceFactory(upstream)
+            .setUpstreamDataSourceFactory { SabrDataSource(sabrSessions, upstream.createDataSource()) }
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 

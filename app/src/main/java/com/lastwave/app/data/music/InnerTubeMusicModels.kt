@@ -127,7 +127,14 @@ data class YouTubeAudioStream(
 ) {
     val mediaCacheKey: String
         get() = "youtube:$videoId:$clientProfile:${itag ?: -1}:$authScope:${expiresAtEpochMs ?: 0L}"
+
+    /** Played through InnerTubeX's SABR client, not a plain googlevideo URL. */
+    val isSabr: Boolean
+        get() = url.startsWith(SABR_URL_PREFIX)
 }
+
+/** Placeholder scheme for SABR streams; SabrDataSource serves these URIs. */
+const val SABR_URL_PREFIX = "lastwave-sabr://"
 
 internal fun YouTubeAudioStream.meetsBitrateLimit(maxBitrateBps: Int?): Boolean =
     maxBitrateBps == null || (

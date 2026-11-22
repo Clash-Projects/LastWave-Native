@@ -22,6 +22,8 @@ import kotlin.jvm.functions.Function1
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -63,13 +65,13 @@ class InnerTubeXStreamExtractor @Inject constructor(
             val withCapabilities = hints.javaClass.methods.firstOrNull {
                 it.name == "withStreamCapabilities" && it.parameterCount == 3
             } ?: return@withContext null
-            // (allowHls, allowSabr, allowBoundedRange). The Media3 graph consumes
-            // HTTP/HLS URLs, so SABR stays off. Bounded ranges are ON, as in
+            // (allowHls, allowSabr, allowBoundedRange). SABR is ON: YouTube now
+            // serves web clients SABR-only (their direct URLs answer 403) and
+            // bot-checks the anonymous ones, so it is often the only transport
+            // left; SabrDataSource plays it. Bounded ranges are ON, as in
             // Metrolist: ChunkedRangeDataSource fetches every googlevideo URL in
-            // <=512 KB ranges, which is exactly what the token-free ANDROID_VR
-            // clients need to play a whole song. With it off, InnerTubeX
-            // skipped those clients entirely.
-            val constrainedHints = withCapabilities.invoke(hints, true, false, true)
+            // <=512 KB ranges, which the token-free ANDROID_VR clients need.
+            val constrainedHints = withCapabilities.invoke(hints, true, true, true)
             // AUTO ranks Opus (webm) first, then the best of it; HIGH is a plain
             // max-by-listed-bitrate that kept landing on AAC 128 (itag 140) when
             // YouTube listed it a few kbps above Opus. HIGH only matters for
@@ -133,7 +135,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
-            Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName} cause=${error.cause?.javaClass?.simpleName}")
+            Log.w(TAG, "stage=cipher-context error=${error.javaClass.simpleName} cause=${error.cause?.javaClass?.simpleName}", error)
             null
         }
     }
@@ -254,9 +256,89 @@ class InnerTubeXStreamExtractor @Inject constructor(
     private val cipherRefreshScope =
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
+    /** SABR streams handed to the player, by their placeholder URL; bounded, least recently used out. */
+    private val sabrTracks = object : LinkedHashMap<String, SabrTrack>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SabrTrack>?) = size > 32
+    }
+
+    fun sabrTrack(url: String): SabrTrack? = synchronized(sabrTracks) { sabrTracks[url] }
+
+    /**
+     * InnerTubeX's SABR audio stream for [track], starting at [initialPlayerTimeMs].
+     * [playbackPositionMs] paces its readahead, as the SABR server expects.
+     */
+    fun sabrChunks(track: SabrTrack, initialPlayerTimeMs: Long, playbackPositionMs: () -> Long): Flow<SabrPiece> {
+        val stack = checkNotNull(runtime) { "InnerTubeX unavailable" }
+        val type = Class.forName("com.metrolist.innertubex.sabr.SabrAudioStream")
+        val constructor = type.declaredConstructors.first {
+            it.parameterTypes.last().name == "kotlin.jvm.internal.DefaultConstructorMarker"
+        }
+        // (httpClient, bootstrap, maxRequestsWithoutProgress, playbackPositionMs,
+        // onResponse, requestRetryDelay, initialPlayerTimeMs, logger[, tokenSupplier]);
+        // everything not given here takes the library default.
+        val given = mapOf(0 to stack.httpClient, 1 to track.bootstrap, 3 to playbackPositionMs, 6 to initialPlayerTimeMs)
+        val count = constructor.parameterCount - 2
+        val arguments = arrayOfNulls<Any?>(constructor.parameterCount)
+        var mask = 0
+        for (index in 0 until count) {
+            if (index in given) {
+                arguments[index] = given[index]
+            } else {
+                mask = mask or (1 shl index)
+                arguments[index] = when (constructor.parameterTypes[index]) {
+                    Int::class.javaPrimitiveType -> 0
+                    Long::class.javaPrimitiveType -> 0L
+                    Boolean::class.javaPrimitiveType -> false
+                    else -> null
+                }
+            }
+        }
+        arguments[count] = mask
+        val stream = constructor.newInstance(*arguments)
+        @Suppress("UNCHECKED_CAST")
+        val chunks = type.getMethod("chunks").invoke(stream) as Flow<Any>
+        return chunks.map { chunk ->
+            val startMs = readLong(chunk, "getStartMs")
+            val durationMs = readLong(chunk, "getDurationMs")
+            SabrPiece(
+                data = readValue(chunk, "getData") as ByteArray,
+                startByte = readLong(chunk, "getStartRange") ?: error("SABR chunk without range"),
+                isInitialization = readValue(chunk, "isInitialization") == true,
+                endMs = if (startMs != null && durationMs != null) startMs + durationMs else null,
+            )
+        }
+    }
+
+    private fun Any.toSabrAudioStream(videoId: String, authScope: String): YouTubeAudioStream? {
+        val bootstrap = readValue(this, "getSabrBootstrap") ?: return null
+        val mime = (readString(bootstrap, "getMimeType") ?: readString(this, "getMimeType")).orEmpty()
+        val url = "$SABR_URL_PREFIX$videoId/${UUID.randomUUID()}"
+        val durationMs = readLong(bootstrap, "getDurationMs")?.takeIf { it > 0 }
+        val contentLength = readLong(bootstrap, "getContentLengthBytes")?.takeIf { it > 0 }
+        synchronized(sabrTracks) { sabrTracks[url] = SabrTrack(videoId, bootstrap, durationMs, contentLength) }
+        val profile = readString(this, "getProfileId").orEmpty().ifBlank { readString(this, "getClientName").orEmpty() }
+        return YouTubeAudioStream(
+            videoId = videoId,
+            url = url,
+            itag = readValue(bootstrap, "getAudioFormat")?.let { readInt(it, "getItag") },
+            mimeType = mime.substringBefore(';').trim().ifBlank { null },
+            codec = readString(this, "getCodecs") ?: CODECS.find(mime)?.groupValues?.get(1),
+            bitrate = readInt(this, "getBitrate") ?: 0,
+            sampleRateHz = readInt(this, "getSampleRate"),
+            durationMs = durationMs,
+            contentLength = contentLength,
+            isAdaptive = false,
+            clientProfile = "INNERTUBEX:${profile.ifBlank { "SABR" }}",
+            authScope = authScope,
+            expiresAtEpochMs = readString(bootstrap, "getServerAbrStreamingUrl")?.let(::extractExpiry)
+                ?: (System.currentTimeMillis() + UNKNOWN_STREAM_EXPIRY_TTL_MS),
+            isDrc = readValue(bootstrap, "isDrc") == true,
+        )
+    }
+
     private fun Any.toAudioStream(videoId: String, authScope: String): YouTubeAudioStream? {
         val url = readString(this, "getAudioUrl").orEmpty()
-        if (url.isBlank() || url.startsWith("sabr:", ignoreCase = true)) return null
+        if (url.isBlank() || url.startsWith("sabr:", ignoreCase = true)) return toSabrAudioStream(videoId, authScope)
         val mime = readString(this, "getMimeType")?.substringBefore(';')?.trim().orEmpty()
         val isHls = mime.equals("application/x-mpegurl", true) || url.substringBefore('?').endsWith(".m3u8", true)
         if (!isHls && !mime.startsWith("audio/", true)) return null
@@ -351,7 +433,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
             arrayOf(parser, cipher, innerTube),
             defaultMask = 120,
         )
-        return RuntimeStack(innerTube, extractor, parser, cipher)
+        return RuntimeStack(httpClient, innerTube, extractor, parser, cipher)
     }
 
     /**
@@ -637,7 +719,14 @@ class InnerTubeXStreamExtractor @Inject constructor(
         return (runCatching { method.invoke(value) }.getOrNull() as? Number)?.toLong()
     }
 
+    /** A SABR stream InnerTubeX bootstrapped; [bootstrap] is its `SabrBootstrap`. */
+    class SabrTrack(val videoId: String, val bootstrap: Any, val durationMs: Long?, val contentLength: Long?)
+
+    /** One SABR media chunk, addressed by its byte offset in the original file. */
+    class SabrPiece(val data: ByteArray, val startByte: Long, val isInitialization: Boolean, val endMs: Long?)
+
     private data class RuntimeStack(
+        val httpClient: Any,
         val innerTube: Any,
         val extractor: Any,
         val parser: Any,
@@ -646,6 +735,7 @@ class InnerTubeXStreamExtractor @Inject constructor(
 
     private companion object {
         const val TAG = "InnerTubeXStreamExtractor"
+        val CODECS = Regex("""codecs="([^"]+)"""")
         const val UNKNOWN_STREAM_EXPIRY_TTL_MS = 5 * 60 * 1_000L
         /** Long enough to outlast the song it failed on: at 60 s a client that
          *  died a minute in was allowed straight back for the retry. */
