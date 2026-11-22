@@ -11,6 +11,7 @@ import com.lastwave.app.data.autoeq.AutoEqMeasurement
 import com.lastwave.app.data.autoeq.AutoEqState
 import com.lastwave.app.data.autoeq.AutoEqTarget
 import com.lastwave.app.data.autoeq.OutputDevice
+import com.lastwave.app.data.autoeq.ParametricEqText
 import com.lastwave.app.data.autoeq.PeqFilter
 import com.lastwave.app.data.autoeq.PeqFilterType
 import com.lastwave.app.data.autoeq.PeqMath
