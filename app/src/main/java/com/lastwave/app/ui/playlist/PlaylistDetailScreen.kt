@@ -129,6 +129,7 @@ import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.data.playlist.LOCAL_SONGS_MODE
 import com.lastwave.app.data.generate.isLocalFile
+import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.isYouTubeOnly
 import com.lastwave.app.playback.toPlayableTrack
@@ -476,8 +477,13 @@ fun PlaylistDetailScreen(
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 if (displayTracks.isNotEmpty()) {
                                     val playableTracks = displayTracks.map(GeneratedTrack::toPlayableTrack)
-                                    val currentId = playbackState.current?.id
-                                    val currentIndex = playableTracks.indexOfFirst { it.id == currentId }
+                                    val current = playbackState.current
+                                    val currentIndex = if (current != null) {
+                                        playableTracks.indexOfFirst {
+                                            it.title.equals(current.title, ignoreCase = true) &&
+                                                it.artist.equals(current.artist, ignoreCase = true)
+                                        }
+                                    } else -1
                                     val candidates = if (playableTracks.size > 1 && currentIndex >= 0) {
                                         playableTracks.indices.filter { it != currentIndex }
                                     } else {
@@ -835,7 +841,7 @@ fun PlaylistDetailScreen(
                                     artist = track.artist,
                                     album = track.album,
                                     artworkUrl = track.artworkUrl,
-                                    videoId = track.videoId?.takeIf(String::isNotBlank),
+                                    videoId = track.youtubeVideoIdOrNull(),
                                     sourceLabel = playlist.title,
                                     onPlay = {
                                         musicPlayer.playQueue(
