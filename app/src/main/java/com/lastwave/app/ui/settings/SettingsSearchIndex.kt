@@ -566,22 +566,6 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
-                    id = "appearance.menu_blur",
-                    title = "Use Blur in Menus",
-                    subtitle = "Blur the background behind song options and context menus",
-                    keywords = listOf(
-                        "menu blur", "blur", "translucent menu", "glass menu", "3 dots blur", "backdrop blur"
-                    ),
-                    icon = Icons.Filled.BlurOn,
-                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.APPEARANCE,
-                    section = "Appearance",
-                    type = EntryType.TOGGLE,
-                )
-            )
-            add(
-                SettingsEntry(
                     id = "appearance.dynamic_color",
                     title = "Dynamic Color (Material You)",
                     subtitle = "Match UI accent colors to wallpaper and system palette",

@@ -236,11 +236,11 @@ internal fun InfiniteRadioLoadingSkeleton() {
     Surface(
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 3.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 3.dp),
     ) {
         val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHighest
         Column(
-            modifier = Modifier.fillMaxWidth().height(208.dp).padding(horizontal = 20.dp, vertical = 18.dp),
+            modifier = Modifier.fillMaxWidth().height(224.dp).padding(horizontal = 20.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Box(Modifier.size(96.dp, 24.dp).background(placeholderColor, CircleShape))
@@ -299,7 +299,7 @@ internal fun InfiniteRadioHero(
         tonalElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 8.dp)
             .padding(bottom = 3.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -310,14 +310,14 @@ internal fun InfiniteRadioHero(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(208.dp)
+                        .height(224.dp)
                         .alpha(0.32f),
                 )
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(208.dp)
+                    .height(224.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(

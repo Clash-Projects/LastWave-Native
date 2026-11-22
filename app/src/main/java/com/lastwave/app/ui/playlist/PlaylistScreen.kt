@@ -108,6 +108,7 @@ import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.data.playlist.LOCAL_SONGS_MODE
+import com.lastwave.app.data.playlist.PlaylistImportManager
 import com.lastwave.app.data.playlist.isYouTubeOnly
 import com.lastwave.app.playback.toPlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
@@ -135,12 +136,18 @@ import java.util.Locale
 
 private enum class PlaylistFilter(val label: String) {
     ALL("All"),
+    LIKED("Liked"),
     GENERATED("Generated"),
     YTMUSIC("YT Music"),
     SPOTIFY("Spotify"),
     IMPORTED("Imported"),
     PINNED("Pinned"),
 }
+
+private val GENERATED_MODES = setOf(
+    "discover", "generate", "recommendations", "mix", "top", "recent",
+    "similar-tracks", "similar-artists", "tag", "never-heard", "library", "radio"
+)
 
 private fun connectedShape(index: Int, count: Int): RoundedCornerShape {
     val outer = 24.dp
@@ -384,31 +391,34 @@ fun PlaylistScreen(
                 }
             }
 
-            val localSongsPlaylist = remember(state.playlists, searchQuery) {
-                state.playlists.firstOrNull {
-                    it.mode == LOCAL_SONGS_MODE && it.matchesPlaylistSearch(searchQuery)
-                }
-            }
-
             val filteredPlaylists = remember(state.playlists, searchQuery, selectedFilter) {
-                state.playlists
-                    .filter { it.mode != LOCAL_SONGS_MODE && it.matchesPlaylistSearch(searchQuery) }
+                val matching = state.playlists
                     .filter { pl ->
                         when (selectedFilter) {
                             PlaylistFilter.ALL -> true
-                            PlaylistFilter.GENERATED -> pl.mode == "discover" || pl.mode == "generate" || pl.mode == "recommendations" || pl.mode == "mix"
+                            PlaylistFilter.LIKED -> pl.mode == LIKED_SONGS_MODE || pl.title.equals("Liked Songs", ignoreCase = true) || pl.remotePlaylistId?.let(PlaylistImportManager::isYtLikedId) == true || pl.remotePlaylistId == "LM"
+                            PlaylistFilter.GENERATED -> pl.mode in GENERATED_MODES || pl.discoverSignature != null
                             PlaylistFilter.YTMUSIC -> pl.isYouTubeOnly || pl.remotePlaylistId != null
                             PlaylistFilter.SPOTIFY -> false
-                            PlaylistFilter.IMPORTED -> pl.mode == "imported" || pl.mode == "custom"
+                            PlaylistFilter.IMPORTED -> pl.mode == "imported" || pl.mode == "custom" || pl.mode == LOCAL_SONGS_MODE
                             PlaylistFilter.PINNED -> pl.isPinned
-                            else -> true
                         }
                     }
+                    .filter { it.matchesPlaylistSearch(searchQuery) }
+
+                val local = matching.firstOrNull { it.mode == LOCAL_SONGS_MODE }
+                if (local != null) {
+                    listOf(local) + matching.filterNot { it.mode == LOCAL_SONGS_MODE }
+                } else {
+                    matching
+                }
             }
 
             val filteredSpotifyPlaylists = remember(state.spotifyPlaylists, searchQuery, selectedFilter) {
-                if (selectedFilter != PlaylistFilter.ALL && selectedFilter != PlaylistFilter.SPOTIFY) {
+                if (selectedFilter != PlaylistFilter.ALL && selectedFilter != PlaylistFilter.SPOTIFY && selectedFilter != PlaylistFilter.LIKED) {
                     emptyList()
+                } else if (selectedFilter == PlaylistFilter.LIKED) {
+                    state.spotifyPlaylists.filter { it.id == "liked" && (searchQuery.isBlank() || it.name.contains(searchQuery, ignoreCase = true)) }
                 } else if (searchQuery.isBlank()) {
                     state.spotifyPlaylists
                 } else {
@@ -426,6 +436,8 @@ fun PlaylistScreen(
                 "downloads".contains(searchQuery.trim(), ignoreCase = true)) &&
                 (selectedFilter == PlaylistFilter.ALL || selectedFilter == PlaylistFilter.IMPORTED)
 
+            val totalGroupedCount = (if (showDownloadsCard) 1 else 0) + effectiveSpotify.size + filteredPlaylists.size
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -433,7 +445,7 @@ fun PlaylistScreen(
             ) {
                 when {
                     state.isLoading && state.playlists.isEmpty() && !state.isGenerating -> LoadingState()
-                    localSongsPlaylist == null && filteredPlaylists.isEmpty() && !state.isGenerating &&
+                    filteredPlaylists.isEmpty() && !state.isGenerating &&
                         effectiveSpotify.isEmpty() && (downloadedCount == 0 || !showDownloadsCard) -> EmptyState()
                     else -> LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingNavDefaults.contentBottomPadding()),
@@ -442,43 +454,14 @@ fun PlaylistScreen(
                             .fillMaxWidth()
                             .clip(TopCurvedSectionClipShape(horizontalInset = 16.dp, cornerRadius = 28.dp)),
                     ) {
-                        if (localSongsPlaylist != null || showDownloadsCard) {
-                            item(key = "heroes_side_by_side", contentType = "heroes_side_by_side") {
+                        if (showDownloadsCard) {
+                            item(key = "downloads_card", contentType = "downloads_card") {
                                 Box(modifier = Modifier.animateItem()) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        if (localSongsPlaylist != null) {
-                                            Box(Modifier.weight(1f)) {
-                                                LocalSongsHeroCard(
-                                                    playlist = localSongsPlaylist,
-                                                    isPlaying = playbackState.isPlaying,
-                                                    playbackSource = playbackState.sourceLabel,
-                                                    shape = if (showDownloadsCard) connectedShape(0, 2) else RoundedCornerShape(24.dp),
-                                                    onClick = { onOpenPlaylist(localSongsPlaylist.id) },
-                                                    onPlay = {
-                                                        musicPlayer.playQueue(
-                                                            localSongsPlaylist.tracks.map(GeneratedTrack::toPlayableTrack),
-                                                            startIndex = 0,
-                                                            sourceLabel = localSongsPlaylist.title,
-                                                            enableRadioContinuation = false,
-                                                        )
-                                                    },
-                                                )
-                                            }
-                                        }
-                                        if (showDownloadsCard) {
-                                            Box(Modifier.weight(1f)) {
-                                                DownloadsHeroCard(
-                                                    downloadedCount = downloadedCount,
-                                                    shape = if (localSongsPlaylist != null) connectedShape(1, 2) else RoundedCornerShape(24.dp),
-                                                    onClick = viewModel::openDownloads,
-                                                )
-                                            }
-                                        }
-                                    }
+                                    DownloadsPlaylistCard(
+                                        downloadedCount = downloadedCount,
+                                        position = com.lastwave.app.ui.common.groupPositionFor(0, totalGroupedCount),
+                                        onClick = viewModel::openDownloads,
+                                    )
                                 }
                             }
                         }
@@ -510,17 +493,16 @@ fun PlaylistScreen(
                             }
                         }
 
-                        val groupedPlaylistCount = effectiveSpotify.size + filteredPlaylists.size
-
                         if (effectiveSpotify.isNotEmpty()) {
                             itemsIndexed(
                                 items = effectiveSpotify,
                                 key = { _, pl -> "sp_${pl.id}" },
                             ) { index, pl ->
+                                val globalIndex = (if (showDownloadsCard) 1 else 0) + index
                                 Box(Modifier.animateItem()) {
                                     SpotifyPlaylistCard(
                                         playlist = pl,
-                                        position = com.lastwave.app.ui.common.groupPositionFor(index, groupedPlaylistCount),
+                                        position = com.lastwave.app.ui.common.groupPositionFor(globalIndex, totalGroupedCount),
                                         onClick = {
                                             val routeId = if (pl.id == "liked") "sp_liked" else "sp_${pl.id}"
                                             onOpenFeedPlaylist(routeId)
@@ -535,12 +517,12 @@ fun PlaylistScreen(
                             key = { _, playlist -> "pl_${playlist.id}_${playlist.remotePlaylistId ?: "local"}" },
                         ) { index, playlist ->
                             val isNewest = playlist.id == state.newestId
-                            val globalIndex = effectiveSpotify.size + index
+                            val globalIndex = (if (showDownloadsCard) 1 else 0) + effectiveSpotify.size + index
                             Box(Modifier.animateItem()) {
                                 PlaylistCard(
                                     playlist = playlist,
                                     isNewest = isNewest,
-                                    position = com.lastwave.app.ui.common.groupPositionFor(globalIndex, groupedPlaylistCount),
+                                    position = com.lastwave.app.ui.common.groupPositionFor(globalIndex, totalGroupedCount),
                                     isRegenerating = state.regeneratingId == playlist.id,
                                     currentTrack = playbackState.current,
                                     isPlaying = playbackState.isPlaying,

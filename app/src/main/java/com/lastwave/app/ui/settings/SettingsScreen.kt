@@ -1221,7 +1221,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 16) { index, position ->
+                    SettingsGroup(rowCount = 15) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1384,17 +1384,6 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.legacy_track_menu"),
                             )
-                            15 -> SettingsToggleCard(
-                                icon = Icons.Filled.BlurOn,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_menu_blur),
-                                subtitle = stringResource(R.string.settings_menu_blur_sub),
-                                checked = misc.useMenuBlur,
-                                onCheckedChange = viewModel::setMenuBlur,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.menu_blur"),
-                            )
                         }
                     }
                 }
@@ -1443,8 +1432,7 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    val experimentalRowCount = if (misc.musicVideoEnabled) 10 else 9
-                    SettingsGroup(rowCount = experimentalRowCount) { index, position ->
+                    SettingsGroup(rowCount = 6) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Subtitles,
@@ -1530,7 +1518,12 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = false,
                             )
-                            9 -> SettingsActionCard(
+                        }
+                    }
+                    val additionalRowCount = if (misc.musicVideoEnabled) 4 else 3
+                    SettingsGroup(rowCount = additionalRowCount) { index, position ->
+                        when (index) {
+                            0 -> SettingsActionCard(
                                 icon = Icons.Filled.Translate,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1544,7 +1537,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.translation_language"),
                             )
-                            10 -> SettingsToggleCard(
+                            1 -> SettingsToggleCard(
                                 icon = Icons.Filled.SmartDisplay,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1559,7 +1552,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.music_video"),
                             )
-                            11 -> if (misc.musicVideoEnabled) {
+                            2 -> if (misc.musicVideoEnabled) {
                                 SettingsToggleCard(
                                     icon = Icons.Filled.SmartDisplay,
                                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
@@ -1588,7 +1581,7 @@ fun SettingsScreen(
                                     isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
                                 )
                             }
-                            12 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.PlayCircle,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,

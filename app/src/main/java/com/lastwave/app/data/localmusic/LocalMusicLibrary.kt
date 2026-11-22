@@ -852,6 +852,21 @@ class LocalMusicLibrary @Inject constructor(
                 }
             }
         }
+        if (artwork == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val uri = entry.docUri ?: entry.mediaStoreAlbumId?.let {
+                ContentUris.withAppendedId(MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, it)
+            }
+            if (uri != null) {
+                runCatching {
+                    val bitmap = context.contentResolver.loadThumbnail(uri, android.util.Size(512, 512), null)
+                    val art = File(artDir, LocalMusicNaming.stableId(uri.toString()) + ".img")
+                    art.outputStream().use { out ->
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                    }
+                    if (art.exists() && art.length() > 0L) artwork = Uri.fromFile(art).toString()
+                }
+            }
+        }
 
         val fallback = LocalMusicNaming.fromFileName(entry.displayName)
         return GeneratedTrack(

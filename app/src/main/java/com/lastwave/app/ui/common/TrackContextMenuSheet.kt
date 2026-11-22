@@ -570,8 +570,8 @@ fun TrackContextMenuSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = sheetShape,
-        containerColor = if (useMenuBlur) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-        scrimColor = if (useMenuBlur) MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f) else MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         dragHandle = {
             if (useLegacyTrackMenu) {
@@ -587,7 +587,7 @@ fun TrackContextMenuSheet(
             }
         },
     ) {
-        EdgeToEdgeDialogWindow(blurBehind = useMenuBlur)
+        EdgeToEdgeDialogWindow(blurBehind = true)
         if (useLegacyTrackMenu) {
             ClassicTrackMenuContent(
                 target = target,

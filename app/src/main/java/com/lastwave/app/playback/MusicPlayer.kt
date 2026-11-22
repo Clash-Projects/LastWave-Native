@@ -1159,12 +1159,17 @@ class MusicPlayer @Inject constructor(
                     queue = if (currentQueue.isNotEmpty()) currentQueue else it.queue,
                     isBuffering = true,
                     error = null,
+                    speed = userPlaybackSpeed,
+                    pitch = userPlaybackPitch,
                     audioCodec = stream?.audioCodec,
                     bitrateKbps = stream?.bitrateKbps,
                     isLossless = stream?.isLossless == true,
                     bitDepth = stream?.bitDepth,
                     samplingRateKHz = if (isSpatialAudioCodec(stream?.audioCodec)) 48.0 else stream?.samplingRateKHz,
                 )
+            }
+            if (!bitPerfectEnabled && (targetPlayer.playbackParameters.speed != userPlaybackSpeed || targetPlayer.playbackParameters.pitch != userPlaybackPitch)) {
+                runCatching { targetPlayer.playbackParameters = PlaybackParameters(userPlaybackSpeed, userPlaybackPitch) }
             }
                 decodedSampleRateHz = 0
                 stream?.let { s ->
@@ -2019,6 +2024,9 @@ class MusicPlayer @Inject constructor(
         updateBitPerfectState()
     }
 
+    @Volatile private var userPlaybackSpeed: Float = 1.0f
+    @Volatile private var userPlaybackPitch: Float = 1.0f
+
     internal val playerDelegate = ResettableLazy {
         createPlayer({ nativeAudioEngine.get() }, audioEffectsEngine, true)
             .also { restoredPlayer ->
@@ -2055,6 +2063,8 @@ class MusicPlayer @Inject constructor(
                     } ?: _state.value.repeatMode
                     val restoredSpeed = restoredSession.speed.coerceIn(0.25f, 3f)
                     val restoredPitch = restoredSession.pitch.coerceIn(0.25f, 3f)
+                    userPlaybackSpeed = restoredSpeed
+                    userPlaybackPitch = restoredPitch
                     restoredPlayer.playbackParameters = PlaybackParameters(
                         if (bitPerfectEnabled) 1f else restoredSpeed,
                         if (bitPerfectEnabled) 1f else restoredPitch,
@@ -2063,6 +2073,9 @@ class MusicPlayer @Inject constructor(
                 } else {
                     restoredPlayer.repeatMode = _state.value.repeatMode
                     restoredPlayer.shuffleModeEnabled = _state.value.shuffleEnabled
+                    if (!bitPerfectEnabled && (userPlaybackSpeed != 1f || userPlaybackPitch != 1f)) {
+                        restoredPlayer.playbackParameters = PlaybackParameters(userPlaybackSpeed, userPlaybackPitch)
+                    }
                 }
                 restoredPlayer.volume = appVolume
                 runCatching { nativeAudioEngine.get().setOutputVolume(if (bitPerfectEnabled) 1f else appVolume) }
@@ -2893,6 +2906,9 @@ class MusicPlayer @Inject constructor(
                         player.shuffleModeEnabled = false
                     }
                     player.repeatMode = _state.value.repeatMode
+                    if (!bitPerfectEnabled && (userPlaybackSpeed != 1f || userPlaybackPitch != 1f)) {
+                        runCatching { player.playbackParameters = PlaybackParameters(userPlaybackSpeed, userPlaybackPitch) }
+                    }
                     PlaybackStartupLog.prepareStart()
                     resetRenderWatchdog()
                     player.prepare()
@@ -3972,6 +3988,8 @@ class MusicPlayer @Inject constructor(
     fun setPlaybackParameters(speed: Float, pitch: Float) = onMain {
         val clampedSpeed = speed.coerceIn(0.25f, 3.0f)
         val clampedPitch = pitch.coerceIn(0.25f, 3.0f)
+        userPlaybackSpeed = clampedSpeed
+        userPlaybackPitch = clampedPitch
         if (isCasting) {
             castPlayback?.setSpeed(clampedSpeed)
             _state.update { it.copy(speed = clampedSpeed, pitch = clampedPitch) }
