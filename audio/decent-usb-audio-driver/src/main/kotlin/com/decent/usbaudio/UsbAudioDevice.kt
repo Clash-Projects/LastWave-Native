@@ -34,6 +34,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     private var connection: UsbDeviceConnection? = null
     private var currentDevice: UsbDevice? = null
     private var claimedInterface: UsbInterface? = null
+    private var claimedControlInterface: UsbInterface? = null
     /**
      * bInterfaceNumber of the PLAYBACK AudioStreaming interface (-1 = unknown).
      * USB headset-style dongles also expose a CAPTURE (microphone) AS
@@ -284,8 +285,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
             audioControlInterfaceId = controlInterface.id
             val claimed = conn.claimInterface(controlInterface, true)
             Log.i(TAG, "Claimed AudioControl interface ${controlInterface.id} force=true: $claimed")
+            claimedControlInterface = if (claimed) controlInterface else null
         } else {
             audioControlInterfaceId = 0
+            claimedControlInterface = null
         }
 
         // Claim the AudioStreaming interface with force=true to disconnect kernel driver (snd-usb-audio)
@@ -417,6 +420,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         // so the same fd is reused (native claims are on this fd).
         cachedDeviceInfo = null
         claimedInterface = null
+        claimedControlInterface = null
         // DO NOT close connection — the fd from reset+native claim must be reused
         // The next openDevice() will see connection != null and skip re-opening
     }
@@ -821,6 +825,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
         parsedClockSelectorId = -1
         parsedClockSelectorPins = emptyList()
         activeClockSourceId = -1
+        claimedControlInterface?.let { iface ->
+            runCatching { connection?.releaseInterface(iface) }
+            claimedControlInterface = null
+        }
         claimedInterface?.let { iface ->
             runCatching { connection?.releaseInterface(iface) }
             claimedInterface = null
