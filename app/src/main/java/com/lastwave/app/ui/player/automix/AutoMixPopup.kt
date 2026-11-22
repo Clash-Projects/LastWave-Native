@@ -99,7 +99,10 @@ internal class AutoMixPopupState {
                 val duration = progress.durationMs.takeIf { it > 0L } ?: view.outgoing.durationMs
                 duration > 0L && duration - progress.positionMs in 0L..25_000L
             }
-            BlendPhase.BLENDING -> true
+            BlendPhase.BLENDING -> {
+                val outgoingPosition = view.cueOutMs + shown.clampedProgress * view.overlapMs.toDouble()
+                view.outgoing.durationMs - outgoingPosition.toLong() in 0L..25_000L
+            }
             BlendPhase.MIX_COMPLETED -> shown === completedTelemetry ||
                 (observedCompletion != view && trackKey.endsWith("\u0000${view.incoming.title}\u0000${view.incoming.artist}"))
             BlendPhase.IDLE -> false
