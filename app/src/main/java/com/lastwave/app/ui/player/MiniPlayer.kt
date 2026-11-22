@@ -481,19 +481,15 @@ internal fun MiniPlayer(
                     },
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                        Modifier.fillMaxWidth().padding(horizontal = 10.dp)
                             .collapseVerticalPadding(10.dp, 2.5.dp, compactProgress),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.collapseSquare(56.dp, 40.dp, compactProgress)) {
+                        Box(Modifier.collapseSquare(60.dp, 40.dp, compactProgress)) {
                             Surface(
-                                // Capsule bar: the art's leading edge is a half circle that
-                                // nests in the bar's curve; the trailing edge stays soft.
-                                shape = if (edgeToEdge && !isTablet) RoundedCornerShape(18.dp)
-                                else RoundedCornerShape(
-                                    topStartPercent = 50, bottomStartPercent = 50,
-                                    topEndPercent = 22, bottomEndPercent = 22,
-                                ),
+                                // Capsule bar: a circle with the same 10dp gap on every side is
+                                // concentric with the bar's end cap.
+                                shape = if (edgeToEdge && !isTablet) RoundedCornerShape(18.dp) else CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 tonalElevation = 2.dp,
                                 modifier = Modifier.fillMaxSize(),
