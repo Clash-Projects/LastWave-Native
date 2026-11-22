@@ -469,6 +469,7 @@ fun MainShell(
                             onOpenListeningStats = onOpenListeningStats,
                             onOpenFriends = onOpenFriends,
                             onOpenDownloads = onOpenDownloads,
+                            avatarUrl = ytConnection.photoUrl.takeIf { ytConnection.isConnected },
                         )
                         MainTab.PLAYLISTS -> PlaylistScreen(
                             onOpenPlaylist = onOpenPlaylist,

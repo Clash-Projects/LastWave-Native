@@ -187,22 +187,36 @@ class FeedViewModel @Inject constructor(
             }.distinctUntilChanged().collect { (connection, username) ->
                 feedJob?.cancel()
                 val cached = repository.getCachedFeed(username.takeIf(String::isNotBlank), connection)
-                _uiState.value = FeedUiState(
-                    isLoading = cached == null,
-                    feedData = cached ?: FeedData(
-                        isYtConnected = connection.isConnected,
-                        ytAccountName = connection.accountName.takeIf { connection.isConnected },
-                    ),
-                    lastCompletedFeed = cached,
-                    defaultContinuationToken = cached?.homeContinuationToken,
-                )
+                val ytPhoto = connection.photoUrl?.takeIf { connection.isConnected && it.isNotBlank() }
+                _uiState.update { current ->
+                    current.copy(
+                        isLoading = cached == null,
+                        avatarUrl = if (connection.isConnected) (ytPhoto ?: current.avatarUrl) else null,
+                        feedData = cached ?: FeedData(
+                            isYtConnected = connection.isConnected,
+                            ytAccountName = connection.accountName.takeIf { connection.isConnected },
+                        ),
+                        lastCompletedFeed = cached,
+                        defaultContinuationToken = cached?.homeContinuationToken,
+                    )
+                }
+                if (connection.isConnected && connection.photoUrl.isNullOrBlank()) {
+                    launch(Dispatchers.IO) {
+                        val info = runCatching { innerTube.fetchAccountInfo() }.getOrNull()
+                        if (info != null && !info.photoUrl.isNullOrBlank()) {
+                            ytAuth.updateAccountIdentity(info.accountName, info.channelHandle, info.photoUrl)
+                        }
+                    }
+                }
                 loadFeed()
             }
         }
         viewModelScope.launch {
             val stats = runCatching { homeRepository.fetchStats().getOrNull() }.getOrNull()
-            if (stats != null) {
-                _uiState.update { it.copy(avatarUrl = stats.avatarUrl) }
+            if (stats?.avatarUrl != null) {
+                _uiState.update { current ->
+                    if (current.avatarUrl.isNullOrBlank()) current.copy(avatarUrl = stats.avatarUrl) else current
+                }
             }
         }
     }
@@ -340,7 +354,13 @@ class FeedViewModel @Inject constructor(
                 if (ytAuth.connection.value == connection &&
                     sessionPreferences.session.value.username.takeIf(String::isNotBlank) == username
                 ) {
-                    _uiState.update { it.copy(avatarUrl = stats?.avatarUrl ?: it.avatarUrl) }
+                    _uiState.update { current ->
+                        if (current.avatarUrl.isNullOrBlank() && stats?.avatarUrl != null) {
+                            current.copy(avatarUrl = stats.avatarUrl)
+                        } else {
+                            current
+                        }
+                    }
                 }
             } catch (_: Exception) {
                 ensureActive()
