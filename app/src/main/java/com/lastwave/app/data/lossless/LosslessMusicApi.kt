@@ -8,6 +8,9 @@ import com.lastwave.app.data.addon.AddonClient
 import com.lastwave.app.data.addon.AddonTrack
 import com.lastwave.app.data.addon.AddonStream
 import com.lastwave.app.data.addon.HybridMediaServer
+import com.lastwave.app.data.addon.LosslessSource
+import com.lastwave.app.data.tidal.TidalAccount
+import com.lastwave.app.data.tidal.TidalSource
 import com.lastwave.app.data.local.SettingsPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +101,8 @@ class LosslessMusicApi @Inject constructor(
     private val nativeSecrets: NativeSecrets,
     private val settingsPreferences: SettingsPreferences,
     private val hybridServer: HybridMediaServer,
+    private val tidalAccount: TidalAccount,
+    private val tidalSource: TidalSource,
 ) {
     private val client = okHttpClient.newBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -124,6 +129,7 @@ class LosslessMusicApi @Inject constructor(
     val isConfigured: Boolean
         get() {
             if (System.currentTimeMillis() < failureCooldownUntilMs) return false
+            if (tidalAccount.isLoggedIn) return true
             val addons = settingsPreferences.httpAddons.value
             if (addons.any { it.enabled && it.url.isNotBlank() }) return true
             val addonUrl = settingsPreferences.addonUrl.value
@@ -739,22 +745,29 @@ class LosslessMusicApi @Inject constructor(
     }
 
     suspend fun getAllEnabledCredentials(): List<BackendCredentials> = withContext(Dispatchers.IO) {
-        val addons = settingsPreferences.httpAddons.value
-        val enabled = addons.filter { it.enabled && it.url.isNotBlank() }
+        listOfNotNull(
+            BackendCredentials(baseUrl = TidalSource.BASE_URL, apiKey = "tidal").takeIf { tidalAccount.isLoggedIn },
+        ) + enabledAddonCredentials()
+    }
+
+    private fun enabledAddonCredentials(): List<BackendCredentials> {
+        val enabled = settingsPreferences.httpAddons.value.filter { it.enabled && it.url.isNotBlank() }
         if (enabled.isNotEmpty()) {
-            return@withContext enabled.map {
+            return enabled.map {
                 BackendCredentials(baseUrl = AddonClient.normalizeBase(it.url), apiKey = "addon", isAddon = true)
             }
         }
         val addonUrl = settingsPreferences.addonUrl.value
-        val addonEnabled = settingsPreferences.addonEnabled.value
-        if (addonEnabled && !addonUrl.isNullOrBlank()) {
-            return@withContext listOf(
-                BackendCredentials(baseUrl = AddonClient.normalizeBase(addonUrl), apiKey = "addon", isAddon = true)
-            )
+        if (settingsPreferences.addonEnabled.value && !addonUrl.isNullOrBlank()) {
+            return listOf(BackendCredentials(baseUrl = AddonClient.normalizeBase(addonUrl), apiKey = "addon", isAddon = true))
         }
-        emptyList()
+        return emptyList()
     }
+
+    /** The user's TIDAL account answers [TidalSource.BASE_URL]; every other base is an HTTP addon. */
+    private fun sourceFor(baseUrl: String): LosslessSource =
+        if (baseUrl == TidalSource.BASE_URL) tidalSource
+        else AddonClient(baseUrl, resolutionClient, nativeSecrets = nativeSecrets)
 
     suspend fun getCredentials(): BackendCredentials? = withContext(Dispatchers.IO) {
         getAllEnabledCredentials().firstOrNull()
@@ -1019,7 +1032,7 @@ class LosslessMusicApi @Inject constructor(
             val key = "${creds.baseUrl}|${plan.qualityParam}|${plan.isAtmosPreferred}|${targetSeconds ?: 0}|$query"
             val fresh = synchronized(warmedSearchKeys) { warmedSearchKeys.put(key, Unit) == null }
             if (!fresh) continue
-            val client = AddonClient(creds.baseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+            val client = sourceFor(creds.baseUrl)
             val result = try {
                 currentCoroutineContext().ensureActive()
                 client.search(query, plan.qualityParam, plan.isAtmosPreferred, warmTarget)
@@ -1155,7 +1168,7 @@ class LosslessMusicApi @Inject constructor(
         isDownload: Boolean = false,
         noteFailures: Boolean = true,
     ): LosslessAudioStream? {
-        val addonClient = AddonClient(addonBaseUrl, resolutionClient, nativeSecrets = nativeSecrets)
+        val addonClient = sourceFor(addonBaseUrl)
         val plan = addonSearchPlan(title, artist, expectedAlbum, preferredQuality)
         val queries = plan.queries
         val isAtmosPreferred = plan.isAtmosPreferred

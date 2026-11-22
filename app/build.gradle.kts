@@ -262,6 +262,11 @@ android {
         buildConfigField("String", "LASTWAVE_LYRICS_TOKEN", "\"$lastWaveLyricsToken\"")
         buildConfigField("String", "LASTWAVE_LYRICS_URL", "\"$lastWaveLyricsUrl\"")
 
+        // Client of the TIDAL login (PKCE). Kept out of git: set TIDAL_CLIENT_ID /
+        // TIDAL_CLIENT_SECRET in local.properties, .env or the environment.
+        buildConfigField("String", "TIDAL_CLIENT_ID", "\"${resolveSecret("TIDAL_CLIENT_ID")}\"")
+        buildConfigField("String", "TIDAL_CLIENT_SECRET", "\"${resolveSecret("TIDAL_CLIENT_SECRET")}\"")
+
         externalNativeBuild {
             cmake {
                 arguments += listOf(

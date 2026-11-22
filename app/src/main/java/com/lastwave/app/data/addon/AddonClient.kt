@@ -31,7 +31,7 @@ class AddonClient(
         .build(),
     private val clientSecret: String? = null,
     private val nativeSecrets: NativeSecrets? = null,
-) {
+) : LosslessSource {
     val baseUrl: String = normalizeBase(rawBaseUrl)
 
     private val json = Json {
@@ -97,11 +97,11 @@ class AddonClient(
         search("test", "lossless", false).map { it.size }
     }
 
-    suspend fun search(
+    override suspend fun search(
         query: String,
         quality: String,
-        atmos: Boolean = false,
-        warmTarget: String? = null,
+        atmos: Boolean,
+        warmTarget: String?,
     ): Result<List<AddonTrack>> = withContext(Dispatchers.IO) {
         if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException("Empty addon URL"))
         val q = query.trim()
@@ -178,7 +178,7 @@ class AddonClient(
      *
      * @return true only when the addon accepted the warm-up (HTTP 202).
      */
-    suspend fun prewarm(trackId: String, quality: String, atmos: Boolean): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun prewarm(trackId: String, quality: String, atmos: Boolean): Boolean = withContext(Dispatchers.IO) {
         val cleanId = trackId.trim()
         if (baseUrl.isBlank() || cleanId.isBlank()) return@withContext false
         val url = "$baseUrl/prewarm/$cleanId?quality=$quality&atmos=${if (atmos) "auto" else "none"}"
@@ -196,11 +196,11 @@ class AddonClient(
         }
     }
 
-    suspend fun stream(
+    override suspend fun stream(
         trackId: String,
         quality: String,
-        atmos: Boolean = false,
-        isDownload: Boolean = false,
+        atmos: Boolean,
+        isDownload: Boolean,
     ): Result<AddonStream> = withContext(Dispatchers.IO) {
         if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException("Empty addon URL"))
         val cleanId = trackId.trim()

@@ -21,6 +21,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +77,8 @@ fun ModulesScreen(
     val preferModules by viewModel.preferModules.collectAsStateWithLifecycle()
     val httpAddons by viewModel.httpAddons.collectAsStateWithLifecycle()
     val addonHealthMap by viewModel.addonHealthMap.collectAsStateWithLifecycle()
+    val tidalSession by viewModel.tidalSession.collectAsStateWithLifecycle()
+    var tidalLoginUrl by remember { mutableStateOf<String?>(null) }
 
     var showAddonDialog by remember { mutableStateOf(false) }
     var editingAddonId by remember { mutableStateOf<String?>(null) }
@@ -91,6 +96,18 @@ fun ModulesScreen(
             snackbar.showSnackbar(it)
             viewModel.clearNotice()
         }
+    }
+
+    tidalLoginUrl?.let { url ->
+        TidalLoginDialog(
+            loginUrl = url,
+            isRedirect = viewModel::isTidalRedirect,
+            onRedirect = { redirect ->
+                tidalLoginUrl = null
+                viewModel.completeTidalLogin(redirect)
+            },
+            onDismiss = { tidalLoginUrl = null },
+        )
     }
 
     if (showAddonDialog) {
@@ -154,6 +171,49 @@ fun ModulesScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // --- Section 0: own TIDAL account ---
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (tidalSession == null) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    ),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.MusicNote, contentDescription = null, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("TIDAL account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                val session = tidalSession
+                                Text(
+                                    when {
+                                        session != null -> "Connected" +
+                                            (session.username.takeIf(String::isNotBlank)?.let { " as $it" } ?: "") +
+                                            " (${session.countryCode}). YouTube Music songs play from TIDAL when found."
+                                        !viewModel.tidalClientConfigured -> "Missing TIDAL_CLIENT_ID in local.properties; rebuild the app."
+                                        else -> "Sign in with your own TIDAL subscription to play YouTube Music queues in TIDAL quality."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        if (tidalSession == null) {
+                            Button(
+                                onClick = { tidalLoginUrl = viewModel.tidalLoginUrl() },
+                                enabled = !busy && viewModel.tidalClientConfigured,
+                            ) { Text("Sign in to TIDAL") }
+                        } else {
+                            OutlinedButton(onClick = viewModel::logoutTidal) { Text("Sign out") }
+                        }
+                    }
+                }
+            }
+
             // --- Section 1: HTTP Addons ---
             item {
                 Text(

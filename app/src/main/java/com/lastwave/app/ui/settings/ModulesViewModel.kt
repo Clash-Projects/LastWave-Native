@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.lastwave.app.data.lossless.LosslessMusicApi
 import com.lastwave.app.data.lossless.NativeSecrets
+import com.lastwave.app.data.tidal.TidalAccount
+import com.lastwave.app.data.tidal.TidalSession
 import javax.inject.Inject
 
 /**
@@ -31,7 +33,38 @@ class ModulesViewModel @Inject constructor(
     private val settingsPreferences: SettingsPreferences,
     private val nativeSecrets: NativeSecrets,
     private val losslessMusicApi: LosslessMusicApi,
+    private val tidalAccount: TidalAccount,
 ) : ViewModel() {
+
+    val tidalSession: StateFlow<TidalSession?> = tidalAccount.session
+    val tidalClientConfigured: Boolean get() = tidalAccount.hasClientCredentials
+
+    fun tidalLoginUrl(): String = tidalAccount.loginUrl()
+
+    fun isTidalRedirect(url: String): Boolean = tidalAccount.isRedirect(url)
+
+    fun completeTidalLogin(redirectUrl: String) {
+        viewModelScope.launch {
+            _busy.value = true
+            try {
+                tidalAccount.completeLogin(redirectUrl).fold(
+                    onSuccess = {
+                        losslessMusicApi.invalidateCredentialsCache()
+                        _notice.value = "TIDAL connected" + (it.username.takeIf(String::isNotBlank)?.let { name -> ": $name" } ?: "")
+                    },
+                    onFailure = { _notice.value = "TIDAL login failed: ${it.message}" },
+                )
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+    fun logoutTidal() {
+        tidalAccount.logout()
+        losslessMusicApi.invalidateCredentialsCache()
+        _notice.value = "TIDAL disconnected"
+    }
 
     private val refreshTick = MutableStateFlow(0)
 

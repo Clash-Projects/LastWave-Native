@@ -5,6 +5,8 @@ import com.lastwave.app.data.addon.LoopbackHttpServer
 import com.lastwave.app.data.local.HttpAddonConfig
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.plugin.ModuleManager
+import com.lastwave.app.data.tidal.TidalAccount
+import com.lastwave.app.data.tidal.TidalSource
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -41,7 +43,9 @@ class SearchWarmCancellationTest {
             )))
             val native = mockk<NativeSecrets>()
             every { native.signAddonRequest(any(), any()) } returns null
-            val api = LosslessMusicApi(http, mockk<ModuleManager>(), native, settings, mockk<HybridMediaServer>(relaxUnitFun = true))
+            val tidal = mockk<TidalAccount>()
+            every { tidal.isLoggedIn } returns false
+            val api = LosslessMusicApi(http, mockk<ModuleManager>(), native, settings, mockk<HybridMediaServer>(relaxUnitFun = true), tidal, mockk<TidalSource>())
             val warming = launch { api.warmSearch("Test song", "Test artist", null, LosslessMusicApi.QUALITY_CD_LOSSLESS) }
             withTimeout(2_000) { started.await() }
             withTimeout(400) { warming.cancelAndJoin() }
