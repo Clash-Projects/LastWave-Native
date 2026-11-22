@@ -43,7 +43,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.ArrayDeque
 import java.util.IdentityHashMap
-import kotlin.math.roundToLong
 
 internal enum class WaveformPreviewStatus { READY, LOADING }
 
@@ -68,25 +67,22 @@ internal fun rememberAutoMixWaveforms(
     var outgoing by remember(player, planKey) { mutableStateOf(WaveformCache.preview(view, true)) }
     var incoming by remember(player, planKey) { mutableStateOf(WaveformCache.preview(view, false)) }
     val sources = remember(player, planKey) { WaveformPair() }
-    val missingOutgoing = view.outgoing.bands.isEmpty()
-    val missingIncoming = view.incoming.bands.isEmpty()
-    LaunchedEffect(player, planKey, missingOutgoing, missingIncoming) {
-        if (missingOutgoing && outgoing == null) launch {
+    // The studio view draws both whole songs, but the engine only analyses the cue windows.
+    LaunchedEffect(player, planKey) {
+        if (outgoing == null) launch {
             while (isActive && outgoing == null) {
                 outgoing = loadWaveform(
                     player, view, sources, outgoing = true, tracks = { latestTracks },
-                    fromMs = view.cueOutMs - PREVIEW_PAD_MS,
-                    untilMs = view.cueOutMs + view.overlapMs + PREVIEW_PAD_MS,
+                    fromMs = 0L, untilMs = view.outgoing.wholeSongEndMs(view.cueOutMs + view.overlapMs),
                 )
                 if (outgoing == null) delay(2_500L)
             }
         }
-        if (missingIncoming && incoming == null) launch {
+        if (incoming == null) launch {
             while (isActive && incoming == null) {
                 incoming = loadWaveform(
                     player, view, sources, outgoing = false, tracks = { latestTracks },
-                    fromMs = view.cueInMs - (PREVIEW_PAD_MS * view.tempoRatio).roundToLong(),
-                    untilMs = view.cueInMs + ((view.overlapMs + PREVIEW_PAD_MS) * view.tempoRatio).roundToLong(),
+                    fromMs = 0L, untilMs = view.incoming.wholeSongEndMs(view.cueInMs + (view.overlapMs * view.tempoRatio).toLong()),
                 )
                 if (incoming == null) delay(2_500L)
             }
@@ -95,17 +91,21 @@ internal fun rememberAutoMixWaveforms(
     SideEffect { WaveformCache.alias(view, outgoing, incoming) }
     return AutoMixWaveformPreview(
         view = view.copy(
-            outgoing = if (missingOutgoing) outgoing?.let(view.outgoing::withWaveform) ?: view.outgoing else view.outgoing,
-            incoming = if (missingIncoming) incoming?.let(view.incoming::withWaveform) ?: view.incoming else view.incoming,
+            outgoing = outgoing?.let(view.outgoing::withWaveform) ?: view.outgoing,
+            incoming = incoming?.let(view.incoming::withWaveform) ?: view.incoming,
         ),
-        outgoingStatus = if (!missingOutgoing || outgoing != null) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
-        incomingStatus = if (!missingIncoming || incoming != null) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
+        // The engine's cue-window columns keep the lane drawn while the whole song decodes.
+        outgoingStatus = if (outgoing != null || view.outgoing.bands.isNotEmpty()) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
+        incomingStatus = if (incoming != null || view.incoming.bands.isNotEmpty()) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
     )
 }
 
+/** Unknown durations fall back to the end of the mix so the decoder still has a bounded range. */
+private fun MixDeckView.wholeSongEndMs(mixEndMs: Long) = if (durationMs > 0L) durationMs else mixEndMs + PREVIEW_PAD_MS
+
 private const val PREVIEW_PAD_MS = 3_000L
 private val decoderPermit = Semaphore(1)
-private data class WaveformWindow(val startMs: Long, val bands: List<Int>)
+private data class WaveformWindow(val startMs: Long, val bands: List<Int>, val bpm: Float?, val camelotKey: String?)
 private data class WaveformSource(
     val key: String,
     val spec: DataSpec,
@@ -125,7 +125,7 @@ private class WaveformPair {
 }
 
 private fun MixDeckView.withWaveform(window: WaveformWindow) =
-    copy(bandsStartMs = window.startMs, bands = window.bands)
+    copy(bandsStartMs = window.startMs, bands = window.bands, bpm = bpm ?: window.bpm, camelotKey = camelotKey ?: window.camelotKey)
 
 private object WaveformCache {
     private val windows = LinkedHashMap<String, WaveformWindow>(16, 0.75f, true)
@@ -195,7 +195,7 @@ private suspend fun loadWaveform(
             val scopedFactory = ResolvingDataSource.Factory(input.factory) { spec ->
                 spec.buildUpon().setHttpRequestHeaders(spec.httpRequestHeaders + input.spec.httpRequestHeaders).build()
             }
-            val pcm = withTimeoutOrNull(45_000L) {
+            val pcm = withTimeoutOrNull(120_000L) {
                 decodeWaveformPcm(
                     player.appContext, scopedFactory, player.extractorsFactory, input.item,
                     from, until, player.moduleDrmFactory, input.descriptor,
@@ -213,7 +213,13 @@ private suspend fun loadWaveform(
                     currentCoroutineContext().ensureActive()
                     // Relative normalization has no reference when every captured sample is exactly silent.
                     val bands = if (pcm.pcm.any { it != 0f }) analysis.bands else analysis.bands.map { 0 }
-                    bands.takeIf { it.isNotEmpty() }?.let { WaveformWindow(analysis.startMs, it) }
+                    bands.takeIf { it.isNotEmpty() }?.let {
+                        WaveformWindow(
+                            analysis.startMs, it,
+                            analysis.grid?.takeIf { grid -> grid.confidence >= 0.6f }?.bpm,
+                            analysis.camelotKey?.takeIf { analysis.keyConfidence >= 0.5f },
+                        )
+                    }
                 } finally {
                     Process.setThreadPriority(originalPriority)
                 }
