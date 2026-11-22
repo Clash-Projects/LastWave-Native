@@ -230,19 +230,19 @@ private fun SpectrumLabel(label: String, color: Color) {
 /** One song's lane: the mix window owns the spotlight box, the rest of the song is squeezed beside it. */
 private class LaneSegment(val ms0: Double, val ms1: Double, val x0: Float, val x1: Float)
 
-private class Lane(durationMs: Long, preMs: Double, mixMs: Double, left: Float, right: Float, width: Float) {
+private class Lane(durationMs: Long, preMs: Double, mixMs: Double, padMs: Double, left: Float, right: Float, width: Float) {
     val segments: List<LaneSegment>
 
     init {
-        // Never zoom the intro or outro past the box scale; long songs compress into the free space.
+        // The window is the transition plus the same context on both sides, at the box's own scale.
         val scale = (right - left) / mixMs.coerceAtLeast(1.0)
         val mixEnd = preMs + mixMs
-        val preWidth = minOf(left, (preMs * scale).toFloat())
-        val postWidth = minOf(width - right, (maxOf(durationMs - mixEnd, 0.0) * scale).toFloat())
+        val pre = minOf(preMs, padMs)
+        val post = minOf(maxOf(durationMs - mixEnd, 0.0), padMs)
         segments = listOf(
-            LaneSegment(0.0, preMs, left - preWidth, left),
+            LaneSegment(preMs - pre, preMs, left - (pre * scale).toFloat(), left),
             LaneSegment(preMs, mixEnd, left, right),
-            LaneSegment(mixEnd, maxOf(durationMs.toDouble(), mixEnd), right, right + postWidth),
+            LaneSegment(mixEnd, mixEnd + post, right, right + (post * scale).toFloat()),
         )
     }
 
@@ -257,11 +257,14 @@ private class Lane(durationMs: Long, preMs: Double, mixMs: Double, left: Float, 
 private class MixPlot(view: MixView, width: Float, val top: Float, val bottom: Float, val gap: Float) {
     val laneHeight = ((bottom - top - gap) / 2f).coerceAtLeast(1f)
     val lowerTop = top + laneHeight + gap
-    val boxLeft = width * 0.3f
-    val boxRight = width * 0.7f
-    val outgoing = Lane(view.outgoing.durationMs, view.cueOutMs.toDouble(), view.overlapMs.toDouble(), boxLeft, boxRight, width)
+    // Equal context on both sides centers the actual overlap.
+    private val padMs = 3_000.0
+    val boxLeft = (width * padMs / (view.overlapMs + 2 * padMs)).toFloat()
+    val boxRight = width - boxLeft
+    val outgoing = Lane(view.outgoing.durationMs, view.cueOutMs.toDouble(), view.overlapMs.toDouble(), padMs, boxLeft, boxRight, width)
     val incoming = Lane(
-        view.incoming.durationMs, view.cueInMs.toDouble(), view.overlapMs * view.tempoRatio.toDouble(), boxLeft, boxRight, width,
+        view.incoming.durationMs, view.cueInMs.toDouble(), view.overlapMs * view.tempoRatio.toDouble(),
+        padMs * view.tempoRatio, boxLeft, boxRight, width,
     )
 }
 

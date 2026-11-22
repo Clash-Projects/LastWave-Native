@@ -68,14 +68,11 @@ internal fun rememberAutoMixWaveforms(
     var outgoing by remember(player, planKey) { mutableStateOf(WaveformCache.preview(view, true)) }
     var incoming by remember(player, planKey) { mutableStateOf(WaveformCache.preview(view, false)) }
     val sources = remember(player, planKey) { WaveformPair() }
-    // Whole songs arrive later and only upgrade what the quick cue window already drew.
-    var outgoingFull by remember(player, planKey) { mutableStateOf<WaveformWindow?>(null) }
-    var incomingFull by remember(player, planKey) { mutableStateOf<WaveformWindow?>(null) }
     val missingOutgoing = view.outgoing.bands.isEmpty()
     val missingIncoming = view.incoming.bands.isEmpty()
     LaunchedEffect(player, planKey, missingOutgoing, missingIncoming) {
-        launch {
-            if (missingOutgoing && outgoing == null) while (isActive && outgoing == null) {
+        if (missingOutgoing && outgoing == null) launch {
+            while (isActive && outgoing == null) {
                 outgoing = loadWaveform(
                     player, view, sources, outgoing = true, tracks = { latestTracks },
                     fromMs = view.cueOutMs - PREVIEW_PAD_MS,
@@ -83,16 +80,9 @@ internal fun rememberAutoMixWaveforms(
                 )
                 if (outgoing == null) delay(2_500L)
             }
-            while (isActive && outgoingFull == null) {
-                outgoingFull = loadWaveform(
-                    player, view, sources, outgoing = true, tracks = { latestTracks },
-                    fromMs = 0L, untilMs = view.outgoing.wholeSongEndMs(view.cueOutMs + view.overlapMs), whole = true,
-                )
-                if (outgoingFull == null) delay(10_000L)
-            }
         }
-        launch {
-            if (missingIncoming && incoming == null) while (isActive && incoming == null) {
+        if (missingIncoming && incoming == null) launch {
+            while (isActive && incoming == null) {
                 incoming = loadWaveform(
                     player, view, sources, outgoing = false, tracks = { latestTracks },
                     fromMs = view.cueInMs - (PREVIEW_PAD_MS * view.tempoRatio).roundToLong(),
@@ -100,31 +90,18 @@ internal fun rememberAutoMixWaveforms(
                 )
                 if (incoming == null) delay(2_500L)
             }
-            while (isActive && incomingFull == null) {
-                incomingFull = loadWaveform(
-                    player, view, sources, outgoing = false, tracks = { latestTracks },
-                    fromMs = 0L, untilMs = view.incoming.wholeSongEndMs(view.cueInMs + (view.overlapMs * view.tempoRatio).toLong()),
-                    whole = true,
-                )
-                if (incomingFull == null) delay(10_000L)
-            }
         }
     }
     SideEffect { WaveformCache.alias(view, outgoing, incoming) }
-    val shownOutgoing = outgoingFull ?: outgoing
-    val shownIncoming = incomingFull ?: incoming
     return AutoMixWaveformPreview(
         view = view.copy(
-            outgoing = shownOutgoing?.let(view.outgoing::withWaveform) ?: view.outgoing,
-            incoming = shownIncoming?.let(view.incoming::withWaveform) ?: view.incoming,
+            outgoing = if (missingOutgoing) outgoing?.let(view.outgoing::withWaveform) ?: view.outgoing else view.outgoing,
+            incoming = if (missingIncoming) incoming?.let(view.incoming::withWaveform) ?: view.incoming else view.incoming,
         ),
-        outgoingStatus = if (shownOutgoing != null || !missingOutgoing) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
-        incomingStatus = if (shownIncoming != null || !missingIncoming) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
+        outgoingStatus = if (!missingOutgoing || outgoing != null) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
+        incomingStatus = if (!missingIncoming || incoming != null) WaveformPreviewStatus.READY else WaveformPreviewStatus.LOADING,
     )
 }
-
-/** Unknown durations fall back to the end of the mix so the decoder still has a bounded range. */
-private fun MixDeckView.wholeSongEndMs(mixEndMs: Long) = if (durationMs > 0L) durationMs else mixEndMs + PREVIEW_PAD_MS
 
 private const val PREVIEW_PAD_MS = 3_000L
 private val decoderPermit = Semaphore(1)
@@ -180,9 +157,8 @@ private suspend fun loadWaveform(
     tracks: () -> List<PlayableTrack>,
     fromMs: Long,
     untilMs: Long,
-    whole: Boolean = false,
 ): WaveformWindow? {
-    if (!whole) WaveformCache.preview(view, outgoing)?.let { return it }
+    WaveformCache.preview(view, outgoing)?.let { return it }
     val deck = if (outgoing) view.outgoing else view.incoming
     val title = deck.title.replace('\n', ' ').replace('\r', ' ').take(100)
     val from = fromMs.coerceAtLeast(0L)
@@ -212,14 +188,14 @@ private suspend fun loadWaveform(
     val cacheKey = "${input.key}\u0000$from\u0000$length"
     WaveformCache.get(cacheKey)?.let { return it }
     return decoderPermit.withPermit {
-        if (!whole) WaveformCache.preview(view, outgoing)?.let { return@withPermit it }
+        WaveformCache.preview(view, outgoing)?.let { return@withPermit it }
         WaveformCache.get(cacheKey)?.let { return@withPermit it }
         var stage = "media3"
         try {
             val scopedFactory = ResolvingDataSource.Factory(input.factory) { spec ->
                 spec.buildUpon().setHttpRequestHeaders(spec.httpRequestHeaders + input.spec.httpRequestHeaders).build()
             }
-            val pcm = withTimeoutOrNull(120_000L) {
+            val pcm = withTimeoutOrNull(45_000L) {
                 decodeWaveformPcm(
                     player.appContext, scopedFactory, player.extractorsFactory, input.item,
                     from, until, player.moduleDrmFactory, input.descriptor,
@@ -250,7 +226,7 @@ private suspend fun loadWaveform(
             }
             if (window != null) {
                 WaveformCache.put(cacheKey, window)
-                if (!whole) WaveformCache.alias(view, if (outgoing) window else null, if (outgoing) null else window)
+                WaveformCache.alias(view, if (outgoing) window else null, if (outgoing) null else window)
                 Log.i("AutoMixWaveform", "stage=ready title='$title' columns=${window.bands.size} from=${window.startMs}")
             } else Log.w("AutoMixWaveform", "stage=spectrum title='$title' reason=no_columns")
             window
