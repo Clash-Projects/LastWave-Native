@@ -39,7 +39,7 @@ import com.lastwave.app.ui.common.GroupIconBadgeShape
 import com.lastwave.app.ui.common.expressivePressScale
 
 @Composable
-internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifier, enabled: Boolean = true, plain: Boolean = false) {
+internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val context = LocalContext.current
     val available = remember(player) { player.initializeCast() }
     var routeButton by remember { mutableStateOf<MediaRouteButton?>(null) }
@@ -47,7 +47,7 @@ internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifie
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = if (plain) 48.dp else 56.dp)
+            .heightIn(min = 56.dp)
             .expressivePressScale(interactionSource, targetScale = 0.98f)
             .clip(MaterialTheme.shapes.medium)
             .clickable(
@@ -59,11 +59,11 @@ internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifie
                     else Toast.makeText(context, context.getString(R.string.cast_unavailable), Toast.LENGTH_SHORT).show()
                 },
             )
-            .padding(horizontal = 12.dp, vertical = if (plain) 12.dp else 8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            if (plain) Modifier.size(24.dp) else Modifier.size(40.dp).clip(GroupIconBadgeShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            Modifier.size(40.dp).clip(GroupIconBadgeShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center,
         ) {
             if (available) {
@@ -83,7 +83,7 @@ internal fun PlayerCastMenuRow(player: MusicPlayer, modifier: Modifier = Modifie
                 Icon(
                     Icons.Outlined.Cast,
                     contentDescription = null,
-                    modifier = Modifier.size(if (plain) 24.dp else 20.dp),
+                    modifier = Modifier.size(20.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

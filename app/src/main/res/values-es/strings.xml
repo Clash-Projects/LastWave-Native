@@ -48,7 +48,7 @@
     <string name="settings_legacy_colors">Usar colores heredados</string>
     <string name="settings_legacy_colors_sub">Usa tonos auténticos de fondo y superficie de Material You en lugar de superficies de obsidiana profunda</string>
     <string name="settings_legacy_track_menu">Usar menú de canción clásico</string>
-    <string name="settings_legacy_track_menu_sub">Usar la hoja de opciones de canción más nueva en lugar del menú predeterminado</string>
+    <string name="settings_legacy_track_menu_sub">Usar el menú de opciones de canción clásico en lugar del diseño nuevo</string>
     <string name="settings_menu_blur">Usar desenfoque en menús</string>
     <string name="settings_menu_blur_sub">Desenfocar el fondo detrás de los menús contextuales y de canción</string>
     <string name="settings_dynamic_color">Color dinámico</string>
