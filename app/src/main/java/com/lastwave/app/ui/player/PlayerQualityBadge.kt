@@ -64,6 +64,10 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.positionOnScreen
+import com.lastwave.app.ui.player.automix.AutoMixPopupState
+import com.lastwave.app.ui.player.automix.autoMixIdentity
+import com.lastwave.app.playback.automix.api.DeckBlendTelemetry
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -374,6 +378,8 @@ internal fun AppleMusicQualityBadge(
     state: MusicPlayerState,
     signalPath: SignalPathReport,
     isTranslucent: Boolean = false,
+    autoMixUi: AutoMixPopupState,
+    progressState: StateFlow<PlaybackProgressState>?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -381,22 +387,18 @@ internal fun AppleMusicQualityBadge(
     val isSpatial = remember(state.audioCodec) { isSpatialAudioCodec(state.audioCodec) }
     val isHiRes = state.isLossless && ((state.samplingRateKHz ?: 44.1) > 48.0 || (state.bitDepth ?: 16) > 16)
     val switch = state.qualitySwitch
-    val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless, state.isCrossfading, state.deckBlendTelemetry.phase, state.deckBlendTelemetry.isBlendingActive) {
-        qualityBadgeLabel(state)
+    val baseLabel = remember(state.audioCodec, state.bitrateKbps, state.samplingRateKHz, state.bitDepth, state.isLossless, state.isCrossfading) {
+        qualityBadgeLabel(state.copy(deckBlendTelemetry = DeckBlendTelemetry.IDLE))
     }
 
-    val rawMixActive = state.deckBlendTelemetry.isBlendingActive || state.deckBlendTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
-    val rawTransition = when {
-        rawMixActive -> BadgeTransition.MIX
-        state.isCrossfading -> BadgeTransition.FADE
-        else -> BadgeTransition.NONE
+    val progress = progressState?.collectAsStateWithLifecycle()
+        ?: rememberUpdatedState(PlaybackProgressState(positionMs = state.positionMs, durationMs = state.durationMs))
+    val trackKey = state.current?.autoMixIdentity().orEmpty()
+    val mixAvailable by remember(state.deckBlendTelemetry, autoMixUi, progress, trackKey) {
+        derivedStateOf { autoMixUi.canOpen(state.deckBlendTelemetry, progress.value, trackKey) }
     }
-    // A transition label appears immediately but lingers briefly after it
-    // ends. During and right after a deck swap the telemetry and the new
-    // track's quality fields churn (codec cleared, then re-published), which
-    // made the pill flicker between "AutoMix" and partial quality labels.
-    // not produceState: that updates a frame late, so the first blend frame
-    // showed "<codec> • AUTOMIXING" and very short blips skipped the hold
+    val rawTransition = if (state.isCrossfading && !mixAvailable) BadgeTransition.FADE else BadgeTransition.NONE
+    // Crossfade keeps its existing label hold; AutoMix availability and its tap route expire together.
     val transitionHold = remember { BadgeTransitionHold() }
     var holdReleaseTick by remember { mutableIntStateOf(0) }
     @Suppress("UNUSED_VARIABLE") val observeRelease = holdReleaseTick
@@ -412,8 +414,8 @@ internal fun AppleMusicQualityBadge(
             holdReleaseTick++
         }
     }
-    val isMixActive = shownTransition == BadgeTransition.MIX
-    val isFadeActive = shownTransition == BadgeTransition.FADE
+    val isMixActive = mixAvailable
+    val isFadeActive = !mixAvailable && shownTransition == BadgeTransition.FADE
 
     val displayTitle = when {
         isMixActive -> "AutoMix"
@@ -464,6 +466,11 @@ internal fun AppleMusicQualityBadge(
                 // Size animates first so the capsule itself glides when the
                 // label changes (Lossless -> AutoMix -> Hi-Res ...).
                 .animateContentSize()
+                .onGloballyPositioned {
+                    autoMixUi.badgeBounds = androidx.compose.ui.geometry.Rect(
+                        it.positionOnScreen(), Size(it.size.width.toFloat(), it.size.height.toFloat()),
+                    )
+                }
                 .clip(CircleShape)
                 .background(capsuleColor)
                 .combinedClickable(

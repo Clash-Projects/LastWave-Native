@@ -56,7 +56,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import com.lastwave.app.ui.player.automix.playheadOutgoingMs
+import com.lastwave.app.ui.player.automix.AutoMixPopupHost
+import com.lastwave.app.ui.player.automix.AutoMixPopupState
+import com.lastwave.app.ui.player.automix.autoMixIdentity
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.cos
@@ -511,12 +513,9 @@ internal fun FullPlayer(
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSignalPath by remember { mutableStateOf(false) }
-    var showAutoMix by remember { mutableStateOf(false) }
-    // While a mix is planned or running the quality badge opens the live decks instead.
+    val autoMixUi = remember { AutoMixPopupState() }
     val openBadge = {
-        if (state.deckBlendTelemetry.playheadOutgoingMs(state.positionMs) != null) {
-            showAutoMix = true
-        } else {
+        if (!autoMixUi.open(state.deckBlendTelemetry, progressState.value, track.autoMixIdentity())) {
             showSignalPath = true
         }
     }
@@ -1456,6 +1455,7 @@ internal fun FullPlayer(
                                     shownDismissY = shownDismissY,
                                     swipeThreshold = swipeThreshold,
                                     onOpenSignalPath = openBadge,
+                                    autoMixUi = autoMixUi,
                                     onOpenAudioControls = { showAudioControls = true },
                                     musicVideoEnabled = musicVideoEnabled,
                                     isVideoActive = isVideoActive,
@@ -1709,36 +1709,15 @@ internal fun FullPlayer(
                                                         alpha = sleeveAlpha
                                                     },
                                             ) {
-                                                // During an AutoMix blend the sleeve shows both decks instead.
-                                                val mixTelemetry = state.deckBlendTelemetry
-                                                val mixView = mixTelemetry.view?.takeIf {
-                                                    mixTelemetry.isBlendingActive ||
-                                                        mixTelemetry.phase == com.lastwave.app.playback.automix.api.BlendPhase.MIX_COMPLETED
-                                                }
-                                                androidx.compose.animation.Crossfade(
-                                                    targetState = mixView,
-                                                    animationSpec = tween(400),
-                                                    label = "autoMixSleeve",
-                                                ) { shownMix ->
-                                                    if (shownMix != null) {
-                                                        com.lastwave.app.ui.player.automix.AutoMixDeckView(
-                                                            view = shownMix,
-                                                            playheadMs = mixTelemetry.playheadOutgoingMs(state.positionMs)
-                                                                ?: shownMix.cueOutMs.toDouble(),
-                                                            modifier = Modifier.fillMaxSize(),
-                                                        )
-                                                    } else {
-                                                        PlayerArtwork(
-                                                            track = track,
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            corner = 22.dp,
-                                                            canvas = if (showSleeveCanvas) canvas else null,
-                                                            isPlaying = state.isPlaying,
-                                                            pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
-                                                            onAspectRatioChanged = { canvasAspect = it },
-                                                        )
-                                                    }
-                                                }
+                                                PlayerArtwork(
+                                                    track = track,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    corner = 22.dp,
+                                                    canvas = if (showSleeveCanvas) canvas else null,
+                                                    isPlaying = state.isPlaying,
+                                                    pausedForTransition = shownDismissY > 1f || currentTab != FullPlayerTab.NOW_PLAYING,
+                                                    onAspectRatioChanged = { canvasAspect = it },
+                                                )
                                             }
                                             }
                                         }
@@ -2028,6 +2007,8 @@ internal fun FullPlayer(
                                         state = state,
                                         signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
+                                        autoMixUi = autoMixUi,
+                                        progressState = progressState,
                                         onClick = openBadge,
                                         modifier = Modifier.offset(y = (-2).dp),
                                     )
@@ -2113,13 +2094,13 @@ internal fun FullPlayer(
             onDismiss = { showLyricsOffsetDialog = false },
         )
     }
-    if (showAutoMix) {
-        com.lastwave.app.ui.player.automix.AutoMixLiveSheet(
-            telemetry = state.deckBlendTelemetry,
-            currentPositionMs = state.positionMs,
-            onDismiss = { showAutoMix = false },
-        )
-    }
+    AutoMixPopupHost(
+        ui = autoMixUi,
+        telemetry = state.deckBlendTelemetry,
+        progressState = progressState,
+        trackKey = track.autoMixIdentity(),
+        isPlayerOpen = isOpen,
+    )
     if (showSignalPath) {
         val dac = usbDac.dac
         val internalAvailability by player.internalDirectAvailability.collectAsStateWithLifecycle()
