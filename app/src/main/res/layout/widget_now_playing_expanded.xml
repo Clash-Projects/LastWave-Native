@@ -105,7 +105,7 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/google_sans_flex"
                         android:letterSpacing="0.12"
-                        android:text="SOUNDDROP"
+                        android:text="LASTWAVE"
                         android:textAllCaps="true"
                         android:textColor="@color/widget_primary"
                         android:textSize="10.5sp" />
