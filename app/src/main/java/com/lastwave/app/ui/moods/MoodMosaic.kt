@@ -27,6 +27,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -141,36 +143,54 @@ private fun MoodMosaicTile(
     Surface(
         modifier = modifier.cardPressable(onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = tile.label },
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = colours.surfaceBottom,
         contentColor = colours.content,
-        border = BorderStroke(1.dp, colours.accent.copy(alpha = 0.45f)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
     ) {
         Box(
             Modifier.fillMaxSize().background(
-                Brush.linearGradient(listOf(colours.surfaceTop, colours.surfaceBottom)),
+                Brush.verticalGradient(listOf(colours.surfaceTop, colours.surfaceBottom)),
             ).drawBehind {
-                // Keep the glass highlight subtle, including when a long label wraps upward.
+                val reach = size.width.coerceAtLeast(size.height)
+                // Two light sources: the category hue from the top right, its neighbour from
+                // the lower right, so the label's corner stays the darkest.
                 drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            colours.accent.copy(alpha = 0.06f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(size.width * 0.8f, 0f),
-                        radius = size.width.coerceAtLeast(size.height) * 0.75f,
+                    Brush.radialGradient(
+                        listOf(colours.glowPrimary.copy(alpha = 0.95f), Color.Transparent),
+                        center = Offset(size.width * 0.95f, size.height * 0.05f),
+                        radius = reach * 0.85f,
                     ),
-                    size = Size(size.width, size.height * 0.35f),
+                )
+                drawRect(
+                    Brush.radialGradient(
+                        listOf(colours.glowSecondary.copy(alpha = 0.60f), Color.Transparent),
+                        center = Offset(size.width, size.height * 0.9f),
+                        radius = reach * 0.6f,
+                    ),
+                )
+                // Faint concentric rings behind the glow give each tile a vinyl-like motif.
+                val ringCentre = Offset(size.width * 0.82f, size.height * 0.28f)
+                val ringBase = size.minDimension * 0.34f
+                drawCircle(Color.White.copy(alpha = 0.16f), ringBase, ringCentre, style = Stroke(1.5.dp.toPx()))
+                drawCircle(Color.White.copy(alpha = 0.10f), ringBase * 1.6f, ringCentre, style = Stroke(1.dp.toPx()))
+                drawRect(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.40f)),
+                        startY = size.height * 0.45f,
+                    ),
                 )
             },
         ) {
-            Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().width(3.dp).background(colours.accent))
             Text(
                 text = tile.label,
                 modifier = Modifier.align(Alignment.BottomStart)
                     .padding(MOOD_TILE_LABEL_PADDING_DP.dp)
                     .clearAndSetSemantics {},
-                style = labelStyle.copy(color = colours.content),
+                style = labelStyle.copy(
+                    color = colours.content,
+                    shadow = Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 6f),
+                ),
             )
         }
     }
