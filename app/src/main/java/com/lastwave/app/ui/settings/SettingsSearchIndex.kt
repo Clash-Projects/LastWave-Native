@@ -1458,55 +1458,6 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
-                    id = "about.telegram_support",
-                    title = "Telegram Updates & Support",
-                    subtitle = "Join @clashprojects on Telegram for app news, beta builds, and support",
-                    keywords = listOf(
-                        "telegram", "support", "community", "chat", "clashprojects", "help",
-                        "updates channel", "news"
-                    ),
-                    icon = Icons.AutoMirrored.Filled.Send,
-                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.ABOUT,
-                    section = "About & Community",
-                    type = EntryType.ACTION,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "about.discord_support",
-                    title = "Discord Support",
-                    subtitle = "Join our Discord community server for support and feedback",
-                    keywords = listOf(
-                        "discord", "community", "chat", "support", "feedback", "server", "discussion"
-                    ),
-                    icon = Icons.Filled.Group,
-                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
-                    parentTab = SettingsTab.ABOUT,
-                    section = "About & Community",
-                    type = EntryType.ACTION,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "about.more_apps",
-                    title = "More Apps from Clash Projects",
-                    subtitle = "Join @MaterialYouApp on Telegram to discover other applications",
-                    keywords = listOf(
-                        "more apps", "material you app", "other apps", "clash projects", "developer"
-                    ),
-                    icon = Icons.Filled.AutoAwesome,
-                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.ABOUT,
-                    section = "About & Community",
-                    type = EntryType.ACTION,
-                )
-            )
-            add(
-                SettingsEntry(
                     id = "about.diagnostics",
                     title = "Export Diagnostics & Logs",
                     subtitle = "Export diagnostic report, crash logs, and hardware device info",

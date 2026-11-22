@@ -2225,52 +2225,9 @@ fun SettingsScreen(
                         item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_about))
-                    SettingsGroup(rowCount = 4) { index, position ->
-                        when (index) {
-                            0 -> SettingsActionCard(
-                                icon = Icons.AutoMirrored.Filled.Send,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_updates_support),
-                                subtitle = stringResource(R.string.set_tg_sub),
-                                onClick = {
-                                    if (!openTelegramChannel(context, "clashprojects")) {
-                                        viewModel.showToast(context.getString(R.string.toast_no_browser_tg))
-                                    }
-                                },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "about.telegram_support"),
-                            )
-                            1 -> SettingsActionCard(
-                                icon = Icons.Filled.Group,
-                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = stringResource(R.string.set_discord_support),
-                                subtitle = stringResource(R.string.set_discord_support_sub),
-                                onClick = {
-                                    val discordIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://discord.gg/TMCEPSUNk2"))
-                                    if (!startActivitySafely(context, discordIntent)) {
-                                        viewModel.showToast(context.getString(R.string.toast_no_browser))
-                                    }
-                                },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "about.discord_support"),
-                            )
-                            2 -> SettingsActionCard(
-                                icon = Icons.Filled.AutoAwesome,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_more_from_us),
-                                subtitle = stringResource(R.string.set_more_apps_sub),
-                                onClick = {
-                                    if (!openTelegramChannel(context, "MaterialYouApp")) {
-                                        viewModel.showToast(context.getString(R.string.toast_no_browser_tg))
-                                    }
-                                },
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "about.more_apps"),
-                            )
-                            3 -> SettingsActionCard(
+                    SettingsGroup(rowCount = 1) { _, position ->
+                        run {
+                            SettingsActionCard(
                                 icon = Icons.Filled.Code,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
