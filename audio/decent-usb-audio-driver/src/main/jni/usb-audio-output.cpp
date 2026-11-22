@@ -686,6 +686,24 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbSpeed(
 }
 
 JNIEXPORT jint JNICALL
+Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAttachKernelDriver(
+        JNIEnv *, jclass, jint fd, jint interfaceNum) {
+    LOGI("USBDEVFS_CONNECT fd=%d iface=%d", fd, interfaceNum);
+    struct usbdevfs_ioctl ctrl;
+    memset(&ctrl, 0, sizeof(ctrl));
+    ctrl.ifno = interfaceNum;
+    ctrl.ioctl_code = USBDEVFS_CONNECT;
+    ctrl.data = nullptr;
+    int ret = ioctl(fd, USBDEVFS_IOCTL, &ctrl);
+    if (ret < 0 && errno != EBUSY) {
+        LOGW("USBDEVFS_CONNECT failed iface=%d errno=%d", interfaceNum, errno);
+        return ret;
+    }
+    LOGI("USBDEVFS_CONNECT OK iface=%d (ret=%d errno=%d)", interfaceNum, ret, errno);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeUsbReset(
         JNIEnv *, jclass, jint fd) {
     LOGI("USBDEVFS_RESET fd=%d", fd);
