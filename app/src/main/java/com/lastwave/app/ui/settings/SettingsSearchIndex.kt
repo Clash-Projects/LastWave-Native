@@ -1150,10 +1150,11 @@ object SettingsSearchIndex {
                 SettingsEntry(
                     id = "spotify.recommendations",
                     title = "Recommendation provider",
-                    subtitle = "Seed recommendations from YouTube Music or Spotify",
+                    subtitle = "Seed recommendations from YouTube Music, Spotify or TIDAL",
                     keywords = listOf(
                         "recommendation", "recommendations", "algorithm", "provider", "radio",
-                        "discover", "mix", "mixes", "spotify recommendations", "youtube recommendations"
+                        "discover", "mix", "mixes", "spotify recommendations", "youtube recommendations",
+                        "tidal", "tidal recommendations", "vorschläge", "empfehlungen",
                     ),
                     icon = Icons.Filled.AutoAwesome,
                     iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
