@@ -107,14 +107,14 @@ object Md3SchemeBuilder {
      * Electric Lime (#C9FB00) and Deep Obsidian Teal (#012226).
      */
     fun buildLastWaveDarkScheme(amoled: Boolean, @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
-        val brandLime = Color(0xFF9581F6)
-        val darkTeal = Color(0xFF0A0A0A)
-        val deepTeal = Color(0xFF0A0A0A)
+        val brandLime = Color(0xFFC9FB00)
+        val darkTeal = Color(0xFF012226)
+        val deepTeal = Color(0xFF01181B)
 
         val backgroundCol = if (amoled) Color.Black else deepTeal
         val surfaceCol = if (amoled) Color.Black else darkTeal
-        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF14101C)
-        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF050505)
+        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF011E22)
+        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF001214)
 
         return darkColorScheme(
             primary = brandLime,
@@ -138,19 +138,19 @@ object Md3SchemeBuilder {
             onError = Color(0xFF690005),
 
             background = backgroundCol,
-            onBackground = Color(0xFFF7FBFF),
+            onBackground = Color(0xFFE4F8F8),
             surface = surfaceCol,
-            onSurface = Color(0xFFF7FBFF),
-            surfaceContainer = Color(0xFF231B32),
-            surfaceContainerHigh = Color(0xFF2F2442),
-            surfaceContainerHighest = Color(0xFF3B2D53),
+            onSurface = Color(0xFFE4F8F8),
+            surfaceContainer = Color(0xFF02272C),
+            surfaceContainerHigh = Color(0xFF04333A),
+            surfaceContainerHighest = Color(0xFF073F47),
             surfaceContainerLow = surfaceLowCol,
             surfaceContainerLowest = surfaceLowestCol,
-            surfaceVariant = Color(0xFF3B2D53),
-            onSurfaceVariant = Color(0xFFCFC7EE),
+            surfaceVariant = Color(0xFF063B42),
+            onSurfaceVariant = Color(0xFFA1CACE),
 
-            outline = Color(0xFF938BB5),
-            outlineVariant = Color(0xFF3D3360),
+            outline = Color(0xFF23656E),
+            outlineVariant = Color(0xFF0A444C),
 
             inverseSurface = Color(0xFFF7FBFF),
             inverseOnSurface = darkTeal,
@@ -163,13 +163,13 @@ object Md3SchemeBuilder {
      * LastWave Signature Light Scheme built around the official app logo colors.
      */
     fun buildLastWaveLightScheme(@Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
-        val brandLime = Color(0xFF9581F6)
-        val darkTeal = Color(0xFF0A0A0A)
+        val brandLime = Color(0xFFC9FB00)
+        val darkTeal = Color(0xFF012226)
 
         return androidx.compose.material3.lightColorScheme(
-            primary = Color(0xFF8C21FF),
+            primary = Color(0xFF486300),
             onPrimary = Color.White,
-            primaryContainer = Color(0xFFE6DEFF),
+            primaryContainer = Color(0xFFE0FE5B),
             onPrimaryContainer = darkTeal,
 
             secondary = Color(0xFF5B47D1),

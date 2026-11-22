@@ -561,7 +561,7 @@ class PlaylistRepository @Inject constructor(
             if (entity != null) {
                 val adopted = entity.copy(
                     title = LIKED_SONGS_TITLE,
-                    subtitle = "Songs you like in SoundDrop",
+                    subtitle = "Songs you like in LastWave",
                     mode = LIKED_SONGS_MODE,
                     isPinned = true,
                 )

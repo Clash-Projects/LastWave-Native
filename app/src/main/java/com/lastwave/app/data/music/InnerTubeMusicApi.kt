@@ -1499,7 +1499,7 @@ class InnerTubeMusicApi @Inject constructor(
     suspend fun createRemotePlaylist(title: String): String? = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext null
         val cleanTitle = title.replace("<", "(").replace(">", ")").take(150)
-            .ifBlank { "SoundDrop Playlist" }
+            .ifBlank { "LastWave Playlist" }
         val config = getWebConfig()
         val root = runCatching {
             post(

@@ -41,7 +41,7 @@ data class ThemePrefs(
     /** iOS-style liquid-glass materials. Enabled by default. */
     val liquidGlass: Boolean = true,
     /** Optional Material 3 full-width navigation bar instead of the default floating dock. */
-    val md3NavBar: Boolean = true,
+    val md3NavBar: Boolean = false,
     /** Whether bottom navigation tabs are completely hidden. */
     val hideNavTabs: Boolean = false,
     /** Haptic feedback on taps, buttons, toggles and gestures across the app. */

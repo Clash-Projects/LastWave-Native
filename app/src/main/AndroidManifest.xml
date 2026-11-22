@@ -109,7 +109,7 @@
                 <data android:scheme="lastwave" android:host="auth-callback" />
             </intent-filter>
 
-            <!-- SoundDrop Jam deep links (lastwave://jam?code=... and lastwave://sync?code=...) -->
+            <!-- LastWave Jam deep links (lastwave://jam?code=... and lastwave://sync?code=...) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -118,7 +118,7 @@
                 <data android:scheme="lastwave" android:host="sync" />
             </intent-filter>
 
-            <!-- SoundDrop Jam web invite deep links (https://jam.clashprojects.qd.je/?code=...) -->
+            <!-- LastWave Jam web invite deep links (https://jam.clashprojects.qd.je/?code=...) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

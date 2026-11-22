@@ -3058,7 +3058,7 @@ private fun FullPlayer(
                                     if (currentTab == FullPlayerTab.LYRICS) {
                                         "${track.title} • ${track.artist}"
                                     } else {
-                                        state.sourceLabel.takeIf { it.isNotBlank() } ?: "SoundDrop"
+                                        state.sourceLabel.takeIf { it.isNotBlank() } ?: "LastWave"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.White.copy(alpha = 0.70f),

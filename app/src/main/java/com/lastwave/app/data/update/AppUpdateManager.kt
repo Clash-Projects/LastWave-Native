@@ -127,7 +127,7 @@ class AppUpdateManager @Inject constructor(
                 val body = response.body?.string().orEmpty()
                 val json = JSONObject(body)
                 val tagName = json.optString("tag_name", "")
-                val releaseUrl = json.optString("html_url", "https://github.com/1f81-official/SoundDrop/releases")
+                val releaseUrl = json.optString("html_url", "https://github.com/1f81-official/LastWave/releases")
                 val releaseNotes = json.optString("body", "")
 
                 val apkAssets = mutableListOf<ReleaseAsset>()

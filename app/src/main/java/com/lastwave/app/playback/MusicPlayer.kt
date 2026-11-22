@@ -180,7 +180,7 @@ internal data class PersistedPlaybackSession(
     val queue: List<PlayableTrack>,
     val currentIndex: Int,
     val positionMs: Long,
-    val sourceLabel: String = "SoundDrop",
+    val sourceLabel: String = "LastWave",
     val isEndlessQueue: Boolean = false,
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
@@ -197,7 +197,7 @@ data class MusicPlayerState(
     val current: PlayableTrack? = null,
     val queue: List<PlayableTrack> = emptyList(),
     val currentIndex: Int = -1,
-    val sourceLabel: String = "SoundDrop",
+    val sourceLabel: String = "LastWave",
     val isEndlessQueue: Boolean = false,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
@@ -231,7 +231,7 @@ data class MusicPlayerState(
 @androidx.compose.runtime.Immutable
 data class PlaybackChromeState(
     val current: PlayableTrack? = null,
-    val sourceLabel: String = "SoundDrop",
+    val sourceLabel: String = "LastWave",
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     val queueSize: Int = 0,
@@ -250,7 +250,7 @@ data class PlaybackChromeState(
 @androidx.compose.runtime.Immutable
 data class ListPlaybackState(
     val current: PlayableTrack? = null,
-    val sourceLabel: String = "SoundDrop",
+    val sourceLabel: String = "LastWave",
     val isPlaying: Boolean = false,
     val shuffleEnabled: Boolean = false,
 )
@@ -3951,9 +3951,9 @@ class MusicPlayer @Inject constructor(
         musicHapticsController.bindToPlayer(standby)
         musicHapticsController.onAudioSessionIdChanged(standby.audioSessionId)
         standby.addListener(listener)
-        // Keep handleAudioFocus = false: SoundDrop manages audio focus manually via requestMediaAudioFocus().
+        // Keep handleAudioFocus = false: LastWave manages audio focus manually via requestMediaAudioFocus().
         // Setting true here activates ExoPlayer's internal AudioFocusManager which steals focus, causing Android
-        // to send AUDIOFOCUS_LOSS (-1) to SoundDrop's own focus listener, immediately pausing playback.
+        // to send AUDIOFOCUS_LOSS (-1) to LastWave's own focus listener, immediately pausing playback.
         standby.setAudioAttributes(standby.audioAttributes, false)
         // Hand-off never starts the next song behind a pause.
         if (outgoing.playWhenReady) standby.play()
@@ -4247,7 +4247,7 @@ class MusicPlayer @Inject constructor(
      * the Bit-Perfect toggle decides bypass, volume policy and verdict.
      * The SOURCE rate always drives the output-stream request (44.1/48/
      * 88.2/96/176.4/192/352.8/384 kHz) â€” never a fixed 48 kHz â€” so no
-     * SoundDrop resampler runs when the route accepts the source format.
+     * LastWave resampler runs when the route accepts the source format.
      */
     private fun applyDacRoutingFor(sourceRateHz: Int?, streamCodec: String? = null) {
         val isSpatial = isSpatialAudioCodec(streamCodec) || isSpatialAudioCodec(_state.value.audioCodec)
@@ -9762,7 +9762,7 @@ class MusicPlayer @Inject constructor(
         const val KEY_VOLUME_SAVED = "bitperfect_volume_saved"
         /** Ticker-driven session persistence cadence (explicit state changes persist immediately). */
         const val TICKER_PERSIST_INTERVAL_MS = 2_000L
-        /** Steady-state progress ticker cadence while no SoundDrop screen is visible. */
+        /** Steady-state progress ticker cadence while no LastWave screen is visible. */
         const val BACKGROUND_TICKER_CADENCE_MS = 250L
         /** In-app volume is saved this long after the slider stops moving. */
         const val APP_VOLUME_PERSIST_DEBOUNCE_MS = 400L

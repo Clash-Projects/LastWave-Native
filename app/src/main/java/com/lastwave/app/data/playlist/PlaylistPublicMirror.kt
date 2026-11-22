@@ -39,7 +39,7 @@ data class PlaylistMirrorFile(
     val playlists: List<PlaylistMirrorEntry>,
 )
 
-/** Public Downloads/SoundDrop JSON mirror. Room remains the fast runtime
+/** Public Downloads/LastWave JSON mirror. Room remains the fast runtime
  * source; this file is the uninstall and destructive-migration recovery. */
 @Singleton
 class PlaylistPublicMirror @Inject constructor(
@@ -86,7 +86,7 @@ class PlaylistPublicMirror @Inject constructor(
 
     suspend fun importAndMerge(content: String): Result<Int> = mutex.withLock {
         val mirror = decode(content)
-            ?: return@withLock Result.failure(IllegalArgumentException("Invalid SoundDrop playlist JSON"))
+            ?: return@withLock Result.failure(IllegalArgumentException("Invalid LastWave playlist JSON"))
         try {
             dao.upsertAll(mirror.playlists.map { it.toEntity() })
             writeLocked(dao.getAll()).onFailure { error ->

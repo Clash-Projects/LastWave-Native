@@ -266,7 +266,7 @@ import kotlin.math.roundToLong
 
 private data class AccentPreset(val name: String, val hex: String)
 private val ACCENT_PRESETS = listOf(
-    AccentPreset("Pinkish", "#fd79ff"),
+    AccentPreset("Crimson", "#E03030"),
     AccentPreset("Violet", "#7C4DFF"),
     AccentPreset("Ocean", "#2196C6"),
     AccentPreset("Sage", "#6B9E6B"),
@@ -478,7 +478,7 @@ enum class SettingsTab(
         titleRes = R.string.set_cat_about,
         subtitleRes = R.string.set_cat_about_sub,
         title = "About & Community",
-        subtitle = "Version info, Telegram Community, About",
+        subtitle = "Version info, Telegram community, GitHub repository",
         icon = Icons.Filled.Info,
     ),
 }
@@ -2455,13 +2455,28 @@ fun SettingsScreen(
                     )
 
                     SettingsActionCard(
+                        icon = Icons.Filled.Code,
+                        iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        title = stringResource(R.string.settings_source_code),
+                        subtitle = "github.com/Clash-Projects/LastWave-native",
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-native"))
+                            if (!startActivitySafely(context, intent)) {
+                                viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
+                            }
+                        },
+                        isHighlighted = (highlightedSettingId == "about.source_code"),
+                    )
+
+                    SettingsActionCard(
                         icon = Icons.Filled.Download,
                         iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                         iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                         title = stringResource(R.string.settings_desktop_app),
-                        subtitle = "sounddrop.framer.website/download",
+                        subtitle = "github.com/Clash-Projects/LastWave-Desktop",
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sounddrop.framer.website/download"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
                             if (!startActivitySafely(context, intent)) {
                                 viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
                             }
@@ -5212,7 +5227,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
+                    .clickable { onOpenUrl("https://github.com/duxtami/SleepTracker") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -5245,7 +5260,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
+                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=aman.lyricify") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -5277,7 +5292,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
+                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=com.sernheise.app") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -5340,13 +5355,13 @@ private fun AboutCard(
             ) {
                 Icon(
                     painter = painterResource(appIcon.logoRes),
-                    contentDescription = "SoundDrop",
+                    contentDescription = "LastWave",
                     tint = Color.Unspecified,
                     modifier = Modifier.size(72.dp),
                 )
             }
             Spacer(Modifier.height(14.dp))
-            Text("SoundDrop", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("LastWave", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Surface(
                 shape = ExpressivePillShape,
@@ -5372,7 +5387,7 @@ private fun AboutCard(
                 shape = ExpressivePillShape,
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sounddrop.framer.website/download"))
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
                     if (!startActivitySafely(context, intent)) {
                         android.widget.Toast.makeText(context, context.getString(R.string.toast_no_browser_plain), android.widget.Toast.LENGTH_SHORT).show()
                     }
@@ -6150,7 +6165,7 @@ private fun EqNativeSlider(
     }
 }
 
-/** Controls which connected-account playlists appear in SoundDrop. This is
+/** Controls which connected-account playlists appear in LastWave. This is
  * intentionally independent from importing and two-way sync. */
 /**
  * Lets the user pick which YouTube channel/profile answers inside the
@@ -6358,7 +6373,7 @@ private fun YouTubeLibraryVisibilitySheet(
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.set_yt_shown_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        "Choose which account playlists appear in SoundDrop",
+                        "Choose which account playlists appear in LastWave",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

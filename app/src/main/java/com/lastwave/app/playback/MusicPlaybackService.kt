@@ -581,7 +581,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             val played = runCatching {
                 withContext(Dispatchers.IO) {
                     if (query.isBlank()) {
-                        // "Hey Google, play music on SoundDrop": no title given.
+                        // "Hey Google, play music on LastWave": no title given.
                         androidAutoLibrary.playAnything(musicPlayer)
                     } else {
                         androidAutoLibrary.playSearch(query, musicPlayer)
@@ -1620,7 +1620,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             val playPauseLabel = if (state.isPlaying) "Pause" else "Play"
             return builder
                 .setSmallIcon(R.drawable.ic_launcher_logo)
-                .setContentTitle(state.current?.title ?: "SoundDrop")
+                .setContentTitle(state.current?.title ?: "LastWave")
                 .setContentText(state.current?.artist ?: "Music player")
                 .setSubText(state.current?.album)
                 .setContentIntent(openAppPendingIntent())
@@ -1684,7 +1684,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
 
         return builder
             .setSmallIcon(R.drawable.ic_launcher_logo)
-            .setContentTitle(state.current?.title ?: "SoundDrop")
+            .setContentTitle(state.current?.title ?: "LastWave")
             .setContentText(state.current?.artist ?: "Music player")
             .setSubText(state.current?.album)
             .setContentIntent(openAppPendingIntent())
@@ -1741,7 +1741,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         // 192px is already sharp. Two sizes keep the Binder parcel small.
         if (art != null) setImageViewBitmap(R.id.notification_artwork, scaledBitmap(art, if (expanded) 288 else 192))
         else setImageViewResource(R.id.notification_artwork, R.mipmap.ic_launcher)
-        setTextViewText(R.id.notification_title, state.current?.title ?: "SoundDrop")
+        setTextViewText(R.id.notification_title, state.current?.title ?: "LastWave")
         setTextViewText(R.id.notification_artist, state.current?.artist ?: "Music player")
         setTextColor(R.id.notification_title, palette.onSurface)
         setTextColor(R.id.notification_artist, palette.onSurfaceVariant)
@@ -1879,7 +1879,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             runCatching { nm.deleteNotificationChannel(LEGACY_CHANNEL_ID_V1) }
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Music playback", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Native SoundDrop playback controls"
+                    description = "Native LastWave playback controls"
                     setShowBadge(false)
                     setSound(null, null)
                     enableVibration(false)
