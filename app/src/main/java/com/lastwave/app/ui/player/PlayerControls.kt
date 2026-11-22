@@ -497,6 +497,7 @@ internal fun PlayerModeButton(
     background: Color,
     foreground: Color,
     iconSize: androidx.compose.ui.unit.Dp,
+    shape: Shape = CircleShape,
     modifier: Modifier = Modifier,
     haptic: HapticFeedbackType = if (active) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
 ) {
@@ -513,9 +514,9 @@ internal fun PlayerModeButton(
         if (active) MaterialTheme.colorScheme.onPrimaryContainer else foreground, label = "modeContent",
     )
     LiquidGlassSurface(
-glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = interaction),
+        glassModifier = Modifier.liquidGlassChrome(shape, LocalLiquidGlass.current, LiquidGlassPreset.PlayerControls, interactionSource = interaction),
         onClick = hapticClick(haptic, onClick),
-        shape = CircleShape,
+        shape = shape,
         color = container,
         contentColor = content,
         tonalElevation = 0.dp,
@@ -540,6 +541,18 @@ glassModifier = Modifier.liquidGlassChrome(CircleShape, LocalLiquidGlass.current
             }
         }
     }
+}
+
+/** Outer corners fully round, inner corners tight: one connected button group. */
+private fun connectedShape(index: Int, count: Int): RoundedCornerShape {
+    val outer = 24.dp
+    val inner = 6.dp
+    return RoundedCornerShape(
+        topStart = if (index == 0) outer else inner,
+        bottomStart = if (index == 0) outer else inner,
+        topEnd = if (index == count - 1) outer else inner,
+        bottomEnd = if (index == count - 1) outer else inner,
+    )
 }
 
 @Composable
@@ -567,7 +580,7 @@ internal fun PlayerUtilityControls(
 
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(if (isTranslucent) 10.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PlayerModeButton(
@@ -577,6 +590,7 @@ internal fun PlayerUtilityControls(
             onClick = player::toggleShuffle,
             background = edgeButtonBackground,
             foreground = edgeButtonContent,
+            shape = connectedShape(0, 3),
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
         )
@@ -590,6 +604,7 @@ internal fun PlayerUtilityControls(
                 isVideoActive = isVideoActive,
                 onOpenAudioControls = onOpenAudioControls,
                 onToggleVideo = onToggleVideo,
+                shape = connectedShape(1, 3),
                 modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
             )
         } else {
@@ -600,6 +615,7 @@ internal fun PlayerUtilityControls(
                 onClick = onOpenAudioControls,
                 background = edgeButtonBackground,
                 foreground = edgeButtonContent,
+                shape = connectedShape(1, 3),
                 iconSize = if (isTranslucent) 19.dp else 20.dp,
                 modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
                 haptic = HapticFeedbackType.ContextClick,
@@ -616,6 +632,7 @@ internal fun PlayerUtilityControls(
             onClick = player::cycleRepeatMode,
             background = edgeButtonBackground,
             foreground = edgeButtonContent,
+            shape = connectedShape(2, 3),
             iconSize = if (isTranslucent) 19.dp else 20.dp,
             modifier = Modifier.weight(1f).height(if (isTranslucent) 44.dp else 48.dp),
             // Repeat one is the last stop before off.
@@ -638,6 +655,7 @@ internal fun DividedUtilityPill(
     isVideoActive: Boolean,
     onOpenAudioControls: () -> Unit,
     onToggleVideo: (() -> Unit)?,
+    shape: Shape = CircleShape,
     modifier: Modifier = Modifier,
 ) {
     val container = liquidGlassContainerColor(background)
@@ -655,11 +673,11 @@ internal fun DividedUtilityPill(
     LiquidGlassSurface(
         onClick = {},
         glassModifier = Modifier.liquidGlassChrome(
-            CircleShape,
+            shape,
             LocalLiquidGlass.current,
             LiquidGlassPreset.PlayerControls,
         ),
-        shape = CircleShape,
+        shape = shape,
         color = container,
         contentColor = foreground,
         tonalElevation = 0.dp,

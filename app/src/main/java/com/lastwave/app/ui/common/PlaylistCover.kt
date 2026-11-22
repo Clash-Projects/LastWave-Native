@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.lastwave.app.data.artwork.ArtworkNormalizer
+import com.lastwave.app.data.playlist.LOCAL_SONGS_MODE
 import com.lastwave.app.data.playlist.SavedPlaylist
 
 /** Custom/remote cover first, then the earliest track carrying real artwork metadata. */
@@ -53,6 +55,8 @@ fun PlaylistCover(
             ?: playlist.tracks.firstOrNull()
     }
 
+    val fallbackIcon = if (playlist.mode == LOCAL_SONGS_MODE) Icons.Filled.Folder else Icons.Filled.MusicNote
+
     Box(
         modifier = modifier
             .clip(shape)
@@ -60,7 +64,7 @@ fun PlaylistCover(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            Icons.Filled.MusicNote,
+            fallbackIcon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -87,7 +91,7 @@ fun PlaylistCover(
                 name = automaticTrack.name,
                 artist = automaticTrack.artist,
                 embeddedUrl = automaticTrack.artworkUrl,
-                fallbackIcon = Icons.Filled.MusicNote,
+                fallbackIcon = fallbackIcon,
                 modifier = Modifier.fillMaxSize(),
             )
         }

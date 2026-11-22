@@ -129,6 +129,7 @@ import com.lastwave.app.data.generate.GeneratedTrack
 import com.lastwave.app.data.playlist.LIKED_SONGS_MODE
 import com.lastwave.app.data.playlist.LOCAL_SONGS_MODE
 import com.lastwave.app.data.generate.isLocalFile
+import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.playlist.SavedPlaylist
 import com.lastwave.app.data.playlist.isYouTubeOnly
 import com.lastwave.app.playback.toPlayableTrack
@@ -143,6 +144,8 @@ import com.lastwave.app.ui.common.PlaylistCover
 import com.lastwave.app.ui.common.TrackContextMenuSheet
 import com.lastwave.app.ui.common.TrackMenuCapabilities
 import com.lastwave.app.ui.common.TrackMenuTarget
+import com.lastwave.app.ui.common.TrackMiniTrayData
+import com.lastwave.app.ui.common.TrackMiniTraySheet
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.shell.FloatingNavDefaults
 import com.lastwave.app.ui.theme.ArtworkShape
@@ -282,6 +285,7 @@ fun PlaylistDetailScreen(
     }
 
     var menuTarget by remember { mutableStateOf<Pair<Int, GeneratedTrack>?>(null) }
+    var miniTrayTarget by remember { mutableStateOf<TrackMiniTrayData?>(null) }
     var overflowMenuOpen by remember { mutableStateOf(false) }
     val syncedPlaylistIds by viewModel.syncedPlaylistIds.collectAsStateWithLifecycle()
     var sortMenuOpen by remember { mutableStateOf(false) }
@@ -292,10 +296,13 @@ fun PlaylistDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
-    val displayTrackIndices = remember(playlist.tracks, playlist.remotePlaylistId, currentSort, sortAscending, searchQuery) {
+    val isLikedPlaylist = playlist.mode == LIKED_SONGS_MODE ||
+        playlist.title.equals("Liked Songs", ignoreCase = true) ||
+        playlist.remotePlaylistId?.let(com.lastwave.app.data.playlist.PlaylistImportManager::isYtLikedId) == true
+    val displayTrackIndices = remember(playlist.tracks, playlist.remotePlaylistId, playlist.mode, currentSort, sortAscending, searchQuery) {
         playlistTrackDisplayIndices(
             playlist.tracks, playlist.tracks, currentSort, sortAscending, searchQuery,
-            newestFirst = playlist.remotePlaylistId?.let(com.lastwave.app.data.playlist.PlaylistImportManager::isYtLikedId) == true,
+            newestFirst = isLikedPlaylist,
         )
     }
     val displayTracks = remember(playlist.tracks, displayTrackIndices) {
@@ -468,14 +475,24 @@ fun PlaylistDetailScreen(
                         FilledTonalIconButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                if (isThisPlaylistPlaying) {
-                                    musicPlayer.toggleShuffle()
-                                } else if (displayTracks.isNotEmpty()) {
+                                if (displayTracks.isNotEmpty()) {
                                     val playableTracks = displayTracks.map(GeneratedTrack::toPlayableTrack)
-                                    val randomIndex = playableTracks.indices.random()
+                                    val current = playbackState.current
+                                    val currentIndex = if (current != null) {
+                                        playableTracks.indexOfFirst {
+                                            it.title.equals(current.title, ignoreCase = true) &&
+                                                it.artist.equals(current.artist, ignoreCase = true)
+                                        }
+                                    } else -1
+                                    val candidates = if (playableTracks.size > 1 && currentIndex >= 0) {
+                                        playableTracks.indices.filter { it != currentIndex }
+                                    } else {
+                                        playableTracks.indices.toList()
+                                    }
+                                    val nextIndex = candidates.randomOrNull() ?: 0
                                     musicPlayer.playQueue(
                                         playableTracks,
-                                        startIndex = randomIndex,
+                                        startIndex = nextIndex,
                                         sourceLabel = currentSourceLabel,
                                         startShuffled = true,
                                     )
@@ -815,6 +832,26 @@ fun PlaylistDetailScreen(
                             onMenu = {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 menuTarget = displayTrackIndices[index] to track
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val safeIndex = index.coerceIn(displayTracks.indices)
+                                miniTrayTarget = TrackMiniTrayData(
+                                    title = track.name,
+                                    artist = track.artist,
+                                    album = track.album,
+                                    artworkUrl = track.artworkUrl,
+                                    videoId = track.youtubeVideoIdOrNull(),
+                                    sourceLabel = playlist.title,
+                                    onPlay = {
+                                        musicPlayer.playQueue(
+                                            displayTracks.map(GeneratedTrack::toPlayableTrack),
+                                            startIndex = safeIndex,
+                                            sourceLabel = playlist.title,
+                                            startShuffled = playbackState.shuffleEnabled,
+                                        )
+                                    },
+                                )
                             },
                             dragHandle = if (!reorderEnabled) {
                                 null
@@ -1372,7 +1409,7 @@ fun PlaylistDetailScreen(
     menuTarget?.let { (sourceIndex, track) ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.url),
-            capabilities = TrackMenuCapabilities(showDeleteScrobble = true),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = true, showRecommendationExclusion = true),
             // Keep the file path so menu actions play / add the local copy.
             playableTrack = track.takeIf { it.isLocalFile() }?.toPlayableTrack(),
             playbackSourceLabel = playlist.title,
@@ -1386,6 +1423,13 @@ fun PlaylistDetailScreen(
             onRefreshArtwork = { viewModel.refreshArtwork(track.name, track.artist) },
         )
     }
+
+    miniTrayTarget?.let { trayData ->
+        TrackMiniTraySheet(
+            data = trayData,
+            onDismiss = { miniTrayTarget = null },
+        )
+    }
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -1396,6 +1440,7 @@ private fun NativeTrackRow(
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMenu: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     dragHandle: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -1407,6 +1452,7 @@ private fun NativeTrackRow(
         position = position,
         isPlaying = isPlaying,
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier,
         leading = {
             Box(modifier = Modifier.size(52.dp)) {

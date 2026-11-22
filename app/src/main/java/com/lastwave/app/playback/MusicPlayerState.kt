@@ -283,6 +283,8 @@ internal fun MusicPlayerState.withSubsystemStateFrom(live: MusicPlayerState): Mu
         isJamActive = live.isJamActive,
         appVolume = live.appVolume,
         isCasting = live.isCasting,
+        speed = live.speed,
+        pitch = live.pitch,
     )
 
 /** The small, frequently changing state consumed only by progress UI. */

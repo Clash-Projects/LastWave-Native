@@ -761,29 +761,30 @@ fun MainShell(
                                 .background(MaterialTheme.colorScheme.secondaryContainer),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                Icons.Outlined.Cast,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.size(20.dp),
-                            )
+                            if (castAvailable) {
+                                androidx.compose.ui.viewinterop.AndroidView(
+                                    modifier = Modifier.size(24.dp),
+                                    factory = { viewContext ->
+                                        androidx.mediarouter.app.MediaRouteButton(viewContext).apply {
+                                            background = null
+                                            com.google.android.gms.cast.framework.CastButtonFactory.setUpMediaRouteButton(viewContext, this)
+                                            routeButton = this
+                                        }
+                                    },
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Outlined.Cast,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Cast", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                             Text("Stream to TV or speaker", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (castAvailable) {
-                            androidx.compose.ui.viewinterop.AndroidView(
-                                modifier = Modifier.size(0.dp),
-                                factory = { viewContext ->
-                                    androidx.mediarouter.app.MediaRouteButton(viewContext).apply {
-                                        background = null
-                                        com.google.android.gms.cast.framework.CastButtonFactory.setUpMediaRouteButton(viewContext, this)
-                                        routeButton = this
-                                    }
-                                },
-                            )
                         }
                     }
                 }

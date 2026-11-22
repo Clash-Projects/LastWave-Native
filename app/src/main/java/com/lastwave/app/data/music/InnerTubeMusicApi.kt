@@ -1907,7 +1907,7 @@ class InnerTubeMusicApi @Inject constructor(
 
                         val fullTracks = if (!moreBrowseId.isNullOrBlank()) {
                             runCatching {
-                                browseSongs(moreBrowseId, params = moreParams, limit = 100).map { track ->
+                                browseSongs(moreBrowseId, params = moreParams, limit = 1000).map { track ->
                                     com.lastwave.app.playback.PlayableTrack(
                                         title = track.title,
                                         artist = track.artist.takeUnless { it == "Unknown artist" } ?: title,
@@ -2321,7 +2321,7 @@ class InnerTubeMusicApi @Inject constructor(
         val seenTokens = mutableSetOf<String>()
         val knownVideoIds = songs.mapTo(mutableSetOf()) { it.videoId }
         var page = 0
-        val maxPages = if (limit != null) minOf(8, (limit / 20) + 1) else 6
+        val maxPages = if (limit != null) (limit / 20) + 10 else 50
         while (!token.isNullOrBlank() && page < maxPages && (limit == null || songs.size < limit)) {
             val currentToken = token ?: break
             if (!seenTokens.add(currentToken)) break
