@@ -221,7 +221,7 @@ class MusicPlayer @Inject constructor(
             "LastWave:StreamResolutionWakeLock",
         )?.apply { setReferenceCounted(false) }
     }
-    private val extractorsFactory: ExtractorsFactory by lazy {
+    internal val extractorsFactory: ExtractorsFactory by lazy {
         val defaults = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
             .setMp3ExtractorFlags(
@@ -778,7 +778,7 @@ class MusicPlayer @Inject constructor(
             .setDefaultRequestProperties(NEUTRAL_MEDIA_HEADERS)
     }
 
-    private val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
+    internal val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
         val defaultDataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(appContext, httpUpstreamFactory)
         val chunkedUpstreamFactory = androidx.media3.datasource.DataSource.Factory {
             ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), refresher = ::refreshRejectedYouTubeUrl)

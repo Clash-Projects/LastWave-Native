@@ -3,6 +3,7 @@
 package com.lastwave.app.ui.player
 
 import com.lastwave.app.data.local.SeekbarStyle
+import com.lastwave.app.ui.player.automix.rememberAutoMixWaveforms
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import com.lastwave.app.data.playlist.isLikedIn
@@ -372,6 +373,14 @@ fun PlayerHost(
     @Suppress("NAME_SHADOWING")
     val hideMiniPlayer = hideMiniPlayer || webContentScreen
     val state by viewModel.chromeState.collectAsStateWithLifecycle()
+    val autoMixView = state.deckBlendTelemetry.view
+    if (autoMixView != null) {
+        // Prepare cue windows while the mini player is shown, before the popup can be tapped.
+        val autoMixQueue = remember(autoMixView.outgoing, autoMixView.incoming, autoMixView.cueOutMs) {
+            viewModel.player.state.value.queue
+        }
+        rememberAutoMixWaveforms(autoMixView, viewModel.player, autoMixQueue)
+    }
     val playbackState by viewModel.player.stateWithoutProgress.collectAsStateWithLifecycle()
     val activeDownloads by viewModel.activeDownloads.collectAsStateWithLifecycle()
     var expanded by rememberSaveable { mutableStateOf(false) }

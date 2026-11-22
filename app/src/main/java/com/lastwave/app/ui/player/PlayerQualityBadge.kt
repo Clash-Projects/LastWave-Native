@@ -471,6 +471,7 @@ internal fun AppleMusicQualityBadge(
                         it.positionOnScreen(), Size(it.size.width.toFloat(), it.size.height.toFloat()),
                     )
                 }
+                .then(if (isMixActive) Modifier.autoMixNeonBorder() else Modifier)
                 .clip(CircleShape)
                 .background(capsuleColor)
                 .combinedClickable(
@@ -524,4 +525,24 @@ internal fun AppleMusicQualityBadge(
             )
         }
     }
+}
+
+private fun Modifier.autoMixNeonBorder(): Modifier = drawWithContent {
+    drawContent()
+    val brush = Brush.sweepGradient(listOf(Color(0xFF42E58B), Color(0xFF5ABDE5), Color(0xFF42E58B)))
+    val stroke = 1.dp.toPx()
+    drawRoundRect(
+        brush = brush,
+        alpha = 0.22f,
+        cornerRadius = CornerRadius(size.height / 2f),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(stroke * 4f),
+    )
+    drawRoundRect(
+        brush = brush,
+        alpha = 0.95f,
+        topLeft = Offset(stroke / 2f, stroke / 2f),
+        size = Size(size.width - stroke, size.height - stroke),
+        cornerRadius = CornerRadius((size.height - stroke) / 2f),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+    )
 }

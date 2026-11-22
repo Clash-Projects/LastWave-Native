@@ -54,6 +54,7 @@ import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -288,7 +289,7 @@ internal fun AutoMixPopupHost(
                             ) {
                                 Text(
                                     "AUTOMIX",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.4.sp),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp),
                                     color = StudioContent.copy(alpha = 0.5f),
                                 )
                                 Spacer(Modifier.weight(1f))

@@ -83,7 +83,7 @@ internal fun AutoMixDeckView(
                 status?.let {
                     Text(
                         it,
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
                         color = StudioContent.copy(alpha = 0.65f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -199,9 +199,9 @@ private fun DeckMetrics(deck: MixDeckView) {
 @Composable
 private fun WaveformNotice(status: WaveformPreviewStatus, modifier: Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
-        if (status != WaveformPreviewStatus.READY) {
+        if (status == WaveformPreviewStatus.LOADING) {
             Text(
-                if (status == WaveformPreviewStatus.LOADING) "Reading waveform…" else "Waveform unavailable",
+                "Preparing waveform…",
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Normal),
                 color = StudioContent.copy(alpha = 0.55f),
                 modifier = Modifier.background(StudioPlot.copy(alpha = 0.9f), RoundedCornerShape(4.dp)).padding(8.dp),
