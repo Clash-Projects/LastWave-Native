@@ -349,12 +349,12 @@ class FeedRepository @Inject constructor(
             YouTubeMusicTrack(it.youtubeVideoIdOrNull().orEmpty(), it.name, it.artist, it.album, it.artworkUrl)
         }
 
-        val spotifySeeds = recommendationRepository.isSpotifyActive()
+        val externalSeeds = recommendationRepository.usesExternalSeeds()
         val discoverySeeds = (ytLikedSongs + ytRecentSongs + regularPicks + localQuickPicks)
             .filter { it.videoId.isNotBlank() }
             .shuffled(random)
             .distinctBy { ArtistHelper.primaryArtist(it.artist).lowercase() }
-            .take(if (spotifySeeds) 1 else 3)
+            .take(if (externalSeeds) 1 else 3)
         val discoveryDef = async(Dispatchers.IO) {
             discoverySeeds.map { seed ->
                 async {

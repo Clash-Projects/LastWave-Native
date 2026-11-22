@@ -37,6 +37,8 @@ class RecommendationRepositoryTest {
         spotifyRecommendations = spotify,
         settingsPreferences = settings,
         spotifyPreferences = spotifyPreferences,
+        tidalAccount = io.mockk.mockk(relaxed = true),
+        tidalSource = io.mockk.mockk(relaxed = true),
     ).also {
         every { settings.settings } returns flowOf(MiscSettings(recommendationSource = source))
         every { spotifyPreferences.isConnected } returns flowOf(connected)

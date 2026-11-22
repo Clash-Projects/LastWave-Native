@@ -412,8 +412,8 @@ class GenerateRepository @Inject constructor(
             .take(4)
 
         if (validSeeds.isNotEmpty()) {
-            val spotifySeeds = recommendationRepository.isSpotifyActive()
-            val seedsToUse = if (spotifySeeds) validSeeds.take(2) else validSeeds
+            val externalSeeds = recommendationRepository.usesExternalSeeds()
+            val seedsToUse = if (externalSeeds) validSeeds.take(2) else validSeeds
             val perSeedLimit = maxOf(12, (limit / seedsToUse.size) + 5)
             val deferreds = seedsToUse.map { seed ->
                 async(Dispatchers.IO) {
@@ -630,7 +630,7 @@ class GenerateRepository @Inject constructor(
         // 1. Primary discovery: YouTube Music Radio
         var youtubeTracks: List<YouTubeMusicTrack> = emptyList()
         // A missing YouTube id still works for Spotify, which seeds on title/artist.
-        if (resolvedVideoId != null || recommendationRepository.isSpotifyActive()) {
+        if (resolvedVideoId != null || recommendationRepository.usesExternalSeeds()) {
             try {
                 val primaryRadio = recommendationRepository.relatedFor(
                     seedVideoId = resolvedVideoId,
@@ -1406,11 +1406,7 @@ class GenerateRepository @Inject constructor(
         onProgress: (String) -> Unit = {},
     ): List<GeneratedTrack> {
         onProgress(
-            if (recommendationRepository.isSpotifyActive()) {
-                "Finding similar songs with Spotify\u2026"
-            } else {
-                "Finding similar songs with YouTube Music\u2026"
-            },
+            "Finding similar songs with ${recommendationRepository.activeSourceName()}\u2026",
         )
         return fetchSimilarTracks(track = trackName, artist = artistName, limit = 28)
     }

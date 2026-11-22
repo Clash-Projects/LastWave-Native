@@ -381,6 +381,7 @@ internal fun LyricsAutoHideDialog(
 internal fun RecommendationSourceDialog(
     current: RecommendationSource,
     spotifyConnected: Boolean,
+    tidalConnected: Boolean,
     onSelect: (RecommendationSource) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -396,17 +397,17 @@ internal fun RecommendationSourceDialog(
                 )
                 Spacer(Modifier.height(4.dp))
                 RecommendationSource.entries.forEach { source ->
-                    val needsSpotify = source == RecommendationSource.SPOTIFY && !spotifyConnected
+                    val missingAccount = when (source) {
+                        RecommendationSource.SPOTIFY -> R.string.settings_recommendations_connect_first.takeUnless { spotifyConnected }
+                        RecommendationSource.TIDAL -> R.string.settings_recommendations_connect_tidal_first.takeUnless { tidalConnected }
+                        RecommendationSource.YOUTUBE_MUSIC -> null
+                    }
                     SettingsRadioOption(
                         label = stringResource(source.titleRes),
                         selected = source == current,
-                        onClick = { if (!needsSpotify) onSelect(source) },
-                        enabled = !needsSpotify,
-                        subtitle = if (needsSpotify) {
-                            stringResource(R.string.settings_recommendations_connect_first)
-                        } else {
-                            stringResource(source.subtitleRes)
-                        },
+                        onClick = { if (missingAccount == null) onSelect(source) },
+                        enabled = missingAccount == null,
+                        subtitle = stringResource(missingAccount ?: source.subtitleRes),
                     )
                 }
             }

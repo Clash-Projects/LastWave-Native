@@ -210,6 +210,8 @@ data class MusicPlayerState(
     val pitch: Float = 1f,
     val bitrateKbps: Int? = null,
     val audioCodec: String? = null,
+    /** Service the current audio streams from ("TIDAL", "YouTube", "Local"…); null when unknown. */
+    val streamOrigin: String? = null,
     val isLossless: Boolean = false,
     val bitDepth: Int? = null,
     val samplingRateKHz: Double? = null,

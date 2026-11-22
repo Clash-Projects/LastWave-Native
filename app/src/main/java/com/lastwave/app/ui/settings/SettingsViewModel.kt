@@ -131,6 +131,7 @@ class SettingsViewModel @Inject constructor(
     val innerTube: com.lastwave.app.data.music.InnerTubeMusicApi,
     val appUpdateManager: com.lastwave.app.data.update.AppUpdateManager,
     private val spotifyPreferences: com.lastwave.app.data.spotify.SpotifyPreferences,
+    private val tidalAccount: com.lastwave.app.data.tidal.TidalAccount,
     private val autoMixPreferences: com.lastwave.app.playback.automix.api.AutoMixPreferences,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
@@ -146,6 +147,10 @@ class SettingsViewModel @Inject constructor(
     val spotifyConnected: StateFlow<Boolean> = spotifyPreferences.isConnected
         .withSettingsFallback("Spotify connection", false)
         .stateIn(viewModelScope, SettingsSharing, false)
+
+    val tidalConnected: StateFlow<Boolean> = tidalAccount.session
+        .map { it != null }
+        .stateIn(viewModelScope, SettingsSharing, tidalAccount.isLoggedIn)
 
     val spotifyCanvasEnabled: StateFlow<Boolean> = spotifyPreferences.canvasEnabled
         .withSettingsFallback("Spotify canvas preference", true)
@@ -192,12 +197,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setRecommendationSource(source: com.lastwave.app.data.local.RecommendationSource) {
         viewModelScope.launch {
-            val usable = source != com.lastwave.app.data.local.RecommendationSource.SPOTIFY || spotifyConnected.value
+            val missingAccountMessage = when (source) {
+                com.lastwave.app.data.local.RecommendationSource.SPOTIFY ->
+                    com.lastwave.app.R.string.toast_spotify_connect_first.takeUnless { spotifyConnected.value }
+                com.lastwave.app.data.local.RecommendationSource.TIDAL ->
+                    com.lastwave.app.R.string.settings_recommendations_connect_tidal_first.takeUnless { tidalAccount.isLoggedIn }
+                com.lastwave.app.data.local.RecommendationSource.YOUTUBE_MUSIC -> null
+            }
             settingsPreferences.setRecommendationSource(
-                if (usable) source else com.lastwave.app.data.local.RecommendationSource.YOUTUBE_MUSIC,
+                if (missingAccountMessage == null) source else com.lastwave.app.data.local.RecommendationSource.YOUTUBE_MUSIC,
             )
-            if (!usable) {
-                _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_spotify_connect_first)) }
+            if (missingAccountMessage != null) {
+                _uiState.update { it.copy(toastMessage = appContext.getString(missingAccountMessage)) }
             }
         }
     }

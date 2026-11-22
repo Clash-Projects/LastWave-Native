@@ -1162,6 +1162,7 @@ class MusicPlayer @Inject constructor(
                     speed = userPlaybackSpeed,
                     pitch = userPlaybackPitch,
                     audioCodec = stream?.audioCodec,
+                    streamOrigin = stream?.originLabel,
                     bitrateKbps = stream?.bitrateKbps,
                     isLossless = stream?.isLossless == true,
                     bitDepth = stream?.bitDepth,
@@ -4817,8 +4818,8 @@ class MusicPlayer @Inject constructor(
             return emptyList()
         }
         radioUsedSeeds.add(seedVideoId)
-        if (recommendationRepository.isSpotifyActive()) {
-            android.util.Log.i("MusicPlayer", "Re-seeding Spotify recommendations from queue track: $seedVideoId")
+        if (recommendationRepository.usesExternalSeeds()) {
+            android.util.Log.i("MusicPlayer", "Re-seeding external recommendations from queue track: $seedVideoId")
             val seeded = recommendationRepository.relatedFor(
                 seedVideoId = seedVideoId,
                 title = candidateTrack.title,
@@ -4910,7 +4911,7 @@ class MusicPlayer @Inject constructor(
                     val existingSongKeys = existingTracks.mapTo(mutableSetOf()) { PureRadioQueue.normalizedSongKey(it.title, it.artist) }
                     val recentHistoryKeys = playHistory.takeLast(50).toSet()
 
-                    val toAdd: List<PlayableTrack> = if (seedVideoId != null && recommendationRepository.isSpotifyActive()) {
+                    val toAdd: List<PlayableTrack> = if (seedVideoId != null && recommendationRepository.usesExternalSeeds()) {
                         val seeded = recommendationRepository.relatedFor(
                             seedVideoId = seedVideoId,
                             title = seed.title,
@@ -5857,7 +5858,19 @@ class MusicPlayer @Inject constructor(
          *  to heal stored rows that pinned the dead id. */
         val rematchedFromVideoId: String? = null,
         val userAgent: String? = null,
-    )
+        /** Explicit origin label; null derives it from the cache key. */
+        val origin: String? = null,
+    ) {
+        /** Service this stream plays from, for the player badge. */
+        val originLabel: String
+            get() = origin ?: when {
+                cacheKey.startsWith("local:") -> "Local"
+                cacheKey.startsWith("offline:") -> "Offline"
+                cacheKey.startsWith("lossless:") -> "Addon"
+                youtubeCandidate != null || qualityTier == LosslessMusicApi.QUALITY_YOUTUBE -> "YouTube"
+                else -> "Stream"
+            }
+    }
 
     private fun isNetworkException(error: Throwable): Boolean {
         var cause: Throwable? = error
@@ -6896,6 +6909,7 @@ class MusicPlayer @Inject constructor(
             bitrateKbps = stream.bitrateKbps,
             audioCodec = badge,
             cacheKey = "lossless:${track.mediaIdKey()}:${stream.formatId}:${stream.trackId}",
+            origin = stream.origin.ifBlank { null },
             qualityTier = stream.formatId,
             isLossless = isLossless,
             bitDepth = resolvedBitDepth?.takeIf { it > 0 } ?: streamBitDepth,
@@ -7110,6 +7124,7 @@ class MusicPlayer @Inject constructor(
                 it.copy(
                     bitrateKbps = resolved.bitrateKbps,
                     audioCodec = resolved.audioCodec,
+                    streamOrigin = resolved.originLabel,
                     isLossless = resolved.isLossless,
                     bitDepth = resolved.bitDepth,
                     samplingRateKHz = if (isSpatialAudioCodec(resolved.audioCodec)) {
@@ -8870,6 +8885,7 @@ class MusicPlayer @Inject constructor(
         _state.update {
             it.copy(
                 audioCodec = inspected.badge,
+                streamOrigin = "Local",
                 bitrateKbps = inspected.bitrateKbps,
                 bitDepth = inspected.bitDepth,
                 samplingRateKHz = inspected.samplingRateKHz,
@@ -8977,6 +8993,7 @@ class MusicPlayer @Inject constructor(
             pitch = player.playbackParameters.pitch,
             bitrateKbps = previous.bitrateKbps.takeIf { hasExplicitPrevious } ?: streamForCurrent?.bitrateKbps,
             audioCodec = previous.audioCodec.takeIf { hasExplicitPrevious } ?: streamForCurrent?.audioCodec,
+            streamOrigin = previous.streamOrigin.takeIf { hasExplicitPrevious } ?: streamForCurrent?.originLabel,
             isLossless = (previous.isLossless && sameTrack) || (streamForCurrent?.isLossless == true),
             bitDepth = previous.bitDepth.takeIf { hasExplicitPrevious } ?: streamForCurrent?.bitDepth,
             samplingRateKHz = previous.samplingRateKHz.takeIf { hasExplicitPrevious } ?: streamForCurrent?.samplingRateKHz,

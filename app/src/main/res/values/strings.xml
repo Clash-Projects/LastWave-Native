@@ -1542,6 +1542,9 @@
     <string name="recommendation_source_yt_music_sub">Seeded by YouTube Music</string>
     <string name="recommendation_source_spotify">Spotify</string>
     <string name="recommendation_source_spotify_sub">Seeded by Spotify, played from YouTube Music</string>
+    <string name="recommendation_source_tidal">TIDAL</string>
+    <string name="recommendation_source_tidal_sub">Seeded by TIDAL track radio, played via your source setting</string>
+    <string name="settings_recommendations_connect_tidal_first">Sign in to TIDAL first (Settings, Provider Modules)</string>
     <string name="toast_spotify_connect_first">Connect Spotify first</string>
     <string name="toast_spotify_disconnected">Spotify account disconnected</string>
     <string name="settings_spotify_live_playlists_title">Live sync playlists</string>

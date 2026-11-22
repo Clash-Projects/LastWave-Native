@@ -91,7 +91,7 @@ class DiscoverRepository @Inject constructor(
             }
         }
         val feedSeeds = _feed.value.shuffled()
-        val trackSeedLimit = if (recommendationRepository.isSpotifyActive()) 2 else MAX_TRACK_SEEDS
+        val trackSeedLimit = if (recommendationRepository.usesExternalSeeds()) 2 else MAX_TRACK_SEEDS
         val trackSeeds = buildList {
             addAll(profile?.recentTracksRaw.orEmpty().shuffled().take(2).map { TasteSeed(it, 100) })
             addAll(profile?.topTracksRaw.orEmpty().shuffled().take(2).map { TasteSeed(it, 88) })

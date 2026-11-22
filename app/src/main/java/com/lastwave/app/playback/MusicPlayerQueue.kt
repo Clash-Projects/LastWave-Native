@@ -424,6 +424,7 @@ internal fun MusicPlayer.resolveAndPlayQueueItem(index: Int) {
                 // explicit badge shield a generic publish via the
                 // same-track guard in publishResolvedQuality.
                 audioCodec = null,
+                streamOrigin = null,
                 bitrateKbps = null,
                 isLossless = false,
                 bitDepth = null,

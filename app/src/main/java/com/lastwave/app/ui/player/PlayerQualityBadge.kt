@@ -522,7 +522,9 @@ internal fun AppleMusicQualityBadge(
                 modifier = Modifier.size(androidx.compose.ui.unit.lerp(13.dp, 15.dp, mix)),
             )
             Spacer(Modifier.width(androidx.compose.ui.unit.lerp(4.dp, 5.dp, mix)))
-            val fullText = when {
+            // Where the audio comes from ("TIDAL: Lossless", "YouTube: Opus").
+            val origin = state.streamOrigin?.takeIf { it.isNotBlank() && !isMixActive && !isFadeActive && switch == null }
+            val fullText = origin?.let { "$it: " }.orEmpty() + when {
                 isMixActive || isFadeActive || switch != null -> displayTitle
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u2022 $baseLabel"
                 else -> displayTitle

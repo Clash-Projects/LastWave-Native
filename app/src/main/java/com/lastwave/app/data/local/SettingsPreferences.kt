@@ -96,6 +96,11 @@ enum class RecommendationSource(val id: String, val titleRes: Int, val subtitleR
         "spotify",
         com.lastwave.app.R.string.recommendation_source_spotify,
         com.lastwave.app.R.string.recommendation_source_spotify_sub,
+    ),
+    TIDAL(
+        "tidal",
+        com.lastwave.app.R.string.recommendation_source_tidal,
+        com.lastwave.app.R.string.recommendation_source_tidal_sub,
     );
 
     companion object {

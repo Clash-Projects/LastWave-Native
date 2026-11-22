@@ -50,6 +50,8 @@ data class LosslessAudioStream(
     val trackId: Long = 0,
     val durationSeconds: Int = 0,
     val audioCodecOverride: String? = null,
+    /** Where the audio comes from, shown next to the quality badge ("TIDAL", "Addon"). */
+    val origin: String = "",
 )
 
 data class BackendCredentials(
@@ -1448,6 +1450,7 @@ class LosslessMusicApi @Inject constructor(
                     bitrateKbps = resolvedBitrateKbps,
                     trackId = candidate.id,
                     durationSeconds = candidate.duration,
+                    origin = if (addonBaseUrl == TidalSource.BASE_URL) "TIDAL" else "Addon",
                     audioCodecOverride = when {
                         isStreamAtmos -> "DOLBY ATMOS"
                         formatId == QUALITY_MP3_320 -> "320 kbps"

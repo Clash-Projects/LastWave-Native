@@ -8,6 +8,8 @@ import com.lastwave.app.data.music.YouTubeMusicTrack
 import com.lastwave.app.data.repository.RelatedGraphRepository
 import com.lastwave.app.data.spotify.SpotifyPreferences
 import com.lastwave.app.data.spotify.SpotifyRecommendationApi
+import com.lastwave.app.data.tidal.TidalAccount
+import com.lastwave.app.data.tidal.TidalSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -25,6 +27,8 @@ class RecommendationRepository @Inject constructor(
     private val spotifyRecommendations: SpotifyRecommendationApi,
     private val settingsPreferences: SettingsPreferences,
     private val spotifyPreferences: SpotifyPreferences,
+    private val tidalAccount: TidalAccount,
+    private val tidalSource: TidalSource,
 ) {
     suspend fun relatedFor(
         seedVideoId: String?,
@@ -33,8 +37,9 @@ class RecommendationRepository @Inject constructor(
         limit: Int = 20,
         durationSeconds: Int? = null,
     ): List<YouTubeMusicTrack> {
-        if (isSpotifyActive()) {
-            val matched = spotifyTracks(title, artist, durationSeconds, limit)
+        val source = activeExternalSource()
+        if (source != null) {
+            val matched = externalTracks(source, title, artist, durationSeconds, limit)
             if (matched.size >= 3) return matched
             if (matched.size in 1..2 && !seedVideoId.isNullOrBlank()) {
                 val needed = (limit - matched.size).coerceAtLeast(0)
@@ -53,37 +58,59 @@ class RecommendationRepository @Inject constructor(
             .orEmpty()
     }
 
-    suspend fun isSpotifyActive(): Boolean =
-        settingsPreferences.settings.first().recommendationSource == RecommendationSource.SPOTIFY &&
-            spotifyPreferences.isConnected.first()
+    /** True when recommendations are seeded by a connected Spotify or TIDAL account instead of YouTube Music. */
+    suspend fun usesExternalSeeds(): Boolean = activeExternalSource() != null
 
-    private suspend fun spotifyTracks(
+    suspend fun activeSourceName(): String = when (activeExternalSource()) {
+        RecommendationSource.SPOTIFY -> "Spotify"
+        RecommendationSource.TIDAL -> "TIDAL"
+        else -> "YouTube Music"
+    }
+
+    private suspend fun activeExternalSource(): RecommendationSource? =
+        when (val source = settingsPreferences.settings.first().recommendationSource) {
+            RecommendationSource.SPOTIFY -> source.takeIf { spotifyPreferences.isConnected.first() }
+            RecommendationSource.TIDAL -> source.takeIf { tidalAccount.isLoggedIn }
+            RecommendationSource.YOUTUBE_MUSIC -> null
+        }
+
+    private class Candidate(val name: String, val artists: List<String>, val durationMs: Long?)
+
+    /** Seeds from [source], each matched to a playable YouTube Music track. */
+    private suspend fun externalTracks(
+        source: RecommendationSource,
         title: String,
         artist: String,
         durationSeconds: Int?,
         limit: Int,
     ): List<YouTubeMusicTrack> = try {
-        val candidates = spotifyRecommendations.recommendationsFor(
-            title = title,
-            artist = artist,
-            durationMs = durationSeconds?.toLong()?.times(1000L),
-            limit = limit,
-        )
+        val candidates = when (source) {
+            RecommendationSource.TIDAL -> tidalSource.radioFor(title, artist, limit).map {
+                Candidate(it.title, it.artist.split(", ").filter(String::isNotBlank), (it.duration * 1000).toLong().takeIf { ms -> ms > 0 })
+            }
+            else -> spotifyRecommendations.recommendationsFor(
+                title = title,
+                artist = artist,
+                durationMs = durationSeconds?.toLong()?.times(1000L),
+                limit = limit,
+            ).mapNotNull { item ->
+                val name = item.name?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                Candidate(name, item.artists.mapNotNull { it.name?.takeIf(String::isNotBlank) }, item.duration_ms ?: item.durationMs)
+            }
+        }
         val matched = coroutineScope {
             val semaphore = Semaphore(MAX_CONCURRENT_MATCHES)
             candidates.take(MAX_MATCHES_PER_CALL).map { candidate ->
                 async {
-                    val name = candidate.name?.takeIf { it.isNotBlank() } ?: return@async null
-                    val primaryArtist = candidate.artists.firstOrNull()?.name?.takeIf { it.isNotBlank() } ?: ""
-                    val additionalArtists = candidate.artists.drop(1).mapNotNull { it.name?.takeIf(String::isNotBlank) }
+                    val name = candidate.name
+                    val primaryArtist = candidate.artists.firstOrNull().orEmpty()
+                    val additionalArtists = candidate.artists.drop(1)
                     val artists = if (additionalArtists.isNotEmpty() && !FEAT_REGEX.containsMatchIn(name)) {
                         if (primaryArtist.isNotBlank()) "$primaryArtist feat. ${additionalArtists.joinToString(", ")}" else additionalArtists.joinToString(", ")
                     } else {
-                        primaryArtist.ifBlank {
-                            candidate.artists.mapNotNull { it.name?.takeIf(String::isNotBlank) }.joinToString(", ")
-                        }
+                        primaryArtist.ifBlank { candidate.artists.joinToString(", ") }
                     }
-                    val expectedDurationMs = candidate.duration_ms ?: candidate.durationMs
+                    val expectedDurationMs = candidate.durationMs
                     semaphore.withPermit {
                         innerTube.findBestMatchOrNull(
                             name,
@@ -95,12 +122,12 @@ class RecommendationRepository @Inject constructor(
                 }
             }.awaitAll().filterNotNull()
         }.distinctBy { it.videoId }
-        Log.i(TAG, "Spotify -> ${matched.size}/${candidates.size} tracks matched on YouTube Music")
+        Log.i(TAG, "$source -> ${matched.size}/${candidates.size} tracks matched on YouTube Music")
         matched
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (error: Exception) {
-        Log.w(TAG, "Spotify seeds unavailable, keeping YouTube Music: ${error.message}")
+        Log.w(TAG, "$source seeds unavailable, keeping YouTube Music: ${error.message}")
         emptyList()
     }
 

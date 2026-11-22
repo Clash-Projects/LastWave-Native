@@ -417,6 +417,7 @@ fun SettingsScreen(
     val ytChannels by viewModel.ytChannels.collectAsStateWithLifecycle()
     val ytChannelsLoading by viewModel.ytChannelsLoading.collectAsStateWithLifecycle()
     val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
+    val tidalConnected by viewModel.tidalConnected.collectAsStateWithLifecycle()
     val eq by viewModel.equalizer.collectAsStateWithLifecycle()
     val usbExclusiveEnabled by viewModel.usbExclusiveEnabled.collectAsStateWithLifecycle()
     val internalDirectEnabled by viewModel.internalDirectEnabled.collectAsStateWithLifecycle()
@@ -1917,7 +1918,7 @@ fun SettingsScreen(
                                         iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                         iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
                                         title = stringResource(R.string.settings_recommendations_title),
-                                        subtitle = if (spotifyConnected) {
+                                        subtitle = if (spotifyConnected || tidalConnected) {
                                             "${stringResource(misc.recommendationSource.titleRes)} • ${stringResource(misc.recommendationSource.subtitleRes)}"
                                         } else {
                                             stringResource(R.string.settings_recommendations_sub_disconnected)
@@ -2466,8 +2467,9 @@ fun SettingsScreen(
 
     if (showRecommendationSourceDialog) {
         RecommendationSourceDialog(
-            current = if (spotifyConnected) misc.recommendationSource else RecommendationSource.YOUTUBE_MUSIC,
+            current = misc.recommendationSource,
             spotifyConnected = spotifyConnected,
+            tidalConnected = tidalConnected,
             onSelect = {
                 viewModel.setRecommendationSource(it)
                 showRecommendationSourceDialog = false

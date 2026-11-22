@@ -159,6 +159,9 @@ class SettingsClearAllDataTest {
             innerTube = innerTube,
             appUpdateManager = appUpdateManager,
             spotifyPreferences = spotifyPreferences,
+            tidalAccount = io.mockk.mockk(relaxed = true) {
+                io.mockk.every { session } returns kotlinx.coroutines.flow.MutableStateFlow(null)
+            },
             autoMixPreferences = autoMixPreferences,
             context = RuntimeEnvironment.getApplication(),
         )

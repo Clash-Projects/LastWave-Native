@@ -93,6 +93,24 @@ class TidalSource @Inject constructor(
         }
     }
 
+    /**
+     * TIDAL's track radio for the song best matching [title]/[artist]: the
+     * seed is the first search hit sharing an artist name with the request.
+     */
+    suspend fun radioFor(title: String, artist: String, limit: Int): List<AddonTrack> {
+        val hits = search("$title $artist", "lossless").getOrNull().orEmpty()
+        val wanted = artistTokens(artist)
+        val seed = hits.firstOrNull { hit -> artistTokens(hit.artist).any(wanted::contains) } ?: return emptyList()
+        val items = account.get("tracks/${seed.id}/radio", mapOf("limit" to limit.coerceIn(1, 100).toString()))
+            .optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i -> items.optJSONObject(i)?.toAddonTrack() }
+            .filter { it.id != seed.id }
+    }
+
+    private fun artistTokens(raw: String): Set<String> =
+        raw.lowercase().split(',', '&', '/').map { it.replace(Regex("""\b(feat|ft|featuring)\b.*"""), "").trim() }
+            .filter { it.isNotBlank() }.toSet()
+
     private fun JSONObject.toAddonTrack(): AddonTrack? {
         val id = optLong("id", 0L).takeIf { it > 0 } ?: return null
         if (!optBoolean("allowStreaming", true) || !optBoolean("streamReady", true)) return null
