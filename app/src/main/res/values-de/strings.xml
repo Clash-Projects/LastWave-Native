@@ -1084,4 +1084,8 @@
     <string name="recommendation_source_spotify_sub">Empfohlen von Spotify, abgespielt über YouTube Music</string>
     <string name="toast_spotify_connect_first">Zuerst Spotify verbinden</string>
     <string name="toast_spotify_disconnected">Spotify-Konto getrennt</string>
+    <string name="settings_section_network">Netzwerk</string>
+    <string name="settings_proxy_title">Proxy</string>
+    <string name="settings_proxy_off">Aus – direkte Verbindung</string>
+    <string name="settings_proxy_hint">Leitet den gesamten App-Verkehr über diesen Proxy, z. B. wenn YouTube die IP deines VPNs sperrt. Format: socks5://user:pass@host:port oder http://host:port. Leer lassen zum Abschalten. Gilt für neue Verbindungen; im Zweifel App neu starten.</string>
 </resources>

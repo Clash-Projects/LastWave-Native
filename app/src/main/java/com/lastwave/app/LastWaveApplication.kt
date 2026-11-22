@@ -65,6 +65,8 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     }
 
     override fun onCreate() {
+        // Before any HTTP client exists: OkHttp captures the default ProxySelector when built.
+        com.lastwave.app.data.network.NetworkProxy.install(this)
         super.onCreate()
         StartupTrail.mark("app.onCreate.start")
         runCatching { com.lastwave.app.util.AppVisibility.install(this) }

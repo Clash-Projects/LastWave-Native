@@ -1909,6 +1909,8 @@ fun SettingsScreen(
                             }
                         }
 
+                        item { NetworkProxySection() }
+
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel(stringResource(R.string.settings_section_recommendations))

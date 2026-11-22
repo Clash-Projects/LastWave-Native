@@ -1543,6 +1543,10 @@
     <string name="recommendation_source_spotify">Spotify</string>
     <string name="recommendation_source_spotify_sub">Seeded by Spotify, played from YouTube Music</string>
     <string name="recommendation_source_tidal">TIDAL</string>
+    <string name="settings_section_network">Network</string>
+    <string name="settings_proxy_title">Proxy</string>
+    <string name="settings_proxy_off">Off – direct connection</string>
+    <string name="settings_proxy_hint">Routes all app traffic through this proxy, e.g. when YouTube blocks the IP of your VPN. Format: socks5://user:pass@host:port or http://host:port. Leave empty to turn it off. Applies to new connections; restart the app to be sure.</string>
     <string name="recommendation_source_tidal_sub">Seeded by TIDAL track radio, played via your source setting</string>
     <string name="settings_recommendations_connect_tidal_first">Sign in to TIDAL first (Settings, Provider Modules)</string>
     <string name="toast_spotify_connect_first">Connect Spotify first</string>
