@@ -127,7 +127,7 @@ class AppUpdateManager @Inject constructor(
                 val body = response.body?.string().orEmpty()
                 val json = JSONObject(body)
                 val tagName = json.optString("tag_name", "")
-                val releaseUrl = json.optString("html_url", "https://github.com/1f81-official/LastWave/releases")
+                val releaseUrl = json.optString("html_url", "https://github.com/1f81-official/SoundDrop/releases")
                 val releaseNotes = json.optString("body", "")
 
                 val apkAssets = mutableListOf<ReleaseAsset>()
@@ -193,7 +193,7 @@ class AppUpdateManager @Inject constructor(
 
     fun openUpdate(context: Context) {
         val targetUrl = _updateInfo.value.downloadUrl ?: _updateInfo.value.releaseUrl.ifBlank {
-            "https://github.com/1f81-official/SoundDrop/releases"
+            "https://github.com/Clash-Projects/LastWave-native/releases"
         }
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

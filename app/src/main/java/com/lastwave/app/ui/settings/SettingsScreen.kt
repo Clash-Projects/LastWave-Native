@@ -2077,8 +2077,8 @@ fun SettingsScreen(
                     // Discord presence, next to Last.fm because both are "tell
                     // other services what I'm listening to" integrations and
                     // neither is required for playback. Unlike Last.fm this
-                    // needs no account in SoundDrop — it publishes as the
-                    // SoundDrop application through the Discord app itself, so
+                    // needs no account in LastWave — it publishes as the
+                    // LastWave application through the Discord app itself, so
                     // the copy says exactly that.
                     SettingsToggleCard(
                         icon = Icons.Filled.Public,
@@ -5227,7 +5227,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://github.com/duxtami/SleepTracker") }
+                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=com.sernheise.app") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -5292,7 +5292,7 @@ private fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=com.sernheise.app") }
+                    .clickable { onOpenUrl("https://github.com/duxtami/SleepTracker") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
