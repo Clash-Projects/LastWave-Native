@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,8 +40,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.positionOnScreen
@@ -52,10 +59,12 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.playback.automix.api.BlendPhase
@@ -131,6 +140,8 @@ internal fun AutoMixPopupHost(
     progressState: StateFlow<PlaybackProgressState>,
     trackKey: String,
     isPlayerOpen: Boolean,
+    player: MusicPlayer,
+    tracks: List<PlayableTrack>,
 ) {
     LaunchedEffect(telemetry.phase, telemetry.view, trackKey) {
         if (telemetry.phase == BlendPhase.BLENDING) {
@@ -170,22 +181,37 @@ internal fun AutoMixPopupHost(
     }
 
     val shown = ui.shownTelemetry(telemetry, trackKey)
+    // Keep the outgoing source even when the active queue changes at handover.
+    val sourceTracks = remember(shown.view) { tracks }
+    val preview = if (isPlayerOpen && shown.view != null) {
+        PreloadAutoMixArtwork(shown.view)
+        rememberAutoMixWaveforms(shown.view, player, sourceTracks)
+    } else null
     var lastShown by remember { mutableStateOf<DeckBlendTelemetry?>(null) }
+    var lastPreview by remember { mutableStateOf<AutoMixWaveformPreview?>(null) }
     var lastCompletedAtMs by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(shown, ui.isOpen, ui.completedAtMs) {
-        if (ui.isOpen && shown.view != null) {
+    LaunchedEffect(shown, preview, ui.isOpen, ui.completedAtMs) {
+        if (ui.isOpen && shown.view != null && preview != null) {
             lastShown = shown
+            lastPreview = preview
             lastCompletedAtMs = ui.completedAtMs
         }
     }
     val transition = updateTransition(ui.isOpen && available && isPlayerOpen, label = "AutoMixPopup")
-    val reveal by transition.animateFloat(
-        transitionSpec = { ExpressiveMotion.spatialDefault() },
+    val expansion by transition.animateFloat(
+        transitionSpec = {
+            if (targetState) ExpressiveMotion.spatialSlow() else ExpressiveMotion.spatialDefault()
+        },
         label = "badgeExpansion",
     ) { if (it) 1f else 0f }
+    val opacity by transition.animateFloat(
+        transitionSpec = { ExpressiveMotion.effectsDefault() },
+        label = "popupOpacity",
+    ) { if (it) 1f else 0f }
     if (!transition.currentState && !transition.targetState && !transition.isRunning) return
-    val activeShown = shown.takeIf { it.view != null && available && ui.isOpen }
+    val activeShown = shown.takeIf { it.view != null && available && ui.isOpen && preview != null }
     val presented = activeShown ?: lastShown ?: return
+    val presentedPreview = (if (activeShown != null) preview else lastPreview) ?: return
     val presentedCompletedAtMs = if (activeShown != null) ui.completedAtMs else lastCompletedAtMs
 
     Popup(
@@ -202,10 +228,9 @@ internal fun AutoMixPopupHost(
         onDismissRequest = ui::dismiss,
         properties = PopupProperties(focusable = true, clippingEnabled = false, usePlatformDefaultWidth = false),
     ) {
-        val scheme = MaterialTheme.colorScheme
         Box(
             Modifier.fillMaxSize()
-                .background(scheme.scrim.copy(alpha = 0.64f * reveal.coerceIn(0f, 1f)))
+                .background(Color.Black.copy(alpha = 0.64f * opacity.coerceIn(0f, 1f)))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -219,7 +244,7 @@ internal fun AutoMixPopupHost(
             ) {
                 var panelBounds by remember { mutableStateOf(Rect.Zero) }
                 Box(
-                    Modifier.width(minOf(maxWidth, 560.dp)).height(minOf(maxHeight, 640.dp))
+                    Modifier.width(minOf(maxWidth, 560.dp)).height(minOf(maxHeight, 520.dp))
                         .onGloballyPositioned {
                             panelBounds = Rect(it.positionOnScreen(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
                         },
@@ -228,32 +253,57 @@ internal fun AutoMixPopupHost(
                         modifier = Modifier.fillMaxSize()
                             .graphicsLayer {
                                 val origin = ui.badgeBounds.takeUnless { it.isEmpty } ?: panelBounds
-                                val startX = (origin.width / panelBounds.width.coerceAtLeast(1f)).coerceIn(0.08f, 1f)
-                                val startY = (origin.height / panelBounds.height.coerceAtLeast(1f)).coerceIn(0.04f, 1f)
-                                scaleX = startX + (1f - startX) * reveal
-                                scaleY = startY + (1f - startY) * reveal
-                                translationX = (origin.center.x - panelBounds.center.x) * (1f - reveal)
-                                translationY = (origin.center.y - panelBounds.center.y) * (1f - reveal)
-                                alpha = reveal.coerceIn(0f, 1f)
+                                val scale = 0.86f + 0.14f * expansion
+                                scaleX = scale
+                                scaleY = scale
+                                translationX = (origin.center.x - panelBounds.center.x) * (1f - expansion)
+                                translationY = (origin.center.y - panelBounds.center.y) * (1f - expansion)
+                                alpha = if (panelBounds.isEmpty) 0f else opacity.coerceIn(0f, 1f)
+                            }
+                            .drawWithContent {
+                                val p = expansion.coerceIn(0f, 1f)
+                                val scale = (0.86f + 0.14f * expansion).coerceAtLeast(0.01f)
+                                val badge = ui.badgeBounds.takeUnless { it.isEmpty } ?: panelBounds
+                                val startWidth = (badge.width / scale).coerceIn(0f, size.width)
+                                val startHeight = (badge.height / scale).coerceIn(0f, size.height)
+                                val width = startWidth + (size.width - startWidth) * p
+                                val height = startHeight + (size.height - startHeight) * p
+                                val startCorner = (badge.height / (2f * scale)).coerceAtMost(minOf(startWidth, startHeight) / 2f)
+                                val corner = (startCorner + (24.dp.toPx() - startCorner) * p)
+                                    .coerceIn(0f, minOf(width, height) / 2f)
+                                val rect = Rect((size.width - width) / 2f, (size.height - height) / 2f,
+                                    (size.width + width) / 2f, (size.height + height) / 2f)
+                                val mask = Path().apply { addRoundRect(RoundRect(rect, CornerRadius(corner, corner))) }
+                                clipPath(mask) { this@drawWithContent.drawContent() }
                             }
                             .pointerInput(Unit) { detectTapGestures { } }
                             .semantics { paneTitle = "AutoMix" },
-                        shape = RoundedCornerShape(28.dp),
-                        color = scheme.surfaceContainerLowest,
+                        shape = RoundedCornerShape(24.dp),
+                        color = StudioSurface,
                     ) {
                         Column {
                             Row(
-                                Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 4.dp),
+                                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("AUTOMIX", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                                Text(
+                                    "AUTOMIX",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.4.sp),
+                                    color = StudioContent.copy(alpha = 0.5f),
+                                )
                                 Spacer(Modifier.weight(1f))
                                 IconButton(onClick = ui::dismiss) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Close AutoMix")
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Close AutoMix",
+                                        tint = StudioContent.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(20.dp),
+                                    )
                                 }
                             }
                             AutoMixPopupContent(
                                 telemetry = presented,
+                                preview = presentedPreview,
                                 progressState = progressState,
                                 completedAtMs = presentedCompletedAtMs,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -269,11 +319,12 @@ internal fun AutoMixPopupHost(
 @Composable
 private fun AutoMixPopupContent(
     telemetry: DeckBlendTelemetry,
+    preview: AutoMixWaveformPreview,
     progressState: StateFlow<PlaybackProgressState>,
     completedAtMs: Long,
     modifier: Modifier,
 ) {
-    val view = telemetry.view ?: return
+    val view = preview.view
     val progress by progressState.collectAsStateWithLifecycle()
     var nowMs by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
     LaunchedEffect(completedAtMs) {
@@ -300,5 +351,12 @@ private fun AutoMixPopupContent(
         BlendPhase.MIX_COMPLETED -> "Mix complete"
         else -> "$kind in ${seconds / 60}:${"%02d".format(seconds % 60)}"
     }
-    AutoMixDeckView(view = view, playheadMs = head, modifier = modifier, status = status)
+    AutoMixDeckView(
+        view = view,
+        playheadMs = head,
+        modifier = modifier,
+        status = status,
+        outgoingStatus = preview.outgoingStatus,
+        incomingStatus = preview.incomingStatus,
+    )
 }

@@ -29,107 +29,105 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import androidx.compose.ui.unit.sp
 import com.lastwave.app.playback.automix.analysis.BAND_COLUMN_MS
 import com.lastwave.app.playback.automix.api.MixDeckView
-import com.lastwave.app.playback.automix.api.MixShape
 import com.lastwave.app.playback.automix.api.MixView
 import com.lastwave.app.playback.automix.engine.MixCurve
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
+// Fixed frequency and transport colors keep this studio view readable with monochrome app palettes.
+internal val StudioSurface = Color(0xFF111115)
+internal val StudioContent = Color(0xFFF2F0F2)
+private val StudioPlot = Color(0xFF1B1B21)
+private val BassColor = Color(0xFF345CEB)
+private val MidColor = Color(0xFFE59A44)
+private val AirColor = Color(0xFFFFEBD0)
+private val CueColor = Color(0xFF5ABDE5)
+private val LevelColor = Color(0xFFFFD45D)
+private val PlayheadColor = Color(0xFF42E58B)
+
 @Composable
-fun AutoMixDeckView(view: MixView, playheadMs: Double, modifier: Modifier = Modifier, status: String? = null) {
-    val scheme = MaterialTheme.colorScheme
-    // Interpolate telemetry samples without changing the audio clock or mix progress.
+internal fun AutoMixDeckView(
+    view: MixView,
+    playheadMs: Double,
+    modifier: Modifier = Modifier,
+    status: String? = null,
+    outgoingStatus: WaveformPreviewStatus = WaveformPreviewStatus.READY,
+    incomingStatus: WaveformPreviewStatus = WaveformPreviewStatus.READY,
+) {
     val head = animateFloatAsState(playheadMs.toFloat(), tween(80, easing = LinearEasing), label = "mixPlayhead")
-    val colors = MixColors(
-        outgoing = scheme.primary,
-        incoming = scheme.tertiary,
-        bass = scheme.secondary,
-        mids = scheme.tertiary,
-        highs = scheme.onSurface,
-        grid = scheme.onSurface.copy(alpha = 0.08f),
-        surface = scheme.surfaceContainerHigh,
-    )
     BoxWithConstraints(modifier) {
         val fontScale = LocalDensity.current.fontScale
-        val compact = maxHeight < 400.dp && maxWidth >= 440.dp && fontScale < 1.5f
-        val contentHeight = maxOf(maxHeight, (if (compact) 160.dp else 280.dp) * fontScale + 160.dp)
+        val compact = maxHeight < 350.dp && maxWidth >= 440.dp
+        val contentHeight = maxOf(maxHeight, (if (compact) 100.dp else 180.dp) * fontScale + 180.dp)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Column(
-                modifier = Modifier.fillMaxWidth().height(contentHeight).padding(horizontal = 24.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 16.dp),
+                modifier = Modifier.fillMaxWidth().height(contentHeight).padding(horizontal = 20.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 status?.let {
                     Text(
                         it,
-                        style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = scheme.onSurface,
-                        maxLines = if (compact) 1 else 2,
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+                        color = StudioContent.copy(alpha = 0.65f),
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (compact) {
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Box(Modifier.weight(1f)) { DeckHeader(view.outgoing, "OUT", colors.outgoing, compact = true) }
-                        Box(Modifier.weight(1f)) { DeckHeader(view.incoming, "IN", colors.incoming, compact = true) }
+                        Box(Modifier.weight(1f)) { DeckHeader(view.outgoing, compact = true) }
+                        Box(Modifier.weight(1f)) { DeckHeader(view.incoming, compact = true) }
                     }
                 } else {
-                    DeckHeader(view.outgoing, "OUTGOING", colors.outgoing)
+                    DeckHeader(view.outgoing)
                 }
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(scheme.surfaceContainerHigh),
+                    Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(StudioPlot),
                 ) {
                     Canvas(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .semantics { contentDescription = "Transition waveform: ${view.outgoing.title} into ${view.incoming.title}" },
+                        Modifier.fillMaxSize().semantics {
+                            contentDescription = "Transition waveform: ${view.outgoing.title} into ${view.incoming.title}"
+                        },
                     ) {
-                        drawMix(view, head.value.toDouble(), colors)
+                        drawMix(view, head.value.toDouble())
                     }
-                    Row(
-                        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text("TRANSITION", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                        Text(
-                            view.bars?.let { "$it bars" } ?: "${(view.overlapMs / 1000.0).roundToInt()} s",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = scheme.onSurface,
-                        )
+                    Column(Modifier.fillMaxSize()) {
+                        WaveformNotice(outgoingStatus, Modifier.weight(1f).fillMaxWidth())
+                        WaveformNotice(incomingStatus, Modifier.weight(1f).fillMaxWidth())
                     }
                 }
-                if (!compact) DeckHeader(view.incoming, "INCOMING", colors.incoming)
+                if (!compact) DeckHeader(view.incoming)
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.Center,
+                    Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    SpectrumLabel("Bass", colors.bass)
-                    Spacer(Modifier.width(16.dp))
-                    SpectrumLabel("Mid", colors.mids)
-                    Spacer(Modifier.width(16.dp))
-                    SpectrumLabel("Air", colors.highs)
+                    SpectrumLabel("Bass", BassColor)
+                    Spacer(Modifier.width(12.dp))
+                    SpectrumLabel("Mid", MidColor)
+                    Spacer(Modifier.width(12.dp))
+                    SpectrumLabel("Air", AirColor)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        view.bars?.let { "$it bars · " }.orEmpty() + "${(view.overlapMs / 1_000.0).roundToInt()} s",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Normal),
+                        color = StudioContent.copy(alpha = 0.7f),
+                    )
                 }
             }
         }
@@ -137,56 +135,77 @@ fun AutoMixDeckView(view: MixView, playheadMs: Double, modifier: Modifier = Modi
 }
 
 @Composable
-private fun DeckHeader(deck: MixDeckView, role: String, accent: Color, compact: Boolean = false) {
-    val scheme = MaterialTheme.colorScheme
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        AsyncImage(
-            model = deck.artworkUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(if (compact) 40.dp else 48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(scheme.surfaceContainerHigh),
+private fun DeckHeader(deck: MixDeckView, compact: Boolean = false) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        AutoMixArtwork(
+            deck,
+            Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(StudioPlot),
         )
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                if (compact) listOfNotNull(role, deck.bpm?.let { "${it.roundToInt()} BPM" }, deck.camelotKey, formatDuration(deck.durationMs)).joinToString(" · ") else role,
-                style = MaterialTheme.typography.labelSmall,
-                color = accent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 deck.title,
-                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = scheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                color = StudioContent,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 deck.artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Normal),
+                color = StudioContent.copy(alpha = 0.55f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (compact) DeckMetrics(deck)
         }
         if (!compact) {
             Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                deck.bpm?.let {
-                    Text("${it.roundToInt()} BPM", style = MaterialTheme.typography.labelMedium, color = scheme.onSurface)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    deck.camelotKey?.let { key ->
-                        Text(key, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = accent)
-                    }
-                    Text(formatDuration(deck.durationMs), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                }
+            DeckMetrics(deck)
+        }
+    }
+}
+
+@Composable
+private fun DeckMetrics(deck: MixDeckView) {
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        deck.bpm?.let {
+            Text(
+                "${it.roundToInt()} bpm",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Normal),
+                color = StudioContent.copy(alpha = 0.8f),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            deck.camelotKey?.let { key ->
+                Text(
+                    key,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                    color = StudioSurface,
+                    modifier = Modifier
+                        .background(if (key.endsWith("A")) Color(0xFFF0B394) else Color(0xFFE582C5), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                )
             }
+            Text(
+                formatDuration(deck.durationMs),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Normal),
+                color = StudioContent.copy(alpha = 0.55f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WaveformNotice(status: WaveformPreviewStatus, modifier: Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (status != WaveformPreviewStatus.READY) {
+            Text(
+                if (status == WaveformPreviewStatus.LOADING) "Reading waveform…" else "Waveform unavailable",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Normal),
+                color = StudioContent.copy(alpha = 0.55f),
+                modifier = Modifier.background(StudioPlot.copy(alpha = 0.9f), RoundedCornerShape(4.dp)).padding(8.dp),
+            )
         }
     }
 }
@@ -195,140 +214,114 @@ private fun DeckHeader(deck: MixDeckView, role: String, accent: Color, compact: 
 private fun SpectrumLabel(label: String, color: Color) {
     Box(Modifier.size(4.dp).background(color, RoundedCornerShape(50)))
     Spacer(Modifier.width(4.dp))
-    Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        label,
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Normal),
+        color = StudioContent.copy(alpha = 0.45f),
+    )
 }
 
-private class MixColors(
-    val outgoing: Color,
-    val incoming: Color,
-    val bass: Color,
-    val mids: Color,
-    val highs: Color,
-    val grid: Color,
-    val surface: Color,
-)
-
-private fun DrawScope.drawMix(view: MixView, playheadMs: Double, colors: MixColors) {
-    val preRoll = (view.cueOutMs - (view.outgoing.durationMs - 25_000)).coerceIn(3_000, 25_000)
-    val startMs = (view.cueOutMs - preRoll).coerceAtLeast(0).toDouble()
-    val endMs = (view.cueOutMs + view.overlapMs + 3_000).toDouble()
-    val inset = 12.dp.toPx()
-    val width = (size.width - 2 * inset).coerceAtLeast(1f)
-    fun x(outgoingMs: Double) = inset + ((outgoingMs - startMs) / (endMs - startMs).coerceAtLeast(1.0) * width).toFloat()
-    val top = 36.dp.toPx()
-    val bottom = size.height - 16.dp.toPx()
-    val gap = 24.dp.toPx()
+private fun DrawScope.drawMix(view: MixView, playheadMs: Double) {
+    // Equal context on both sides centers the actual overlap; post-roll is presentation only.
+    val startMs = view.cueOutMs - 3_000.0
+    val spanMs = view.overlapMs + 6_000.0
+    val inset = 8.dp.toPx()
+    fun x(ms: Double) = inset + ((ms - startMs) / spanMs * (size.width - 2 * inset)).toFloat()
+    val top = 12.dp.toPx()
+    val bottom = size.height - 12.dp.toPx()
+    val gap = 28.dp.toPx()
     val laneHeight = ((bottom - top - gap) / 2f).coerceAtLeast(1f)
     val lowerTop = top + laneHeight + gap
     val boxLeft = x(view.cueOutMs.toDouble())
     val boxRight = x((view.cueOutMs + view.overlapMs).toDouble())
-    val mixWidth = (boxRight - boxLeft).coerceAtLeast(1f)
-
-    drawRect(
-        Brush.verticalGradient(listOf(colors.outgoing.copy(alpha = 0.08f), colors.incoming.copy(alpha = 0.08f))),
-        Offset(boxLeft, top), Size(mixWidth, bottom - top),
+    drawRoundRect(
+        StudioContent.copy(alpha = 0.035f), Offset(boxLeft, top),
+        Size(boxRight - boxLeft, bottom - top), CornerRadius(8.dp.toPx()),
     )
-    val barMs = view.barMs
-    val downbeat = view.downbeatMs
-    if (barMs != null && barMs > 0 && downbeat != null) {
-        var bar = downbeat + ceil((startMs - downbeat) / barMs) * barMs
-        while (bar <= endMs) {
-            drawLine(colors.grid, Offset(x(bar), top), Offset(x(bar), bottom), strokeWidth = 1.dp.toPx())
-            bar += barMs
-        }
-    } else {
-        for (tick in 0..8) {
-            val px = inset + width * tick / 8f
-            drawLine(colors.grid, Offset(px, top), Offset(px, bottom), strokeWidth = 1.dp.toPx())
-        }
+    val barMs = view.barMs?.takeIf { it > 0.0 }
+    val beatMs = barMs?.div(4) ?: 1_000.0
+    val origin = view.downbeatMs ?: 0.0
+    var beat = origin + ceil((startMs - origin) / beatMs) * beatMs
+    while (beat <= startMs + spanMs) {
+        val downbeat = barMs != null && kotlin.math.abs((beat - origin) % barMs) < 1.0
+        drawLine(
+            StudioContent.copy(alpha = if (downbeat) 0.12f else 0.04f),
+            Offset(x(beat), top), Offset(x(beat), bottom), 1.dp.toPx(),
+        )
+        beat += beatMs
     }
-    drawDeck(view.outgoing, view, true, top, laneHeight, colors, ::x)
-    drawDeck(view.incoming, view, false, lowerTop, laneHeight, colors, ::x)
-
+    drawSpectrum(view.outgoing, view, true, top, laneHeight, boxLeft, boxRight, ::x)
+    drawSpectrum(view.incoming, view, false, lowerTop, laneHeight, boxLeft, boxRight, ::x)
     for ((laneTop, outgoing) in listOf(top to true, lowerTop to false)) {
-        val accent = if (outgoing) colors.outgoing else colors.incoming
         val path = Path()
         for (step in 0..96) {
             val p = step / 96f
-            val (outGain, inGain) = MixCurve.gains(p, view.shape)
-            val gain = if (outgoing) outGain else inGain
-            val px = boxLeft + mixWidth * p
+            val gains = MixCurve.gains(p, view.shape)
+            val gain = if (outgoing) gains.first else gains.second
+            val px = boxLeft + (boxRight - boxLeft) * p
             val py = laneTop + laneHeight - gain * (laneHeight - 4.dp.toPx())
             if (step == 0) path.moveTo(px, py) else path.lineTo(px, py)
         }
-        drawPath(path, colors.surface.copy(alpha = 0.8f), style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
-        drawPath(path, accent.copy(alpha = 0.9f), style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
+        val color = if (outgoing) CueColor else LevelColor
+        drawPath(path, StudioSurface.copy(alpha = 0.85f), style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
+        drawPath(path, color, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
     }
-    // Cue and release marks frame the real overlap; the cursor continues through the UI post-roll.
     for (px in listOf(boxLeft, boxRight)) {
-        drawLine(colors.highs.copy(alpha = 0.25f), Offset(px, top), Offset(px, top + 8.dp.toPx()), 1.dp.toPx())
-        drawLine(colors.highs.copy(alpha = 0.25f), Offset(px, bottom - 8.dp.toPx()), Offset(px, bottom), 1.dp.toPx())
+        drawLine(CueColor.copy(alpha = 0.35f), Offset(px, top), Offset(px, bottom), 1.dp.toPx())
     }
     val seam = top + laneHeight + gap / 2
-    drawLine(colors.grid, Offset(inset, seam), Offset(size.width - inset, seam), 1.dp.toPx())
+    drawLine(StudioContent.copy(alpha = 0.1f), Offset(inset, seam), Offset(size.width - inset, seam), 1.dp.toPx())
     val headX = x(playheadMs).coerceIn(inset, size.width - inset)
-    drawLine(colors.outgoing.copy(alpha = 0.08f), Offset(headX, top), Offset(headX, bottom), 8.dp.toPx())
-    drawLine(colors.outgoing, Offset(headX, top), Offset(headX, bottom), 1.5.dp.toPx(), StrokeCap.Round)
-    drawCircle(colors.surface, 5.dp.toPx(), Offset(headX, seam))
-    drawCircle(colors.outgoing, 3.dp.toPx(), Offset(headX, seam))
-    val capWidth = 3.dp.toPx()
-    drawRoundRect(colors.outgoing, Offset(headX - capWidth, top - 2.dp.toPx()), Size(capWidth * 2, 4.dp.toPx()), CornerRadius(2.dp.toPx()))
+    drawLine(PlayheadColor.copy(alpha = 0.08f), Offset(headX, top), Offset(headX, bottom), 8.dp.toPx())
+    drawLine(PlayheadColor, Offset(headX, top), Offset(headX, bottom), 1.5.dp.toPx(), StrokeCap.Round)
+    drawCircle(StudioSurface, 5.dp.toPx(), Offset(headX, seam))
+    drawCircle(PlayheadColor, 3.dp.toPx(), Offset(headX, seam))
+    drawRoundRect(
+        PlayheadColor, Offset(headX - 3.dp.toPx(), top - 2.dp.toPx()),
+        Size(6.dp.toPx(), 4.dp.toPx()), CornerRadius(2.dp.toPx()),
+    )
 }
 
-private fun DrawScope.drawDeck(
+private fun DrawScope.drawSpectrum(
     deck: MixDeckView,
     view: MixView,
     outgoing: Boolean,
     top: Float,
     height: Float,
-    colors: MixColors,
+    mixLeft: Float,
+    mixRight: Float,
     x: (Double) -> Float,
 ) {
     val center = top + height / 2f
-    drawLine(colors.highs.copy(alpha = 0.12f), Offset(12.dp.toPx(), center), Offset(size.width - 12.dp.toPx(), center), 1.dp.toPx())
+    drawLine(StudioContent.copy(alpha = 0.1f), Offset(8.dp.toPx(), center), Offset(size.width - 8.dp.toPx(), center), 1.dp.toPx())
     if (deck.bands.isEmpty()) return
-    val half = (height / 2f - 8.dp.toPx()).coerceAtLeast(1f)
-    val columnWidth = (x(BAND_COLUMN_MS.toDouble() / if (outgoing) 1.0 else view.tempoRatio.toDouble()) - x(0.0)).coerceAtLeast(1f)
-    val mixEnd = (view.cueOutMs + view.overlapMs).toDouble()
-    deck.bands.forEachIndexed { index, packed ->
+    val half = (height / 2f - 6.dp.toPx()).coerceAtLeast(1f)
+    fun px(index: Int): Float {
         val mediaMs = deck.bandsStartMs + index * BAND_COLUMN_MS.toDouble()
-        val outgoingMs = if (outgoing) mediaMs else view.incomingToOutgoing(mediaMs)
-        val px = x(outgoingMs)
-        if (px < -columnWidth || px > size.width) return@forEachIndexed
-        val inMix = outgoingMs >= view.cueOutMs && outgoingMs <= mixEnd
-        val unheard = if (outgoing) outgoingMs > mixEnd else outgoingMs < view.cueOutMs
-        val alpha = if (unheard) 0.12f else if (inMix) 0.9f else 0.4f
-        val gain = if (inMix) {
-            val p = ((outgoingMs - view.cueOutMs) / view.overlapMs.coerceAtLeast(1)).toFloat()
-            MixCurve.gains(p, view.shape).let { if (outgoing) it.first else it.second }.coerceAtLeast(0.15f)
-        } else {
-            1f
-        }
-        val (bass, treble) = eqAt(view, outgoing, outgoingMs)
-        val low = ((packed shr 16) and 0xFF) / 255f * bass * gain
-        val mid = ((packed shr 8) and 0xFF) / 255f * gain
-        val high = (packed and 0xFF) / 255f * treble * gain
-        for ((value, color) in listOf(low to colors.bass, mid to colors.mids, high * 0.7f to colors.highs)) {
-            val h = value * half
-            if (h > 0.5f) drawRoundRect(color.copy(alpha = alpha), Offset(px, center - h), Size(columnWidth * 0.85f, h * 2), CornerRadius(0.5.dp.toPx()))
-        }
+        return x(if (outgoing) mediaMs else view.incomingToOutgoing(mediaMs))
     }
-}
-
-private fun eqAt(view: MixView, outgoing: Boolean, outgoingMs: Double): Pair<Float, Float> {
-    val swapAt = view.bassSwapAtMs?.toDouble() ?: return 1f to 1f
-    val ramp = view.bassSwapRampMs.toDouble().coerceAtLeast(1.0)
-    val swapProgress = ((outgoingMs - swapAt) / ramp).coerceIn(0.0, 1.0).toFloat()
-    if (outgoing) return (1f - swapProgress) to 1f
-    val treble = if (view.shape == MixShape.BASS_SWAP) {
-        ((outgoingMs - view.cueOutMs) / (swapAt - view.cueOutMs).coerceAtLeast(1.0)).coerceIn(0.0, 1.0).toFloat()
-    } else {
-        1f
+    fun band(shift: Int, scale: Float, color: Color) {
+        val path = Path()
+        path.moveTo(px(0), center)
+        for (index in deck.bands.indices) {
+            val value = ((deck.bands[index] shr shift) and 0xFF) / 255f
+            path.lineTo(px(index), center - (value * scale).coerceAtMost(1f) * half)
+        }
+        for (index in deck.bands.indices.reversed()) {
+            val value = ((deck.bands[index] shr shift) and 0xFF) / 255f
+            path.lineTo(px(index), center + (value * scale).coerceAtMost(1f) * half)
+        }
+        path.close()
+        drawPath(path, color.copy(alpha = 0.38f))
+        clipRect(left = mixLeft, right = mixRight) { drawPath(path, color.copy(alpha = 0.92f)) }
     }
-    return swapProgress to treble
+    // The spectrum shows the source audio. Separate envelopes show the gain changes, so a cued deck never disappears.
+    band(16, 1.1f, BassColor)
+    band(8, 0.9f, MidColor)
+    band(0, 0.42f, AirColor)
 }
 
 private fun formatDuration(ms: Long): String {
-    val seconds = ms.coerceAtLeast(0) / 1000
+    val seconds = ms.coerceAtLeast(0) / 1_000
     return "%d:%02d".format(seconds / 60, seconds % 60)
 }

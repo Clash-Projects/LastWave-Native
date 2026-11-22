@@ -514,6 +514,9 @@ internal fun FullPlayer(
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSignalPath by remember { mutableStateOf(false) }
     val autoMixUi = remember { AutoMixPopupState() }
+    val autoMixTracks = remember(state.queue, track) {
+        if (track in state.queue) state.queue else state.queue + track
+    }
     val openBadge = {
         if (!autoMixUi.open(state.deckBlendTelemetry, progressState.value, track.autoMixIdentity())) {
             showSignalPath = true
@@ -2100,6 +2103,8 @@ internal fun FullPlayer(
         progressState = progressState,
         trackKey = track.autoMixIdentity(),
         isPlayerOpen = isOpen,
+        player = player,
+        tracks = autoMixTracks,
     )
     if (showSignalPath) {
         val dac = usbDac.dac
