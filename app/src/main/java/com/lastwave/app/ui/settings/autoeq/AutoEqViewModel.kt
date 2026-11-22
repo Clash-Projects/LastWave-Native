@@ -153,6 +153,18 @@ class AutoEqViewModel @Inject constructor(
 
     fun forgetDevice(key: String) = viewModelScope.launch { controller.forgetDevice(key) }
 
+    fun importSettings(text: String): Boolean {
+        val parsed = ParametricEqText.parse(text) ?: return false
+        viewModelScope.launch {
+            controller.setCustomSettings(parsed)
+            controller.setEnabled(true)
+            _messages.tryEmit(R.string.autoeq_msg_loaded)
+        }
+        return true
+    }
+
+    fun exportSettings(): String = ParametricEqText.format(state.value.settings)
+
     fun targetDelta(state: AutoEqState): List<Double>? = controller.targetDelta(state)
 
     private fun editSettings(change: (PeqSettings) -> PeqSettings) = viewModelScope.launch {
