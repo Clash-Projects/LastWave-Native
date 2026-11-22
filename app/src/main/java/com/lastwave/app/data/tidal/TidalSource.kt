@@ -29,9 +29,29 @@ class TidalSource @Inject constructor(
     ): Result<List<AddonTrack>> = runCatchingIo {
         val q = query.trim()
         if (q.isBlank()) return@runCatchingIo emptyList<AddonTrack>()
+        // The player warms the next songs' searches ahead of time; serving the
+        // real resolve from here saves a full round trip at the song change.
+        synchronized(searchCache) { searchCache[q] }
+            ?.takeIf { System.currentTimeMillis() - it.first < SEARCH_CACHE_MS }
+            ?.let { return@runCatchingIo it.second }
         val items = account.get("search/tracks", mapOf("query" to q, "limit" to "25")).optJSONArray("items")
             ?: JSONArray()
-        (0 until items.length()).mapNotNull { i -> items.optJSONObject(i)?.toAddonTrack() }
+        val tracks = (0 until items.length()).mapNotNull { i -> items.optJSONObject(i)?.toAddonTrack() }
+        synchronized(searchCache) {
+            searchCache[q] = System.currentTimeMillis() to tracks
+            tracks.forEach { knownQuality[it.id] = it.audioQuality }
+        }
+        tracks
+    }
+
+    /** Search answers by query, bounded LRU. */
+    private val searchCache = object : LinkedHashMap<String, Pair<Long, List<AddonTrack>>>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, List<AddonTrack>>>?) = size > 128
+    }
+
+    /** Catalog quality per track id from search ("HI_RES_LOSSLESS", "LOSSLESS"…). */
+    private val knownQuality = object : LinkedHashMap<String, String>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 2048
     }
 
     override suspend fun stream(
@@ -48,6 +68,13 @@ class TidalSource @Inject constructor(
             "high" -> "HIGH"
             "low" -> "LOW"
             else -> throw UnsupportedOperationException("TIDAL account: tier '$quality' not supported")
+        }
+        // TIDAL answers a hi-res request for a CD-only master with 16-bit, which
+        // the resolver rejects and retries: skip that round trip when search
+        // already said the master is not hi-res.
+        if (audioQuality == "HI_RES_LOSSLESS") {
+            val catalog = synchronized(searchCache) { knownQuality[trackId.trim()] }
+            if (catalog != null && !catalog.contains("HI_RES")) error("TIDAL track $trackId has no hi-res master ($catalog)")
         }
         val info = account.get(
             "tracks/${trackId.trim()}/playbackinfopostpaywall",
@@ -151,6 +178,7 @@ class TidalSource @Inject constructor(
     companion object {
         /** Base URL the resolver uses to address this source among addon backends. */
         const val BASE_URL = "tidal-account://me"
+        private const val SEARCH_CACHE_MS = 10 * 60_000L
         private val CODECS = Regex("""codecs="([^"]+)"""")
     }
 }
