@@ -40,6 +40,7 @@ import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.database.StandaloneDatabaseProvider
 import android.media.MediaCodecList
+import android.media.MediaFormat
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -1767,7 +1768,7 @@ class MusicPlayer @Inject constructor(
                     }
                     val isSpatial = isSpatialAudioCodec(_state.value.audioCodec)
                     createdSink.setBitPerfectRequested(!isSpatial && bitPerfectEnabled)
-                    createdSink.syncExclusiveUsb(handleAudioFocus && !isSpatial && exclusiveUsbWanted())
+                    createdSink.syncExclusiveUsb(handleAudioFocus && exclusiveUsbWanted())
                     createdSink.syncInternalDirect(handleAudioFocus && !isSpatial && internalDirectWanted())
                     audioSinks.add(createdSink)
                     runCatching {
@@ -1814,6 +1815,22 @@ class MusicPlayer @Inject constructor(
                             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
                         }
                         return super.supportsFormat(mediaCodecSelector, format)
+                    }
+
+                    override fun getMediaFormat(
+                        format: androidx.media3.common.Format,
+                        codecMimeType: String,
+                        codecMaxInputSize: Int,
+                        codecOperatingRate: Float,
+                    ): MediaFormat {
+                        val mediaFormat = super.getMediaFormat(
+                            format,
+                            codecMimeType,
+                            codecMaxInputSize,
+                            codecOperatingRate,
+                        )
+                        configureDolbySpatialMediaFormat(mediaFormat, format)
+                        return mediaFormat
                     }
                 }
                 out.add(dolbySpatialRenderer)
@@ -7884,6 +7901,41 @@ class MusicPlayer @Inject constructor(
         return true
     }
 
+    /**
+     * Configures the platform Dolby/Spatial MediaCodec decoder format.
+     * When routing to a 2-channel USB DAC (which cannot negotiate multi-channel audio)
+     * or on endpoints where the system Spatializer cannot spatialize the stream,
+     * instructs the decoder to fold the spatial mix into 2-channel stereo with
+     * hardware dialogue normalization and dynamic range control.
+     */
+    private fun configureDolbySpatialMediaFormat(
+        mediaFormat: MediaFormat,
+        format: androidx.media3.common.Format,
+    ) {
+        val isUsbDac = routedDacDeviceId != null ||
+            usbDacMonitor.state.value.dac != null ||
+            audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any { it.isUsbOutput() } == true
+        val canSpatialize = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
+            val sp = audioManager?.spatializer
+            val attr = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setSpatializationBehavior(android.media.AudioAttributes.SPATIALIZATION_BEHAVIOR_AUTO)
+                .build()
+            val fmt = android.media.AudioFormat.Builder()
+                .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(format.sampleRate.takeIf { it > 0 } ?: 48000)
+                .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_5POINT1)
+                .build()
+            sp?.isEnabled == true && sp.isAvailable && sp.canBeSpatialized(attr, fmt)
+        } else {
+            false
+        }
+        if (exclusiveUsbWanted() || isUsbDac || !canSpatialize) {
+            mediaFormat.setInteger(MediaFormat.KEY_MAX_OUTPUT_CHANNEL_COUNT, 2)
+        }
+    }
+
     /** A muted player with the real decode path, for testing a stream off-air. */
     private fun buildSilentPlayer(probe: SwapPcmProbe? = null): ExoPlayer {
         val resolvingFactory = ResolvingDataSource.Factory(cacheDataSourceFactory) { dataSpec ->
@@ -7942,6 +7994,22 @@ class MusicPlayer @Inject constructor(
                             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
                         }
                         return super.supportsFormat(mediaCodecSelector, format)
+                    }
+
+                    override fun getMediaFormat(
+                        format: androidx.media3.common.Format,
+                        codecMimeType: String,
+                        codecMaxInputSize: Int,
+                        codecOperatingRate: Float,
+                    ): MediaFormat {
+                        val mediaFormat = super.getMediaFormat(
+                            format,
+                            codecMimeType,
+                            codecMaxInputSize,
+                            codecOperatingRate,
+                        )
+                        configureDolbySpatialMediaFormat(mediaFormat, format)
+                        return mediaFormat
                     }
                 }
                 out.add(immersiveRenderer)

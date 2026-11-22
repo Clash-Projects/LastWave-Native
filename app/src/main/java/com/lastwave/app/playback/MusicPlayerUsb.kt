@@ -191,9 +191,6 @@ internal fun MusicPlayer.exclusiveUsbWanted(streamCodec: String? = null): Boolea
         if (isCasting) return false
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return false
         if (!bitPerfectEnabled || !usbExclusivePrefEnabled) return false
-        // E-AC-3 JOC / 360 RA is multichannel. Exclusive USB is stereo PCM
-        // only — keep Android's decoder+mixer so Atmos actually plays.
-        if (isSpatialAudioCodec(streamCodec) || isSpatialAudioCodec(_state.value.audioCodec)) return false
         val dac = usbDacMonitor.state.value.dac
         return dac?.hasUsbPeripheral == true && dac.usbPermissionGranted
     }
@@ -339,7 +336,7 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         val isSpatial = isSpatialAudioCodec(streamCodec) || isSpatialAudioCodec(_state.value.audioCodec)
         val effectiveRateHz = if (isSpatial) 48000 else sourceRateHz
         val dac = usbDacMonitor.state.value.dac
-        val exclusiveWanted = !isSpatial && exclusiveUsbWanted(streamCodec)
+        val exclusiveWanted = exclusiveUsbWanted(streamCodec)
         val wasExclusive = exclusiveUsbOutput.isActive()
         exclusiveUsbOutput.setWanted(exclusiveWanted)
         val internalWanted = !isSpatial && internalDirectWanted()
