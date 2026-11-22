@@ -9,14 +9,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,27 +41,100 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.lastwave.app.playback.automix.analysis.BAND_COLUMN_MS
+import com.lastwave.app.playback.automix.api.BlendPhase
+import com.lastwave.app.playback.automix.api.DeckBlendTelemetry
 import com.lastwave.app.playback.automix.api.MixDeckView
 import com.lastwave.app.playback.automix.api.MixShape
 import com.lastwave.app.playback.automix.api.MixView
+import com.lastwave.app.playback.automix.api.TransitionStyle
 import com.lastwave.app.playback.automix.engine.MixCurve
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
- * The two decks of a running AutoMix, DJ-software style: the outgoing song
- * above, the incoming one below, on one shared time axis. Waveforms are split
- * into bass / mids / highs and drawn as they will be heard, after the EQ moves
- * and level curves, so the bass visibly hands over at the swap.
+ * Where the playhead sits on the outgoing song's timeline: the live position
+ * before the mix (the current song still is the outgoing one), the blend
+ * progress during it. Null when there is nothing to show.
+ */
+fun DeckBlendTelemetry.playheadOutgoingMs(currentPositionMs: Long): Double? {
+    val mix = view ?: return null
+    return when (phase) {
+        BlendPhase.PRE_ANALYZING, BlendPhase.ARMED -> currentPositionMs.toDouble()
+        BlendPhase.BLENDING -> mix.cueOutMs + clampedProgress * mix.overlapMs.toDouble()
+        BlendPhase.MIX_COMPLETED -> (mix.cueOutMs + mix.overlapMs).toDouble()
+        BlendPhase.IDLE -> null
+    }
+}
+
+/** Live AutoMix deck view in a sheet, opened from the player while a mix is planned or running. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AutoMixLiveSheet(telemetry: DeckBlendTelemetry, currentPositionMs: Long, onDismiss: () -> Unit) {
+    val view = telemetry.view
+    val playhead = telemetry.playheadOutgoingMs(currentPositionMs)
+    if (view == null || playhead == null) {
+        // The mix ended or was cancelled: close instead of showing a stale plan.
+        LaunchedEffect(Unit) { onDismiss() }
+        return
+    }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+    ) {
+        AutoMixDeckView(
+            view = view,
+            playheadMs = playhead,
+            status = statusText(telemetry, view, currentPositionMs),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(460.dp)
+                .navigationBarsPadding(),
+        )
+    }
+}
+
+private fun statusText(telemetry: DeckBlendTelemetry, view: MixView, positionMs: Long): String {
+    val kind = when (view.style) {
+        TransitionStyle.HARMONIC_BEATMIX -> "Beatmix"
+        TransitionStyle.SPECTRAL_SWEEP -> "Bass-swap blend"
+        TransitionStyle.PERCEPTUAL_FADE -> "Fade"
+    }
+    val keys = view.keyPair?.let { " • $it" }.orEmpty()
+    return when (telemetry.phase) {
+        BlendPhase.BLENDING -> "Mixing • $kind$keys"
+        BlendPhase.MIX_COMPLETED -> "Mixed • $kind$keys"
+        else -> {
+            val seconds = ((view.cueOutMs - positionMs) / 1000).coerceAtLeast(0)
+            "$kind in ${seconds / 60}:${"%02d".format(seconds % 60)}$keys"
+        }
+    }
+}
+
+/**
+ * The two decks of an AutoMix, DJ-software style: the outgoing song above,
+ * the incoming one below, on one shared time axis. Waveforms are split into
+ * bass / mids / highs and drawn as they will be heard, after the EQ moves and
+ * level curves, so the bass visibly hands over at the swap.
  */
 @Composable
-fun AutoMixDeckView(view: MixView, progress: Float, modifier: Modifier = Modifier) {
+fun AutoMixDeckView(view: MixView, playheadMs: Double, modifier: Modifier = Modifier, status: String? = null) {
     val scheme = MaterialTheme.colorScheme
     Column(
         modifier = modifier
             .background(scheme.surfaceContainerLowest)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
+        status?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelLarge,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+        }
         DeckHeader(view.outgoing)
         Box(
             modifier = Modifier
@@ -63,17 +142,20 @@ fun AutoMixDeckView(view: MixView, progress: Float, modifier: Modifier = Modifie
                 .fillMaxWidth()
                 .padding(vertical = 8.dp),
         ) {
-            val playhead = scheme.primary
-            val outline = scheme.onSurface.copy(alpha = 0.45f)
-            val box = scheme.onSurface.copy(alpha = 0.06f)
-            val grid = scheme.onSurface.copy(alpha = 0.14f)
-            val level = scheme.secondary
+            val colors = MixColors(
+                playhead = scheme.primary,
+                outline = scheme.onSurface.copy(alpha = 0.45f),
+                box = scheme.onSurface.copy(alpha = 0.06f),
+                grid = scheme.onSurface.copy(alpha = 0.14f),
+                level = scheme.secondary,
+                empty = scheme.onSurface.copy(alpha = 0.25f),
+            )
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .semantics { contentDescription = "AutoMix: ${view.outgoing.title} into ${view.incoming.title}" },
             ) {
-                drawMix(view, progress, playhead, outline, box, grid, level)
+                drawMix(view, playheadMs, colors)
             }
             Surface(
                 shape = RoundedCornerShape(50),
@@ -148,20 +230,21 @@ private fun DeckHeader(deck: MixDeckView) {
     }
 }
 
+private class MixColors(
+    val playhead: Color,
+    val outline: Color,
+    val box: Color,
+    val grid: Color,
+    val level: Color,
+    val empty: Color,
+)
+
 /** Frequency legend shared by DJ software: bass blue, mids orange, highs near-white. */
 private val BassColor = Color(0xFF3D63F2)
 private val MidColor = Color(0xFFE0893A)
 private val HighColor = Color(0xFFF3E6D3)
 
-private fun DrawScope.drawMix(
-    view: MixView,
-    progress: Float,
-    playhead: Color,
-    outline: Color,
-    boxFill: Color,
-    gridColor: Color,
-    levelColor: Color,
-) {
+private fun DrawScope.drawMix(view: MixView, playheadMs: Double, colors: MixColors) {
     val pad = view.overlapMs * 0.3
     val startMs = view.cueOutMs - pad
     val spanMs = view.overlapMs + 2 * pad
@@ -172,19 +255,19 @@ private fun DrawScope.drawMix(
     val boxRight = x((view.cueOutMs + view.overlapMs).toDouble())
     val corner = CornerRadius(12.dp.toPx())
 
-    drawRoundRect(boxFill, Offset(boxLeft, 0f), Size(boxRight - boxLeft, size.height), corner)
+    drawRoundRect(colors.box, Offset(boxLeft, 0f), Size(boxRight - boxLeft, size.height), corner)
     // Bar lines across both lanes, on the outgoing grid.
     val barMs = view.barMs
     val downbeat = view.downbeatMs
     if (barMs != null && downbeat != null) {
         var bar = downbeat + ceil((startMs - downbeat) / barMs) * barMs
         while (bar <= startMs + spanMs) {
-            drawLine(gridColor, Offset(x(bar), 0f), Offset(x(bar), size.height), strokeWidth = 1.dp.toPx())
+            drawLine(colors.grid, Offset(x(bar), 0f), Offset(x(bar), size.height), strokeWidth = 1.dp.toPx())
             bar += barMs
         }
     }
-    drawDeck(view.outgoing, view, outgoing = true, top = 0f, height = laneHeight, ::x)
-    drawDeck(view.incoming, view, outgoing = false, top = laneHeight + gap, height = laneHeight, ::x)
+    drawDeck(view.outgoing, view, outgoing = true, top = 0f, height = laneHeight, colors.empty, ::x)
+    drawDeck(view.incoming, view, outgoing = false, top = laneHeight + gap, height = laneHeight, colors.empty, ::x)
 
     // Level curves inside the mix box.
     for ((top, outgoing) in listOf(0f to true, laneHeight + gap to false)) {
@@ -198,11 +281,12 @@ private fun DrawScope.drawMix(
             val py = top + laneHeight - gain * (laneHeight - 4.dp.toPx())
             if (step == 0) path.moveTo(px, py) else path.lineTo(px, py)
         }
-        drawPath(path, levelColor, style = Stroke(width = 1.5.dp.toPx()))
-        drawRoundRect(outline, Offset(boxLeft, top), Size(boxRight - boxLeft, laneHeight), corner, style = Stroke(1.dp.toPx()))
+        drawPath(path, colors.level, style = Stroke(width = 1.5.dp.toPx()))
+        drawRoundRect(colors.outline, Offset(boxLeft, top), Size(boxRight - boxLeft, laneHeight), corner, style = Stroke(1.dp.toPx()))
     }
-    val headX = boxLeft + (boxRight - boxLeft) * progress.coerceIn(0f, 1f)
-    drawLine(playhead, Offset(headX, 0f), Offset(headX, size.height), strokeWidth = 2.dp.toPx())
+    // Before the mix the playhead may still be off the left edge: pin it there.
+    val headX = x(playheadMs).coerceIn(0f, size.width)
+    drawLine(colors.playhead, Offset(headX, 0f), Offset(headX, size.height), strokeWidth = 2.dp.toPx())
 }
 
 private fun DrawScope.drawDeck(
@@ -211,9 +295,15 @@ private fun DrawScope.drawDeck(
     outgoing: Boolean,
     top: Float,
     height: Float,
+    emptyColor: Color,
     x: (Double) -> Float,
 ) {
     val center = top + height / 2f
+    if (deck.bands.isEmpty()) {
+        // No analysis for this song: a plain line still shows where it plays.
+        drawLine(emptyColor, Offset(0f, center), Offset(size.width, center), strokeWidth = 2.dp.toPx())
+        return
+    }
     val half = height / 2f - 2.dp.toPx()
     val columnWidth = (x(BAND_COLUMN_MS.toDouble() / if (outgoing) 1.0 else view.tempoRatio.toDouble()) - x(0.0)).coerceAtLeast(1f)
     val mixEnd = (view.cueOutMs + view.overlapMs).toDouble()

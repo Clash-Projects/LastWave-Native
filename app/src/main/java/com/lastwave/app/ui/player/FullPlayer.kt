@@ -56,6 +56,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import com.lastwave.app.ui.player.automix.playheadOutgoingMs
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.cos
@@ -510,6 +511,15 @@ internal fun FullPlayer(
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSignalPath by remember { mutableStateOf(false) }
+    var showAutoMix by remember { mutableStateOf(false) }
+    // While a mix is planned or running the quality badge opens the live decks instead.
+    val openBadge = {
+        if (state.deckBlendTelemetry.playheadOutgoingMs(state.positionMs) != null) {
+            showAutoMix = true
+        } else {
+            showSignalPath = true
+        }
+    }
     var showAudioControls by remember { mutableStateOf(false) }
     var showAutoEq by remember { mutableStateOf(false) }
     val signalPath by player.signalPath.collectAsStateWithLifecycle()
@@ -1445,7 +1455,7 @@ internal fun FullPlayer(
                                     onTabChange = onTabChange,
                                     shownDismissY = shownDismissY,
                                     swipeThreshold = swipeThreshold,
-                                    onOpenSignalPath = { showSignalPath = true },
+                                    onOpenSignalPath = openBadge,
                                     onOpenAudioControls = { showAudioControls = true },
                                     musicVideoEnabled = musicVideoEnabled,
                                     isVideoActive = isVideoActive,
@@ -1713,7 +1723,8 @@ internal fun FullPlayer(
                                                     if (shownMix != null) {
                                                         com.lastwave.app.ui.player.automix.AutoMixDeckView(
                                                             view = shownMix,
-                                                            progress = mixTelemetry.clampedProgress,
+                                                            playheadMs = mixTelemetry.playheadOutgoingMs(state.positionMs)
+                                                                ?: shownMix.cueOutMs.toDouble(),
                                                             modifier = Modifier.fillMaxSize(),
                                                         )
                                                     } else {
@@ -2017,7 +2028,7 @@ internal fun FullPlayer(
                                         state = state,
                                         signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
-                                        onClick = { showSignalPath = true },
+                                        onClick = openBadge,
                                         modifier = Modifier.offset(y = (-2).dp),
                                     )
                                     Spacer(Modifier.height(12.dp))
@@ -2100,6 +2111,13 @@ internal fun FullPlayer(
             currentMs = lyricsOffsetMs,
             onSelect = onSetLyricsOffsetMs,
             onDismiss = { showLyricsOffsetDialog = false },
+        )
+    }
+    if (showAutoMix) {
+        com.lastwave.app.ui.player.automix.AutoMixLiveSheet(
+            telemetry = state.deckBlendTelemetry,
+            currentPositionMs = state.positionMs,
+            onDismiss = { showAutoMix = false },
         )
     }
     if (showSignalPath) {

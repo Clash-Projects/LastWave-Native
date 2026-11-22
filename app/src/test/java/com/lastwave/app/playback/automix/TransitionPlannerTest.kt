@@ -217,4 +217,37 @@ class TransitionPlannerTest {
         val far = beatOutro.copy(phrases = listOf(PhraseMark((latest - 6 * bar).toLong(), 6f)))
         assertEquals(latest, (plan(outSig(far), inSig(beatIntro)) as MixPlan).cueOutMs.toDouble(), 1.0)
     }
+
+    @Test
+    fun beatmix_landsTheIncomingDropAsTheMixEnds() {
+        val inBar = 4 * 60_000.0 / 126
+        val drop = 450 + 12 * inBar
+        val intro = beatIntro.copy(phrases = listOf(PhraseMark(drop.toLong(), 6f)))
+        val plan = plan(outSig(beatOutro), inSig(intro)) as MixPlan
+        assertTrue(plan.beatLocked)
+        assertEquals(drop, plan.incomingTimeFor(plan.endOutMs).toDouble(), 3.0)
+    }
+
+    @Test
+    fun fade_waitsForTheOutgoingLineToFinish() {
+        val outro = window(160_000, 200_000, audibleEnd = 197_000)
+        val plan = plan(
+            outSig(outro, vocals = listOf(VocalSpan(189_000, 193_500))),
+            inSig(window(0, 40_000), vocals = emptyList()),
+        ) as MixPlan
+        assertEquals(193_500L, plan.cueOutMs)
+        assertEquals(197_000L, plan.endOutMs)
+    }
+
+    @Test
+    fun vocalCheck_flagsALineCutMidWordAndAHiddenEntry() {
+        val out = AcousticSignature(key = "o", durationMs = 200_000, intro = null, outro = null, vocals = listOf(VocalSpan(170_000, 176_000)))
+        val inc = AcousticSignature(key = "i", durationMs = 200_000, intro = null, outro = null, vocals = listOf(VocalSpan(2_000, 6_000)))
+        // Outgoing drops below half level at ~81 % of a 16 s BASS_SWAP mix from 160 s: ~173 s, mid-line.
+        val check = com.lastwave.app.playback.automix.engine.VocalCheck.of(out, inc, 160_000.0, 0.0, 16_000.0, 1f, MixShape.BASS_SWAP)
+        assertTrue(check.cutsLine)
+        // The incoming line starts at 2 s, while that song is still faint.
+        assertTrue(check.hidesEntry)
+        assertTrue(check.known)
+    }
 }

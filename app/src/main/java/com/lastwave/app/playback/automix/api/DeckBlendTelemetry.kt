@@ -68,6 +68,8 @@ data class MixView(
     val downbeatMs: Double?,
     val barMs: Double?,
     val bars: Int?,
+    val style: TransitionStyle,
+    val keyPair: String?,
 ) {
     fun incomingToOutgoing(incomingMs: Double): Double = cueOutMs + (incomingMs - cueInMs) / tempoRatio
 }

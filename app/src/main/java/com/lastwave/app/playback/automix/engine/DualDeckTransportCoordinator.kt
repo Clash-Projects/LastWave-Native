@@ -32,7 +32,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Sole owner of an AutoMix transition: analysis requests, the plan, the
@@ -65,10 +68,8 @@ class DualDeckTransportCoordinator @Inject constructor(
         val incoming: ExoPlayer,
         val plan: MixPlan,
         val userParameters: PlaybackParameters,
-        val outgoingEq: DeckEqStage?,
-        val incomingEq: DeckEqStage?,
-        val outgoingKicks: KickTap?,
-        val incomingKicks: KickTap?,
+        val outgoingTaps: DeckTaps?,
+        val incomingTaps: DeckTaps?,
         val startedAtMs: Long,
     ) {
         var handedOver = false
@@ -94,8 +95,8 @@ class DualDeckTransportCoordinator @Inject constructor(
     var onPerformDeckSwap: ((outgoing: ExoPlayer, incoming: ExoPlayer) -> Unit)? = null
     var onTransitionComplete: (() -> Unit)? = null
     var analysisInput: ((MediaItem) -> AnalysisInput?)? = null
-    /** The deck's EQ stage and kick tap; null when its sink is not on the processed float path. */
-    var deckSink: ((ExoPlayer) -> Pair<DeckEqStage, KickTap>?)? = null
+    /** The deck's AutoMix taps; null when its sink is not on the processed float path. */
+    var deckSink: ((ExoPlayer) -> DeckTaps?)? = null
 
     private var pairKey: String? = null
     private var decision: MixDecision? = null
@@ -232,7 +233,7 @@ class DualDeckTransportCoordinator @Inject constructor(
             cuedStandbyFor = pair
             // The outgoing deck's kicks are measured ahead of the mix; the
             // incoming one's during the silent lock-in.
-            if (plan.beatLocked) armedKicks = deckSink?.invoke(tick.primary)?.second?.also { it.enabled = true }
+            if (plan.beatLocked) armedKicks = deckSink?.invoke(tick.primary)?.kicks?.also { it.enabled = true }
         }
         if (transportPaused || !tick.primary.playWhenReady || standby.playbackState != Player.STATE_READY) return
         val startOutAt = plan.cueOutMs - ((plan.cueInMs - startIn) / plan.tempoRatio).toLong()
@@ -273,11 +274,11 @@ class DualDeckTransportCoordinator @Inject constructor(
         plan.bassSwapAtMs?.let { swapAt ->
             val rampUs = plan.bassSwapRampMs * 1000
             val swapInUs = plan.incomingTimeFor(swapAt) * 1000
-            outSink?.first?.schedule(bass = EqAutomation(swapAt * 1000, 1f, 0f, rampUs), treble = null)
+            outSink?.eq?.schedule(bass = EqAutomation(swapAt * 1000, 1f, 0f, rampUs), treble = null)
             // The incoming song enters on its mids: highs open over the first
             // half, the bass arrives on the swap downbeat.
             val trebleOpens = plan.shape == MixShape.BASS_SWAP
-            inSink?.first?.schedule(
+            inSink?.eq?.schedule(
                 bass = EqAutomation(swapInUs, 0f, 1f, (rampUs * plan.tempoRatio).toLong()),
                 treble = if (trebleOpens) {
                     EqAutomation(plan.cueInMs * 1000, 0f, 1f, (swapInUs - plan.cueInMs * 1000).coerceAtLeast(1L))
@@ -287,13 +288,15 @@ class DualDeckTransportCoordinator @Inject constructor(
             )
         }
         if (plan.beatLocked) {
-            outSink?.second?.enabled = true
-            inSink?.second?.enabled = true
+            outSink?.kicks?.enabled = true
+            inSink?.kicks?.enabled = true
         }
+        outSink?.level?.enabled = true
+        inSink?.level?.enabled = true
         incoming.play()
         val started = Session(
             outgoing, incoming, plan, userParameters,
-            outSink?.first, inSink?.first, outSink?.second, inSink?.second,
+            outSink, inSink,
             SystemClock.elapsedRealtime(),
         )
         session = started
@@ -315,7 +318,8 @@ class DualDeckTransportCoordinator @Inject constructor(
     }
 
     private suspend fun run(active: Session) {
-        val lock = if (active.plan.beatLocked) PhaseLock(active.plan, active.outgoingKicks, active.incomingKicks) else null
+        val lock = if (active.plan.beatLocked) PhaseLock(active.plan, active.outgoingTaps?.kicks, active.incomingTaps?.kicks) else null
+        val level = LevelGuide(active.outgoingTaps?.level, active.incomingTaps?.level)
         while (scope.isActive) {
             delay(TICK_MS)
             if (transportPaused) {
@@ -338,8 +342,9 @@ class DualDeckTransportCoordinator @Inject constructor(
                 (active.plan.overlapMs * active.plan.tempoRatio)).coerceIn(0f, 1f)
             lock?.update(outgoing, incoming, progress)
             val (outGain, inGain) = MixCurve.gains(progress, active.plan.shape)
-            outgoing.volume = if (outgoingDone) 0f else outGain * baseVolume
-            incoming.volume = inGain * baseVolume
+            val trim = level.correction(progress, if (outgoingDone) 0f else outGain, inGain)
+            outgoing.volume = if (outgoingDone) 0f else (outGain * trim * baseVolume).coerceAtMost(1f)
+            incoming.volume = (inGain * trim * baseVolume).coerceAtMost(1f)
             _telemetry.update { it.copy(blendProgress = progress) }
             if (!active.handedOver && (progress >= MixCurve.handOverPoint(active.plan.shape) || outgoingDone)) {
                 handOver(active)
@@ -370,8 +375,8 @@ class DualDeckTransportCoordinator @Inject constructor(
         stopKickTaps(active)
         silence(active.outgoing)
         active.incoming.volume = baseVolume
-        active.outgoingEq?.clear()
-        active.incomingEq?.restore()
+        active.outgoingTaps?.eq?.clear()
+        active.incomingTaps?.eq?.restore()
         if (active.plan.beatLocked) glideTempo(active.incoming, active.userParameters)
         runCatching { onTransitionComplete?.invoke() }
         Log.i(TAG, "Blend complete")
@@ -407,24 +412,26 @@ class DualDeckTransportCoordinator @Inject constructor(
             silence(active.outgoing)
             active.incoming.volume = baseVolume
             if (active.plan.beatLocked) runCatching { active.incoming.playbackParameters = active.userParameters }
-            active.outgoingEq?.clear()
-            active.incomingEq?.restore()
+            active.outgoingTaps?.eq?.clear()
+            active.incomingTaps?.eq?.restore()
             runCatching { onTransitionComplete?.invoke() }
             Log.i(TAG, "Blend interrupted after hand-over: committed")
         } else {
             silence(active.incoming)
             runCatching { active.incoming.playbackParameters = active.userParameters }
             active.outgoing.volume = baseVolume
-            active.incomingEq?.clear()
-            active.outgoingEq?.restore()
+            active.incomingTaps?.eq?.clear()
+            active.outgoingTaps?.eq?.restore()
             Log.i(TAG, "Blend interrupted before hand-over: reverted")
         }
         resetPlan()
     }
 
     private fun stopKickTaps(active: Session) {
-        active.outgoingKicks?.enabled = false
-        active.incomingKicks?.enabled = false
+        for (taps in listOfNotNull(active.outgoingTaps, active.incomingTaps)) {
+            taps.kicks.enabled = false
+            taps.level.enabled = false
+        }
     }
 
     private fun silence(deck: ExoPlayer) {
@@ -502,28 +509,27 @@ class DualDeckTransportCoordinator @Inject constructor(
         }
     }
 
-    /** Null unless both songs have analysed waveforms around their cue points. */
+    /** The planned mix as the UI draws it; decks without analysis simply have no waveform. */
     private fun mixView(plan: MixPlan): MixView? {
         val context = planContext ?: return null
-        val outro = context.outgoingSignature?.outro?.takeIf { it.bands.isNotEmpty() } ?: return null
-        val intro = context.incomingSignature?.intro?.takeIf { it.bands.isNotEmpty() } ?: return null
-        fun deck(track: PlayableTrack, durationMs: Long, window: WindowAnalysis, bpm: Float?) = MixDeckView(
+        val outro = context.outgoingSignature?.outro
+        val intro = context.incomingSignature?.intro
+        fun deck(track: PlayableTrack, durationMs: Long, window: WindowAnalysis?) = MixDeckView(
             title = track.title,
             artist = track.artist,
             artworkUrl = track.artworkUrl,
             durationMs = durationMs,
-            bpm = bpm,
-            camelotKey = window.camelotKey?.takeIf { window.keyConfidence >= KEY_DISPLAY_CONFIDENCE },
-            bandsStartMs = window.startMs,
-            bands = window.bands,
+            bpm = window?.grid?.takeIf { it.confidence >= BPM_DISPLAY_CONFIDENCE }?.bpm,
+            camelotKey = window?.camelotKey?.takeIf { window.keyConfidence >= KEY_DISPLAY_CONFIDENCE },
+            bandsStartMs = window?.startMs ?: 0L,
+            bands = window?.bands.orEmpty(),
         )
         return MixView(
-            outgoing = deck(context.outgoing, context.outgoingDurationMs, outro, outro.grid?.takeIf { it.confidence >= BPM_DISPLAY_CONFIDENCE }?.bpm),
+            outgoing = deck(context.outgoing, context.outgoingDurationMs, outro),
             incoming = deck(
                 context.incoming,
-                context.incomingSignature.durationMs,
+                context.incomingSignature?.durationMs ?: context.incoming.durationMs ?: 0L,
                 intro,
-                intro.grid?.takeIf { it.confidence >= BPM_DISPLAY_CONFIDENCE }?.bpm,
             ),
             cueOutMs = plan.cueOutMs,
             cueInMs = plan.cueInMs,
@@ -535,6 +541,8 @@ class DualDeckTransportCoordinator @Inject constructor(
             downbeatMs = plan.outGrid?.downbeatMs,
             barMs = plan.outGrid?.barMs,
             bars = plan.bars,
+            style = plan.style,
+            keyPair = plan.keyPair,
         )
     }
 
@@ -550,6 +558,42 @@ class DualDeckTransportCoordinator @Inject constructor(
         "${plan.style} ${plan.shape} out=${plan.cueOutMs}ms in=${plan.cueInMs}ms len=${plan.overlapMs}ms " +
             "tempo=${plan.tempoRatio} bpm=${plan.bpm} keys=${plan.keyPair} bassSwap=${plan.bassSwapAtMs} " +
             "vocalSafe=${plan.vocalSafe}"
+
+    /**
+     * Keeps the summed level on a straight line from the outgoing song's own
+     * level to the incoming one's, so a quiet intro under a loud outro neither
+     * dips nor bumps. Each deck's level is measured live after its EQ and
+     * before its volume; the gain curve's prediction (uncorrelated decks) is
+     * corrected by at most -3/+2.5 dB, smoothed, and faded out at both ends.
+     */
+    private class LevelGuide(private val outgoing: LevelMeter?, private val incoming: LevelMeter?) {
+        private var smoothed = 1f
+
+        fun correction(progress: Float, outGain: Float, inGain: Float): Float {
+            val outPower = outgoing?.power ?: 0.0
+            val inPower = incoming?.power ?: 0.0
+            val wanted = if (outPower < MIN_POWER || inPower < MIN_POWER) {
+                1f
+            } else {
+                val predicted = outGain * outGain * outPower + inGain * inGain * inPower
+                val target = (1 - progress) * outPower + progress * inPower
+                val raw = sqrt(target / predicted.coerceAtLeast(MIN_POWER)).toFloat().coerceIn(MIN_TRIM, MAX_TRIM)
+                val edge = (minOf(progress, 1 - progress) / EDGE_PROGRESS).coerceIn(0f, 1f)
+                val taper = sin(edge * PI.toFloat() / 2).let { it * it }
+                1f + (raw - 1f) * taper
+            }
+            smoothed += (wanted - smoothed) * SMOOTHING
+            return smoothed
+        }
+
+        private companion object {
+            const val MIN_POWER = 1e-7
+            const val MIN_TRIM = 0.708f
+            const val MAX_TRIM = 1.334f
+            const val EDGE_PROGRESS = 0.08f
+            const val SMOOTHING = 0.15f
+        }
+    }
 
     /**
      * Keeps the incoming deck on the outgoing deck's beat. ExoPlayer positions

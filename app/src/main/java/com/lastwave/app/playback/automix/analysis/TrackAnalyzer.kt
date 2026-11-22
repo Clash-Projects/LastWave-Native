@@ -74,7 +74,8 @@ data class WindowAnalysis(
 )
 
 @Serializable
-data class PhraseMark(val ms: Long, val strengthDb: Float)
+/** [shiftDb] > 0: the next 4 bars are louder (a drop or chorus); < 0: a breakdown or outro. */
+data class PhraseMark(val ms: Long, val shiftDb: Float)
 
 const val BAND_COLUMN_MS = 100
 
@@ -167,8 +168,8 @@ object TrackAnalyzer {
         return (PHRASE_SPAN until bars.size - PHRASE_SPAN + 1).mapNotNull { k ->
             val before = levels.subList(k - PHRASE_SPAN, k).average()
             val after = levels.subList(k, k + PHRASE_SPAN).average()
-            val shift = abs(after - before)
-            if (shift >= PHRASE_MIN_DB) PhraseMark(bars[k].toLong(), shift.toFloat()) else null
+            val shift = after - before
+            if (abs(shift) >= PHRASE_MIN_DB) PhraseMark(bars[k].toLong(), shift.toFloat()) else null
         }
     }
 

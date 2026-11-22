@@ -77,8 +77,8 @@ class TrackAnalyzerTest {
         loud.copyInto(pcm, quiet.size)
         val analysis = TrackAnalyzer.analyze(pcm, RATE, 0.0)
         val boundary = quiet.size * 1000L / RATE
-        val mark = analysis.phrases.maxByOrNull { it.strengthDb }
-        assertTrue("phrases ${analysis.phrases}", mark != null && abs(mark.ms - boundary) <= 150 && mark.strengthDb >= 5f)
+        val mark = analysis.phrases.maxByOrNull { it.shiftDb }
+        assertTrue("phrases ${analysis.phrases}", mark != null && abs(mark.ms - boundary) <= 150 && mark.shiftDb >= 5f)
     }
 
     @Test
