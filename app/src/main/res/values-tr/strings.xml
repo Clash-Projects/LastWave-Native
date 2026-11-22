@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Oynatıcı</string>
@@ -790,9 +790,9 @@
     <string name="set_lfm_remove">Kaldır</string>
     <string name="set_lfm_key_label">API anahtarı</string>
     <string name="set_lfm_key_saved">Anahtarınız kaydedildi</string>
-    <string name="set_lfm_key_hint">Gerekli — ücretsiz alın ve buraya yapıştırın</string>
-    <string name="set_lfm_get">last.fm/api adresinden ücretsiz anahtar alın →</string>
-    <string name="set_lfm_how">Ücretsiz anahtar nasıl alınır →</string>
+    <string name="set_lfm_key_hint">Gerekli — alın ve buraya yapıştırın</string>
+    <string name="set_lfm_get">last.fm/api adresinden anahtar alın →</string>
+    <string name="set_lfm_how">Anahtar nasıl alınır →</string>
     <string name="set_lfm_disc_title">Last.fm bağlantısı kesilsin mi?</string>
     <string name="set_lfm_disc_text">Genel scrobble’lar duraklatılır. İstatistikleriniz yerel dinleme geçmişine geçer — hiçbir şey silinmez.</string>
     <string name="set_lfm_disc_btn">Bağlantıyı Kes</string>

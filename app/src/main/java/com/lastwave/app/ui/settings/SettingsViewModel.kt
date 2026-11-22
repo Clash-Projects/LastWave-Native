@@ -26,6 +26,11 @@ import com.lastwave.app.data.download.TrackDownloadManager
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.repository.AuthRepository
 import com.lastwave.app.data.repository.ThemeRepository
+import com.lastwave.app.data.scrobbler.ExtraScrobblerPreferences
+import com.lastwave.app.data.scrobbler.ExtraService
+import com.lastwave.app.data.scrobbler.LibreFmClient
+import com.lastwave.app.data.scrobbler.ListenBrainzClient
+import com.lastwave.app.data.scrobbler.ScrobblerAccount
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.data.repository.ThemeUiState
 import com.lastwave.app.playback.NativeAudioEngine
@@ -45,6 +50,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -83,6 +92,11 @@ data class SettingsScreenState(
     val sessionKeyLoading: Boolean = false,
 )
 
+data class ScrobblerConnectionState(
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -100,6 +114,9 @@ class SettingsViewModel @Inject constructor(
     private val downloadManager: TrackDownloadManager,
     private val fileExportHelper: FileExportHelper,
     private val scrobblerPreferences: ScrobblerPreferences,
+    private val extraScrobblerPreferences: ExtraScrobblerPreferences,
+    private val listenBrainzClient: ListenBrainzClient,
+    private val libreFmClient: LibreFmClient,
     private val discordPresencePreferences: com.lastwave.app.presence.DiscordPresencePreferences,
     private val equalizerPreferences: com.lastwave.app.data.local.EqualizerPreferences,
     private val loudnessPrefs: com.lastwave.app.playback.LoudnessPrefs,
@@ -391,6 +408,56 @@ class SettingsViewModel @Inject constructor(
     //    pastes their own API key/secret (created at last.fm/api/account/
     //    create) before connecting. Connect/disconnect anytime; stats +
     //    scrobbling degrade to local-first when disconnected. ──
+
+    val listenBrainzAccount: StateFlow<ScrobblerAccount> = extraScrobblerPreferences
+        .account(ExtraService.LISTENBRAINZ)
+        .withSettingsFallback("ListenBrainz account", ScrobblerAccount())
+        .stateIn(viewModelScope, SettingsSharing, ScrobblerAccount())
+
+    val libreFmAccount: StateFlow<ScrobblerAccount> = extraScrobblerPreferences
+        .account(ExtraService.LIBREFM)
+        .withSettingsFallback("Libre.fm account", ScrobblerAccount())
+        .stateIn(viewModelScope, SettingsSharing, ScrobblerAccount())
+
+    private val _scrobblerConnections = MutableStateFlow<Map<ExtraService, ScrobblerConnectionState>>(emptyMap())
+    val scrobblerConnections = _scrobblerConnections.asStateFlow()
+    private val scrobblerActionJobs = mutableMapOf<ExtraService, Job>()
+
+    fun connectListenBrainz(token: String, server: String) = runScrobblerAction(ExtraService.LISTENBRAINZ) {
+        listenBrainzClient.connect(token, server)
+    }
+
+    fun connectLibreFm(user: String, password: String, server: String) = runScrobblerAction(ExtraService.LIBREFM) {
+        libreFmClient.connect(user, password, server)
+    }
+
+    fun disconnectScrobbler(service: ExtraService) = runScrobblerAction(service) {
+        extraScrobblerPreferences.clear(service)
+        null
+    }
+
+    private fun runScrobblerAction(service: ExtraService, action: suspend () -> String?) {
+        if (_scrobblerConnections.value[service]?.busy == true) return
+        _scrobblerConnections.update { it + (service to ScrobblerConnectionState(busy = true)) }
+        scrobblerActionJobs[service] = launchSettingsAction("update ${service.displayName} connection") {
+            // Authentication may finish after navigation; keep its credential write atomic with the result.
+            withContext(NonCancellable) {
+                try {
+                    val error = action()
+                    _scrobblerConnections.update { it + (service to ScrobblerConnectionState(error = error)) }
+                } catch (error: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    _scrobblerConnections.update {
+                        it + (service to ScrobblerConnectionState(error = appContext.getString(com.lastwave.app.R.string.set_scrobbler_error)))
+                    }
+                } finally {
+                    _scrobblerConnections.update {
+                        it + (service to (it[service] ?: ScrobblerConnectionState()).copy(busy = false))
+                    }
+                }
+            }
+        }
+    }
 
     /** True when a Last.fm username is persisted (scrobbles sync globally). */
     val isLastFmConnected: StateFlow<Boolean> = session
@@ -896,6 +963,9 @@ class SettingsViewModel @Inject constructor(
             podcastProgressStore.clear()
             playlistRepository.clearAll()
             runCatching { ytAuthManager.signOut() }
+            // Screen-exit authentication can still be saving; reset must win that race.
+            scrobblerActionJobs.values.toList().forEach { it.join() }
+            ExtraService.entries.forEach { extraScrobblerPreferences.clear(it) }
             // Session last: clearing it navigates to login and can cancel this
             // scope, which used to interrupt the reset halfway through.
             sessionPreferences.clearAll()

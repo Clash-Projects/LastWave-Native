@@ -763,9 +763,9 @@
     <string name="set_lfm_remove">Supprimer</string>
     <string name="set_lfm_key_label">Clé API</string>
     <string name="set_lfm_key_saved">Votre clé est enregistrée</string>
-    <string name="set_lfm_key_hint">Obligatoire : obtenez-en un gratuitement, puis collez-le ici</string>
-    <string name="set_lfm_get">Obtenez une clé gratuite sur last.fm/api →</string>
-    <string name="set_lfm_how">Comment obtenir une clé gratuite →</string>
+    <string name="set_lfm_key_hint">Obligatoire : obtenez-en un, puis collez-le ici</string>
+    <string name="set_lfm_get">Obtenez une clé sur last.fm/api →</string>
+    <string name="set_lfm_how">Comment obtenir une clé →</string>
     <string name="set_lfm_disc_title">Déconnecter Last.fm ?</string>
     <string name="set_lfm_disc_text">Pause globale des scrobbles. Vos statistiques passent à l\'historique d\'écoute local – rien n\'est supprimé.</string>
     <string name="set_lfm_disc_btn">Déconnecter</string>

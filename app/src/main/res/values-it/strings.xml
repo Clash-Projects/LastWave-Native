@@ -810,9 +810,9 @@
     <string name="set_lfm_remove">Rimuovi</string>
     <string name="set_lfm_key_label">Chiave API</string>
     <string name="set_lfm_key_saved">La chiave è salvata</string>
-    <string name="set_lfm_key_hint">Obbligatoria — creane una gratis, poi incollala qui</string>
-    <string name="set_lfm_get">Ottieni una chiave gratuita su last.fm/api →</string>
-    <string name="set_lfm_how">Come ottenere una chiave gratuita →</string>
+    <string name="set_lfm_key_hint">Obbligatoria — creane una, poi incollala qui</string>
+    <string name="set_lfm_get">Ottieni una chiave su last.fm/api →</string>
+    <string name="set_lfm_how">Come ottenere una chiave →</string>
     <string name="set_lfm_disc_title">Disconnettere Last.fm?</string>
     <string name="set_lfm_disc_text">Gli scrobble globali si mettono in pausa. Le Statistiche passano alla cronologia locale: non viene eliminato nulla.</string>
     <string name="set_lfm_disc_btn">Disconnetti</string>

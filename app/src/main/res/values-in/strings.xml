@@ -756,9 +756,9 @@
     <string name="set_lfm_remove">Hapus</string>
     <string name="set_lfm_key_label">Kunci API</string>
     <string name="set_lfm_key_saved">Kunci Anda disimpan</string>
-    <string name="set_lfm_key_hint">Wajib — dapatkan satu gratis, lalu tempelkan di sini</string>
-    <string name="set_lfm_get">Dapatkan kunci gratis di last.fm/api →</string>
-    <string name="set_lfm_how">Cara mendapatkan kunci gratis →</string>
+    <string name="set_lfm_key_hint">Wajib — dapatkan satu, lalu tempelkan di sini</string>
+    <string name="set_lfm_get">Dapatkan kunci di last.fm/api →</string>
+    <string name="set_lfm_how">Cara mendapatkan kunci →</string>
     <string name="set_lfm_disc_title">Putuskan sambungan Last.fm?</string>
     <string name="set_lfm_disc_text">Permasalahan global terhenti. Statistik Anda beralih ke riwayat mendengarkan lokal — tidak ada yang dihapus.</string>
     <string name="set_lfm_disc_btn">Putuskan sambungan</string>

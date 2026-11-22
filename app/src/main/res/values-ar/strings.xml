@@ -756,9 +756,9 @@
     <string name="set_lfm_remove">إزالة</string>
     <string name="set_lfm_key_label">مفتاح واجهة برمجة التطبيقات</string>
     <string name="set_lfm_key_saved">تم حفظ المفتاح الخاص بك</string>
-    <string name="set_lfm_key_hint">مطلوب - احصل على واحدة مجانًا، ثم الصقها هنا</string>
-    <string name="set_lfm_get">احصل على مفتاح مجاني على last.fm/api →</string>
-    <string name="set_lfm_how">كيفية الحصول على مفتاح مجاني →</string>
+    <string name="set_lfm_key_hint">مطلوب - احصل على واحدة، ثم الصقها هنا</string>
+    <string name="set_lfm_get">احصل على مفتاح على last.fm/api →</string>
+    <string name="set_lfm_how">كيفية الحصول على مفتاح →</string>
     <string name="set_lfm_disc_title">هل تريد قطع الاتصال بـ Last.fm؟</string>
     <string name="set_lfm_disc_text">توقف الخربشات العالمية. تتحول إحصائياتك إلى سجل الاستماع المحلي - ولا يتم حذف أي شيء.</string>
     <string name="set_lfm_disc_btn">قطع الاتصال</string>

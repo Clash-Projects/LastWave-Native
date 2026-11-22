@@ -937,9 +937,9 @@
     <string name="set_lfm_remove">Gỡ</string>
     <string name="set_lfm_key_label">Khóa API</string>
     <string name="set_lfm_key_saved">Khóa của bạn đã được lưu</string>
-    <string name="set_lfm_key_hint">Bắt buộc — lấy khóa miễn phí rồi dán vào đây</string>
-    <string name="set_lfm_get">Lấy khóa miễn phí tại last.fm/api →</string>
-    <string name="set_lfm_how">Cách lấy khóa miễn phí →</string>
+    <string name="set_lfm_key_hint">Bắt buộc — lấy khóa rồi dán vào đây</string>
+    <string name="set_lfm_get">Lấy khóa tại last.fm/api →</string>
+    <string name="set_lfm_how">Cách lấy khóa →</string>
     <string name="set_lfm_disc_title">Ngắt kết nối Last.fm?</string>
     <string name="set_lfm_disc_text">Scrobble toàn cầu sẽ tạm dừng. Thống kê của bạn chuyển sang lịch sử nghe cục bộ — không có gì bị xóa.</string>
     <string name="set_lfm_disc_btn">Ngắt kết nối</string>

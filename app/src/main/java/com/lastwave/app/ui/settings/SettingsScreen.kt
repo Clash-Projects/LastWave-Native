@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.settings
 
 import androidx.compose.material3.HorizontalDivider
+import com.lastwave.app.data.scrobbler.ExtraService
 import com.lastwave.app.data.local.SeekbarStyle
 
 import androidx.activity.compose.BackHandler
@@ -336,12 +337,12 @@ enum class SettingsTab(
         subtitle = "Account connection, Canvas, Playlist imports & Liked Songs sync",
         icon = QualityGlyphs.Spotify,
     ),
-    LAST_FM(
-        titleRes = R.string.set_cat_lfm,
-        subtitleRes = R.string.set_cat_lfm_sub,
-        title = "Last.fm",
-        subtitle = "Account connection, Scrobbling sync & API credentials",
-        icon = QualityGlyphs.LastFm,
+    SCROBBLERS(
+        titleRes = R.string.set_cat_scrobblers,
+        subtitleRes = R.string.set_cat_scrobblers_sub,
+        title = "Scrobblers",
+        subtitle = "ListenBrainz, Libre.fm & Last.fm",
+        icon = Icons.Filled.Album,
     ),
     LIBRARY(
         titleRes = R.string.set_cat_lib,
@@ -425,6 +426,9 @@ fun SettingsScreen(
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
     val discordPresenceEnabled by viewModel.discordPresenceEnabled.collectAsStateWithLifecycle()
     val isLastFmConnected by viewModel.isLastFmConnected.collectAsStateWithLifecycle()
+    val listenBrainzAccount by viewModel.listenBrainzAccount.collectAsStateWithLifecycle()
+    val libreFmAccount by viewModel.libreFmAccount.collectAsStateWithLifecycle()
+    val scrobblerConnections by viewModel.scrobblerConnections.collectAsStateWithLifecycle()
     val hasApiKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
     val lastFmAuthUrl by viewModel.lastFmAuthUrl.collectAsStateWithLifecycle()
     val lastFmConnecting by viewModel.lastFmConnecting.collectAsStateWithLifecycle()
@@ -688,12 +692,12 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "services.modules" || highlightedSettingId == "library.modules"),
                                         )
                                         1 -> SettingsActionCard(
-                                            icon = QualityGlyphs.LastFm,
+                                            icon = Icons.Filled.Album,
                                             iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            title = stringResource(R.string.set_cat_lfm),
-                                            subtitle = if (isLastFmConnected) "Connected as ${session.username} \u2022 Scrobbling active" else "Connect account, scrobbles & statistics sync",
-                                            onClick = { activeTab = SettingsTab.LAST_FM },
+                                            title = stringResource(R.string.set_cat_scrobblers),
+                                            subtitle = stringResource(R.string.set_cat_scrobblers_sub),
+                                            onClick = { activeTab = SettingsTab.SCROBBLERS },
                                             position = position,
                                         )
                                         2 -> SettingsActionCard(
@@ -1952,13 +1956,34 @@ fun SettingsScreen(
                         }
                     }
 
-                    SettingsTab.LAST_FM -> {
+                    SettingsTab.SCROBBLERS -> {
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SectionLabel("Integrations / Scrobbling")
-                    // Last.fm is optional here — never a gate. Connected:
-                    // global scrobbles + stats sync. Disconnected: Stats and
-                    // recommendations run local-first from Room.
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SectionLabel(stringResource(R.string.set_cat_scrobblers))
+                    ScrobblerIntegrationCard(
+                        service = ExtraService.LISTENBRAINZ,
+                        account = listenBrainzAccount,
+                        connection = scrobblerConnections[ExtraService.LISTENBRAINZ] ?: ScrobblerConnectionState(),
+                        isHighlighted = highlightedSettingId == "listenbrainz.connect",
+                        onConnect = { _, token, server -> viewModel.connectListenBrainz(token, server) },
+                        onDisconnect = { viewModel.disconnectScrobbler(ExtraService.LISTENBRAINZ) },
+                        onOpenTokenPage = {
+                            runCatching {
+                                androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                                    .launchUrl(context, android.net.Uri.parse("https://listenbrainz.org/settings/"))
+                            }.onFailure {
+                                viewModel.showToast(context.getString(R.string.set_scrobbler_browser_error))
+                            }
+                        },
+                    )
+                    ScrobblerIntegrationCard(
+                        service = ExtraService.LIBREFM,
+                        account = libreFmAccount,
+                        connection = scrobblerConnections[ExtraService.LIBREFM] ?: ScrobblerConnectionState(),
+                        isHighlighted = highlightedSettingId == "librefm.connect",
+                        onConnect = viewModel::connectLibreFm,
+                        onDisconnect = { viewModel.disconnectScrobbler(ExtraService.LIBREFM) },
+                    )
                     LastFmIntegrationCard(
                         isConnected = isLastFmConnected,
                         username = session.username,
@@ -1981,12 +2006,6 @@ fun SettingsScreen(
                             }
                         },
                     )
-                    // Discord presence, next to Last.fm because both are "tell
-                    // other services what I'm listening to" integrations and
-                    // neither is required for playback. Unlike Last.fm this
-                    // needs no account in LastWave — it publishes as the
-                    // LastWave application through the Discord app itself, so
-                    // the copy says exactly that.
                     SettingsToggleCard(
                         icon = Icons.Filled.Public,
                         iconContainer = MaterialTheme.colorScheme.secondaryContainer,

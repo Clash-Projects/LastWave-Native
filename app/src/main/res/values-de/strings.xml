@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Player</string>
@@ -756,9 +756,9 @@
     <string name="set_lfm_remove">Entfernen</string>
     <string name="set_lfm_key_label">API-Schlüssel</string>
     <string name="set_lfm_key_saved">Ihr Schlüssel ist gespeichert</string>
-    <string name="set_lfm_key_hint">Erforderlich – holen Sie sich eines kostenlos und fügen Sie es dann hier ein</string>
-    <string name="set_lfm_get">Holen Sie sich einen kostenlosen Schlüssel unter last.fm/api →</string>
-    <string name="set_lfm_how">So erhalten Sie einen kostenlosen Schlüssel →</string>
+    <string name="set_lfm_key_hint">Erforderlich – holen Sie sich eines und fügen Sie es dann hier ein</string>
+    <string name="set_lfm_get">Holen Sie sich einen Schlüssel unter last.fm/api →</string>
+    <string name="set_lfm_how">So erhalten Sie einen Schlüssel →</string>
     <string name="set_lfm_disc_title">Last.fm trennen?</string>
     <string name="set_lfm_disc_text">Globales Gekritzel pausiert. Ihre Statistiken wechseln zum lokalen Hörverlauf – es wird nichts gelöscht.</string>
     <string name="set_lfm_disc_btn">Trennen</string>

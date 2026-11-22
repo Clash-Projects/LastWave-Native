@@ -151,6 +151,7 @@ internal fun MusicPlaybackService.detectTransition(state: MusicPlayerState) {
         pendingPreviousTrack = if (isEpisode) null else track
         pendingPreviousStartedAt = System.currentTimeMillis() / 1000
         nowPlayingAnnouncedKey = ""
+        scrobbleRepository.resetNowPlaying()
         accumulatedMs = 0
         lastPositionMs = 0
         retryCount = 0
@@ -251,15 +252,13 @@ internal fun MusicPlaybackService.startDetector() {
                     startedAtEpochSec = System.currentTimeMillis() / 1000
                     submissionAttempted = false
                     retryCount = 0
+                    nowPlayingAnnouncedKey = ""
+                    scrobbleRepository.resetNowPlaying()
                     announceNowPlaying(state)
                 }
                 lastPositionMs = state.positionMs
 
                 accumulatedMs += 1_000
-
-                // Heartbeat to keep listener alive on global map (backend expires in 60s)
-                if (accumulatedMs > 0 && accumulatedMs % 45_000L == 0L) {
-                }
 
                 if (submissionAttempted) continue
 
@@ -271,28 +270,26 @@ internal fun MusicPlaybackService.startDetector() {
                 if (accumulatedMs < threshold) continue
 
                 submissionAttempted = true
+                val submittedStartedAt = startedAtEpochSec
                 scope.launch(Dispatchers.IO) {
                     runCatching {
                         when (val result = scrobbleRepository.scrobble(
                             artist = cleanArtist,
                             track = cleanTitle,
                             album = track.album,
-                            timestampSec = startedAtEpochSec,
+                            timestampSec = submittedStartedAt,
                         )) {
                             ScrobbleRepository.Result.Success -> {
-
-                                // Re-announce now playing so Last.fm keeps active status during ongoing playback
-                                if (musicPlayer.state.value.isPlaying) {
+                                val current = musicPlayer.state.value
+                                if (settings.submitNowPlaying && current.isPlaying &&
+                                    current.current == track && startedAtEpochSec == submittedStartedAt
+                                ) {
                                     scrobbleRepository.updateNowPlaying(cleanArtist, cleanTitle, track.album)
                                 }
                             }
-                            ScrobbleRepository.Result.NoSessionKey -> {
-
-                            }
+                            ScrobbleRepository.Result.NoSessionKey -> Unit
                             is ScrobbleRepository.Result.Failed -> {
-
-                                // Allow up to 3 retries on network failure
-                                if (retryCount < 3) {
+                                if (result.retryable && retryCount < 3 && startedAtEpochSec == submittedStartedAt) {
                                     retryCount++
                                     submissionAttempted = false
                                 }
