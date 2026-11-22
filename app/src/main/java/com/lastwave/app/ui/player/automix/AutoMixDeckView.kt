@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -47,6 +48,7 @@ import com.lastwave.app.playback.automix.api.MixDeckView
 import com.lastwave.app.playback.automix.api.MixView
 import com.lastwave.app.playback.automix.engine.MixCurve
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 // Fixed frequency and transport colors keep this studio view readable with monochrome app palettes.
@@ -70,6 +72,9 @@ internal fun AutoMixDeckView(
     incomingStatus: WaveformPreviewStatus = WaveformPreviewStatus.READY,
 ) {
     val head = animateFloatAsState(playheadMs.toFloat(), tween(80, easing = LinearEasing), label = "mixPlayhead")
+    val reveal = animateFloatAsState(
+        if (view.outgoing.bands.isEmpty() && view.incoming.bands.isEmpty()) 0f else 1f, tween(400), label = "mixReveal",
+    )
     BoxWithConstraints(modifier) {
         val fontScale = LocalDensity.current.fontScale
         val compact = maxHeight < 350.dp && maxWidth >= 440.dp
@@ -99,13 +104,15 @@ internal fun AutoMixDeckView(
                 Box(
                     Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(StudioPlot),
                 ) {
+                    // Own layer: the playhead redraws every frame without re-recording the waveforms.
                     Canvas(
-                        Modifier.fillMaxSize().semantics {
+                        Modifier.fillMaxSize().graphicsLayer { this.alpha = reveal.value }.semantics {
                             contentDescription = "Transition waveform: ${view.outgoing.title} into ${view.incoming.title}"
                         },
                     ) {
-                        drawMix(view, head.value.toDouble())
+                        drawMix(view)
                     }
+                    Canvas(Modifier.fillMaxSize()) { drawPlayhead(view, head.value.toDouble()) }
                     Column(Modifier.fillMaxSize()) {
                         WaveformNotice(outgoingStatus, Modifier.weight(1f).fillMaxWidth())
                         WaveformNotice(incomingStatus, Modifier.weight(1f).fillMaxWidth())
@@ -170,9 +177,9 @@ private fun DeckMetrics(deck: MixDeckView) {
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         deck.bpm?.let {
             Text(
-                "${it.roundToInt()} bpm",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Normal),
-                color = StudioContent.copy(alpha = 0.8f),
+                "${it.roundToInt()} BPM",
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold),
+                color = StudioContent.copy(alpha = 0.9f),
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -220,111 +227,153 @@ private fun SpectrumLabel(label: String, color: Color) {
     )
 }
 
-private fun DrawScope.drawMix(view: MixView, playheadMs: Double) {
-    // Equal context on both sides centers the actual overlap; post-roll is presentation only.
-    val startMs = view.cueOutMs - 3_000.0
-    val spanMs = view.overlapMs + 6_000.0
-    fun x(ms: Double) = ((ms - startMs) / spanMs * size.width).toFloat()
-    val top = 12.dp.toPx()
-    val bottom = size.height - 12.dp.toPx()
-    val gap = 28.dp.toPx()
+/** One song's lane: the mix window owns the spotlight box, the rest of the song is squeezed beside it. */
+private class LaneSegment(val ms0: Double, val ms1: Double, val x0: Float, val x1: Float)
+
+private class Lane(durationMs: Long, preMs: Double, mixMs: Double, left: Float, right: Float, width: Float) {
+    val segments: List<LaneSegment>
+
+    init {
+        // Never zoom the intro or outro past the box scale; long songs compress into the free space.
+        val scale = (right - left) / mixMs.coerceAtLeast(1.0)
+        val mixEnd = preMs + mixMs
+        val preWidth = minOf(left, (preMs * scale).toFloat())
+        val postWidth = minOf(width - right, (maxOf(durationMs - mixEnd, 0.0) * scale).toFloat())
+        segments = listOf(
+            LaneSegment(0.0, preMs, left - preWidth, left),
+            LaneSegment(preMs, mixEnd, left, right),
+            LaneSegment(mixEnd, maxOf(durationMs.toDouble(), mixEnd), right, right + postWidth),
+        )
+    }
+
+    fun x(ms: Double): Float {
+        val segment = if (ms < segments[1].ms0) segments[0] else if (ms <= segments[1].ms1) segments[1] else segments[2]
+        val span = segment.ms1 - segment.ms0
+        if (span <= 0.0) return segment.x0
+        return segment.x0 + ((ms.coerceIn(segment.ms0, segment.ms1) - segment.ms0) / span * (segment.x1 - segment.x0)).toFloat()
+    }
+}
+
+private class MixPlot(view: MixView, width: Float, val top: Float, val bottom: Float, val gap: Float) {
     val laneHeight = ((bottom - top - gap) / 2f).coerceAtLeast(1f)
     val lowerTop = top + laneHeight + gap
-    val boxLeft = x(view.cueOutMs.toDouble())
-    val boxRight = x((view.cueOutMs + view.overlapMs).toDouble())
-    drawRoundRect(
-        StudioContent.copy(alpha = 0.035f), Offset(boxLeft, top),
-        Size(boxRight - boxLeft, bottom - top), CornerRadius(8.dp.toPx()),
+    val boxLeft = width * 0.3f
+    val boxRight = width * 0.7f
+    val outgoing = Lane(view.outgoing.durationMs, view.cueOutMs.toDouble(), view.overlapMs.toDouble(), boxLeft, boxRight, width)
+    val incoming = Lane(
+        view.incoming.durationMs, view.cueInMs.toDouble(), view.overlapMs * view.tempoRatio.toDouble(), boxLeft, boxRight, width,
     )
+}
+
+private fun DrawScope.mixPlot(view: MixView) = MixPlot(view, size.width, 12.dp.toPx(), size.height - 12.dp.toPx(), 20.dp.toPx())
+
+private fun DrawScope.drawMix(view: MixView) {
+    val plot = mixPlot(view)
+    val corner = CornerRadius(8.dp.toPx())
+    val boxWidth = plot.boxRight - plot.boxLeft
+    // The transition window is the one lit area; everything around it is quieter.
+    drawRoundRect(StudioContent.copy(alpha = 0.07f), Offset(plot.boxLeft, plot.top), Size(boxWidth, plot.bottom - plot.top), corner)
     val barMs = view.barMs?.takeIf { it > 0.0 }
     val beatMs = barMs?.div(4) ?: 1_000.0
     val origin = view.downbeatMs ?: 0.0
-    var beat = origin + ceil((startMs - origin) / beatMs) * beatMs
-    while (beat <= startMs + spanMs) {
+    val mixStart = view.cueOutMs.toDouble()
+    val mixEnd = mixStart + view.overlapMs
+    var beat = origin + ceil((mixStart - origin) / beatMs) * beatMs
+    while (beat <= mixEnd) {
         val downbeat = barMs != null && kotlin.math.abs((beat - origin) % barMs) < 1.0
+        val x = plot.boxLeft + ((beat - mixStart) / view.overlapMs * boxWidth).toFloat()
         drawLine(
-            StudioContent.copy(alpha = if (downbeat) 0.12f else 0.04f),
-            Offset(x(beat), top), Offset(x(beat), bottom), 1.dp.toPx(),
+            StudioContent.copy(alpha = if (downbeat) 0.14f else 0.05f),
+            Offset(x, plot.top), Offset(x, plot.bottom), 1.dp.toPx(),
         )
         beat += beatMs
     }
-    drawSpectrum(view.outgoing, view, true, top, laneHeight, ::x)
-    drawSpectrum(view.incoming, view, false, lowerTop, laneHeight, ::x)
-    for ((laneTop, outgoing) in listOf(top to true, lowerTop to false)) {
+    drawLane(view.outgoing, plot.outgoing, plot.top, plot.laneHeight, outgoing = true)
+    drawLane(view.incoming, plot.incoming, plot.lowerTop, plot.laneHeight, outgoing = false)
+    for ((laneTop, outgoing) in listOf(plot.top to true, plot.lowerTop to false)) {
         val path = Path()
         for (step in 0..96) {
             val p = step / 96f
             val gains = MixCurve.gains(p, view.shape)
             val gain = if (outgoing) gains.first else gains.second
-            val px = boxLeft + (boxRight - boxLeft) * p
-            val py = laneTop + laneHeight - gain * (laneHeight - 4.dp.toPx())
+            val px = plot.boxLeft + boxWidth * p
+            val py = laneTop + plot.laneHeight - gain * (plot.laneHeight - 4.dp.toPx())
             if (step == 0) path.moveTo(px, py) else path.lineTo(px, py)
         }
         val color = if (outgoing) CueColor else LevelColor
         drawPath(path, StudioSurface.copy(alpha = 0.85f), style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
         drawPath(path, color, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
+        drawRoundRect(color, Offset(plot.boxLeft, laneTop), Size(boxWidth, plot.laneHeight), corner, Stroke(1.5.dp.toPx()))
     }
-    for (px in listOf(boxLeft, boxRight)) {
-        drawLine(CueColor.copy(alpha = 0.35f), Offset(px, top), Offset(px, bottom), 1.dp.toPx())
-    }
-    val seam = top + laneHeight + gap / 2
-    drawLine(StudioContent.copy(alpha = 0.1f), Offset(0f, seam), Offset(size.width, seam), 1.dp.toPx())
-    val headX = x(playheadMs).coerceIn(0f, size.width)
-    drawLine(PlayheadColor.copy(alpha = 0.08f), Offset(headX, top), Offset(headX, bottom), 8.dp.toPx())
-    drawLine(PlayheadColor, Offset(headX, top), Offset(headX, bottom), 1.5.dp.toPx(), StrokeCap.Round)
-    drawCircle(StudioSurface, 5.dp.toPx(), Offset(headX, seam))
-    drawCircle(PlayheadColor, 3.dp.toPx(), Offset(headX, seam))
-    drawRoundRect(
-        PlayheadColor, Offset(headX - 3.dp.toPx(), top - 2.dp.toPx()),
-        Size(6.dp.toPx(), 4.dp.toPx()), CornerRadius(2.dp.toPx()),
-    )
 }
 
-private fun DrawScope.drawSpectrum(
-    deck: MixDeckView,
-    view: MixView,
-    outgoing: Boolean,
-    top: Float,
-    height: Float,
-    x: (Double) -> Float,
-) {
+private fun DrawScope.drawPlayhead(view: MixView, playheadMs: Double) {
+    val plot = mixPlot(view)
+    val mixEnd = view.cueOutMs + view.overlapMs
+    val outX = if (playheadMs <= mixEnd) plot.outgoing.x(playheadMs) else null
+    val inX = if (playheadMs >= view.cueOutMs) plot.incoming.x(view.cueInMs + (playheadMs - view.cueOutMs) * view.tempoRatio) else null
+    fun mark(x: Float, from: Float, to: Float) {
+        drawLine(PlayheadColor.copy(alpha = 0.1f), Offset(x, from), Offset(x, to), 8.dp.toPx())
+        drawLine(PlayheadColor, Offset(x, from), Offset(x, to), 1.5.dp.toPx(), StrokeCap.Round)
+    }
+    outX?.let { mark(it, plot.top, plot.top + plot.laneHeight) }
+    inX?.let { mark(it, plot.lowerTop, plot.lowerTop + plot.laneHeight) }
+    if (outX != null && inX != null) {
+        // Inside the box both lanes share one x, so the playhead reads as a single line across the overlap.
+        mark(outX, plot.top + plot.laneHeight, plot.lowerTop)
+        val seam = plot.top + plot.laneHeight + plot.gap / 2
+        drawCircle(StudioSurface, 5.dp.toPx(), Offset(outX, seam))
+        drawCircle(PlayheadColor, 3.dp.toPx(), Offset(outX, seam))
+    }
+}
+
+/** Crisp bars, one per pixel bin, keeping the loudest column in each so transients are not averaged away. */
+private fun DrawScope.drawLane(deck: MixDeckView, lane: Lane, top: Float, height: Float, outgoing: Boolean) {
     val center = top + height / 2f
-    drawLine(StudioContent.copy(alpha = 0.1f), Offset(0f, center), Offset(size.width, center), 1.dp.toPx())
+    drawLine(StudioContent.copy(alpha = 0.08f), Offset(0f, center), Offset(size.width, center), 1.dp.toPx())
     if (deck.bands.isEmpty()) return
-    val half = (height / 2f - 6.dp.toPx()).coerceAtLeast(1f)
-    fun px(index: Int): Float {
-        val mediaMs = deck.bandsStartMs + index * BAND_COLUMN_MS.toDouble()
-        return x(if (outgoing) mediaMs else view.incomingToOutgoing(mediaMs))
+    val half = (height / 2f - 2.dp.toPx()).coerceAtLeast(1f)
+    val pitch = 1.5.dp.toPx()
+    val barWidth = 1.dp.toPx().coerceAtLeast(1f)
+    val last = deck.bands.lastIndex
+    lane.segments.forEachIndexed { index, segment ->
+        val width = segment.x1 - segment.x0
+        if (width < 1f) return@forEachIndexed
+        // Outgoing is lit until the mix ends, incoming from the mix start; the other side is dimmed.
+        val alpha = when (index) {
+            1 -> 1f
+            0 -> if (outgoing) 0.6f else 0.2f
+            else -> if (outgoing) 0.2f else 0.6f
+        }
+        val msPerPx = (segment.ms1 - segment.ms0) / width
+        var x = segment.x0
+        while (x < segment.x1) {
+            val from = segment.ms0 + (x - segment.x0) * msPerPx
+            val until = from + minOf(pitch, segment.x1 - x) * msPerPx
+            val first = floor((from - deck.bandsStartMs) / BAND_COLUMN_MS).toInt()
+            val after = ceil((until - deck.bandsStartMs) / BAND_COLUMN_MS).toInt().coerceAtLeast(first + 1)
+            if (after > 0 && first <= last) {
+                var bass = 0
+                var mid = 0
+                var air = 0
+                for (i in maxOf(first, 0)..minOf(after - 1, last)) {
+                    val packed = deck.bands[i]
+                    bass = maxOf(bass, (packed shr 16) and 0xFF)
+                    mid = maxOf(mid, (packed shr 8) and 0xFF)
+                    air = maxOf(air, packed and 0xFF)
+                }
+                val barX = floor(x)
+                fun bar(value: Int, scale: Float, color: Color) {
+                    val h = (value / 255f * scale).coerceAtMost(1f) * half
+                    if (h > 0f) drawRect(color.copy(alpha = alpha), Offset(barX, center - h), Size(barWidth, h * 2f))
+                }
+                bar(bass, 1.1f, BassColor)
+                bar(mid, 0.9f, MidColor)
+                bar(air, 0.42f, AirColor)
+            }
+            x += pitch
+        }
     }
-    val columnWidth = (px(1) - px(0)).coerceAtLeast(0.000001f)
-    val first = ((0f - px(0)) / columnWidth).toInt().coerceIn(deck.bands.indices)
-    val last = ((size.width - px(0)) / columnWidth).toInt().coerceIn(deck.bands.indices)
-    fun band(shift: Int, scale: Float, color: Color) {
-        fun heightAt(index: Int): Float {
-            val value = ((deck.bands[index] shr shift) and 0xFF) / 255f
-            return (value * scale).coerceAtMost(1f) * half
-        }
-        val path = Path()
-        // Hold real boundary samples when the context extends past the song, instead of tapering to a gap.
-        path.moveTo(0f, center - heightAt(first))
-        for (index in first..last) {
-            val position = px(index)
-            if (position > 0f && position < size.width) path.lineTo(position, center - heightAt(index))
-        }
-        path.lineTo(size.width, center - heightAt(last))
-        path.lineTo(size.width, center + heightAt(last))
-        for (index in last downTo first) {
-            val position = px(index)
-            if (position > 0f && position < size.width) path.lineTo(position, center + heightAt(index))
-        }
-        path.lineTo(0f, center + heightAt(first))
-        path.close()
-        drawPath(path, color.copy(alpha = 0.92f))
-    }
-    // The spectrum shows the source audio. Separate envelopes show the gain changes, so a cued deck never disappears.
-    band(16, 1.1f, BassColor)
-    band(8, 0.9f, MidColor)
-    band(0, 0.42f, AirColor)
 }
 
 private fun formatDuration(ms: Long): String {
