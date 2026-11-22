@@ -807,7 +807,7 @@ fun FeedScreen(
                         },
                     contentPadding = PaddingValues(
                         bottom = FloatingNavDefaults.contentBottomPadding(),
-                        top = 16.dp + listTopInset,
+                        top = 8.dp + listTopInset,
                     ),
                     verticalArrangement = Arrangement.Top,
                 ) {

@@ -7,6 +7,9 @@ internal data class MoodTileColors(
     val surfaceTop: Color,
     val surfaceBottom: Color,
     val content: Color = Color.White,
+    // Light sources the tile draws over its dark ink base; not used for label contrast.
+    val glowPrimary: Color = accent,
+    val glowSecondary: Color = accent,
 )
 
 /** Keeps YTM's colour identity; neutral categories receive a stable colour of their own. */
@@ -27,12 +30,14 @@ internal fun moodTileColors(argb: Long, key: String): MoodTileColors {
         }
         (sector * 60f + 360f) % 360f
     }
-    // Vivid top-left fading to a deep, hue-shifted corner; the top value stays under the
-    // white-label contrast limit (4.5:1) for every hue.
-    val toneSaturation = (0.80f + saturation * 0.10f).coerceAtMost(0.90f)
+    // A dark ink base keeps white labels readable for every hue; the colour comes from two
+    // glows (the category hue and an analogous neighbour) that the tile paints on top.
+    val neighbour = (hue + 55f) % 360f
     return MoodTileColors(
-        accent = Color.hsv(hue, 0.64f, 0.96f),
-        surfaceTop = Color.hsv(hue, toneSaturation, 0.42f),
-        surfaceBottom = Color.hsv((hue + 24f) % 360f, toneSaturation, 0.22f),
+        accent = Color.hsv(hue, 0.55f, 1f),
+        surfaceTop = Color.hsv(hue, 0.70f, 0.30f),
+        surfaceBottom = Color.hsv(neighbour, 0.80f, 0.14f),
+        glowPrimary = Color.hsv(hue, 0.80f, 1f),
+        glowSecondary = Color.hsv(neighbour, 0.85f, 0.95f),
     )
 }

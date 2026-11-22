@@ -5,7 +5,11 @@
  */
 package com.lastwave.app.ui.feed.cards
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -77,3 +81,32 @@ fun rememberPodcastEpisodeCardWidth(): Dp {
     return (screenWidth * 0.80f).coerceIn(260.dp, 400.dp)
 }
 
+
+/** Card width that follows the shown artwork, plus the callback the artwork reports into. */
+internal class ArtworkCardWidth(val width: Dp, val onAspect: (Float) -> Unit)
+
+/**
+ * The shelf flag and the URL only guess the cover shape (a song flagged 16:9 may resolve to
+ * square album art and vice versa). Once the image has loaded, its real aspect ratio picks
+ * the slot: wide art gets the 16:9 width, anything else the square width, at one shared
+ * height. Until then [defaultWidth] is used.
+ */
+@Composable
+internal fun rememberArtworkCardWidth(
+    artworkUrl: String?,
+    coverHeight: Dp,
+    defaultWidth: Dp,
+): ArtworkCardWidth {
+    val aspect = remember(artworkUrl) { mutableStateOf<Float?>(null) }
+    val known = aspect.value
+    val target = when {
+        known == null -> defaultWidth
+        known >= WIDE_ART_MIN_ASPECT -> (coverHeight.value * (16f / 9f)).dp
+        else -> coverHeight
+    }
+    val width by animateDpAsState(target, tween(220), label = "ArtworkCardWidth")
+    return remember(width) { ArtworkCardWidth(width) { aspect.value = it } }
+}
+
+/** 16:9 is 1.78 and 4:3 letterboxed thumbnails 1.33; anything from 1.5 up counts as wide. */
+private const val WIDE_ART_MIN_ASPECT = 1.5f
