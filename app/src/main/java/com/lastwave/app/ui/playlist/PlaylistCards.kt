@@ -375,26 +375,27 @@ internal fun PlaylistCard(
     }
 }
 
-/** Library's Downloads entry: grouped card matching the rest of the playlists below with compact corner design. */
+/** Library's Downloads entry: side-by-side hero card opening the Downloads screen. */
 @Composable
-internal fun DownloadsPlaylistCard(
+internal fun DownloadsHeroCard(
     downloadedCount: Int,
-    position: com.lastwave.app.ui.common.GroupPosition = com.lastwave.app.ui.common.GroupPosition.SINGLE,
     onClick: () -> Unit,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
     modifier: Modifier = Modifier,
 ) {
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val cardScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.975f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "downloadsCardScale",
+        targetValue = if (isPressed) 0.98f else 1f,
+        animationSpec = ExpressiveMotion.spatialFast(),
+        label = "downloadsHeroScale",
     )
+    val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
 
     Card(
-        shape = com.lastwave.app.ui.common.groupShape(position),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .fillMaxWidth()
@@ -406,40 +407,36 @@ internal fun DownloadsPlaylistCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
-                        onClick()
-                    },
-                )
-                .padding(14.dp),
+                .clickable(interactionSource = interactionSource, indication = null) {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
+                    onClick()
+                }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                modifier = Modifier.size(60.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(52.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Filled.Download,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onTertiary,
+                        modifier = Modifier.size(26.dp),
                     )
                 }
             }
 
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
                     text = "Downloads",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -451,28 +448,13 @@ internal fun DownloadsPlaylistCard(
                         "0 tracks"
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = contentColor.copy(alpha = 0.78f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
     }
-}
-
-@Composable
-internal fun DownloadsHeroCard(
-    downloadedCount: Int,
-    onClick: () -> Unit,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
-    modifier: Modifier = Modifier,
-) {
-    DownloadsPlaylistCard(
-        downloadedCount = downloadedCount,
-        position = com.lastwave.app.ui.common.GroupPosition.SINGLE,
-        onClick = onClick,
-        modifier = modifier,
-    )
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
