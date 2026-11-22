@@ -1982,6 +1982,7 @@ class MusicPlayer @Inject constructor(
                         .setUsage(C.USAGE_MEDIA)
                         .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                         .setAllowedCapturePolicy(C.ALLOW_CAPTURE_BY_ALL)
+                        .setSpatializationBehavior(C.SPATIALIZATION_BEHAVIOR_AUTO)
                         .build(),
                     /* handleAudioFocus = */ false,
                 )

@@ -340,9 +340,13 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         val effectiveRateHz = if (isSpatial) 48000 else sourceRateHz
         val dac = usbDacMonitor.state.value.dac
         val exclusiveWanted = !isSpatial && exclusiveUsbWanted(streamCodec)
+        val wasExclusive = exclusiveUsbOutput.isActive()
         exclusiveUsbOutput.setWanted(exclusiveWanted)
         val internalWanted = !isSpatial && internalDirectWanted()
         internalDirectOutput.setWanted(internalWanted)
+        if (wasExclusive && !exclusiveWanted) {
+            usbDacMonitor.refresh()
+        }
         // Both decks share the endpoint; only the playing one may hold it.
         val liveSink = activePlayer?.let { playerToSink[it] }
         audioSinks.forEach { sink ->
@@ -374,8 +378,10 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         } else {
             null
         }
-        val device = if (!exclusive && dac != null && dac.deviceId > 0 && (effectiveRateHz ?: 0) > 0) {
-            findOutputDevice(dac.deviceId)
+        val device = if (!exclusiveWanted && (effectiveRateHz ?: 0) > 0) {
+            val dacId = dac?.deviceId ?: -1
+            (if (dacId > 0) findOutputDevice(dacId) else null)
+                ?: audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.firstOrNull { it.isUsbOutput() }
         } else {
             null
         }
@@ -384,6 +390,22 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
             runCatching { sink.setPreferredDevice(if (exclusive) null else device) }
             runCatching { sink.setOutputSampleRateOverride(if (isSpatial) null else effectiveRateHz) }
             runCatching { sink.setExclusiveFallbackRateHz(fallbackHz, effectiveRateHz) }
+        }
+        if (isSpatial && device == null && dac != null) {
+            applicationScope.launch {
+                delay(150)
+                usbDacMonitor.refresh()
+                val retryDevice = audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.firstOrNull { it.isUsbOutput() }
+                if (retryDevice != null) {
+                    onMain {
+                        routedDacDeviceId = retryDevice.id
+                        audioSinks.forEach { sink ->
+                            runCatching { sink.setPreferredDevice(retryDevice) }
+                        }
+                        updateSignalPath()
+                    }
+                }
+            }
         }
         android.util.Log.i(
             "MusicPlayer",
