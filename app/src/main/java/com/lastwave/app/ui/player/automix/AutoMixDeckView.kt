@@ -34,7 +34,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -225,8 +224,7 @@ private fun DrawScope.drawMix(view: MixView, playheadMs: Double) {
     // Equal context on both sides centers the actual overlap; post-roll is presentation only.
     val startMs = view.cueOutMs - 3_000.0
     val spanMs = view.overlapMs + 6_000.0
-    val inset = 8.dp.toPx()
-    fun x(ms: Double) = inset + ((ms - startMs) / spanMs * (size.width - 2 * inset)).toFloat()
+    fun x(ms: Double) = ((ms - startMs) / spanMs * size.width).toFloat()
     val top = 12.dp.toPx()
     val bottom = size.height - 12.dp.toPx()
     val gap = 28.dp.toPx()
@@ -250,8 +248,8 @@ private fun DrawScope.drawMix(view: MixView, playheadMs: Double) {
         )
         beat += beatMs
     }
-    drawSpectrum(view.outgoing, view, true, top, laneHeight, boxLeft, boxRight, ::x)
-    drawSpectrum(view.incoming, view, false, lowerTop, laneHeight, boxLeft, boxRight, ::x)
+    drawSpectrum(view.outgoing, view, true, top, laneHeight, ::x)
+    drawSpectrum(view.incoming, view, false, lowerTop, laneHeight, ::x)
     for ((laneTop, outgoing) in listOf(top to true, lowerTop to false)) {
         val path = Path()
         for (step in 0..96) {
@@ -270,8 +268,8 @@ private fun DrawScope.drawMix(view: MixView, playheadMs: Double) {
         drawLine(CueColor.copy(alpha = 0.35f), Offset(px, top), Offset(px, bottom), 1.dp.toPx())
     }
     val seam = top + laneHeight + gap / 2
-    drawLine(StudioContent.copy(alpha = 0.1f), Offset(inset, seam), Offset(size.width - inset, seam), 1.dp.toPx())
-    val headX = x(playheadMs).coerceIn(inset, size.width - inset)
+    drawLine(StudioContent.copy(alpha = 0.1f), Offset(0f, seam), Offset(size.width, seam), 1.dp.toPx())
+    val headX = x(playheadMs).coerceIn(0f, size.width)
     drawLine(PlayheadColor.copy(alpha = 0.08f), Offset(headX, top), Offset(headX, bottom), 8.dp.toPx())
     drawLine(PlayheadColor, Offset(headX, top), Offset(headX, bottom), 1.5.dp.toPx(), StrokeCap.Round)
     drawCircle(StudioSurface, 5.dp.toPx(), Offset(headX, seam))
@@ -288,32 +286,40 @@ private fun DrawScope.drawSpectrum(
     outgoing: Boolean,
     top: Float,
     height: Float,
-    mixLeft: Float,
-    mixRight: Float,
     x: (Double) -> Float,
 ) {
     val center = top + height / 2f
-    drawLine(StudioContent.copy(alpha = 0.1f), Offset(8.dp.toPx(), center), Offset(size.width - 8.dp.toPx(), center), 1.dp.toPx())
+    drawLine(StudioContent.copy(alpha = 0.1f), Offset(0f, center), Offset(size.width, center), 1.dp.toPx())
     if (deck.bands.isEmpty()) return
     val half = (height / 2f - 6.dp.toPx()).coerceAtLeast(1f)
     fun px(index: Int): Float {
         val mediaMs = deck.bandsStartMs + index * BAND_COLUMN_MS.toDouble()
         return x(if (outgoing) mediaMs else view.incomingToOutgoing(mediaMs))
     }
+    val columnWidth = (px(1) - px(0)).coerceAtLeast(0.000001f)
+    val first = ((0f - px(0)) / columnWidth).toInt().coerceIn(deck.bands.indices)
+    val last = ((size.width - px(0)) / columnWidth).toInt().coerceIn(deck.bands.indices)
     fun band(shift: Int, scale: Float, color: Color) {
+        fun heightAt(index: Int): Float {
+            val value = ((deck.bands[index] shr shift) and 0xFF) / 255f
+            return (value * scale).coerceAtMost(1f) * half
+        }
         val path = Path()
-        path.moveTo(px(0), center)
-        for (index in deck.bands.indices) {
-            val value = ((deck.bands[index] shr shift) and 0xFF) / 255f
-            path.lineTo(px(index), center - (value * scale).coerceAtMost(1f) * half)
+        // Hold real boundary samples when the context extends past the song, instead of tapering to a gap.
+        path.moveTo(0f, center - heightAt(first))
+        for (index in first..last) {
+            val position = px(index)
+            if (position > 0f && position < size.width) path.lineTo(position, center - heightAt(index))
         }
-        for (index in deck.bands.indices.reversed()) {
-            val value = ((deck.bands[index] shr shift) and 0xFF) / 255f
-            path.lineTo(px(index), center + (value * scale).coerceAtMost(1f) * half)
+        path.lineTo(size.width, center - heightAt(last))
+        path.lineTo(size.width, center + heightAt(last))
+        for (index in last downTo first) {
+            val position = px(index)
+            if (position > 0f && position < size.width) path.lineTo(position, center + heightAt(index))
         }
+        path.lineTo(0f, center + heightAt(first))
         path.close()
-        drawPath(path, color.copy(alpha = 0.38f))
-        clipRect(left = mixLeft, right = mixRight) { drawPath(path, color.copy(alpha = 0.92f)) }
+        drawPath(path, color.copy(alpha = 0.92f))
     }
     // The spectrum shows the source audio. Separate envelopes show the gain changes, so a cued deck never disappears.
     band(16, 1.1f, BassColor)

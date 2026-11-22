@@ -440,21 +440,42 @@ internal fun AppleMusicQualityBadge(
     // veil under light text, light veil under dark text, plus a hairline edge.
     val darkTheme = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val lightCapsule = !isTranslucent && !darkTheme
-    val capsuleColor = when {
+    val baseCapsuleColor = when {
         isTranslucent -> Color.Black.copy(alpha = 0.30f)
         darkTheme -> Color.Black.copy(alpha = 0.32f)
         else -> Color.White.copy(alpha = 0.62f)
     }
-    val tintColor = when {
+    val mixState = animateFloatAsState(
+        targetValue = if (isMixActive) 1f else 0f,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "AutoMixMorph",
+    )
+    val capsuleColor = lerp(baseCapsuleColor, Color.Black.copy(alpha = 0.55f), mixState.value)
+    val targetTint = when {
         // Two decks are live during a transition, so the signal path report
         // flips between them; keep a neutral tint until it settles.
         (isMixActive || isFadeActive) && isTranslucent -> Color.White.copy(alpha = 0.95f)
-        isMixActive || isFadeActive -> MaterialTheme.colorScheme.onSurface
+        isMixActive -> Color.White.copy(alpha = 0.95f)
+        isFadeActive -> MaterialTheme.colorScheme.onSurface
         signalPath.bitPerfect -> if (lightCapsule) Color(0xFF8A6A00) else Color(0xFFE6C15A)
         signalPath.directToHal -> if (lightCapsule) Color(0xFF1B6E62) else Color(0xFF7FD3C3)
         signalPath.clockFallbackResampled -> if (lightCapsule) Color(0xFFA35200) else Color(0xFFFFB74D)
         isTranslucent -> Color.White.copy(alpha = 0.95f)
         else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    val tintColor by animateColorAsState(targetTint, tween(380), label = "BadgeTint")
+    val neonPhase = if (mixState.value > 0.01f) {
+        rememberInfiniteTransition(label = "AutoMixNeon").animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                tween(3600, easing = androidx.compose.animation.core.LinearEasing),
+            ),
+            label = "AutoMixNeonPhase",
+        )
+    } else {
+        null
     }
 
     Box(
@@ -471,9 +492,9 @@ internal fun AppleMusicQualityBadge(
                         it.positionOnScreen(), Size(it.size.width.toFloat(), it.size.height.toFloat()),
                     )
                 }
-                .then(if (isMixActive) Modifier.autoMixNeonBorder() else Modifier)
                 .clip(CircleShape)
                 .background(capsuleColor)
+                .then(if (neonPhase != null) Modifier.autoMixNeonBorder(neonPhase) { mixState.value } else Modifier)
                 .combinedClickable(
                     onClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -527,22 +548,31 @@ internal fun AppleMusicQualityBadge(
     }
 }
 
-private fun Modifier.autoMixNeonBorder(): Modifier = drawWithContent {
-    drawContent()
-    val brush = Brush.sweepGradient(listOf(Color(0xFF42E58B), Color(0xFF5ABDE5), Color(0xFF42E58B)))
-    val stroke = 1.dp.toPx()
-    drawRoundRect(
-        brush = brush,
-        alpha = 0.22f,
-        cornerRadius = CornerRadius(size.height / 2f),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(stroke * 4f),
-    )
-    drawRoundRect(
-        brush = brush,
-        alpha = 0.95f,
-        topLeft = Offset(stroke / 2f, stroke / 2f),
-        size = Size(size.width - stroke, size.height - stroke),
-        cornerRadius = CornerRadius((size.height - stroke) / 2f),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
-    )
-}
+// Neon rim for the AutoMix pill: a hue-cycling sweep plus a soft inner glow. The phase is
+// read in the draw phase so the animation never recomposes the badge.
+private fun Modifier.autoMixNeonBorder(
+    phase: androidx.compose.runtime.State<Float>,
+    visibility: () -> Float,
+): Modifier =
+    drawWithContent {
+        drawContent()
+        val show = visibility()
+        val brush = Brush.sweepGradient(
+            List(7) { Color.hsv((phase.value + it * 60f) % 360f, 0.85f, 1f) },
+        )
+        val stroke = 2.dp.toPx()
+        drawRoundRect(
+            brush = brush,
+            alpha = 0.30f * show,
+            cornerRadius = CornerRadius(size.height / 2f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke * 4f),
+        )
+        drawRoundRect(
+            brush = brush,
+            alpha = show,
+            topLeft = Offset(stroke / 2f, stroke / 2f),
+            size = Size(size.width - stroke, size.height - stroke),
+            cornerRadius = CornerRadius((size.height - stroke) / 2f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+        )
+    }
