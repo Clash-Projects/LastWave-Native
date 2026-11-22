@@ -756,9 +756,9 @@
     <string name="set_lfm_remove">Удалить</string>
     <string name="set_lfm_key_label">API-ключ</string>
     <string name="set_lfm_key_saved">Ваш ключ сохранен</string>
-    <string name="set_lfm_key_hint">Обязательно — получите один бесплатно, а затем вставьте его сюда.</string>
-    <string name="set_lfm_get">Получите бесплатный ключ на сайте Last.fm/api →</string>
-    <string name="set_lfm_how">Как получить бесплатный ключ →</string>
+    <string name="set_lfm_key_hint">Обязательно — получите один, а затем вставьте его сюда.</string>
+    <string name="set_lfm_get">Получите ключ на сайте Last.fm/api →</string>
+    <string name="set_lfm_how">Как получить ключ →</string>
     <string name="set_lfm_disc_title">Отключить Last.fm?</string>
     <string name="set_lfm_disc_text">Глобальные скробблы приостанавливаются. Ваша статистика переключается на локальную историю прослушивания — ничего не удаляется.</string>
     <string name="set_lfm_disc_btn">Отключить</string>

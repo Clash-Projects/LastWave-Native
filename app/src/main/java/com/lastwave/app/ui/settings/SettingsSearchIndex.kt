@@ -1197,8 +1197,27 @@ object SettingsSearchIndex {
             )
 
             // ==========================================
-            // TAB: LAST.FM
+            // TAB: SCROBBLERS
             // ==========================================
+            for ((id, name, description, terms) in listOf(
+                listOf("listenbrainz.connect", "ListenBrainz", "Connect with your user token; optional compatible server", "listenbrainz token maloja koito self-hosted"),
+                listOf("librefm.connect", "Libre.fm", "Connect with your username and password; optional GNU FM server", "librefm libre.fm gnu fm password self-hosted"),
+            )) {
+                add(
+                    SettingsEntry(
+                        id = id,
+                        title = "$name Account Connection",
+                        subtitle = description,
+                        keywords = terms.split(" ") + listOf("scrobblers", "scrobble", "scrobbling", "connect", "login"),
+                        icon = Icons.Filled.Album,
+                        iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                        iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                        parentTab = SettingsTab.SCROBBLERS,
+                        section = "Scrobblers",
+                        type = EntryType.ACTION,
+                    )
+                )
+            }
             add(
                 SettingsEntry(
                     id = "lastfm.connect",
@@ -1211,8 +1230,8 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Album,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.LAST_FM,
-                    section = "Integrations / Scrobbling",
+                    parentTab = SettingsTab.SCROBBLERS,
+                    section = "Scrobblers",
                     type = EntryType.ACTION,
                 )
             )
@@ -1228,8 +1247,8 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Code,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.LAST_FM,
-                    section = "Integrations / Scrobbling",
+                    parentTab = SettingsTab.SCROBBLERS,
+                    section = "Scrobblers",
                     type = EntryType.ACTION,
                 )
             )
@@ -1245,8 +1264,8 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Public,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.LAST_FM,
-                    section = "Integrations / Scrobbling",
+                    parentTab = SettingsTab.SCROBBLERS,
+                    section = "Scrobblers",
                     type = EntryType.TOGGLE,
                 )
             )

@@ -760,9 +760,9 @@
     <string name="set_lfm_remove">हटाओ</string>
     <string name="set_lfm_key_label">एपीआई कुंजी</string>
     <string name="set_lfm_key_saved">आपकी कुंजी सहेज ली गई है</string>
-    <string name="set_lfm_key_hint">आवश्यक - एक निःशुल्क प्राप्त करें, फिर इसे यहां चिपकाएँ</string>
-    <string name="set_lfm_get">Last.fm/api → पर निःशुल्क कुंजी प्राप्त करें</string>
-    <string name="set_lfm_how">मुफ़्त कुंजी कैसे प्राप्त करें →</string>
+    <string name="set_lfm_key_hint">आवश्यक - एक प्राप्त करें, फिर इसे यहां चिपकाएँ</string>
+    <string name="set_lfm_get">Last.fm/api → पर कुंजी प्राप्त करें</string>
+    <string name="set_lfm_how">कुंजी कैसे प्राप्त करें →</string>
     <string name="set_lfm_disc_title">Last.fm को डिस्कनेक्ट करें?</string>
     <string name="set_lfm_disc_text">वैश्विक स्क्रैबल्स रुक गए। आपके आँकड़े स्थानीय श्रवण इतिहास पर स्विच हो जाते हैं - कुछ भी नहीं हटाया जाता है।</string>
     <string name="set_lfm_disc_btn">डिस्कनेक्ट करें</string>

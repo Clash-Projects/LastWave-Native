@@ -756,9 +756,9 @@
     <string name="set_lfm_remove">削除する</string>
     <string name="set_lfm_key_label">APIキー</string>
     <string name="set_lfm_key_saved">キーが保存されました</string>
-    <string name="set_lfm_key_hint">必須 — 1 つ無料で入手して、ここに貼り付けてください</string>
-    <string name="set_lfm_get">last.fm/api で無料キーを取得 →</string>
-    <string name="set_lfm_how">無料キーの入手方法 →</string>
+    <string name="set_lfm_key_hint">必須 — 1 つ入手して、ここに貼り付けてください</string>
+    <string name="set_lfm_get">last.fm/api でキーを取得 →</string>
+    <string name="set_lfm_how">キーの入手方法 →</string>
     <string name="set_lfm_disc_title">Last.fm を切断しますか?</string>
     <string name="set_lfm_disc_text">グローバル スクロブルは一時停止します。統計情報はローカルのリスニング履歴に切り替わります。何も削除されません。</string>
     <string name="set_lfm_disc_btn">切断する</string>
