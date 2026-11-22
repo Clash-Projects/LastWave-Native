@@ -8,7 +8,7 @@ import com.lastwave.app.playback.resolve.playbackIdentity
  *
  * Enforces the invariant:
  * The queue after the playing song must equal the exact concatenation of YTM responses
- * in order, minus dedupe removals against current queue and the last ~50 played tracks.
+ * in order, minus duplicates, recent history and explicit recommendation exclusions.
  * No foreign songs, no local re-ranking, no text searches, and no Last.fm mixing.
  */
 object PureRadioQueue {
@@ -37,6 +37,7 @@ object PureRadioQueue {
      * - The current seed track itself (by videoId or normalized song key)
      * - Tracks already present in the active queue (by videoId, queueKey, or normalized song key)
      * - Tracks played recently (last ~50) (by videoId, queueKey, or normalized song key)
+     * - Songs explicitly excluded from recommendations
      * - Duplicates within the incoming batch itself
      */
     fun filterStrictYtmRadioBatch(
@@ -49,6 +50,7 @@ object PureRadioQueue {
         recentSongKeys: Set<String> = emptySet(),
         seedVideoId: String? = null,
         seedSongKey: String? = null,
+        excludedSongKeys: Set<String> = emptySet(),
     ): List<PlayableTrack> {
         val seenVideoIdsInBatch = mutableSetOf<String>()
         val seenKeysInBatch = mutableSetOf<String>()
@@ -60,7 +62,7 @@ object PureRadioQueue {
 
             val key = queueKey(track)
             val songKey = normalizedSongKey(track.title, track.artist)
-            if (seedSongKey != null && songKey == seedSongKey) return@filter false
+            if (songKey in excludedSongKeys || songKey == seedSongKey) return@filter false
 
             val isDuplicate = vid in existingVideoIds ||
                 vid in recentVideoIds ||

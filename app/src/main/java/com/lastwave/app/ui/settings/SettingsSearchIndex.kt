@@ -2,6 +2,7 @@ package com.lastwave.app.ui.settings
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestartAlt
@@ -104,17 +107,31 @@ object SettingsSearchIndex {
             // ==========================================
             add(
                 SettingsEntry(
-                    id = "audio.streaming_quality",
-                    title = "Streaming Quality",
-                    subtitle = "Lossless, Hi-Res, FLAC, AAC, MP3, 24-bit / 192 kHz, bit depth & sample rate",
+                    id = "audio.wifi_streaming_quality",
+                    title = "Wi-Fi Streaming Quality",
+                    subtitle = "Choose audio quality while connected to Wi-Fi",
                     keywords = listOf(
                         "quality", "bitrate", "flac", "lossless", "hires", "hi-res", "dolby", "atmos",
                         "mp3", "aac", "opus", "streaming", "audio quality", "sound quality", "192khz",
-                        "24-bit", "stream", "format"
+                        "24-bit", "stream", "format", "wifi", "wireless"
                     ),
                     icon = Icons.Filled.HighQuality,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.cellular_streaming_quality",
+                    title = "Cellular Streaming Quality",
+                    subtitle = "Choose audio quality while using mobile data",
+                    keywords = listOf("quality", "bitrate", "streaming", "cellular", "mobile data", "data usage", "audio", "auto", "adaptive"),
+                    icon = Icons.Filled.HighQuality,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
                     parentTab = SettingsTab.AUDIO,
                     section = "Audio & Playback",
                     type = EntryType.ACTION,
@@ -135,6 +152,23 @@ object SettingsSearchIndex {
                     parentTab = SettingsTab.AUDIO,
                     section = "Audio & Playback",
                     type = EntryType.ACTION,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.auto_upgrade_hi_res",
+                    title = "Playback start",
+                    subtitle = "Fast start, best quality first, or never upgrade",
+                    keywords = listOf(
+                        "auto upgrade", "hi-res", "hires", "lossless", "flac", "opus",
+                        "upgrade", "streaming", "quality", "background upgrade", "start", "direct", "best quality"
+                    ),
+                    icon = Icons.Filled.HighQuality,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
                 )
             )
             add(
@@ -233,6 +267,23 @@ object SettingsSearchIndex {
                         "continue playing", "task removed", "kill app", "close app"
                     ),
                     icon = Icons.Filled.StopCircle,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.pause_on_zero_volume",
+                    title = "Pause Playback at Volume 0",
+                    subtitle = "Automatically pause playback when media volume reaches 0",
+                    keywords = listOf(
+                        "pause", "volume", "zero volume", "mute", "silent",
+                        "auto pause", "media volume", "volume 0"
+                    ),
+                    icon = Icons.AutoMirrored.Rounded.VolumeOff,
                     iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.AUDIO,
@@ -409,40 +460,6 @@ object SettingsSearchIndex {
                     type = EntryType.TOGGLE,
                 )
             )
-            add(
-                SettingsEntry(
-                    id = "audio.clarity_preset",
-                    title = "Clarity Output Preset",
-                    subtitle = "Select clarity sound signature: Audiophile, Warm, Bright, or Vocal",
-                    keywords = listOf(
-                        "clarity preset", "preset", "sound signature", "warm", "bright", "audiophile",
-                        "tuning", "vocal preset"
-                    ),
-                    icon = Icons.Filled.Tune,
-                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
-                    parentTab = SettingsTab.AUDIO,
-                    section = "Output & Loudness",
-                    type = EntryType.ACTION,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "audio.clarity_spatial_bypass",
-                    title = "Clarity Spatial Bypass",
-                    subtitle = "Automatically bypass clarity processing on multichannel and spatial audio sources",
-                    keywords = listOf(
-                        "clarity bypass", "spatial bypass", "atmos bypass", "multichannel bypass",
-                        "dsp bypass", "disable clarity on spatial"
-                    ),
-                    icon = Icons.Filled.GraphicEq,
-                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.AUDIO,
-                    section = "Output & Loudness",
-                    type = EntryType.TOGGLE,
-                )
-            )
 
             // ==========================================
             // TAB: APPEARANCE & VISUALS
@@ -516,6 +533,39 @@ object SettingsSearchIndex {
             )
             add(
                 SettingsEntry(
+                    id = "appearance.legacy_colors",
+                    title = "Use Legacy Colours",
+                    subtitle = "Use authentic Material You background and surface tones instead of deep obsidian surfaces",
+                    keywords = listOf(
+                        "legacy colors", "legacy colours", "material you background", "base colour", "original background",
+                        "bright background", "solid background", "monet"
+                    ),
+                    icon = Icons.Filled.Palette,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.legacy_track_menu",
+                    title = "Use Classic Song Menu",
+                    subtitle = "Use the classic card-based song options menu instead of the redesigned sheet",
+                    keywords = listOf(
+                        "classic song menu", "legacy track menu", "old song menu", "3 dots menu", "context menu", "track menu"
+                    ),
+                    icon = Icons.Filled.MoreVert,
+                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Appearance",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
                     id = "appearance.dynamic_color",
                     title = "Dynamic Color (Material You)",
                     subtitle = "Match UI accent colors to wallpaper and system palette",
@@ -552,7 +602,7 @@ object SettingsSearchIndex {
                 SettingsEntry(
                     id = "appearance.md3_nav_bar",
                     title = "Material 3 Navigation Bar",
-                    subtitle = "Classic full-width bottom navigation bar instead of the floating dock",
+                    subtitle = "Compact floating dock with a label beside the selected icon",
                     keywords = listOf(
                         "md3", "material 3", "navigation bar", "bottom bar", "nav bar",
                         "dock", "floating dock", "full width nav", "floating navigation bar", "floating navigation"
@@ -670,18 +720,18 @@ object SettingsSearchIndex {
             add(
                 SettingsEntry(
                     id = "appearance.wavy_seekbar",
-                    title = "Fluid Wavy Seekbar",
-                    subtitle = "Multi-layer fluid wavy progress slider for track playback",
+                    title = "Seekbar Style",
+                    subtitle = "Choose between Default, Wavy, and Waveform slider styles",
                     keywords = listOf(
                         "wavy seekbar", "wave slider", "progress bar", "fluid seekbar", "waveform",
-                        "scrubber", "timeline", "squiggly line"
+                        "scrubber", "timeline", "squiggly line", "slider style", "seekbar style"
                     ),
                     icon = Icons.Filled.Waves,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Experimental & Features",
-                    type = EntryType.TOGGLE,
+                    type = EntryType.ACTION,
                 )
             )
             add(
@@ -731,6 +781,24 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.RestartAlt,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                    parentTab = SettingsTab.APPEARANCE,
+                    section = "Experimental & Features",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "appearance.fluid_beat_sync",
+                    title = "Beat-Synced Fluid Motion",
+                    subtitle = "Fluid artwork pulses and swirls in sync with musical beats",
+                    keywords = listOf(
+                        "beat synced fluid motion", "beat sync", "fluid motion", "beat pulse",
+                        "fluid beat", "audio reactive", "fluid animation", "per beat",
+                        "beat animation", "kick pulse", "music beat"
+                    ),
+                    icon = Icons.Filled.Waves,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.APPEARANCE,
                     section = "Experimental & Features",
                     type = EntryType.TOGGLE,
@@ -1111,42 +1179,29 @@ object SettingsSearchIndex {
                     type = EntryType.ACTION,
                 )
             )
-            add(
-                SettingsEntry(
-                    id = "liked.local",
-                    title = "Save to Liked Songs",
-                    subtitle = "Keep a Liked Songs list in this app",
-                    keywords = listOf(
-                        "liked songs", "like", "heart", "favorite", "favourites", "local playlist"
-                    ),
-                    icon = Icons.Filled.Favorite,
-                    iconContainer = { MaterialTheme.colorScheme.primaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.YOUTUBE,
-                    section = "Liked Songs",
-                    type = EntryType.TOGGLE,
-                )
-            )
-            add(
-                SettingsEntry(
-                    id = "liked.youtube",
-                    title = "Sync Liked Songs to YouTube Music",
-                    subtitle = "Also mark liked songs as liked on YouTube Music",
-                    keywords = listOf(
-                        "liked songs", "sync", "youtube music", "like", "heart", "favorite"
-                    ),
-                    icon = Icons.Filled.CloudSync,
-                    iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
-                    iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.YOUTUBE,
-                    section = "Liked Songs",
-                    type = EntryType.TOGGLE,
-                )
-            )
 
             // ==========================================
-            // TAB: LAST.FM
+            // TAB: SCROBBLERS
             // ==========================================
+            for ((id, name, description, terms) in listOf(
+                listOf("listenbrainz.connect", "ListenBrainz", "Connect with your user token; optional compatible server", "listenbrainz token maloja koito self-hosted"),
+                listOf("librefm.connect", "Libre.fm", "Connect with your username and password; optional GNU FM server", "librefm libre.fm gnu fm password self-hosted"),
+            )) {
+                add(
+                    SettingsEntry(
+                        id = id,
+                        title = "$name Account Connection",
+                        subtitle = description,
+                        keywords = terms.split(" ") + listOf("scrobblers", "scrobble", "scrobbling", "connect", "login"),
+                        icon = Icons.Filled.Album,
+                        iconContainer = { MaterialTheme.colorScheme.primaryContainer },
+                        iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
+                        parentTab = SettingsTab.SCROBBLERS,
+                        section = "Scrobblers",
+                        type = EntryType.ACTION,
+                    )
+                )
+            }
             add(
                 SettingsEntry(
                     id = "lastfm.connect",
@@ -1159,8 +1214,8 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Album,
                     iconContainer = { MaterialTheme.colorScheme.primaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onPrimaryContainer },
-                    parentTab = SettingsTab.LAST_FM,
-                    section = "Integrations / Scrobbling",
+                    parentTab = SettingsTab.SCROBBLERS,
+                    section = "Scrobblers",
                     type = EntryType.ACTION,
                 )
             )
@@ -1176,8 +1231,8 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Code,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.LAST_FM,
-                    section = "Integrations / Scrobbling",
+                    parentTab = SettingsTab.SCROBBLERS,
+                    section = "Scrobblers",
                     type = EntryType.ACTION,
                 )
             )
@@ -1193,8 +1248,8 @@ object SettingsSearchIndex {
                     icon = Icons.Filled.Public,
                     iconContainer = { MaterialTheme.colorScheme.secondaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onSecondaryContainer },
-                    parentTab = SettingsTab.LAST_FM,
-                    section = "Integrations / Scrobbling",
+                    parentTab = SettingsTab.SCROBBLERS,
+                    section = "Scrobblers",
                     type = EntryType.TOGGLE,
                 )
             )

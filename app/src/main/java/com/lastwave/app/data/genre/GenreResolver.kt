@@ -2,9 +2,9 @@ package com.lastwave.app.data.genre
 
 import android.util.Log
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.network.ITunesSearchClient
 import com.lastwave.app.data.network.LastFmApiService
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import java.util.LinkedHashMap
@@ -45,7 +45,7 @@ class GenreResolver @Inject constructor(
 
         // Step 1: Last.fm track.getInfo -> toptags
         try {
-            val session = sessionPreferences.session.first()
+            val session = sessionPreferences.awaitLoadedSession()
             if (session.apiKey.isNotBlank()) {
                 val response = api.get(
                     mapOf(

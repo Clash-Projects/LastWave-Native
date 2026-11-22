@@ -1,0 +1,73 @@
+package com.lastwave.app.ui.feed
+
+import com.lastwave.app.data.feed.FeedData
+import com.lastwave.app.data.music.HomeShelf
+import com.lastwave.app.data.music.HomeShelfItem
+import com.lastwave.app.data.music.YouTubeMusicTrack
+import com.lastwave.app.data.music.YouTubePlaylistSummary
+
+internal fun mergeFeedShelves(previous: List<HomeShelf>, fresh: List<HomeShelf>): List<HomeShelf> {
+    val previousTitles = previous.map { it.title.trim().lowercase() }.toSet()
+    val freshByTitle = fresh.filter { it.items.isNotEmpty() }.associateBy { it.title.trim().lowercase() }
+    return previous.map { old -> freshByTitle[old.title.trim().lowercase()]?.copy(title = old.title) ?: old } +
+        fresh.filter { it.items.isNotEmpty() && it.title.trim().lowercase() !in previousTitles }
+}
+
+internal fun feedQuickPicks(feed: FeedData): List<YouTubeMusicTrack> {
+    val shelf = feed.nativeShelves.firstOrNull {
+        it.title.contains("quick pick", ignoreCase = true) || it.title.contains("picked for you", ignoreCase = true)
+    }
+    val fromYt = shelf?.items?.filterIsInstance<HomeShelfItem.Track>()?.map { it.track }.orEmpty()
+    return (feed.quickPicks + fromYt).distinctBy { it.videoId.ifBlank { it.title } }
+}
+
+internal fun feedNewReleases(feed: FeedData): List<YouTubePlaylistSummary> {
+    val shelf = feed.nativeShelves.firstOrNull { it.title.contains("new release", ignoreCase = true) }
+    val fromYt = shelf?.items?.mapNotNull { item ->
+        when (item) {
+            is HomeShelfItem.Playlist -> item.playlist
+            is HomeShelfItem.Track -> YouTubePlaylistSummary(
+                id = item.track.videoId, title = item.track.title, author = item.track.artist,
+                artworkUrl = item.track.artworkUrl,
+            )
+            else -> null
+        }
+    }.orEmpty()
+    return (feed.newReleases + fromYt).distinctBy { it.id.ifBlank { it.title } }
+}
+
+// The repository keeps the fresh feed; this only preserves the current screen's layout.
+internal fun retainFeedSections(
+    previous: FeedData,
+    pagedShelves: List<HomeShelf>,
+    fresh: FeedData,
+): Pair<FeedData, List<HomeShelf>> {
+    if (previous.isYtConnected != fresh.isYtConnected || previous.ytAccountName != fresh.ytAccountName ||
+        previous.userName != fresh.userName
+    ) return fresh to emptyList()
+
+    val nativeTitles = previous.nativeShelves.map { it.title.trim().lowercase() }.toSet()
+    val freshNative = if (pagedShelves.isEmpty()) fresh.nativeShelves else
+        fresh.nativeShelves.filter { it.title.trim().lowercase() in nativeTitles }
+    val newPaged = if (pagedShelves.isEmpty()) pagedShelves else
+        mergeFeedShelves(pagedShelves, fresh.nativeShelves.filter { it.title.trim().lowercase() !in nativeTitles })
+
+    return fresh.copy(
+        nativeShelves = mergeFeedShelves(previous.nativeShelves, freshNative),
+        spotlight = fresh.spotlight ?: previous.spotlight,
+        quickTiles = fresh.quickTiles.ifEmpty { previous.quickTiles },
+        quickPicks = fresh.quickPicks.ifEmpty { previous.quickPicks },
+        newReleases = fresh.newReleases.ifEmpty { previous.newReleases },
+        charts = fresh.charts.ifEmpty { previous.charts },
+        mixes = fresh.mixes.ifEmpty { previous.mixes },
+        jumpBackIn = fresh.jumpBackIn.ifEmpty { previous.jumpBackIn },
+        recentAlbums = fresh.recentAlbums.ifEmpty { previous.recentAlbums },
+        topArtists = fresh.topArtists.ifEmpty { previous.topArtists },
+        heavyRotation = fresh.heavyRotation.ifEmpty { previous.heavyRotation },
+        becauseYouListenTo = fresh.becauseYouListenTo?.takeIf { it.items.isNotEmpty() } ?: previous.becauseYouListenTo,
+        freshFinds = fresh.freshFinds.ifEmpty { previous.freshFinds },
+        friends = fresh.friends.ifEmpty { previous.friends },
+        podcastShows = fresh.podcastShows.ifEmpty { previous.podcastShows },
+        podcastShelfTitle = if (fresh.podcastShows.isEmpty()) previous.podcastShelfTitle else fresh.podcastShelfTitle,
+    ) to newPaged
+}

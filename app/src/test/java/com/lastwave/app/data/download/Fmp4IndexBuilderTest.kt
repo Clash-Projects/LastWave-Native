@@ -25,54 +25,38 @@ class Fmp4IndexBuilderTest {
         return out.toByteArray()
     }
 
-    private fun createMvhdBox(timescale: Int = 1000, duration: Int = 0): ByteArray {
-        val payload = ByteArrayOutputStream()
-        payload.write(0) // version 0
-        payload.write(0); payload.write(0); payload.write(0) // flags
-        payload.write(ByteArray(8)) // creation / mod time
-        payload.write((timescale ushr 24) and 0xFF)
-        payload.write((timescale ushr 16) and 0xFF)
-        payload.write((timescale ushr 8) and 0xFF)
-        payload.write(timescale and 0xFF)
-        payload.write((duration ushr 24) and 0xFF)
-        payload.write((duration ushr 16) and 0xFF)
-        payload.write((duration ushr 8) and 0xFF)
-        payload.write(duration and 0xFF)
+    private fun ByteArrayOutputStream.writeInteger(value: Long, width: Int = 4) {
+        for (i in width - 1 downTo 0) write(((value ushr (i * 8)) and 0xFF).toInt())
+    }
+
+    private fun timedHeader(version: Int, flags: Int = 0) = ByteArrayOutputStream().apply {
+        write(byteArrayOf(version.toByte(), 0, 0, flags.toByte()))
+        val width = if (version == 1) 8 else 4
+        writeInteger(0x12345678L, width)
+        writeInteger(0x23456789L, width)
+    }
+
+    private fun createMvhdBox(timescale: Int = 1000, duration: Int = 0, version: Int = 0): ByteArray {
+        val payload = timedHeader(version)
+        payload.writeInteger(timescale.toLong())
+        payload.writeInteger(duration.toLong(), if (version == 1) 8 else 4)
         payload.write(ByteArray(80)) // remaining mvhd fields
         return box("mvhd", payload.toByteArray())
     }
 
-    private fun createTkhdBox(trackId: Int = 1, duration: Int = 0): ByteArray {
-        val payload = ByteArrayOutputStream()
-        payload.write(0) // version 0
-        payload.write(0); payload.write(0); payload.write(1) // flags
-        payload.write(ByteArray(8)) // creation / mod time
-        payload.write((trackId ushr 24) and 0xFF)
-        payload.write((trackId ushr 16) and 0xFF)
-        payload.write((trackId ushr 8) and 0xFF)
-        payload.write(trackId and 0xFF)
+    private fun createTkhdBox(trackId: Int = 1, duration: Int = 0, version: Int = 0): ByteArray {
+        val payload = timedHeader(version, flags = 1)
+        payload.writeInteger(trackId.toLong())
         payload.write(ByteArray(4)) // reserved
-        payload.write((duration ushr 24) and 0xFF)
-        payload.write((duration ushr 16) and 0xFF)
-        payload.write((duration ushr 8) and 0xFF)
-        payload.write(duration and 0xFF)
+        payload.writeInteger(duration.toLong(), if (version == 1) 8 else 4)
         payload.write(ByteArray(60)) // remaining tkhd fields
         return box("tkhd", payload.toByteArray())
     }
 
-    private fun createMdhdBox(timescale: Int = 48000, duration: Int = 0): ByteArray {
-        val payload = ByteArrayOutputStream()
-        payload.write(0) // version 0
-        payload.write(0); payload.write(0); payload.write(0) // flags
-        payload.write(ByteArray(8)) // creation / mod time
-        payload.write((timescale ushr 24) and 0xFF)
-        payload.write((timescale ushr 16) and 0xFF)
-        payload.write((timescale ushr 8) and 0xFF)
-        payload.write(timescale and 0xFF)
-        payload.write((duration ushr 24) and 0xFF)
-        payload.write((duration ushr 16) and 0xFF)
-        payload.write((duration ushr 8) and 0xFF)
-        payload.write(duration and 0xFF)
+    private fun createMdhdBox(timescale: Int = 48000, duration: Int = 0, version: Int = 0): ByteArray {
+        val payload = timedHeader(version)
+        payload.writeInteger(timescale.toLong())
+        payload.writeInteger(duration.toLong(), if (version == 1) 8 else 4)
         payload.write(ByteArray(4)) // language & pre-defined
         return box("mdhd", payload.toByteArray())
     }
@@ -121,29 +105,29 @@ class Fmp4IndexBuilderTest {
         return box("mdat", ByteArray(size))
     }
 
-    private fun buildSampleFmp4File(): File {
+    private fun buildSampleFmp4File(version: Int = 0, trackId: Int = 1): File {
         val file = tempFolder.newFile("sample.m4a")
         val out = ByteArrayOutputStream()
 
         out.write(box("ftyp", "M4A ".toByteArray(Charsets.US_ASCII)))
 
         // moov with duration = 0
-        val mvhd = createMvhdBox(timescale = 1000, duration = 0)
-        val mdhd = createMdhdBox(timescale = 48000, duration = 0)
+        val mvhd = createMvhdBox(timescale = 1000, duration = 0, version = version)
+        val mdhd = createMdhdBox(timescale = 48000, duration = 0, version = version)
         val mdia = box("mdia", mdhd)
-        val tkhd = createTkhdBox(trackId = 1, duration = 0)
+        val tkhd = createTkhdBox(trackId = trackId, duration = 0, version = version)
         val trak = box("trak", tkhd + mdia)
         val moov = box("moov", mvhd + trak)
         out.write(moov)
 
         // 3 fragments
-        out.write(createMoofBox(trackId = 1, decodeTime = 0L, sampleCount = 10, sampleDuration = 1024))
+        out.write(createMoofBox(trackId = trackId, decodeTime = 0L, sampleCount = 10, sampleDuration = 1024))
         out.write(createMdatBox(200))
 
-        out.write(createMoofBox(trackId = 1, decodeTime = 10240L, sampleCount = 10, sampleDuration = 1024))
+        out.write(createMoofBox(trackId = trackId, decodeTime = 10240L, sampleCount = 10, sampleDuration = 1024))
         out.write(createMdatBox(200))
 
-        out.write(createMoofBox(trackId = 1, decodeTime = 20480L, sampleCount = 10, sampleDuration = 1024))
+        out.write(createMoofBox(trackId = trackId, decodeTime = 20480L, sampleCount = 10, sampleDuration = 1024))
         out.write(createMdatBox(200))
 
         file.writeBytes(out.toByteArray())
@@ -221,5 +205,46 @@ class Fmp4IndexBuilderTest {
         val secondSuccess = Fmp4IndexBuilder.finalizeFmp4(file, knownDurationMs = 640L)
         assertThat(secondSuccess).isTrue()
         assertThat(file.length()).isEqualTo(lengthAfterFirst)
+    }
+
+    @Test
+    fun patchesVersionZeroDurationsWithoutChangingMetadata() = assertDurationHeaders(version = 0)
+
+    @Test
+    fun patchesVersionOneDurationsWithoutChangingMetadata() = assertDurationHeaders(version = 1)
+
+    private fun assertDurationHeaders(version: Int) {
+        val file = buildSampleFmp4File(version, trackId = 7)
+        val before = file.readBytes()
+        assertThat(Fmp4IndexBuilder.totalSamples(file, 96000L)).isEqualTo(61440L)
+        assertThat(Fmp4IndexBuilder.finalizeFmp4(file)).isTrue()
+        val after = file.readBytes()
+        val width = if (version == 1) 8 else 4
+        val durationOffset = if (version == 1) 24 else 16
+        val expectedPrefix = before.copyOfRange(0, payloadOffset(before, "moof") - 8)
+        for ((type, duration) in listOf("mvhd" to 640L, "tkhd" to 640L, "mdhd" to 30720L)) {
+            val offset = payloadOffset(before, type) + durationOffset + if (type == "tkhd") 4 else 0
+            assertThat(readInteger(after, offset, width)).isEqualTo(duration)
+            for (i in 0 until width) {
+                expectedPrefix[offset + i] = (duration ushr ((width - 1 - i) * 8)).toByte()
+            }
+        }
+        // Duration patching must not overwrite timestamps, timescales, track IDs or other header fields.
+        assertThat(after.copyOfRange(0, expectedPrefix.size)).isEqualTo(expectedPrefix)
+        val sidx = payloadOffset(after, "sidx")
+        assertThat(readInteger(after, sidx + 4, 4)).isEqualTo(7L)
+        assertThat(readInteger(after, sidx + 8, 4)).isEqualTo(48000L)
+        assertThat(Fmp4IndexBuilder.totalSamples(file, 96000L)).isEqualTo(61440L)
+    }
+
+    private fun payloadOffset(bytes: ByteArray, type: String): Int {
+        val tag = type.toByteArray(Charsets.US_ASCII)
+        return (4..bytes.size - 4).first { offset -> tag.indices.all { bytes[offset + it] == tag[it] } } + 4
+    }
+
+    private fun readInteger(bytes: ByteArray, offset: Int, width: Int): Long {
+        var result = 0L
+        for (i in 0 until width) result = (result shl 8) or (bytes[offset + i].toLong() and 0xFF)
+        return result
     }
 }

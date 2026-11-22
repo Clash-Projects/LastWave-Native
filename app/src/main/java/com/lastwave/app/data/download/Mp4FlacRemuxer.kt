@@ -35,15 +35,26 @@ internal object Mp4FlacRemuxer {
     private const val LAST_METADATA_BLOCK_FLAG = 0x80
     /** `moov` is a few hundred bytes on real streams; cap defensively. */
     private const val MAX_MOOV_BYTES = 8 * 1024 * 1024
+    /** Dolby sample entries and their config boxes, as restored by HybridCenc's frma swap. */
+    private val SPATIAL_BOXES = listOf("ec-3", "dec3", "ac-4", "dac4")
 
     /** True when [input] is an fMP4 whose `moov` declares a FLAC track. */
-    fun isMp4Flac(input: File): Boolean = runCatching {
-        if (!input.isFile || input.length() <= 0L) return false
-        val length = input.length()
-        RandomAccessFile(input, "r").use { raf ->
-            readLayout(raf, length) != null
-        }
-    }.getOrDefault(false)
+    fun isMp4Flac(input: File): Boolean = readMoov(input)?.let(::findMetadataBlocks) != null
+
+    /**
+     * True when the sample entry is Dolby (E-AC-3 / AC-4). Addon flags and the
+     * loopback Content-Type can't be trusted for this; the init segment can.
+     */
+    fun isMp4Spatial(input: File): Boolean = readMoov(input)?.let { moov ->
+        SPATIAL_BOXES.any { indexOfAscii(moov, it, 0) >= 0 }
+    } == true
+
+    private fun readMoov(input: File): ByteArray? {
+        if (!input.isFile || input.length() <= 0L) return null
+        return runCatching {
+            RandomAccessFile(input, "r").use { raf -> readLayout(raf, input.length()).moov }
+        }.getOrNull()
+    }
 
     /**
      * Writes a standalone `.flac` for [input]. Returns false (never throws) when
@@ -56,15 +67,16 @@ internal object Mp4FlacRemuxer {
         val length = input.length()
         return try {
             val layout = RandomAccessFile(input, "r").use { raf -> readLayout(raf, length) }
-                ?: return false
+            val metadataBlocks = layout.moov?.let(::findMetadataBlocks) ?: return false
             if (layout.mdatRanges.isEmpty()) return false
+            fillTotalSamples(metadataBlocks, input)
             output.parentFile?.let { parent ->
                 if (!parent.exists() && !parent.mkdirs()) return false
             }
             RandomAccessFile(input, "r").use { raf ->
                 FileOutputStream(output).buffered(COPY_BUFFER).use { out ->
                     out.write(FLAC_MAGIC.toByteArray(Charsets.US_ASCII))
-                    out.write(layout.metadataBlocks)
+                    out.write(metadataBlocks)
                     for ((offset, size) in layout.mdatRanges) {
                         raf.seek(offset)
                         copyExactly(raf, out, size)
@@ -83,13 +95,30 @@ internal object Mp4FlacRemuxer {
         }
     }
 
+    /**
+     * fMP4 muxers write STREAMINFO total_samples = 0 (length unknown at init
+     * time). With no SEEKTABLE, ExoPlayer then marks the .flac unseekable, so
+     * fill it from the fragment durations. [blocks] starts with the 4-byte
+     * STREAMINFO block header.
+     */
+    private fun fillTotalSamples(blocks: ByteArray, input: File) {
+        if (blocks.size < 4 + STREAMINFO_LENGTH) return
+        fun b(i: Int) = blocks[4 + i].toLong() and 0xFF
+        val current = ((b(13) and 0x0F) shl 32) or (b(14) shl 24) or (b(15) shl 16) or (b(16) shl 8) or b(17)
+        if (current != 0L) return
+        val sampleRate = (b(10) shl 12) or (b(11) shl 4) or (b(12) shr 4)
+        val total = Fmp4IndexBuilder.totalSamples(input, sampleRate).takeIf { it in 1 until (1L shl 36) } ?: return
+        blocks[4 + 13] = ((b(13) and 0xF0) or (total shr 32)).toByte()
+        for (i in 0..3) blocks[4 + 14 + i] = (total shr (24 - 8 * i)).toByte()
+    }
+
     private class Layout(
-        val metadataBlocks: ByteArray,
+        val moov: ByteArray?,
         val mdatRanges: List<Pair<Long, Long>>,
     )
 
-    private fun readLayout(raf: RandomAccessFile, length: Long): Layout? {
-        var metadataBlocks: ByteArray? = null
+    private fun readLayout(raf: RandomAccessFile, length: Long): Layout {
+        var moovBytes: ByteArray? = null
         val mdatRanges = mutableListOf<Pair<Long, Long>>()
         val header = ByteArray(16)
         var pos = 0L
@@ -113,18 +142,17 @@ internal object Mp4FlacRemuxer {
             val payloadSize = boxSize - headerSize
             if (payloadSize < 0L || payloadStart + payloadSize > length) break
             when (type) {
-                "moov" -> if (metadataBlocks == null && payloadSize in 1..MAX_MOOV_BYTES.toLong()) {
-                    val moov = ByteArray(payloadSize.toInt())
-                    raf.seek(payloadStart)
-                    raf.readFully(moov)
-                    metadataBlocks = findMetadataBlocks(moov)
+                "moov" -> if (moovBytes == null && payloadSize in 1..MAX_MOOV_BYTES.toLong()) {
+                    moovBytes = ByteArray(payloadSize.toInt()).also {
+                        raf.seek(payloadStart)
+                        raf.readFully(it)
+                    }
                 }
                 "mdat" -> if (payloadSize > 0L) mdatRanges += payloadStart to payloadSize
             }
             pos += boxSize
         }
-        val blocks = metadataBlocks ?: return null
-        return Layout(blocks, mdatRanges)
+        return Layout(moovBytes, mdatRanges)
     }
 
     /**

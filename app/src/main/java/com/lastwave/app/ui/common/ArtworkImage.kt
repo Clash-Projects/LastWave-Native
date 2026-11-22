@@ -53,7 +53,8 @@ fun ArtworkImage(
     decodeSizePx: Int? = null,
     alignment: Alignment = Alignment.Center,
     transformations: List<Transformation> = emptyList(),
-    artworkViewModel: ArtworkViewModel = hiltViewModel(),
+    onAspect: ((Float) -> Unit)? = null,
+    artworkViewModel: ArtworkViewModel = LocalArtworkViewModel.current ?: hiltViewModel(),
 ) {
     val context = LocalContext.current
     val key = remember(name, artist) { ArtworkNormalizer.cacheKey(name, artist) }
@@ -64,7 +65,7 @@ fun ArtworkImage(
     val resolvedUrl by remember(key) {
         artworkViewModel.resolved.map { it[key] }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = artworkViewModel.resolved.value[key])
-    val isCellular by artworkViewModel.isCellular.collectAsStateWithLifecycle()
+    val isCellular = LocalArtworkCellular.current ?: artworkViewModel.isCellular.collectAsStateWithLifecycle().value
     var resolvedFailed by remember(key, resolvedUrl) { mutableStateOf(false) }
     var embeddedFailed by remember(name, artist, embeddedUrl) { mutableStateOf(false) }
     var refreshRequested by remember(key) { mutableStateOf(false) }
@@ -147,6 +148,12 @@ fun ArtworkImage(
                 error = retainedPainter,
                 onSuccess = {
                     lastSuccessfulPainter = it.painter
+                    val size = it.painter.intrinsicSize
+                    if (onAspect != null && size.width > 0f && size.height > 0f &&
+                        size != androidx.compose.ui.geometry.Size.Unspecified
+                    ) {
+                        onAspect(size.width / size.height)
+                    }
                 },
                 modifier = Modifier.fillMaxSize(),
                 onError = {

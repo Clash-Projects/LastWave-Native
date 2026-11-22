@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MusicNote
@@ -76,6 +77,7 @@ data class TrackMiniTrayData(
     val videoId: String? = null,
     val sourceLabel: String = "SoundDrop",
     val onPlay: (() -> Unit)? = null,
+    val durationMs: Long? = null,
 ) {
     fun toPlayable(): PlayableTrack = PlayableTrack(
         title = title,
@@ -83,6 +85,7 @@ data class TrackMiniTrayData(
         album = album,
         artworkUrl = artworkUrl,
         videoId = videoId?.takeIf(String::isNotBlank),
+        durationMs = durationMs,
     )
 }
 
@@ -93,6 +96,7 @@ fun TrackMiniTraySheet(
     onDismiss: () -> Unit,
     downloadViewModel: DownloadMenuViewModel = hiltViewModel(),
     artistAlbumViewModel: ArtistAlbumMenuViewModel = hiltViewModel(),
+    exclusionViewModel: RecommendationExclusionMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
@@ -232,7 +236,10 @@ fun TrackMiniTraySheet(
                         }
                         else -> {
                             MiniTrayRow(Icons.Filled.Download, downloadLabel, position = pos) {
-                                downloadViewModel.download(data.title, data.artist, data.album, data.artworkUrl)
+                                downloadViewModel.download(
+                                    playable.title, playable.artist, playable.album, playable.artworkUrl,
+                                    videoId = playable.videoId, durationMs = playable.durationMs,
+                                )
                                 onDismiss()
                             }
                         }
@@ -262,6 +269,13 @@ fun TrackMiniTraySheet(
                             artistAlbumViewModel.openArtist(art)
                             onDismiss()
                         }
+                    }
+                }
+                // 8. Don't recommend again
+                add { pos ->
+                    MiniTrayRow(Icons.Filled.Block, "Don't recommend again", position = pos) {
+                        exclusionViewModel.exclude(playable)
+                        onDismiss()
                     }
                 }
             }

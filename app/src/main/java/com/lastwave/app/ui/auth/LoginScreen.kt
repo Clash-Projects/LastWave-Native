@@ -68,7 +68,11 @@ fun LoginScreen(
     onOpenDownloads: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    var restoreReadError by remember { mutableStateOf<String?>(null) }
+    var restoreReadError by remember {
+        mutableStateOf(
+            if (com.lastwave.app.di.DataStoreModule.consumePrefsReset()) context.getString(R.string.login_prefs_reset) else null,
+        )
+    }
     val restoreBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->

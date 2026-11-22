@@ -22,16 +22,36 @@ import javax.inject.Singleton
 private const val TAG = "SyncedVideoRepo"
 private const val CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000L // 3 hours
 internal const val MIN_VIDEO_CANDIDATE_SCORE = 60
-private const val MAX_VIDEO_DURATION_DRIFT_SEC = 90
 private val UNRELATED_UPLOAD_WORDS = setOf(
-    "bgmi", "pubg", "freefire", "gameplay", "gaming", "montage", "fortnite", "minecraft", "valorant",
-    "gta", "amv", "fmv", "edit", "edits", "status", "tiktok", "reels",
+    "bgmi", "pubg", "freefire", "game", "gameplay", "gaming", "gamer", "montage", "fortnite", "minecraft",
+    "valorant", "gta", "roblox", "playthrough", "walkthrough", "esports", "tournament", "amv", "fmv",
+    "edit", "edits", "status", "tiktok", "reels",
 )
 /** Labels often upload a song under their own channel, without the artist's name. */
 private val LABEL_CHANNELS = listOf(
-    "tseries", "tips", "saregama", "sonymusic", "zeemusic", "yrf", "records", "entertainment",
+    "tseries", "tips", "saregama", "sonymusic", "zeemusic", "yrf", "universal", "musicindia",
+    "warner", "adityamusic", "timesmusic", "laharimusic", "speedrecords",
 )
 private val ARTIST_SEPARATOR = Regex("""\s*(?:,|&|/|\bfeat\.?\b|\bft\.?\b|\bx\b|\band\b)\s*""", RegexOption.IGNORE_CASE)
+
+data class VideoSearchCandidate(
+    val videoId: String,
+    val title: String,
+    val channel: String,
+    val durationSeconds: Int?,
+    val matchScore: Int,
+)
+
+/** Accepts a YouTube video ID or a standard YouTube watch/share URL. */
+internal fun extractYoutubeVideoId(input: String): String? {
+    val value = input.trim()
+    if (Regex("^[A-Za-z0-9_-]{11}$").matches(value)) return value
+    val match = Regex(
+        "(?:youtu\\.be/|youtube(?:-nocookie)?\\.com/(?:watch\\?(?:[^#]*&)?v=|embed/|shorts/|live/))([A-Za-z0-9_-]{11})",
+        RegexOption.IGNORE_CASE,
+    ).find(value) ?: return null
+    return match.groupValues[1]
+}
 
 /**
  * Scores a search result as the video for a track, or null when it is not that
@@ -57,12 +77,10 @@ internal fun scoreVideoCandidate(
     // A different take (live, remix, cover, sped up…) is another recording,
     // not this song's video, in either direction.
     if (!TextMatch.isSameTake(candidateTitle, wantedTitle, wantedArtist, candidateArtist)) return null
-    // Visual intros/outros stretch a video, but not by minutes: past this it
-    // is a loop, a compilation or a different song.
-    if (TextMatch.isSevereDurationMismatch(expectedDurationMs, candidateDurationSec, MAX_VIDEO_DURATION_DRIFT_SEC)) return null
-
     val wantedWordsForUploads = TextMatch.normalize(wantedTitle).split(' ').toSet()
-    if (UNRELATED_UPLOAD_WORDS.any { it in words && it !in wantedWordsForUploads } || "free fire" in title) return null
+    if (UNRELATED_UPLOAD_WORDS.any { it in words && it !in wantedWordsForUploads } ||
+        "free fire" in title || "e sports" in title
+    ) return null
 
     fun compact(value: String) = TextMatch.normalize(value).replace(" ", "")
     val channel = compact(candidateArtist)
@@ -77,12 +95,9 @@ internal fun scoreVideoCandidate(
         if (!artistOwnsChannel && !fromLabel && artists.none { it in compactTitle }) return null
     }
 
-    // Matching words and length never qualify on their own: a random upload has
-    // those too. It takes the artist's channel, or a title that says it's the video.
-    val claimsToBeTheVideo = "official music video" in title || "official video" in title ||
-        "music video" in title || "official visualizer" in title || "video song" in title ||
-        "full video" in title || "mv" in words || " m v " in " $title " || "vevo" in channel
-    if (!artistOwnsChannel && !fromLabel && !claimsToBeTheVideo) return null
+    // A copied "Official Music Video" title is not proof: gaming and lyric
+    // reposts routinely copy the exact title. Require a trusted uploader.
+    if (!artistOwnsChannel && !fromLabel && "vevo" !in channel) return null
 
     val wantedWords = TextMatch.normalize(wantedTitle).split(' ').toSet()
     fun unwanted(vararg variants: String) = variants.any { it in words && it !in wantedWords }
@@ -110,16 +125,33 @@ internal fun scoreVideoCandidate(
     ) {
         val expectedSec = (expectedDurationMs / 1000L).toInt()
         val delta = kotlin.math.abs(candidateDurationSec - expectedSec)
+        // A real music video may add or remove an intro, duet section or outro.
+        // Duration is only a small ranking hint; it cannot disqualify the match.
         when {
-            delta <= 15 -> score += 35
-            delta <= 45 -> score += 15
-            delta > 120 -> score -= 80
-            delta > 60 -> score -= 40
+            delta <= 15 -> score += 10
+            delta <= 45 -> score += 3
         }
-        if (candidateDurationSec < 60 && expectedSec > 90) score -= 120
     }
     return score
 }
+
+/** A YouTube Music counterpart is useful only when its metadata names this recording. */
+internal fun isVerifiedCounterpart(
+    candidateTitle: String,
+    candidateChannel: String,
+    candidateDurationSec: Int?,
+    wantedTitle: String,
+    wantedArtist: String,
+    expectedDurationMs: Long?,
+): Boolean = isSameSongVideo(
+    candidateTitle = candidateTitle,
+    candidateChannel = candidateChannel,
+    candidateSeconds = candidateDurationSec,
+    songTitle = wantedTitle,
+    songArtist = wantedArtist,
+    songDurationMs = expectedDurationMs,
+) && TextMatch.isSameTake(candidateTitle, wantedTitle, wantedArtist, candidateChannel)
+
 private const val ALIGNMENT_BUDGET_MS = 45_000L
 private const val SONG_ALIGNMENT_SECONDS = 50
 /** Longer than the song window so a long video intro still leaves the song in range. */
@@ -229,17 +261,20 @@ class SyncedVideoRepository @Inject constructor(
         videoId: String?,
         expectedDurationMs: Long? = null,
         avoidClientName: String? = null,
+        selectedVideoId: String? = null,
     ): Result<SyncedVideoStreamBundle> = withContext(Dispatchers.IO) {
         runCatching {
-            // Find the Official Music Video (OMV) ID
-            val targetVideoId = findOfficialVideoId(
-                trackTitle = trackTitle,
-                trackArtist = trackArtist,
-                audioTrackVideoId = videoId,
-                expectedDurationMs = expectedDurationMs,
-            )
-                ?: videoId?.takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Could not find music video for $trackTitle — $trackArtist")
+            // An explicit user choice is saved per song. Automatic matching must
+            // return a verified OMV; falling back to the audio track ID silently
+            // presents an audio upload as though it were the matched music video.
+            val targetVideoId = selectedVideoId?.takeIf { it.isNotBlank() }
+                ?: findOfficialVideoId(
+                    trackTitle = trackTitle,
+                    trackArtist = trackArtist,
+                    audioTrackVideoId = videoId,
+                    expectedDurationMs = expectedDurationMs,
+                )
+                ?: throw IllegalStateException("No verified music video found for $trackTitle — $trackArtist")
 
             val now = System.currentTimeMillis()
             cache[targetVideoId]?.let { cached ->
@@ -255,17 +290,7 @@ class SyncedVideoRepository @Inject constructor(
                 // The song's own upload shares its timeline, so there is no intro to skip.
                 val introOffsetMs = async { if (targetVideoId != videoId) fetchIntroOffsetMs(targetVideoId) else 0L }
 
-                val rawBundle = try {
-                    resolveBundle(targetVideoId, avoidClientName)
-                } catch (e: Exception) {
-                    // If official video extraction failed and we had a different audioTrackVideoId,
-                    // try that as fallback
-                    if (!videoId.isNullOrBlank() && videoId != targetVideoId) {
-                        resolveBundle(videoId, avoidClientName)
-                    } else {
-                        throw e
-                    }
-                }
+                val rawBundle = resolveBundle(targetVideoId, avoidClientName)
 
                 // A fallback to the song's own upload can't use the official video's intro.
                 rawBundle.copy(
@@ -284,7 +309,50 @@ class SyncedVideoRepository @Inject constructor(
         }
     }
 
-    suspend fun findOfficialVideoId(
+    /** Search results for the correction picker that pass the automatic match checks. */
+    suspend fun searchVideoCandidates(
+        trackTitle: String,
+        trackArtist: String,
+        expectedDurationMs: Long? = null,
+    ): List<VideoSearchCandidate> = withContext(Dispatchers.IO) {
+        val cleanTitle = cleanTrackTitle(trackTitle)
+        val cleanArtist = trackArtist.takeUnless { it.equals("Unknown artist", ignoreCase = true) }.orEmpty()
+        val queries = officialVideoSearchQueries(trackTitle, trackArtist)
+        val found = linkedMapOf<String, com.lastwave.app.data.music.YouTubeMusicTrack>()
+        for (query in queries) {
+            runCatching { innerTube.searchVideos(query, limit = 20) }
+                .getOrDefault(emptyList())
+                .forEach { candidate ->
+                    if (candidate.videoId.isNotBlank()) found.putIfAbsent(candidate.videoId, candidate)
+                }
+        }
+        found.values.mapNotNull { candidate ->
+            val score = scoreVideoCandidate(
+                candidateTitle = candidate.title,
+                candidateArtist = candidate.artist,
+                candidateDurationSec = candidate.durationSeconds,
+                wantedTitle = cleanTitle,
+                wantedArtist = cleanArtist,
+                expectedDurationMs = expectedDurationMs,
+            )?.takeIf { it >= MIN_VIDEO_CANDIDATE_SCORE } ?: return@mapNotNull null
+            VideoSearchCandidate(
+                videoId = candidate.videoId,
+                title = candidate.title,
+                channel = candidate.artist,
+                durationSeconds = candidate.durationSeconds,
+                matchScore = score,
+            )
+        }.sortedWith(
+            compareByDescending<VideoSearchCandidate> { it.matchScore }
+                .thenBy {
+                    val expected = expectedDurationMs?.takeIf { it > 0 }?.div(1_000L)
+                    val actual = it.durationSeconds?.takeIf { value -> value > 0 }?.toLong()
+                    if (expected != null && actual != null) kotlin.math.abs(expected - actual) else Long.MAX_VALUE
+                },
+        ).take(20)
+    }
+
+    private suspend fun findOfficialVideoId(
         trackTitle: String,
         trackArtist: String,
         audioTrackVideoId: String? = null,
@@ -295,25 +363,35 @@ class SyncedVideoRepository @Inject constructor(
             val counterpartId = runCatching {
                 innerTube.findCounterpartVideoId(audioTrackVideoId)
             }.getOrNull()
-            // Equal to the track's own id means the track already is the official video.
             if (!counterpartId.isNullOrBlank()) {
-                Log.i(TAG, "Found Tier 1 official video for '$trackTitle': $counterpartId")
-                return@withContext counterpartId
+                val details = runCatching { innerTube.fetchSongDetails(counterpartId) }.getOrNull()
+                val verified = details != null && isVerifiedCounterpart(
+                    candidateTitle = details.title,
+                    candidateChannel = details.artist,
+                    candidateDurationSec = details.durationSeconds,
+                    wantedTitle = cleanTrackTitle(trackTitle),
+                    wantedArtist = trackArtist,
+                    expectedDurationMs = expectedDurationMs,
+                )
+                if (verified) {
+                    Log.i(TAG, "Found verified Tier 1 official video for '$trackTitle': $counterpartId (${details?.title.orEmpty()})")
+                    return@withContext counterpartId
+                }
+                Log.w(
+                    TAG,
+                    "Rejected Tier 1 counterpart for '$trackTitle': id=$counterpartId title=${details?.title.orEmpty()} channel=${details?.artist.orEmpty()}",
+                )
             }
         }
 
         // Tier 2: Verified Innertube search fallback
         val cleanTitle = cleanTrackTitle(trackTitle)
         val cleanArtist = trackArtist.takeUnless { it.equals("Unknown artist", ignoreCase = true) }.orEmpty()
-        val queries = listOfNotNull(
-            "$cleanArtist - $cleanTitle Official Music Video".trim().ifBlank { null },
-            "$cleanTitle $cleanArtist official video".trim().ifBlank { null },
-            "$cleanTitle $cleanArtist".trim().ifBlank { null },
-        )
+        val queries = officialVideoSearchQueries(trackTitle, trackArtist)
 
         for (query in queries) {
             val videoResults = runCatching {
-                innerTube.searchVideos(query, limit = 8)
+                innerTube.searchVideos(query, limit = 20)
             }.getOrNull().orEmpty()
 
             val candidates = videoResults.filter { candidate ->
@@ -342,19 +420,12 @@ class SyncedVideoRepository @Inject constructor(
 
             val best = scored.firstOrNull { it.second >= MIN_VIDEO_CANDIDATE_SCORE }?.first
             if (best != null) {
-                Log.i(TAG, "Found Tier 2 official video for '$trackTitle': ${best.videoId} (${best.title}) score=${scored.first().second}")
+                Log.i(TAG, "Found Tier 2 official video for '$trackTitle': ${best.videoId} (${best.title}; ${best.artist}) score=${scored.first().second}")
                 return@withContext best.videoId
             }
         }
         null
     }
-
-    suspend fun findVideoId(
-        trackTitle: String,
-        trackArtist: String,
-        excludeId: String? = null,
-        expectedDurationMs: Long? = null,
-    ): String? = findOfficialVideoId(trackTitle, trackArtist, audioTrackVideoId = excludeId, expectedDurationMs = expectedDurationMs)
 
     suspend fun fetchIntroOffsetMs(videoId: String): Long = withContext(Dispatchers.IO) {
         if (videoId.isBlank()) return@withContext 0L
@@ -379,6 +450,16 @@ class SyncedVideoRepository @Inject constructor(
                 0L
             }
         }.getOrDefault(0L)
+    }
+
+    private fun officialVideoSearchQueries(trackTitle: String, trackArtist: String): List<String> {
+        val title = cleanTrackTitle(trackTitle)
+        val artist = trackArtist.takeUnless { it.equals("Unknown artist", ignoreCase = true) }.orEmpty()
+        return listOf(
+            "$artist - $title Official Music Video",
+            "$title $artist official video",
+            "$title $artist",
+        ).map(String::trim).filter(String::isNotBlank).distinct()
     }
 
     private fun cleanTrackTitle(title: String): String {

@@ -51,6 +51,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import com.lastwave.app.R
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.outlined.Cast
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
@@ -92,6 +100,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -127,11 +136,15 @@ import kotlin.time.Duration.Companion.seconds
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.ui.common.AmbientAnimationsGate
 import com.lastwave.app.ui.common.ExpressiveMotion
 import com.lastwave.app.ui.common.PredictiveBackScreen
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.feed.FeedScreen
 import com.lastwave.app.ui.home.HomeScreen
+import com.lastwave.app.ui.player.LocalChromeCollapse
+import com.lastwave.app.ui.player.collapsedNavPill
+import com.lastwave.app.ui.player.collapsingNavBar
 import com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance
 import com.lastwave.app.ui.playlist.PlaylistScreen
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -155,6 +168,9 @@ import com.lastwave.app.ui.theme.isLiquidGlassBackdropSupported
 import com.lastwave.app.ui.theme.liquidGlassSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import io.github.fletchmckee.liquid.liquefiable
+import io.github.fletchmckee.liquid.rememberLiquidState
 import javax.inject.Inject
 
 /** Thin bridge exposing AppUpdateManager's live update state to MainShell */
@@ -228,12 +244,14 @@ private val PillShape: Shape = CircleShape
 
 private fun <T> navSpring() = ExpressiveMotion.spatialSpring<T>()
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainShell(
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenDiscover: () -> Unit,
     onOpenGenres: () -> Unit,
+    onOpenListeningStats: () -> Unit = {},
     onOpenFriends: () -> Unit,
     onOpenFriendProfile: (username: String, displayName: String?, avatarUrl: String?) -> Unit = { _, _, _ -> },
     onOpenFeedPlaylist: (String) -> Unit,
@@ -260,13 +278,21 @@ fun MainShell(
     // the FAB draw over the pill. Updating immediately on tap and syncing from
     // settledPage on swipe keeps one clean transition.
     var selectedTabIndex by remember { mutableIntStateOf(pagerState.currentPage) }
-    LaunchedEffect(pagerState.settledPage) {
-        if (selectedTabIndex != pagerState.settledPage) {
+    var liquidNavigationJob by remember { mutableStateOf<Job?>(null) }
+    var liquidNavigationRequest by remember { mutableIntStateOf(0) }
+    LaunchedEffect(pagerState.settledPage, pagerState.isScrollInProgress, liquidNavigationJob) {
+        if (!pagerState.isScrollInProgress && liquidNavigationJob?.isActive != true &&
+            selectedTabIndex != pagerState.settledPage
+        ) {
             selectedTabIndex = pagerState.settledPage
         }
     }
-    val updateInfo by mainShellViewModel.updateInfo.collectAsStateWithLifecycle()
-    val showUpdateBanner = updateInfo.isUpdateAvailable && !updateInfo.isDismissed
+    val musicPlayer = com.lastwave.app.ui.player.LocalMusicPlayer.current
+    var showAccountMenu by remember { mutableStateOf(false) }
+    var showJamSheet by remember { mutableStateOf(false) }
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var showCustomTimerDialog by remember { mutableStateOf(false) }
+    var customDurationText by remember { mutableStateOf("") }
     val ytConnection by mainShellViewModel.ytConnection.collectAsStateWithLifecycle()
     val settings by mainShellViewModel.settings.collectAsStateWithLifecycle(initialValue = null)
     var promptDismissedThisSession by rememberSaveable { mutableStateOf(false) }
@@ -364,87 +390,100 @@ fun MainShell(
     }
 
     val backgroundColor = MaterialTheme.colorScheme.background
-    // Unconditional remember keeps composition stable; usage gated below.
-    val navigationBackdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
+    val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
+    val useLiquidNavigation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        LocalLiquidGlass.current && !hideNavTabs
+    val navigationLiquidState = if (useLiquidNavigation) rememberLiquidState() else null
+    // Only one renderer records the pager for navigation. The bar is hosted by
+    // PlayerHost as a sibling, never below its own liquefiable source.
+    val navigationBackdrop = if (!useLiquidNavigation) {
+        rememberLayerBackdrop {
+            drawRect(backgroundColor)
+            drawContent()
+        }
+    } else null
     val navGlass = isLiquidGlassBackdropSupported()
+    val chromeCollapse = LocalChromeCollapse.current
+    // Each tab keeps its own scroll offset: a compact bar carried onto a tab
+    // resting at its top would have nothing to scroll back up to expand it.
+    LaunchedEffect(chromeCollapse, pagerState.settledPage) { chromeCollapse?.expand() }
 
     Box(Modifier.fillMaxSize()) {
         val feedIndex = tabs.indexOf(MainTab.FEED)
+        // Composing Stats and Playlists on the launch frame (plus their own
+        // loads recomposing them) froze the Feed's first load for seconds on
+        // slower phones. Add them once the user leaves the Feed, then keep every
+        // tab: tab handlers set selectedTabIndex before scrolling, so the jump
+        // frame already composes all of them and a dock jump back to Feed never
+        // disposes and rebuilds it.
+        var composeAllTabs by remember { mutableStateOf(false) }
+        val allTabs = composeAllTabs || selectedTabIndex != feedIndex || pagerState.isScrollInProgress
+        if (allTabs) LaunchedEffect(Unit) { composeAllTabs = true }
         HorizontalPager(
             state = pagerState,
-            // Keep every tab composed. With 1, jumping Playlists -> Home
-            // (dock tap = instant scrollToPage) disposed and rebuilt the whole
-            // Feed (sections, shelves, covers) on that frame, and Statistics
-            // was rebuilt the same way from the far tab. Only 3 tabs, and
-            // off-screen pages are not drawn, so this is cheap.
-            beyondViewportPageCount = tabs.size - 1,
-            modifier = Modifier.fillMaxSize().liquidGlassSource(if (navGlass) navigationBackdrop else null),
+            beyondViewportPageCount = if (allTabs) tabs.size - 1 else 0,
+            modifier = Modifier.fillMaxSize()
+                .then(if (chromeCollapse != null) Modifier.nestedScroll(chromeCollapse.connection) else Modifier)
+                .then(
+                if (navigationLiquidState != null) {
+                    Modifier.liquefiable(navigationLiquidState).background(backgroundColor)
+                } else {
+                    Modifier.liquidGlassSource(if (navGlass) navigationBackdrop else null)
+                },
+            ),
         ) { page ->
             // derivedStateOf: reading currentPage directly recomposed every
             // page's whole tab each time it flipped halfway through a swipe.
             val isCurrent by remember(page) { derivedStateOf { page == pagerState.currentPage } }
-            PredictiveBackScreen(
-                enabled = isCurrent && tabs[page] != MainTab.FEED,
-                onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
-            ) {
-                when (tabs[page]) {
-                    MainTab.FEED -> FeedScreen(
-                        onOpenSettings = onOpenSettings,
-                        onOpenSearch = onOpenSearch,
-                        onOpenDiscover = onOpenDiscover,
-                        onOpenPlaylist = onOpenPlaylist,
-                        onOpenFeedPlaylist = onOpenFeedPlaylist,
-                        onOpenGenerator = onOpenGenerator,
-                        onOpenFriends = onOpenFriends,
-                        onOpenFriendProfile = onOpenFriendProfile,
-                        onOpenNewReleases = onOpenNewReleases,
-                        onOpenDownloads = onOpenDownloads,
-                        onOpenPodcasts = onOpenPodcasts,
-                        onOpenPodcastShow = onOpenPodcastShow,
-                        onOpenYouTubeLogin = onOpenYouTubeLogin,
-                        feedTapEvents = feedTapEvents,
-                    )
-                    MainTab.STATS -> HomeScreen(
-                        onOpenSettings = onOpenSettings,
-                        onOpenSearch = onOpenSearch,
-                        onOpenDiscover = onOpenDiscover,
-                        onOpenGenres = onOpenGenres,
-                        onOpenFriends = onOpenFriends,
-                        onOpenDownloads = onOpenDownloads,
-                    )
-                    MainTab.PLAYLISTS -> PlaylistScreen(
-                        onOpenPlaylist = onOpenPlaylist,
-                        onOpenFeedPlaylist = onOpenFeedPlaylist,
-                        onOpenGenerator = onOpenGenerator,
-                    )
+            val pageShown by remember(page) {
+                derivedStateOf { page == pagerState.currentPage || pagerState.isScrollInProgress }
+            }
+            AmbientAnimationsGate(visible = { pageShown }) {
+                PredictiveBackScreen(
+                    enabled = isCurrent && tabs[page] != MainTab.FEED,
+                    onBack = { scope.launch { pagerState.animateScrollToPage(feedIndex) } },
+                ) {
+                    when (tabs[page]) {
+                        MainTab.FEED -> FeedScreen(
+                            onOpenSettings = { showAccountMenu = true },
+                            onOpenSearch = onOpenSearch,
+                            onOpenDiscover = onOpenDiscover,
+                            onOpenGenres = onOpenGenres,
+                            onOpenPlaylist = onOpenPlaylist,
+                            onOpenFeedPlaylist = onOpenFeedPlaylist,
+                            onOpenGenerator = onOpenGenerator,
+                            onOpenFriends = onOpenFriends,
+                            onOpenFriendProfile = onOpenFriendProfile,
+                            onOpenNewReleases = onOpenNewReleases,
+                            onOpenDownloads = onOpenDownloads,
+                            onOpenPodcasts = onOpenPodcasts,
+                            onOpenPodcastShow = onOpenPodcastShow,
+                            onOpenYouTubeLogin = onOpenYouTubeLogin,
+                            feedTapEvents = feedTapEvents,
+                        )
+                        MainTab.STATS -> HomeScreen(
+                            onOpenSettings = { showAccountMenu = true },
+                            onOpenSearch = onOpenSearch,
+                            onOpenDiscover = onOpenDiscover,
+                            onOpenGenres = onOpenGenres,
+                            onOpenListeningStats = onOpenListeningStats,
+                            onOpenFriends = onOpenFriends,
+                            onOpenDownloads = onOpenDownloads,
+                            avatarUrl = ytConnection.photoUrl.takeIf { ytConnection.isConnected },
+                        )
+                        MainTab.PLAYLISTS -> PlaylistScreen(
+                            onOpenPlaylist = onOpenPlaylist,
+                            onOpenFeedPlaylist = onOpenFeedPlaylist,
+                            onOpenGenerator = onOpenGenerator,
+                        )
+                    }
                 }
             }
         }
 
-        // App update prompt banner (only shown on app open when an update is available and not dismissed)
-        AnimatedVisibility(
-            visible = showUpdateBanner,
-            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .adaptiveContentWidth(maxWidth = 600.dp)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .zIndex(10f),
-        ) {
-            UpdatePromptCard(
-                version = updateInfo.latestVersion,
-                onUpdate = { mainShellViewModel.openUpdate(context) },
-                onDismiss = { mainShellViewModel.dismissUpdate(updateInfo.latestVersion) },
-            )
-        }
+        // The update prompt is the app-wide dialog (ui/update/AppUpdateDialog), opened on launch.
 
         val bottomNavSlot = com.lastwave.app.ui.player.LocalBottomNavSlot.current
-        val hideNavTabs = com.lastwave.app.ui.theme.LocalHideNavTabs.current
         val md3NavBar = LocalMd3NavBar.current
         val clearance = com.lastwave.app.ui.player.LocalMiniPlayerScrollClearance.current
         val isMiniPlayerActive = clearance > 0.dp
@@ -475,94 +514,405 @@ fun MainShell(
         }
         val currentOnOpenGenerator by androidx.compose.runtime.rememberUpdatedState(onOpenGenerator)
 
-        androidx.compose.runtime.DisposableEffect(navigationBackdrop, tabs, hideNavTabs) {
+        // A scrub commits once on release. It must never use Feed's re-tap
+        // refresh action, or enqueue a page animation at every crossed tab.
+        fun selectLiquidTab(index: Int, refreshIfSelected: Boolean) {
+            navHaptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentTick)
+            val isFeed = tabs[index] == MainTab.FEED
+            val returnedFromDetail = isFeed && onReturnToHome()
+            val alreadySettled = selectedTabIndex == index &&
+                pagerState.settledPage == index && !pagerState.isScrollInProgress
+            if (refreshIfSelected && isFeed && alreadySettled && !returnedFromDetail) {
+                feedTapEvents.tryEmit(Unit)
+                return
+            }
+            val request = ++liquidNavigationRequest
+            liquidNavigationJob?.cancel()
+            selectedTabIndex = index
+            liquidNavigationJob = scope.launch {
+                try {
+                    if (returnedFromDetail) pagerState.scrollToPage(index)
+                    else pagerState.animateScrollToPage(index)
+                } finally {
+                    // A previous canceled request must not reset a newer target.
+                    // Also reconcile when a content swipe interrupts this request.
+                    if (request == liquidNavigationRequest) {
+                        selectedTabIndex = pagerState.settledPage
+                    }
+                }
+            }
+        }
+        val currentOnLiquidSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
+            selectLiquidTab(index, refreshIfSelected = true)
+        }
+        val currentOnScrubSelect by androidx.compose.runtime.rememberUpdatedState { index: Int ->
+            selectLiquidTab(index, refreshIfSelected = false)
+        }
+
+        androidx.compose.runtime.DisposableEffect(navigationBackdrop, navigationLiquidState, tabs, hideNavTabs) {
             if (!hideNavTabs) {
-                bottomNavSlot.value = {
+                bottomNavSlot.value = { material3NavigationEnabled ->
                     Box(Modifier.fillMaxSize()) {
-                        FloatingNavBar(
-                            backdrop = navigationBackdrop,
-                            tabs = tabs,
-                            selectedIndex = currentSelectedIndex,
-                            onSelect = currentOnSelect,
-                            onOpenGenerator = currentOnOpenGenerator,
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                        )
+                        val collapse = LocalChromeCollapse.current
+                        val collapseProgress = collapse?.progress ?: { 0f }
+                        val barModifier = Modifier.align(Alignment.BottomCenter).collapsingNavBar(collapseProgress)
+                        val pillModifier = Modifier.align(Alignment.BottomStart).collapsedNavPill(collapseProgress)
+                        val expand = { collapse?.expand(); Unit }
+                        if (navigationLiquidState != null) {
+                            val items = tabs.map { tab ->
+                                LiquidNavigationItem(
+                                    label = androidx.compose.ui.res.stringResource(tab.labelRes),
+                                    icon = tab.icon(),
+                                )
+                            }
+                            LiquidNavigationBar(
+                                liquidState = navigationLiquidState,
+                                items = items,
+                                selectedIndex = currentSelectedIndex,
+                                onSelect = currentOnLiquidSelect,
+                                onScrubSelect = currentOnScrubSelect,
+                                modifier = barModifier,
+                                style = if (material3NavigationEnabled) {
+                                    LiquidNavigationStyle.Material3
+                                } else {
+                                    LiquidNavigationStyle.Tabs
+                                },
+                            )
+                            LiquidNavigationPill(navigationLiquidState, items[currentSelectedIndex], expand, pillModifier)
+                        } else {
+                            FloatingNavBar(
+                                backdrop = navigationBackdrop,
+                                tabs = tabs,
+                                selectedIndex = currentSelectedIndex,
+                                onSelect = currentOnSelect,
+                                onOpenGenerator = currentOnOpenGenerator,
+                                modifier = barModifier,
+                            )
+                            FloatingNavPill(navigationBackdrop, tabs[currentSelectedIndex], expand, pillModifier)
+                        }
                     }
                 }
             } else {
-                bottomNavSlot.value = {}
+                bottomNavSlot.value = { _ -> }
             }
-            onDispose { bottomNavSlot.value = {} }
+            onDispose { bottomNavSlot.value = { _ -> } }
         }
+    }
+
+    if (showAccountMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showAccountMenu = false },
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(com.lastwave.app.ui.common.GroupGap),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Quick Actions",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    IconButton(onClick = { showAccountMenu = false }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
+                }
+
+                // 1. Settings
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        onOpenSettings()
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.TOP),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Settings,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Settings", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("App preferences and audio options", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 2. Jam
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        showJamSheet = true
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Group,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Jam", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Listen together in real time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 3. Listening stats
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        onOpenListeningStats()
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.tertiaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Leaderboard,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Listening stats", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Your top artists, tracks & recaps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 4. Cast
+                val castAvailable = remember(musicPlayer) { musicPlayer.initializeCast() }
+                var routeButton by remember { mutableStateOf<androidx.mediarouter.app.MediaRouteButton?>(null) }
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        if (castAvailable) routeButton?.performClick()
+                        else android.widget.Toast.makeText(context, context.getString(R.string.cast_unavailable), android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.MIDDLE),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (castAvailable) {
+                                androidx.compose.ui.viewinterop.AndroidView(
+                                    modifier = Modifier.size(24.dp),
+                                    factory = { viewContext ->
+                                        androidx.mediarouter.app.MediaRouteButton(viewContext).apply {
+                                            background = null
+                                            com.google.android.gms.cast.framework.CastButtonFactory.setUpMediaRouteButton(viewContext, this)
+                                            routeButton = this
+                                        }
+                                    },
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Outlined.Cast,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Cast", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Stream to TV or speaker", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // 5. Sleep timer
+                Surface(
+                    onClick = {
+                        showAccountMenu = false
+                        showSleepTimerDialog = true
+                    },
+                    shape = com.lastwave.app.ui.common.groupShape(com.lastwave.app.ui.common.GroupPosition.BOTTOM),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Bedtime,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Sleep timer", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("Stop playback automatically", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showJamSheet) {
+        com.lastwave.app.ui.jam.LastWaveJamSheet(
+            onDismiss = { showJamSheet = false },
+        )
+    }
+
+    if (showSleepTimerDialog) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showSleepTimerDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Sleep timer",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = {
+                                showSleepTimerDialog = false
+                                showCustomTimerDialog = true
+                            },
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Custom timer")
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    listOf(0, 15, 30, 45, 60).forEach { minutes ->
+                        TextButton(
+                            onClick = {
+                                musicPlayer.setSleepTimerMinutes(minutes)
+                                showSleepTimerDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                if (minutes == 0) "Turn timer off" else "$minutes minutes",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCustomTimerDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomTimerDialog = false },
+            title = { Text("Set Custom Timer") },
+            text = {
+                OutlinedTextField(
+                    value = customDurationText,
+                    onValueChange = { customDurationText = it.filter(Char::isDigit).take(4) },
+                    label = { Text("Duration (minutes)") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = customDurationText.toIntOrNull()?.let { it > 0 } == true,
+                    onClick = {
+                        val mins = customDurationText.toIntOrNull() ?: 0
+                        if (mins > 0) musicPlayer.setSleepTimerMinutes(mins)
+                        showCustomTimerDialog = false
+                    },
+                ) { Text("Set timer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomTimerDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 
-@Composable
-private fun UpdatePromptCard(
-    version: String,
-    onUpdate: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shadowElevation = 8.dp,
-        tonalElevation = 6.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.CloudDownload,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(24.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update_available),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                Text(
-                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update_ready_to_install, version),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(onClick = onUpdate),
-            ) {
-                Text(
-                    text = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.update),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                )
-            }
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(28.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = androidx.compose.ui.res.stringResource(com.lastwave.app.R.string.dismiss_update),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun FloatingNavBar(
@@ -767,6 +1117,38 @@ private fun FloatingNavBar(
                     }
                 }
             }
+        }
+    }
+}
+
+/** The collapsed dock: one glass circle holding only the active tab's icon. */
+@Composable
+private fun FloatingNavPill(
+    backdrop: LayerBackdrop?,
+    tab: MainTab,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val liquidGlass = LocalLiquidGlass.current
+    Surface(
+        onClick = onClick,
+        shape = PillShape,
+        color = liquidGlassContainerColor(
+            MaterialTheme.colorScheme.surfaceContainerHigh,
+            enabled = liquidGlass,
+            backdrop = backdrop,
+        ),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = if (liquidGlass) 0.dp else 6.dp,
+        shadowElevation = if (liquidGlass) 0.dp else 12.dp,
+        modifier = modifier.liquidGlassChrome(CircleShape, liquidGlass, LiquidGlassPreset.BottomNavigation, backdrop),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = tab.icon(),
+                contentDescription = androidx.compose.ui.res.stringResource(tab.labelRes),
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
 }

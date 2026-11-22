@@ -9,8 +9,18 @@ import androidx.media3.datasource.TransferListener
 import java.io.IOException
 
 /**
- * Wraps an upstream [DataSource] to issue chunked HTTP Range requests (~1 MB range chunks)
+ * Wraps an upstream [DataSource] to issue chunked HTTP Range requests (512 KB range chunks)
  * for YouTube / googlevideo media.
+ *
+ * 512 KB is InnerTubeX's limit for the token-free ANDROID_VR / TVHTML5_SIMPLY
+ * clients (mediaRangeChunkSize); larger or open-ended ranges get served for a
+ * while and then refused.
+ *
+ * When [refresher] is set, a chunk refused with 403/410 (URL expired or
+ * revoked mid-song) is retried in place on a fresh URL for the SAME file —
+ * same itag and byte length, so byte offsets stay valid — and playback never
+ * sees an error. The loader runs ahead of the playhead, so the buffer covers
+ * the re-resolve and there is no audible gap.
  *
  * This prevents YouTube's server-side bandwidth throttling on open-ended Range requests
  * and prevents HTTP 403 on client profiles (such as IOS) that strictly mandate bounded Range headers.
@@ -25,7 +35,17 @@ import java.io.IOException
 class ChunkedRangeDataSource(
     private val upstream: DataSource,
     private val chunkSize: Long = DEFAULT_CHUNK_SIZE,
+    private val refresher: StreamRefresher? = null,
 ) : DataSource {
+
+    /** Replacement location for a refused googlevideo URL, or null when there is none. */
+    fun interface StreamRefresher {
+        fun refresh(failedUri: Uri): Replacement?
+    }
+
+    class Replacement(val uri: Uri, val requestHeaders: Map<String, String>)
+
+    private var refreshesThisOpen = 0
 
     private var currentDataSpec: DataSpec? = null
     private var currentPosition: Long = 0L
@@ -52,6 +72,7 @@ class ChunkedRangeDataSource(
         requestedLength = dataSpec.length
         bytesReadTotal = 0L
         totalLength = C.LENGTH_UNSET.toLong()
+        refreshesThisOpen = 0
 
         val isYouTube = dataSpec.uri.host?.let { host ->
             host.contains("googlevideo.com") || host.contains("youtube.com")
@@ -97,10 +118,38 @@ class ChunkedRangeDataSource(
             .setLength(chunkLength)
             .build()
 
-        val opened = openUpstream(chunkSpec)
+        val opened = openChunkRefreshingOnRejection(chunkSpec)
         currentChunkRemaining = if (opened != C.LENGTH_UNSET.toLong()) opened else chunkLength
         if (totalLength == C.LENGTH_UNSET.toLong()) {
             totalLength = parseContentRangeTotal(upstream.responseHeaders)
+        }
+    }
+
+    /**
+     * Opens [chunkSpec]; on 403/410 swaps in a fresh URL for the same file
+     * (at most [MAX_REFRESHES_PER_OPEN] times) and re-requests the same bytes.
+     */
+    private fun openChunkRefreshingOnRejection(chunkSpec: DataSpec): Long {
+        var spec = chunkSpec
+        while (true) {
+            try {
+                return openUpstream(spec)
+            } catch (error: HttpDataSource.InvalidResponseCodeException) {
+                val refreshable = error.responseCode == 403 || error.responseCode == 410
+                val activeRefresher = refresher
+                if (!refreshable || activeRefresher == null || refreshesThisOpen >= MAX_REFRESHES_PER_OPEN) throw error
+                refreshesThisOpen++
+                val replacement = runCatching { activeRefresher.refresh(spec.uri) }.getOrNull() ?: throw error
+                spec = spec.buildUpon()
+                    .setUri(replacement.uri)
+                    .setHttpRequestHeaders(spec.httpRequestHeaders + replacement.requestHeaders)
+                    .build()
+                // Later chunks of this open continue on the new URL.
+                currentDataSpec = currentDataSpec?.buildUpon()
+                    ?.setUri(replacement.uri)
+                    ?.setHttpRequestHeaders(spec.httpRequestHeaders)
+                    ?.build()
+            }
         }
     }
 
@@ -189,7 +238,8 @@ class ChunkedRangeDataSource(
     }
 
     companion object {
-        const val DEFAULT_CHUNK_SIZE = 1024 * 1024L // 1 MB chunk (within ~512 KB–2 MB)
+        const val DEFAULT_CHUNK_SIZE = 512 * 1024L
+        private const val MAX_REFRESHES_PER_OPEN = 2
 
         private val CONTENT_RANGE_TOTAL = Regex("""/\s*(\d+)\s*$""")
 

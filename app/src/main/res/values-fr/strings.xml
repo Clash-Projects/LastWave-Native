@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Fil</string>
     <string name="nav_stats">Statistiques</string>
-    <string name="nav_playlists">Playlists</string>
+    <string name="nav_playlists">Bibliothèque</string>
     <string name="nav_create_playlist">Créer / Générer une playlist</string>
     <string name="update_available">Mise à jour disponible</string>
     <string name="update">Mettre à jour</string>
@@ -453,7 +453,6 @@
     <string name="menu_add_queue">Ajouter à la file d\'attente</string>
     <string name="menu_open_lastfm">Ouvert dans Last.fm</string>
     <string name="menu_refresh_artwork">Actualiser la pochette</string>
-    <string name="menu_copy_song">Copier la chanson</string>
     <string name="menu_details_specs">Détails et spécifications audio</string>
     <string name="menu_dont_recommend">Ne recommande plus</string>
     <string name="menu_remove_from_playlist">Supprimer de la liste de lecture</string>
@@ -506,10 +505,9 @@
     <string name="pl_export_title">Exporter la liste de lecture</string>
     <string name="pl_choose_image">Choisir une image</string>
     <string name="pl_change_image">Changer l\'image</string>
-    <string name="pl_title">Liste de lecture</string>
+    <string name="pl_title">Bibliothèque</string>
     <string name="pl_selected_count">%1$d sélectionné</string>
     <string name="pl_select_more_hint">Appuyez longuement pour en sélectionner plus</string>
-    <string name="pl_count_only">%1$d Listes de lecture</string>
     <string name="pl_count_tracks">%1$d Listes de lecture • %2$d Pistes</string>
     <string name="pl_delete_selected_cd">Supprimer la sélection</string>
     <string name="pl_clear_selection_cd">Effacer la sélection</string>
@@ -765,9 +763,9 @@
     <string name="set_lfm_remove">Supprimer</string>
     <string name="set_lfm_key_label">Clé API</string>
     <string name="set_lfm_key_saved">Votre clé est enregistrée</string>
-    <string name="set_lfm_key_hint">Obligatoire : obtenez-en un gratuitement, puis collez-le ici</string>
-    <string name="set_lfm_get">Obtenez une clé gratuite sur last.fm/api →</string>
-    <string name="set_lfm_how">Comment obtenir une clé gratuite →</string>
+    <string name="set_lfm_key_hint">Obligatoire : obtenez-en un, puis collez-le ici</string>
+    <string name="set_lfm_get">Obtenez une clé sur last.fm/api →</string>
+    <string name="set_lfm_how">Comment obtenir une clé →</string>
     <string name="set_lfm_disc_title">Déconnecter Last.fm ?</string>
     <string name="set_lfm_disc_text">Pause globale des scrobbles. Vos statistiques passent à l\'historique d\'écoute local – rien n\'est supprimé.</string>
     <string name="set_lfm_disc_btn">Déconnecter</string>

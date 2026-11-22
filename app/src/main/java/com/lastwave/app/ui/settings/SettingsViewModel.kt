@@ -12,6 +12,7 @@ import com.lastwave.app.data.local.AppIcon
 import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.EqualizerSettings
 import com.lastwave.app.data.local.MiscSettings
+import com.lastwave.app.data.local.SeekbarStyle
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
 import com.lastwave.app.playback.haptics.MusicHapticsIntensity
@@ -25,6 +26,11 @@ import com.lastwave.app.data.download.TrackDownloadManager
 import com.lastwave.app.data.playlist.PlaylistRepository
 import com.lastwave.app.data.repository.AuthRepository
 import com.lastwave.app.data.repository.ThemeRepository
+import com.lastwave.app.data.scrobbler.ExtraScrobblerPreferences
+import com.lastwave.app.data.scrobbler.ExtraService
+import com.lastwave.app.data.scrobbler.LibreFmClient
+import com.lastwave.app.data.scrobbler.ListenBrainzClient
+import com.lastwave.app.data.scrobbler.ScrobblerAccount
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.data.repository.ThemeUiState
 import com.lastwave.app.playback.NativeAudioEngine
@@ -44,6 +50,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -82,6 +92,11 @@ data class SettingsScreenState(
     val sessionKeyLoading: Boolean = false,
 )
 
+data class ScrobblerConnectionState(
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -99,6 +114,9 @@ class SettingsViewModel @Inject constructor(
     private val downloadManager: TrackDownloadManager,
     private val fileExportHelper: FileExportHelper,
     private val scrobblerPreferences: ScrobblerPreferences,
+    private val extraScrobblerPreferences: ExtraScrobblerPreferences,
+    private val listenBrainzClient: ListenBrainzClient,
+    private val libreFmClient: LibreFmClient,
     private val discordPresencePreferences: com.lastwave.app.presence.DiscordPresencePreferences,
     private val equalizerPreferences: com.lastwave.app.data.local.EqualizerPreferences,
     private val loudnessPrefs: com.lastwave.app.playback.LoudnessPrefs,
@@ -136,28 +154,6 @@ class SettingsViewModel @Inject constructor(
     val spotifyPreferCanvas: StateFlow<Boolean> = spotifyPreferences.preferSpotifyCanvas
         .withSettingsFallback("Spotify prefer canvas preference", false)
         .stateIn(viewModelScope, SettingsSharing, false)
-
-    /** Whether a liked song is added to this app's own Liked Songs playlist. */
-    val likedSongsLocalSync: StateFlow<Boolean> = settingsPreferences.likedSongsLocalSync
-        .withSettingsFallback("Liked songs local sync preference", true)
-        .stateIn(viewModelScope, SettingsSharing, true)
-
-    /** Whether a liked song is also marked as liked on YouTube Music. */
-    val likedSongsYouTubeSync: StateFlow<Boolean> = settingsPreferences.likedSongsYouTubeSync
-        .withSettingsFallback("Liked songs YouTube sync preference", true)
-        .stateIn(viewModelScope, SettingsSharing, true)
-
-    fun setLikedSongsLocalSync(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsPreferences.setLikedSongsLocalSync(enabled)
-        }
-    }
-
-    fun setLikedSongsYouTubeSync(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsPreferences.setLikedSongsYouTubeSync(enabled)
-        }
-    }
 
     fun setSpotifyCanvasEnabled(enabled: Boolean) {
         viewModelScope.launch {
@@ -413,6 +409,56 @@ class SettingsViewModel @Inject constructor(
     //    create) before connecting. Connect/disconnect anytime; stats +
     //    scrobbling degrade to local-first when disconnected. ──
 
+    val listenBrainzAccount: StateFlow<ScrobblerAccount> = extraScrobblerPreferences
+        .account(ExtraService.LISTENBRAINZ)
+        .withSettingsFallback("ListenBrainz account", ScrobblerAccount())
+        .stateIn(viewModelScope, SettingsSharing, ScrobblerAccount())
+
+    val libreFmAccount: StateFlow<ScrobblerAccount> = extraScrobblerPreferences
+        .account(ExtraService.LIBREFM)
+        .withSettingsFallback("Libre.fm account", ScrobblerAccount())
+        .stateIn(viewModelScope, SettingsSharing, ScrobblerAccount())
+
+    private val _scrobblerConnections = MutableStateFlow<Map<ExtraService, ScrobblerConnectionState>>(emptyMap())
+    val scrobblerConnections = _scrobblerConnections.asStateFlow()
+    private val scrobblerActionJobs = mutableMapOf<ExtraService, Job>()
+
+    fun connectListenBrainz(token: String, server: String) = runScrobblerAction(ExtraService.LISTENBRAINZ) {
+        listenBrainzClient.connect(token, server)
+    }
+
+    fun connectLibreFm(user: String, password: String, server: String) = runScrobblerAction(ExtraService.LIBREFM) {
+        libreFmClient.connect(user, password, server)
+    }
+
+    fun disconnectScrobbler(service: ExtraService) = runScrobblerAction(service) {
+        extraScrobblerPreferences.clear(service)
+        null
+    }
+
+    private fun runScrobblerAction(service: ExtraService, action: suspend () -> String?) {
+        if (_scrobblerConnections.value[service]?.busy == true) return
+        _scrobblerConnections.update { it + (service to ScrobblerConnectionState(busy = true)) }
+        scrobblerActionJobs[service] = launchSettingsAction("update ${service.displayName} connection") {
+            // Authentication may finish after navigation; keep its credential write atomic with the result.
+            withContext(NonCancellable) {
+                try {
+                    val error = action()
+                    _scrobblerConnections.update { it + (service to ScrobblerConnectionState(error = error)) }
+                } catch (error: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    _scrobblerConnections.update {
+                        it + (service to ScrobblerConnectionState(error = appContext.getString(com.lastwave.app.R.string.set_scrobbler_error)))
+                    }
+                } finally {
+                    _scrobblerConnections.update {
+                        it + (service to (it[service] ?: ScrobblerConnectionState()).copy(busy = false))
+                    }
+                }
+            }
+        }
+    }
+
     /** True when a Last.fm username is persisted (scrobbles sync globally). */
     val isLastFmConnected: StateFlow<Boolean> = session
         .map { it.username.isNotBlank() }
@@ -531,6 +577,7 @@ class SettingsViewModel @Inject constructor(
     fun setLastWaveTheme(enabled: Boolean) = launchSettingsAction("update LastWave signature theme") { themeRepository.setLastWaveTheme(enabled) }
     fun setAppIcon(icon: AppIcon) = launchSettingsAction("update app icon") { themeRepository.setAppIcon(icon) }
     fun setAmoled(enabled: Boolean) = launchSettingsAction("update AMOLED mode") { themeRepository.setAmoled(enabled) }
+    fun setLegacyColors(enabled: Boolean) = launchSettingsAction("update legacy colors") { themeRepository.setLegacyColors(enabled) }
     fun setLiquidGlass(enabled: Boolean) = launchSettingsAction("update Liquid Glass") { themeRepository.setLiquidGlass(enabled) }
     fun setMd3NavBar(enabled: Boolean) = launchSettingsAction("update MD3 Navigation Bar") { themeRepository.setMd3NavBar(enabled) }
     fun setHideNavTabs(enabled: Boolean) = launchSettingsAction("update Hide Navigation Tabs") { themeRepository.setHideNavTabs(enabled) }
@@ -546,8 +593,14 @@ class SettingsViewModel @Inject constructor(
 
     fun setDynamicNowPlaying(enabled: Boolean) = launchSettingsAction("update dynamic theme") { themeRepository.setDynamicNowPlaying(enabled) }
     fun setUseCustomFont(enabled: Boolean) = launchSettingsAction("update the app font") { settingsPreferences.setUseCustomFont(enabled) }
+    fun setUseBoldFont(enabled: Boolean) = launchSettingsAction("update font weight") { settingsPreferences.setUseBoldFont(enabled) }
+    fun setCollapsingNavBar(enabled: Boolean) = launchSettingsAction("update nav bar collapse") { settingsPreferences.setCollapsingNavBar(enabled) }
+    fun setLegacyTrackMenu(enabled: Boolean) = launchSettingsAction("update classic song menu") { settingsPreferences.setLegacyTrackMenu(enabled) }
+    fun setMenuBlur(enabled: Boolean) = launchSettingsAction("update menu blur") { settingsPreferences.setMenuBlur(enabled) }
     fun setPreferLosslessStreaming(enabled: Boolean) = launchSettingsAction("update streaming preference") { settingsPreferences.setPreferLosslessStreaming(enabled) }
-    fun setLosslessQuality(quality: Int) = launchSettingsAction("update streaming quality") { settingsPreferences.setLosslessQuality(quality) }
+    fun setHiResStart(mode: com.lastwave.app.data.local.HiResStart) = launchSettingsAction("update hi-res start") { settingsPreferences.setHiResStart(mode) }
+    fun setWifiStreamingQuality(quality: Int) = launchSettingsAction("update Wi-Fi streaming quality") { settingsPreferences.setWifiStreamingQuality(quality) }
+    fun setCellularStreamingQuality(quality: Int) = launchSettingsAction("update cellular streaming quality") { settingsPreferences.setCellularStreamingQuality(quality) }
     fun setDownloadQuality(quality: Int) = launchSettingsAction("update download quality") { settingsPreferences.setDownloadQuality(quality) }
     fun setStudioMasterClarity(enabled: Boolean) {
         // Apply immediately; DataStore persists the same state for future engine instances.
@@ -586,6 +639,10 @@ class SettingsViewModel @Inject constructor(
     /** Synced Music Video (Settings -> Experimental, default OFF). */
     fun setMusicVideoEnabled(enabled: Boolean) = launchSettingsAction("update music video setting") {
         settingsPreferences.setMusicVideoEnabled(enabled)
+    }
+
+    fun setMusicVideoNowPlayingButtonEnabled(enabled: Boolean) = launchSettingsAction("update music video now playing button setting") {
+        settingsPreferences.setMusicVideoNowPlayingButtonEnabled(enabled)
     }
 
     fun setShowAutoEqInVolumePanel(enabled: Boolean) = launchSettingsAction("update show autoeq in volume panel") {
@@ -727,6 +784,10 @@ class SettingsViewModel @Inject constructor(
         launchSettingsAction("update stop playback on recents setting") {
             settingsPreferences.setStopPlaybackOnTaskRemoved(enabled)
         }
+    fun setPauseOnZeroVolume(enabled: Boolean) =
+        launchSettingsAction("update pause on zero volume setting") {
+            settingsPreferences.setPauseOnZeroVolume(enabled)
+        }
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
@@ -777,6 +838,9 @@ class SettingsViewModel @Inject constructor(
     fun setCrossfadeSeconds(seconds: Int) = launchSettingsAction("update crossfade duration") {
         settingsPreferences.setCrossfadeSeconds(seconds.coerceIn(1, 12))
     }
+    fun setSeekbarStyle(style: SeekbarStyle) = launchSettingsAction("update seekbar style") {
+        settingsPreferences.setSeekbarStyle(style)
+    }
     fun setWavySeekbarEnabled(enabled: Boolean) = launchSettingsAction("update seekbar style") {
         settingsPreferences.setWavySeekbarEnabled(enabled)
     }
@@ -785,6 +849,9 @@ class SettingsViewModel @Inject constructor(
     }
     fun setLyricsRotatingBackgroundEnabled(enabled: Boolean) = launchSettingsAction("update lyrics rotating background") {
         settingsPreferences.setLyricsRotatingBackgroundEnabled(enabled)
+    }
+    fun setFluidBeatSyncEnabled(enabled: Boolean) = launchSettingsAction("update fluid beat sync") {
+        settingsPreferences.setFluidBeatSyncEnabled(enabled)
     }
     fun setKeepLyricsScreenAwake(enabled: Boolean) = launchSettingsAction("update keep lyrics screen awake") {
         settingsPreferences.setKeepLyricsScreenAwake(enabled)
@@ -827,7 +894,10 @@ class SettingsViewModel @Inject constructor(
     /** Selecting a preset also switches the EQ on — an off equalizer with a
      *  fresh preset would read as a dead control. */
     fun applyEqPreset(name: String) {
-        com.lastwave.app.data.local.EqualizerPresets.byName(name)?.let { preset ->
+        (
+            com.lastwave.app.data.local.EqualizerPresets.byName(name)
+                ?: equalizer.value.userPresets.firstOrNull { it.name == name }
+            )?.let { preset ->
             immediateEqEnabled = true
             immediateEqGains = preset.gainsDb.toFloatArray()
             eqPreviews.trySend(true to immediateEqGains.copyOf())
@@ -847,7 +917,20 @@ class SettingsViewModel @Inject constructor(
         eqPreviews.trySend(immediateEqEnabled to immediateEqGains.copyOf())
     }
 
-    /** Manual band drag → curve becomes Custom. */
+    /** Saves the current curve as one of the listener's own named presets (max 20). */
+    fun saveEqPreset(name: String) {
+        launchSettingsAction("save the equalizer preset") { equalizerPreferences.saveUserPreset(name) }
+    }
+
+    fun renameEqPreset(oldName: String, newName: String) {
+        launchSettingsAction("rename the equalizer preset") { equalizerPreferences.renameUserPreset(oldName, newName) }
+    }
+
+    fun deleteEqPreset(name: String) {
+        launchSettingsAction("delete the equalizer preset") { equalizerPreferences.deleteUserPreset(name) }
+    }
+
+    /** Manual band drag → saved into the active own preset, otherwise the curve becomes Custom. */
     fun setEqBandGain(bandIndex: Int, gainDb: Float) {
         if (bandIndex !in immediateEqGains.indices) return
         previewEqBandGain(bandIndex, gainDb)
@@ -880,6 +963,9 @@ class SettingsViewModel @Inject constructor(
             podcastProgressStore.clear()
             playlistRepository.clearAll()
             runCatching { ytAuthManager.signOut() }
+            // Screen-exit authentication can still be saving; reset must win that race.
+            scrobblerActionJobs.values.toList().forEach { it.join() }
+            ExtraService.entries.forEach { extraScrobblerPreferences.clear(it) }
             // Session last: clearing it navigates to login and can cancel this
             // scope, which used to interrupt the reset halfway through.
             sessionPreferences.clearAll()
@@ -899,6 +985,7 @@ class SettingsViewModel @Inject constructor(
                     return@launch
                 }
                 val bytesWritten = fileExportHelper.writeTextToUri(uri, json)
+                runCatching { playlistRepository.exportPublicMirror() }
                 _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_backup_ok, bytesWritten / 1024)) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_backup_fail, e.localizedMessage ?: e.message)) }

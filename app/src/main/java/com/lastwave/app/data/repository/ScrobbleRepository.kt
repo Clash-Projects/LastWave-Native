@@ -1,9 +1,12 @@
 package com.lastwave.app.data.repository
 
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.network.LastFmRateGuard
 import com.lastwave.app.data.network.LastFmSigner
+import com.lastwave.app.data.scrobbler.ExtraScrobblers
+import com.lastwave.app.data.scrobbler.Listen
 import android.os.SystemClock
 import java.io.IOException
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -12,7 +15,6 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -24,9 +26,8 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 
 /**
- * The two signed calls LastWave's own scrobbler (MusicPlaybackService)
- * needs — both require a real session key (`sk`), which is only obtained if
- * the user opts into AuthRepository.obtainSessionKey.
+ * Sends playback to every connected scrobbler. Last.fm's signed calls require
+ * its own API credentials and session key; the other providers are independent.
  *
  * Reliability contract (the "scrobbling core must never visibly break"):
  * - Signed writes are serialized and paced, but a rate-limit hit NEVER fails
@@ -46,6 +47,7 @@ class ScrobbleRepository @Inject constructor(
     private val api: LastFmApiService,
     private val sessionPreferences: SessionPreferences,
     private val rateGuard: LastFmRateGuard,
+    private val extras: ExtraScrobblers,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val callMutex = Mutex()
@@ -74,10 +76,16 @@ class ScrobbleRepository @Inject constructor(
         ) : Result
     }
 
+    fun resetNowPlaying() {
+        lastNowPlayingKey = null
+        extras.resetNowPlaying()
+    }
+
     suspend fun updateNowPlaying(artist: String, track: String, album: String?): Result {
         if (artist.equals("Podcast", ignoreCase = true) || track.equals("Podcast", ignoreCase = true)) {
             return Result.Success
         }
+        extras.nowPlaying(Listen(artist, track, album))
         val key = "${artist.lowercase().trim()}|${track.lowercase().trim()}"
         if (key == lastNowPlayingKey) {
             return Result.Success // Already announced on Last.fm, 0 network calls
@@ -101,6 +109,8 @@ class ScrobbleRepository @Inject constructor(
         if (artist.equals("Podcast", ignoreCase = true) || track.equals("Podcast", ignoreCase = true)) {
             return Result.Success
         }
+        // ListenBrainz / Libre.fm get every listen whether or not Last.fm is set up.
+        extras.submit(Listen(artist, track, album, timestampSec))
         // Try flushing any previously queued offline scrobbles first
         flushPendingScrobbles()
 
@@ -152,12 +162,12 @@ class ScrobbleRepository @Inject constructor(
 
     private suspend fun signedCall(method: String, extra: Map<String, String>): Result = withContext(Dispatchers.IO) {
         callMutex.withLock {
-            val session = sessionPreferences.session.first()
-            if (session.apiKey.isBlank() || session.apiSecret.isBlank()) {
-                return@withLock Result.Failed("API credentials missing")
-            }
+            val session = sessionPreferences.awaitLoadedSession()
             if (session.sessionKey.isBlank()) {
                 return@withLock Result.NoSessionKey
+            }
+            if (session.apiKey.isBlank() || session.apiSecret.isBlank()) {
+                return@withLock Result.Failed("API credentials missing")
             }
 
             // A rate-limit cooldown is active: WAIT it out (bounded) instead of

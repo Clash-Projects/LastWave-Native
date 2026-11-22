@@ -1,16 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Expanded now-playing widget: 4x2, 5x2 or large slots. Executive media card with 88dp art. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Expanded now-playing widget (4x2 and larger): large art beside title, artist, play pill + next.
+     The card wraps its content and floats centred in the cell, so the gap above and below is always equal. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+<!-- paddingVertical = 10dp card padding + the background's 6dp inset. -->
+<LinearLayout
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="center_vertical"
     android:background="@drawable/widget_ref_background"
-    android:gravity="center_vertical"
     android:orientation="vertical"
-    android:paddingStart="14dp"
-    android:paddingEnd="14dp"
-    android:paddingTop="6dp"
-    android:paddingBottom="6dp">
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="16dp">
 
     <!-- Empty state -->
     <LinearLayout
@@ -19,6 +23,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
+        android:paddingHorizontal="6dp"
         android:visibility="gone">
 
         <ImageView
@@ -41,19 +46,22 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:fontFamily="@font/google_sans_flex"
+                android:fontVariationSettings="'wght' 650, 'opsz' 17"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="@string/widget_name"
                 android:textColor="@color/widget_on_surface"
-                android:textSize="17sp"
-                android:textStyle="bold" />
+                android:textSize="17sp" />
 
             <TextView
                 android:id="@+id/widget_empty_sub"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="4dp"
                 android:ellipsize="end"
                 android:fontFamily="@font/google_sans_flex"
+                android:fontVariationSettings="'wght' 450, 'opsz' 13"
+                android:includeFontPadding="false"
                 android:maxLines="1"
                 android:text="@string/widget_description"
                 android:textColor="@color/widget_on_surface"
@@ -67,190 +75,98 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:orientation="vertical">
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/widget_art"
+            android:layout_width="108dp"
+            android:layout_height="108dp"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:src="@drawable/widget_art_placeholder" />
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-            <!-- Hero Album Artwork -->
-            <ImageView
-                android:id="@+id/widget_art"
-                android:layout_width="88dp"
-                android:layout_height="88dp"
-                android:contentDescription="@null"
-                android:scaleType="centerCrop"
-                android:src="@drawable/widget_art_placeholder" />
-
-            <!-- Details & Controls Column -->
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:layout_weight="1"
+            <!-- Fixed height so autosize shrinks long titles to fit one line instead of ellipsizing. -->
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="26dp"
+                android:autoSizeMaxTextSize="20sp"
+                android:autoSizeMinTextSize="10sp"
+                android:autoSizeStepGranularity="0.5sp"
+                android:autoSizeTextType="uniform"
+                android:fontFamily="@font/google_sans_flex"
+                android:fontVariationSettings="'wght' 650, 'opsz' 20"
                 android:gravity="center_vertical"
-                android:orientation="vertical">
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Unknown track"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/widget_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:fontFamily="@font/google_sans_flex"
+                android:fontVariationSettings="'wght' 450, 'opsz' 13"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Unknown artist"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="13.5sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:visibility="gone"
-                    android:orientation="horizontal">
+                    android:id="@+id/widget_play_pause_container"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/widget_ref_pill"
+                    android:gravity="center">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/google_sans_flex"
-                        android:letterSpacing="0.12"
-                        android:text="LASTWAVE"
-                        android:textAllCaps="true"
-                        android:textColor="@color/widget_primary"
-                        android:textSize="10.5sp" />
-
-                    <LinearLayout
-                        android:id="@+id/widget_eq_group"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:id="@+id/widget_eq_icon"
-                            android:layout_width="14dp"
-                            android:layout_height="14dp"
-                            android:contentDescription="@null"
-                            android:src="@drawable/widget_eq_frame_0" />
-
-                    </LinearLayout>
+                    <ImageView
+                        android:id="@+id/widget_play_pause"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@string/desc_play_pause"
+                        android:src="@drawable/ic_widget_play"
+                        android:tint="@color/widget_on_primary" />
                 </LinearLayout>
 
-                <!-- Track Title -->
-                <TextView
-                    android:id="@+id/widget_title"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:ellipsize="end"
-                    android:fontFamily="@font/google_sans_flex"
-                    android:maxLines="2"
-                    android:text="Unknown track"
-                    android:textColor="@color/widget_on_surface"
-                    android:textSize="17sp"
-                    android:textStyle="bold" />
-
-                <!-- Artist Subtitle -->
-                <TextView
-                    android:id="@+id/widget_subtitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:ellipsize="end"
-                    android:fontFamily="@font/google_sans_flex"
-                    android:maxLines="1"
-                    android:text="Unknown artist"
-                    android:textColor="@color/widget_on_surface"
-                    android:textSize="13.5sp" />
-
-                <!-- Controls -->
                 <LinearLayout
-                    android:id="@+id/widget_controls_group"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="11dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:id="@+id/widget_next_container"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/widget_ref_circle"
+                    android:gravity="center">
 
-                    <LinearLayout
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:background="@drawable/widget_ref_circle"
-                        android:visibility="gone"
-                        android:gravity="center"
-                        android:orientation="horizontal">
-                        
-                        <ImageView
-                            android:id="@+id/widget_prev"
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:contentDescription="@string/desc_previous"
-                            android:src="@drawable/ic_widget_skip_previous"
-                            android:tint="@color/widget_on_primary" />
-                    </LinearLayout>
-
-                    <!-- Play/Pause Pill -->
-                    <LinearLayout
-                        android:id="@+id/widget_play_pause_container"
-                        android:layout_width="wrap_content"
-                        android:layout_height="34dp"
-                        android:background="@drawable/widget_ref_pill"
-                        android:gravity="center"
-                        android:orientation="horizontal"
-                        android:paddingHorizontal="14dp">
-
-                        <ImageView
-                            android:id="@+id/widget_play_pause"
-                            android:layout_width="18dp"
-                            android:layout_height="18dp"
-                            android:src="@drawable/ic_widget_play"
-                            android:tint="@color/widget_on_primary" />
-
-                        <TextView
-                            android:id="@+id/widget_state"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:fontFamily="@font/google_sans_flex"
-                            android:text="Play"
-                            android:textColor="@color/widget_on_primary"
-                            android:textSize="14.5sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/widget_next_container"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:layout_marginStart="10dp"
-                        android:background="@drawable/widget_ref_circle"
-                        android:gravity="center"
-                        android:orientation="horizontal">
-                        
-                        <ImageView
-                            android:id="@+id/widget_next"
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:contentDescription="@string/desc_next"
-                            android:src="@drawable/ic_widget_skip_next"
-                            android:tint="@color/widget_on_primary" />
-                    </LinearLayout>
+                    <ImageView
+                        android:id="@+id/widget_next"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:contentDescription="@string/desc_next"
+                        android:src="@drawable/ic_widget_skip_next"
+                        android:tint="@color/widget_on_primary" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/widget_progress_row"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
-            android:visibility="gone"
-            android:orientation="horizontal">
-
-            <ProgressBar
-                android:id="@+id/widget_progress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:max="1000"
-                android:maxHeight="4dp"
-                android:minHeight="4dp"
-                android:progress="0"
-                android:progressBackgroundTint="@color/widget_track"
-                android:progressTint="@color/widget_primary" />
-        </LinearLayout>
     </LinearLayout>
 </LinearLayout>
+</FrameLayout>

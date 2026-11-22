@@ -75,6 +75,52 @@ class LyricsStagingTest {
     }
 
     @Test
+    fun stage_longIntroBecomesSignatureIntro() {
+        val stage = buildLyricsStage(
+            listOf(
+                LyricLine(timeMs = 8_000L, durationMs = 2000L, text = "First line"),
+                LyricLine(timeMs = 10_000L, durationMs = 2000L, text = "Second line"),
+            ),
+        )
+        val intro = stage.items.first() as LyricIntro
+        assertThat(intro.startMs).isEqualTo(0L)
+        assertThat(intro.endMs).isEqualTo(8_000L)
+        assertThat(stage.items.none { it is LyricInterlude }).isTrue()
+        assertThat(stage.activeIndex(0L)).isEqualTo(0)
+        assertThat(stage.activeIndex(7_999L)).isEqualTo(0)
+        assertThat(stage.activeIndex(8_000L)).isEqualTo(1)
+    }
+
+    @Test
+    fun stage_introAtThresholdIsStaged() {
+        val stage = buildLyricsStage(
+            listOf(LyricLine(timeMs = LYRICS_INTRO_MIN_MS, durationMs = 2000L, text = "First line")),
+        )
+        assertThat(stage.items.map { it::class }).containsExactly(LyricIntro::class, LyricLineGroup::class).inOrder()
+    }
+
+    @Test
+    fun stage_shortIntroIsSkipped() {
+        val stage = buildLyricsStage(
+            listOf(LyricLine(timeMs = LYRICS_INTRO_MIN_MS - 1, durationMs = 2000L, text = "First line")),
+        )
+        assertThat(stage.items.map { it::class }).containsExactly(LyricLineGroup::class)
+        assertThat(stage.activeIndex(0L)).isEqualTo(-1)
+    }
+
+    @Test
+    fun stage_introSkipsLeadingMarkerRows() {
+        val stage = buildLyricsStage(
+            listOf(
+                LyricLine(timeMs = 0L, durationMs = 6000L, text = "♪"),
+                LyricLine(timeMs = 6_000L, durationMs = 2000L, text = "First line"),
+            ),
+        )
+        assertThat((stage.items.first() as LyricIntro).endMs).isEqualTo(6_000L)
+        assertThat(stage.items).hasSize(2)
+    }
+
+    @Test
     fun stage_nestsBackingVocalsUnderTheLead() {
         val stage = buildLyricsStage(
             listOf(

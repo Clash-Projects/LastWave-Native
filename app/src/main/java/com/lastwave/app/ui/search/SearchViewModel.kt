@@ -1,12 +1,16 @@
 package com.lastwave.app.ui.search
 
 import androidx.compose.runtime.Immutable
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lastwave.app.data.generate.LocalAudioFormats
+import com.lastwave.app.data.generate.isLocalAudioPath
 import com.lastwave.app.data.search.SearchHistoryRepository
 import com.lastwave.app.data.search.SearchRepository
 import com.lastwave.app.data.search.SearchResultItem
 import com.lastwave.app.data.search.SearchTab
+import com.lastwave.app.playback.MediaType
 import com.lastwave.app.playback.MusicPlayer
 import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,6 +44,7 @@ data class SearchUiState(
  */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val repository: SearchRepository,
     private val historyRepository: SearchHistoryRepository,
     private val musicPlayer: MusicPlayer,
@@ -55,6 +60,8 @@ class SearchViewModel @Inject constructor(
     private var lastIssuedQuery: String = ""
 
     init {
+        // Opened with a ready-made query (e.g. from music recognition).
+        savedStateHandle.get<String>("q")?.takeIf { it.isNotBlank() }?.let(::executeSearch)
         viewModelScope.launch {
             historyRepository.history.collect { history ->
                 _uiState.update { it.copy(recentSearches = history) }
@@ -163,9 +170,47 @@ class SearchViewModel @Inject constructor(
         val tab = _uiState.value.tab
         when (tab) {
             SearchTab.TRACKS -> {
-                val selected = trackResultToPlayable(item)
+                val selected = item.toPlayableTrack()
                 // Start immediately. Similar song radio queue loads and extends infinitely.
                 musicPlayer.play(selected, sourceLabel = "Search", startRadio = true)
+            }
+            SearchTab.LOCAL -> {
+                val id = item.entityId
+                if (id != null && id.startsWith("offline_playlist:")) {
+                    val plId = id.removePrefix("offline_playlist:")
+                    viewModelScope.launch {
+                        val tracks = repository.localTracksForOfflinePlaylist(plId)
+                        if (tracks.isNotEmpty()) {
+                            musicPlayer.playQueue(
+                                tracks = tracks.map { t ->
+                                    PlayableTrack(
+                                        title = t.name,
+                                        artist = t.artist,
+                                        album = t.album,
+                                        artworkUrl = t.artworkUrl,
+                                        playbackUrl = t.url,
+                                        playbackMimeType = LocalAudioFormats.mimeFor(t.url),
+                                        durationMs = t.durationMs,
+                                        trackNumber = t.trackNumber,
+                                    )
+                                },
+                                startIndex = 0,
+                                sourceLabel = item.name,
+                                enableRadioContinuation = false,
+                            )
+                        }
+                    }
+                } else {
+                    val localItems = _uiState.value.results.filter { isLocalAudioPath(it.url) }
+                    val targetIdx = localItems.indexOfFirst { it.url == item.url }.coerceAtLeast(0)
+                    val queue = if (localItems.isNotEmpty()) localItems else listOf(item)
+                    musicPlayer.playQueue(
+                        tracks = queue.map { it.toPlayableTrack() },
+                        startIndex = targetIdx,
+                        sourceLabel = "Local Search",
+                        enableRadioContinuation = false,
+                    )
+                }
             }
             SearchTab.ARTISTS, SearchTab.ALBUMS -> viewModelScope.launch {
                 val tracks = runCatching { repository.songsFor(item) }.getOrDefault(emptyList())
@@ -183,15 +228,7 @@ class SearchViewModel @Inject constructor(
                 }
             }
             SearchTab.PODCASTS -> {
-                val selected = PlayableTrack(
-                    title = item.name,
-                    artist = item.artist.orEmpty().ifBlank { "Podcast" },
-                    album = item.subtitle,
-                    artworkUrl = item.artworkUrl,
-                    videoId = item.videoId,
-                    mediaType = com.lastwave.app.playback.MediaType.PODCAST_EPISODE,
-                    showId = item.entityId,
-                )
+                val selected = item.toPlayableTrack(podcast = true)
                 musicPlayer.playPodcastQueue(listOf(selected), startIndex = 0, sourceLabel = "Search")
             }
             SearchTab.PLAYLISTS, SearchTab.USERS -> Unit
@@ -218,7 +255,7 @@ class SearchViewModel @Inject constructor(
                 )
             }
             if (tab == SearchTab.TRACKS) {
-                musicPlayer.warmLikelyPlays(results.map(::trackResultToPlayable))
+                musicPlayer.warmLikelyPlays(results.map { it.toPlayableTrack() })
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -226,15 +263,6 @@ class SearchViewModel @Inject constructor(
             _uiState.update { it.copy(status = SearchStatus.EMPTY, results = emptyList()) }
         }
     }
-
-    /** One construction for taps and warm-ups so the warmed addon query matches the played one. */
-    private fun trackResultToPlayable(item: SearchResultItem) = PlayableTrack(
-        title = item.name,
-        artist = item.artist.orEmpty(),
-        album = item.subtitle,
-        artworkUrl = item.artworkUrl,
-        videoId = item.videoId,
-    )
 
     fun clearQuery() {
         musicPlayer.cancelSearchResultWarm()
@@ -252,4 +280,22 @@ class SearchViewModel @Inject constructor(
             )
         }
     }
+}
+
+/** Taps, menus and warm-ups keep the same recording rather than resolving its title again. */
+internal fun SearchResultItem.toPlayableTrack(podcast: Boolean = false): PlayableTrack {
+    val isLocal = isLocalAudioPath(url)
+    return PlayableTrack(
+        title = name,
+        artist = artist.orEmpty().ifBlank { if (podcast) "Podcast" else "" },
+        album = if (podcast) null else subtitle,
+        artworkUrl = artworkUrl,
+        videoId = videoId,
+        playbackUrl = if (isLocal) url else null,
+        playbackMimeType = if (isLocal) LocalAudioFormats.mimeFor(url) else null,
+        durationMs = durationMs,
+        trackNumber = trackNumber,
+        mediaType = if (podcast) MediaType.PODCAST_EPISODE else MediaType.SONG,
+        showId = if (podcast) showId else null,
+    )
 }

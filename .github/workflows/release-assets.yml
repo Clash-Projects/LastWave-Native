@@ -1,0 +1,173 @@
+name: Build 5.2.1 Release Assets
+
+on:
+  push:
+    branches: [ codex/release-5.2.1 ]
+    paths-ignore: [ '**.md' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.variant }} APK
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: universal
+            task: assembleRelease
+            arguments: ''
+            output: release/app-release.apk
+            package: com.lastwave.app
+            min_sdk: '29'
+          - variant: universal-uncompressed
+            task: assembleRawRelease
+            arguments: ''
+            output: rawRelease/app-rawRelease.apk
+            package: com.lastwave.app
+            min_sdk: '29'
+          - variant: android7
+            task: assembleRelease
+            arguments: '-PminSdk=24'
+            output: release/app-release.apk
+            package: com.lastwave.app
+            min_sdk: '24'
+          - variant: vivo-origin
+            task: assembleRelease
+            arguments: '-PvivoOrigin=true'
+            output: release/app-release.apk
+            package: com.tencent.qqmusic
+            min_sdk: '29'
+    env:
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      ADDON_CLIENT_SECRET: ${{ secrets.ADDON_CLIENT_SECRET }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.ALIAS || secrets.RELEASE_KEY_ALIAS || 'release_key' }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.RELEASE_KEY_PASSWORD }}
+      LASTWAVE_LYRICS_TOKEN: ${{ secrets.LASTWAVE_LYRICS_TOKEN }}
+      LASTWAVE_LYRICS_URL: ${{ secrets.LASTWAVE_LYRICS_URL }}
+      EXPECTED_CERT_SHA256: ${{ secrets.EXPECTED_CERT_SHA256 }}
+
+    steps:
+      - name: Checkout release preparation
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+
+      - name: Grant Gradle execute permission
+        run: chmod +x gradlew
+
+      - name: Verify patch regressions
+        if: matrix.variant == 'universal'
+        run: >-
+          ./gradlew :app:testDebugUnitTest
+          --tests 'com.lastwave.app.data.download.YouTubeDownloadResolverTest'
+          --tests 'com.lastwave.app.data.download.TrackDownloadTransferTest'
+          --tests 'com.lastwave.app.data.download.DownloadPayloadValidationTest'
+          --tests 'com.lastwave.app.data.music.AwaitSharedStreamTest'
+          --tests 'com.lastwave.app.data.download.ClearAllDownloadsTest'
+          --tests 'com.lastwave.app.data.download.AudioRestoreScanTest'
+          --tests 'com.lastwave.app.data.download.Mp4FlacRemuxerTest'
+          --tests 'com.lastwave.app.data.download.Fmp4IndexBuilderTest'
+          --tests 'com.lastwave.app.playback.ChunkedRangeDataSourceTest'
+          --tests 'com.lastwave.app.data.music.PlaybackCandidateRaceTest'
+          --tests 'com.lastwave.app.data.lyrics.LyricsSanitizerTest'
+          --tests 'com.lastwave.app.data.localmusic.LocalMusicLibraryScanTest'
+          --tests 'com.lastwave.app.data.playlist.LikedSongsManagerTest'
+          --tests 'com.lastwave.app.data.ytmusic.YtLikedSongsSyncTest'
+          --tests 'com.lastwave.app.playback.SwapAlignmentTest'
+          --tests 'com.lastwave.app.ui.player.ScrollCollapseTrackerTest'
+          --tests 'com.lastwave.app.ui.playlist.PlaylistTrackRowsTest'
+          --tests 'com.lastwave.app.data.music.YouTubeProbeSelectionTest'
+          --stacktrace
+
+      - name: Upload regression test results
+        if: ${{ always() && matrix.variant == 'universal' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: LastWave-v5.2.1-regression-test-results
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+
+      - name: Build signed APK
+        env:
+          BUILD_TASK: ${{ matrix.task }}
+          BUILD_ARGUMENTS: ${{ matrix.arguments }}
+        run: |
+          ./gradlew "$BUILD_TASK" $BUILD_ARGUMENTS --stacktrace
+
+      - name: Stage and verify release APK
+        env:
+          VARIANT: ${{ matrix.variant }}
+          APK_OUTPUT: ${{ matrix.output }}
+          EXPECTED_PACKAGE: ${{ matrix.package }}
+          EXPECTED_MIN_SDK: ${{ matrix.min_sdk }}
+        run: |
+          set -euo pipefail
+          mkdir -p final_apk
+          APK="final_apk/LastWave-v5.2.1-${VARIANT}.apk"
+          cp "app/build/outputs/apk/${APK_OUTPUT}" "$APK"
+          SDKROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BUILD_TOOLS=$(find "$SDKROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$APKSIGNER" verify --print-certs "$APK" > signer.txt
+          CERT_SHA=$(sed -n 's/.*certificate SHA-256 digest: //p' signer.txt | head -n1 | tr 'A-F' 'a-f')
+          EXPECTED_CERT_SHA256="${EXPECTED_CERT_SHA256:-ed79fe6fd316b592eed4aab8831ea83f8cd0923e6e5b08d1e6a7ac7fd20951d0}"
+          EXPECTED_CERT_SHA256=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr 'A-F' 'a-f')
+          case "$CERT_SHA" in
+            "${EXPECTED_CERT_SHA256}") echo "Release signer verified: $CERT_SHA" ;;
+            *) echo "::error::Unexpected signing certificate for $APK"; exit 1 ;;
+          esac
+          "$AAPT" dump badging "$APK" > badging.txt
+          grep -F "package: name='${EXPECTED_PACKAGE}' versionCode='33' versionName='5.2.1'" badging.txt
+          grep -Fx "sdkVersion:'${EXPECTED_MIN_SDK}'" badging.txt
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: LastWave-v5.2.1-${{ matrix.variant }}-verified
+          path: final_apk/*.apk
+          if-no-files-found: error
+          compression-level: 0
+
+  collect:
+    name: Package all release assets
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download four verified APKs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: LastWave-v5.2.1-*-verified
+          merge-multiple: true
+          path: final_apk
+
+      - name: Generate release checksums
+        working-directory: final_apk
+        run: |
+          set -euo pipefail
+          test "$(find . -maxdepth 1 -name '*.apk' | wc -l)" -eq 4
+          sha256sum *.apk > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+          ls -lh
+
+      - name: Upload complete release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: LastWave-v5.2.1-release-assets
+          path: final_apk/*
+          if-no-files-found: error
+          compression-level: 0

@@ -3,6 +3,7 @@ package com.lastwave.app
 import android.app.Application
 import android.app.ActivityManager
 import android.content.Context
+import android.os.SystemClock
 import coil.EventListener
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -45,6 +47,7 @@ class SoundDropApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var settingsPreferences: SettingsPreferences
 
     @Volatile private var cacheTrackingImageLoader: ImageLoader? = null
+    private val artworkCacheRefreshAt = AtomicLong(0L)
 
     override fun attachBaseContext(base: Context) {
         // Pin the selected locale before any component (providers, services,
@@ -115,9 +118,6 @@ class SoundDropApplication : Application(), ImageLoaderFactory {
             runCatching { likedSongsManager.get().start() }
                 .onFailure { com.lastwave.app.diagnostics.AppLog.e("SoundDropStartup", "Liked Songs startup disabled", it) }
         }
-        // Never create BotGuard's headless WebView during app launch. Some
-        // Android 11 OEM devices have a missing/updating WebView provider,
-        // which can terminate the process. Playback initializes it on demand.
         // YouTube Music playlist sync heartbeat (no-ops until an account is
         // connected AND sync is enabled in Settings).
         applicationScope.launch {
@@ -207,15 +207,6 @@ class SoundDropApplication : Application(), ImageLoaderFactory {
         val lowRamDevice = runCatching {
             (getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
         }.getOrDefault(false)
-        val cacheLimitMb = runCatching {
-            if (::settingsPreferences.isInitialized) {
-                runBlocking(Dispatchers.IO) { settingsPreferences.storageCacheLimitMb.first() }
-            } else {
-                CacheStoragePolicy.DEFAULT_LIMIT_MB
-            }
-        }.getOrDefault(CacheStoragePolicy.DEFAULT_LIMIT_MB)
-        CacheStoragePolicy.setLimitMb(cacheLimitMb)
-        val imageCacheLimitBytes = CacheStoragePolicy.imageCacheBytes(lowRamDevice)
         val imageClient = try {
             okHttpClient.get().newBuilder()
             .dispatcher(okhttp3.Dispatcher().apply {
@@ -245,6 +236,15 @@ class SoundDropApplication : Application(), ImageLoaderFactory {
                     .build()
             }
             .diskCache {
+                val cacheLimitMb = runCatching {
+                    if (::settingsPreferences.isInitialized) {
+                        runBlocking(Dispatchers.IO) { settingsPreferences.storageCacheLimitMb.first() }
+                    } else {
+                        CacheStoragePolicy.DEFAULT_LIMIT_MB
+                    }
+                }.getOrDefault(CacheStoragePolicy.DEFAULT_LIMIT_MB)
+                CacheStoragePolicy.setLimitMb(cacheLimitMb)
+                val imageCacheLimitBytes = CacheStoragePolicy.imageCacheBytes(lowRamDevice)
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
                     .maxSizeBytes(imageCacheLimitBytes)
@@ -274,15 +274,24 @@ class SoundDropApplication : Application(), ImageLoaderFactory {
             .crossfade(150)
             .build()
         cacheTrackingImageLoader = imageLoader
-        refreshArtworkCacheUsage()
+        applicationScope.launch(Dispatchers.IO) { refreshArtworkCacheUsage() }
         return imageLoader
     }
 
     @OptIn(ExperimentalCoilApi::class)
     private fun refreshArtworkCacheUsage() {
-        CacheStoragePolicy.setArtworkCacheBytes(
-            runCatching { cacheTrackingImageLoader?.diskCache?.size ?: 0L }.getOrDefault(0L),
-        )
+        // DiskLruCache.size() takes its journal lock and has blocked main for
+        // >150 ms during startup. Coil reports every image completion on main,
+        // so scan off-main and coalesce bursts instead of stalling per image.
+        val now = SystemClock.elapsedRealtime()
+        val last = artworkCacheRefreshAt.get()
+        if (now - last < 2_000L) return
+        if (!artworkCacheRefreshAt.compareAndSet(last, now)) return
+        applicationScope.launch(Dispatchers.IO) {
+            CacheStoragePolicy.setArtworkCacheBytes(
+                runCatching { cacheTrackingImageLoader?.diskCache?.size ?: 0L }.getOrDefault(0L),
+            )
+        }
     }
 
     private companion object {

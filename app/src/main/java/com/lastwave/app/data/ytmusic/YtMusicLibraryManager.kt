@@ -18,6 +18,7 @@ import com.lastwave.app.data.playlist.SavedPlaylist
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import com.lastwave.app.util.AppVisibility
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -135,10 +136,12 @@ class YtMusicLibraryManager @Inject constructor(
         }
         // InnerTube has no push subscription. Short foreground-process polling
         // gives connected playlists near-real-time behavior without importing.
+        // Only while a screen is shown: polling in a UI-less background
+        // process got the app killed for excessive CPU.
         applicationScope.launch {
             while (true) {
                 delay(REALTIME_REFRESH_MS)
-                if (auth.connection.value.isConnected) refresh()
+                if (AppVisibility.isVisible && auth.connection.value.isConnected) refresh()
             }
         }
     }
@@ -212,11 +215,12 @@ class YtMusicLibraryManager @Inject constructor(
         val stableAccount = withLiked.map { summary ->
             val previousSummary = previous[summary.id]
             val localId = stableRemoteId(summary.id)
-            val diskArtwork = readFromDiskCache(localId)?.remoteArtworkUrl
+            // Disk last and only when needed: it decodes the whole cached track list,
+            // and this runs for every playlist on each 8 s refresh.
             val resolvedArt = summary.artworkUrl.normalizedRemoteArtwork()
                 ?: knownArtworkByRemoteId[summary.id]?.normalizedRemoteArtwork()
                 ?: (previousSummary?.artworkUrl).normalizedRemoteArtwork()
-                ?: diskArtwork.normalizedRemoteArtwork()
+                ?: readFromDiskCache(localId)?.remoteArtworkUrl.normalizedRemoteArtwork()
             if (!resolvedArt.isNullOrBlank()) {
                 knownArtworkByRemoteId[summary.id] = resolvedArt
             }
@@ -507,17 +511,13 @@ class YtMusicLibraryManager @Inject constructor(
             ?: _accountPlaylists.value.firstOrNull { stableRemoteId(it.id) == localId }?.id
             ?: return@withContext false
         val exactVideoId = track.youtubeVideoIdOrNull()
-        // Remote writes require an explicit YouTube identity on the track
-        // itself (watch URL / videoId). A fuzzy search guess must never be
-        // pushed: a wrong guess lands as a song the user never added in
-        // their YouTube playlist, and the next sync pass then pulls it back
-        // into the local copy — phantom + duplicated songs on both sides.
-        // Same rule as the sync-path push guard in YtMusicSyncManager.
-        val videoId = exactVideoId ?: return@withContext false
+        val videoId = exactVideoId ?: runCatching {
+            innerTube.findBestMatchOrNull(track.name, track.artist, prefetchStreams = false)?.videoId
+        }.getOrNull() ?: return@withContext false
         val match: YouTubeMusicTrack? = null
         if (!allowDuplicate) {
             val playlist = cachedPlaylist?.takeIf { it.tracks.isNotEmpty() } ?: loadDetail(localId)
-            if (playlist != null && playlist.tracks.any { it.matches(track, match) }) return@withContext false
+            if (playlist != null && playlist.tracks.any { it.matches(track, match) }) return@withContext true
         }
         val added = innerTube.addVideosToRemotePlaylist(remoteId, listOf(videoId))
         if (added) {
@@ -542,12 +542,6 @@ class YtMusicLibraryManager @Inject constructor(
      * mirror: no account connected, or the track carries no YouTube videoId
      * (an imported local file). Those cases must not read as errors.
      */
-    suspend fun mirrorLikeToYouTube(track: GeneratedTrack, loved: Boolean): Boolean {
-        if (!auth.connection.value.isConnected) return true
-        val videoId = track.youtubeVideoIdOrNull() ?: return true
-        return if (loved) innerTube.likeVideo(videoId) else innerTube.removeVideoLike(videoId)
-    }
-
     suspend fun findDuplicatePlaylistIds(
         localIds: Set<Long>,
         track: GeneratedTrack,

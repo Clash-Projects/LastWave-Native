@@ -14,6 +14,7 @@ import android.widget.RemoteViews
 import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 import com.lastwave.app.R
+import com.lastwave.app.data.repository.pickArtworkAccent
 import java.io.File
 
 /**
@@ -26,7 +27,7 @@ import java.io.File
  */
 internal object WidgetTheme {
 
-    private const val ART_MAX_PX = 256
+    private const val ART_MAX_PX = 384
     private const val PALETTE_PX = 48
 
     internal class Colors(
@@ -97,38 +98,29 @@ internal object WidgetTheme {
             if (art.config == Bitmap.Config.HARDWARE) art.copy(Bitmap.Config.ARGB_8888, false) ?: return null else art,
             PALETTE_PX, PALETTE_PX, true,
         )
-        val palette = Palette.from(small).maximumColorCount(12).generate()
+        // Same coverage-based pick as the app theme (no filters: greys must count).
+        val palette = Palette.from(small).clearFilters().maximumColorCount(16).generate()
         small.recycle()
-        val swatch = palette.vibrantSwatch
-            ?: palette.lightVibrantSwatch
-            ?: palette.dominantSwatch
-            ?: palette.mutedSwatch
-            ?: return null
+        val seed = pickArtworkAccent(palette.swatches.map { it.rgb to it.population })?.seed ?: return null
 
-        // Keep the accent punchy but never so light/dark that the UI vanishes.
+        // Monochromatic: every role is a tone of the cover's one hue. A deep
+        // card, light buttons with dark icons, light tinted text. Saturation
+        // is capped, never raised, so a grey cover stays grey.
         val hsl = FloatArray(3)
-        ColorUtils.colorToHSL(swatch.rgb, hsl)
-        hsl[1] = hsl[1].coerceAtLeast(0.35f)
-        hsl[2] = hsl[2].coerceIn(0.45f, 0.72f)
-        val primary = ColorUtils.HSLToColor(hsl)
-
-        val base = Color.rgb(0x14, 0x14, 0x18)
-        val surface = ColorUtils.blendARGB(base, primary, 0.40f)
-        val text = readableOn(surface)
+        ColorUtils.colorToHSL(Color.parseColor(seed), hsl)
+        val hue = hsl[0]
+        val saturation = hsl[1]
+        fun tone(maxSaturation: Float, lightness: Float) =
+            ColorUtils.HSLToColor(floatArrayOf(hue, saturation.coerceAtMost(maxSaturation), lightness))
+        val text = tone(0.80f, 0.86f)
         return Colors(
-            surface = surface,
-            primary = primary,
-            onPrimary = readableOn(primary),
+            surface = tone(0.80f, 0.10f),
+            primary = tone(0.60f, 0.72f),
+            onPrimary = tone(0.80f, 0.12f),
             text = text,
-            subText = ColorUtils.setAlphaComponent(text, 0xB8),
+            subText = ColorUtils.setAlphaComponent(text, 0xCC),
             track = ColorUtils.setAlphaComponent(text, 0x33),
         )
-    }
-
-    private fun readableOn(bg: Int): Int {
-        val light = Color.WHITE
-        val dark = Color.rgb(0x16, 0x10, 0x12)
-        return if (ColorUtils.calculateContrast(light, bg) >= ColorUtils.calculateContrast(dark, bg)) light else dark
     }
 
     /**
@@ -166,16 +158,19 @@ internal object WidgetTheme {
         val w = src.width
         val h = src.height
         if (w <= 0 || h <= 0) return src
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        // Centre-crop to a square first: rounding a wide thumbnail and letting
+        // the view crop it cut the rounded corners off.
+        val side = minOf(w, h)
+        val out = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val radius = minOf(w, h) * radiusFraction
-        canvas.drawRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), radius, radius, paint)
+        val radius = side * radiusFraction
+        canvas.drawRoundRect(RectF(0f, 0f, side.toFloat(), side.toFloat()), radius, radius, paint)
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
         val drawable = if (src.config == Bitmap.Config.HARDWARE) {
             src.copy(Bitmap.Config.ARGB_8888, false) ?: return src
         } else src
-        canvas.drawBitmap(drawable, 0f, 0f, paint)
+        canvas.drawBitmap(drawable, (side - w) / 2f, (side - h) / 2f, paint)
         if (drawable !== src) drawable.recycle()
         return out
     }

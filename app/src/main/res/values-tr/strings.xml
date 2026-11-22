@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Oynatıcı</string>
@@ -9,7 +9,7 @@
     <!-- Alt gezinti -->
     <string name="nav_feed">Akış</string>
     <string name="nav_stats">İstatistik</string>
-    <string name="nav_playlists">Listeler</string>
+    <string name="nav_playlists">Kitaplık</string>
     <string name="nav_create_playlist">Liste Oluştur / Üret</string>
     <string name="update_available">Güncelleme Mevcut</string>
     <string name="update">Güncelle</string>
@@ -456,7 +456,6 @@
     <string name="menu_add_queue">Sıraya ekle</string>
     <string name="menu_open_lastfm">Last.fm’de aç</string>
     <string name="menu_refresh_artwork">Kapağı Yenile</string>
-    <string name="menu_copy_song">Şarkıyı Kopyala</string>
     <string name="menu_details_specs">Bilgiler ve Ses Özellikleri</string>
     <string name="menu_dont_recommend">Tekrar önerme</string>
     <string name="menu_remove_from_playlist">Listeden Kaldır</string>
@@ -511,10 +510,9 @@
     <string name="pl_export_title">Listeyi Dışa Aktar</string>
     <string name="pl_choose_image">Resim seç</string>
     <string name="pl_change_image">Resmi değiştir</string>
-    <string name="pl_title">Liste</string>
+    <string name="pl_title">Kitaplık</string>
     <string name="pl_selected_count">%1$d seçildi</string>
     <string name="pl_select_more_hint">Daha fazla seçmek için uzun basın</string>
-    <string name="pl_count_only">%1$d Liste</string>
     <string name="pl_count_tracks">%1$d Liste • %2$d Parça</string>
     <string name="pl_delete_selected_cd">Seçilenleri sil</string>
     <string name="pl_clear_selection_cd">Seçimi temizle</string>
@@ -792,9 +790,9 @@
     <string name="set_lfm_remove">Kaldır</string>
     <string name="set_lfm_key_label">API anahtarı</string>
     <string name="set_lfm_key_saved">Anahtarınız kaydedildi</string>
-    <string name="set_lfm_key_hint">Gerekli — ücretsiz alın ve buraya yapıştırın</string>
-    <string name="set_lfm_get">last.fm/api adresinden ücretsiz anahtar alın →</string>
-    <string name="set_lfm_how">Ücretsiz anahtar nasıl alınır →</string>
+    <string name="set_lfm_key_hint">Gerekli — alın ve buraya yapıştırın</string>
+    <string name="set_lfm_get">last.fm/api adresinden anahtar alın →</string>
+    <string name="set_lfm_how">Anahtar nasıl alınır →</string>
     <string name="set_lfm_disc_title">Last.fm bağlantısı kesilsin mi?</string>
     <string name="set_lfm_disc_text">Genel scrobble’lar duraklatılır. İstatistikleriniz yerel dinleme geçmişine geçer — hiçbir şey silinmez.</string>
     <string name="set_lfm_disc_btn">Bağlantıyı Kes</string>

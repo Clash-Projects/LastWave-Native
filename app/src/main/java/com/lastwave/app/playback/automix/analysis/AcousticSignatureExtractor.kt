@@ -3,6 +3,7 @@ package com.lastwave.app.playback.automix.analysis
 import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.net.Uri
 import com.lastwave.app.data.lyrics.LyricsRepository
 import com.lastwave.app.data.lyrics.LyricsResult
 import com.lastwave.app.playback.PlayableTrack
@@ -166,7 +167,11 @@ class AcousticSignatureExtractor @Inject constructor(
         if (url.isNullOrBlank()) return FloatArray(0)
         return try {
             val extractor = MediaExtractor()
-            extractor.setDataSource(url)
+            if (url.startsWith("content://")) {
+                extractor.setDataSource(context, Uri.parse(url), null)
+            } else {
+                extractor.setDataSource(url.removePrefix("file://"))
+            }
             var audioTrackIndex = -1
             for (i in 0 until extractor.trackCount) {
                 val format = extractor.getTrackFormat(i)

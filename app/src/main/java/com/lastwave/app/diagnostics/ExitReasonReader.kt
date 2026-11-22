@@ -92,6 +92,13 @@ object ExitReasonReader {
      * way the report says which one happened.
      */
     private fun readSystemTrace(exit: ApplicationExitInfo): String? = runCatching {
+        if (exit.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+            // A native crash's trace is a binary protobuf tombstone: decode it.
+            // Read as text it was mangled and cut off before the crashing thread.
+            val bytes = exit.traceInputStream?.use { it.readBytes() } ?: return@runCatching null
+            return@runCatching TombstoneSummary.format(bytes)
+                ?: "(binary tombstone, ${bytes.size} bytes, could not be decoded)"
+        }
         exit.traceInputStream?.use { input ->
             input.bufferedReader().use { reader ->
                 val text = reader.readText().trim()

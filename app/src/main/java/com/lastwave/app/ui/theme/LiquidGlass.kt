@@ -45,9 +45,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -469,7 +467,6 @@ private object GlassRecipe {
 fun Modifier.drawInteractiveGlass(
     isDark: Boolean,
     backdrop: Backdrop,
-    layer: GraphicsLayer? = null,
     luminanceAnimation: Float,
     shape: Shape,
     interaction: GlassInteraction?,
@@ -653,12 +650,10 @@ fun Modifier.liquidGlass(
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f))
     }
     val isDark = forceDark || LocalIsDarkTheme.current
-    val layer = rememberGraphicsLayer()
     val interaction = rememberGlassInteraction()
     return this.drawInteractiveGlass(
         isDark = isDark,
         backdrop = backdrop,
-        layer = layer,
         luminanceAnimation = 0.5f,
         shape = shape,
         interaction = if (interactive) interaction else null,
@@ -670,7 +665,6 @@ fun Modifier.liquidGlass(
 @Composable
 fun Modifier.liquidGlass(
     backdrop: Backdrop,
-    layer: GraphicsLayer,
     luminanceAnimation: Float,
     shape: Shape = CircleShape,
     interactive: Boolean = true,
@@ -689,7 +683,6 @@ fun Modifier.liquidGlass(
     return this.drawInteractiveGlass(
         isDark = isDark,
         backdrop = backdrop,
-        layer = layer,
         luminanceAnimation = luminanceAnimation,
         shape = shape,
         interaction = if (interactive) interaction else null,

@@ -14,15 +14,20 @@ class LocalSongsTest {
 
     @Test
     fun supportedFormatsCoverTheCommonOnes() {
-        listOf("a.mp3", "b.FLAC", "c.wav", "d.ogg", "e.opus", "f.m4a", "g.aac").forEach {
+        listOf(
+            "a.mp3", "b.FLAC", "c.wav", "d.ogg", "e.opus", "f.m4a", "g.aac",
+            "h.aiff", "i.aifc", "j.dsf", "k.dff", "l.ec3", "m.eac3", "n.ac4", "o.mp2",
+        ).forEach {
             assertThat(LocalAudioFormats.isSupported(it)).isTrue()
         }
-        listOf("a.aiff", "b.ape", "c.wma", "d.dsf", "cover.jpg", "lyrics.lrc", "noext").forEach {
+        listOf("b.ape", "c.wma", "d.wv", "e.mpc", "cover.jpg", "lyrics.lrc", "noext").forEach {
             assertThat(LocalAudioFormats.isSupported(it)).isFalse()
         }
-        assertThat(LocalAudioFormats.UNSUPPORTED_AUDIO).containsAtLeast("aiff", "ape", "wma", "dsf")
+        assertThat(LocalAudioFormats.UNSUPPORTED_AUDIO).containsAtLeast("ape", "wma", "wv", "mpc", "tta", "mid", "midi")
         assertThat(LocalAudioFormats.mimeFor("x.FLAC")).isEqualTo("audio/flac")
         assertThat(LocalAudioFormats.mimeFor("x.mp3")).isEqualTo("audio/mpeg")
+        assertThat(LocalAudioFormats.mimeFor("x.dsf")).isEqualTo("audio/x-dsf")
+        assertThat(LocalAudioFormats.mimeFor("x.aiff")).isEqualTo("audio/aiff")
     }
 
     @Test

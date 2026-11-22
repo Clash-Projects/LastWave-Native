@@ -13,6 +13,19 @@ class YouTubePlaybackRequestTest {
         put("client", buildJsonObject { put("clientName", "WEB_REMIX") })
     }
 
+    @Test fun dataSaverRequiresAKnownCappedAudioRendition() {
+        val audio = YouTubeAudioStream(
+            videoId = "video-id", url = "https://example.com/audio", itag = 249,
+            mimeType = "audio/webm", codec = "opus", bitrate = 96_000, sampleRateHz = null,
+            durationMs = null, contentLength = null, isAdaptive = true, clientProfile = "test", authScope = "",
+        )
+        assertTrue(audio.meetsBitrateLimit(96_000))
+        assertFalse(audio.copy(bitrate = 96_001).meetsBitrateLimit(96_000))
+        assertFalse(audio.copy(bitrate = 0).meetsBitrateLimit(96_000))
+        assertFalse(audio.copy(url = "https://example.com/live.m3u8?token=test").meetsBitrateLimit(96_000))
+        assertTrue(audio.copy(bitrate = 256_000).meetsBitrateLimit(null))
+    }
+
     @Test fun playerTokenIsSentAtRootAlongsideContext() {
         val body = playbackPlayerBody("video-id", context, 20345, "player-token")
         assertEquals("player-token", body["serviceIntegrityDimensions"]!!.jsonObject["poToken"]!!.jsonPrimitive.content)

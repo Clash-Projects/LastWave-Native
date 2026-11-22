@@ -70,6 +70,9 @@ class SettingsClearAllDataTest {
     private val downloadManager = mockk<TrackDownloadManager>(relaxed = true)
     private val fileExportHelper = mockk<com.lastwave.app.util.FileExportHelper>(relaxed = true)
     private val scrobblerPreferences = mockk<com.lastwave.app.data.local.ScrobblerPreferences>(relaxed = true)
+    private val extraScrobblerPreferences = mockk<com.lastwave.app.data.scrobbler.ExtraScrobblerPreferences>(relaxed = true)
+    private val listenBrainzClient = mockk<com.lastwave.app.data.scrobbler.ListenBrainzClient>(relaxed = true)
+    private val libreFmClient = mockk<com.lastwave.app.data.scrobbler.LibreFmClient>(relaxed = true)
     private val discordPresencePreferences = mockk<com.lastwave.app.presence.DiscordPresencePreferences>(relaxed = true)
     private val equalizerPreferences = mockk<com.lastwave.app.data.local.EqualizerPreferences>(relaxed = true)
     private val loudnessPrefs = mockk<com.lastwave.app.playback.LoudnessPrefs>(relaxed = true)
@@ -99,6 +102,7 @@ class SettingsClearAllDataTest {
         every { settingsPreferences.settings } returns MutableStateFlow(MiscSettings())
         every { playlistRepository.playlists } returns MutableStateFlow(emptyList())
         every { scrobblerPreferences.settings } returns MutableStateFlow(ScrobblerSettings())
+        every { extraScrobblerPreferences.account(any()) } returns MutableStateFlow(com.lastwave.app.data.scrobbler.ScrobblerAccount())
         every { discordPresencePreferences.enabled } returns MutableStateFlow(true)
         every { equalizerPreferences.settings } returns MutableStateFlow(EqualizerSettings())
         every { loudnessPrefs.settings } returns MutableStateFlow(LoudnessSettings())
@@ -138,6 +142,9 @@ class SettingsClearAllDataTest {
             downloadManager = downloadManager,
             fileExportHelper = fileExportHelper,
             scrobblerPreferences = scrobblerPreferences,
+            extraScrobblerPreferences = extraScrobblerPreferences,
+            listenBrainzClient = listenBrainzClient,
+            libreFmClient = libreFmClient,
             discordPresencePreferences = discordPresencePreferences,
             equalizerPreferences = equalizerPreferences,
             loudnessPrefs = loudnessPrefs,
@@ -162,6 +169,31 @@ class SettingsClearAllDataTest {
         if (::viewModel.isInitialized) viewModel.viewModelScope.cancel()
         Dispatchers.resetMain()
         unmockkAll()
+    }
+
+    @Test
+    fun clearAllData_waitsForPendingScrobblerAuthenticationBeforeWipingCredentials() {
+        val authentication = CompletableDeferred<Unit>()
+        coEvery { listenBrainzClient.connect("token", "") } coAnswers {
+            authentication.await()
+            null
+        }
+        var completed = 0
+
+        viewModel.connectListenBrainz("token", "")
+        viewModel.confirmClearAllData { completed++ }
+
+        coVerify(exactly = 0) { extraScrobblerPreferences.clear(any()) }
+        coVerify(exactly = 0) { sessionPreferences.clearAll() }
+        assertThat(completed).isEqualTo(0)
+
+        authentication.complete(Unit)
+
+        com.lastwave.app.data.scrobbler.ExtraService.entries.forEach { service ->
+            coVerify(exactly = 1) { extraScrobblerPreferences.clear(service) }
+        }
+        coVerify(exactly = 1) { sessionPreferences.clearAll() }
+        assertThat(completed).isEqualTo(1)
     }
 
     @Test
@@ -200,6 +232,9 @@ class SettingsClearAllDataTest {
         verify(exactly = 0) { musicPlayer.stopAndClear(clearSession = false) }
         coVerify(exactly = 3) { downloadManager.clearAllDownloads() }
         coVerify(exactly = 3) { sessionPreferences.clearAll() }
+        com.lastwave.app.data.scrobbler.ExtraService.entries.forEach { service ->
+            coVerify(exactly = 3) { extraScrobblerPreferences.clear(service) }
+        }
         assertThat(viewModel.uiState.value.showClearAllConfirm).isFalse()
     }
 

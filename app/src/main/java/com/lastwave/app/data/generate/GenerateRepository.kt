@@ -2,6 +2,7 @@ package com.lastwave.app.data.generate
 
 import android.util.Log
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.data.local.db.DownloadedTrackDao
@@ -20,7 +21,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
@@ -80,7 +80,7 @@ class GenerateRepository @Inject constructor(
     // instant their call finishes — this is purely about not paying twice
     // for the same request at the same time, never a longer-lived/stale
     suspend fun call(params: Map<String, String>): JsonObject {
-        val session = sessionPreferences.session.first()
+        val session = sessionPreferences.awaitLoadedSession()
         // No shared key: every caller already guards on key presence (or
         // degrades to YouTube/local), so a blank key here is a hard error
         // rather than a silent anonymous call.
@@ -129,7 +129,7 @@ class GenerateRepository @Inject constructor(
      *  ViewingProfileState) — a friend's username if the friend-switcher is
      *  active there, otherwise the signed-in session's own username. */
     private suspend fun username(): String =
-        viewingProfileState.viewingUsername.value ?: sessionPreferences.session.first().username
+        viewingProfileState.viewingUsername.value ?: sessionPreferences.awaitLoadedSession().username
 
     // ── Shared helpers — exact ports of shuffleArray / deduplicateTracks / _precheckTracks ──
 
@@ -206,7 +206,7 @@ class GenerateRepository @Inject constructor(
     /** True when Last.fm can be used as a supplementary source. Guest mode
      *  and signed-out states never touch Last.fm — they stay local-first. */
     private suspend fun isLastFmAvailable(): Boolean {
-        val session = sessionPreferences.session.first()
+        val session = sessionPreferences.awaitLoadedSession()
         if (session.username.isBlank() || session.username.equals("Guest User", ignoreCase = true)) return false
         return true
     }

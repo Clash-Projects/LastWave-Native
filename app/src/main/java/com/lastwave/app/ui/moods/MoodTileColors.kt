@@ -1,13 +1,15 @@
 package com.lastwave.app.ui.moods
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 
 internal data class MoodTileColors(
     val accent: Color,
     val surfaceTop: Color,
     val surfaceBottom: Color,
     val content: Color = Color.White,
+    // Light sources the tile draws over its dark ink base; not used for label contrast.
+    val glowPrimary: Color = accent,
+    val glowSecondary: Color = accent,
 )
 
 /** Keeps YTM's colour identity; neutral categories receive a stable colour of their own. */
@@ -28,22 +30,14 @@ internal fun moodTileColors(argb: Long, key: String): MoodTileColors {
         }
         (sector * 60f + 360f) % 360f
     }
-    val toneSaturation = (0.70f + saturation * 0.12f).coerceAtMost(0.82f)
+    // A dark ink base keeps white labels readable for every hue; the colour comes from two
+    // glows (the category hue and an analogous neighbour) that the tile paints on top.
+    val neighbour = (hue + 55f) % 360f
     return MoodTileColors(
-        accent = Color.hsv(hue, 0.64f, 0.96f),
-        surfaceTop = Color.hsv(hue, toneSaturation, 0.43f),
-        surfaceBottom = Color.hsv((hue + 8f) % 360f, toneSaturation, 0.23f),
-    )
-}
-
-/** Muted, translucent tiles keep the category hue on Home and the genres page. */
-internal fun homeMoodTileColors(argb: Long, key: String): MoodTileColors {
-    val accent = moodTileColors(argb, key).accent
-    val warmBase = Color(0xFFE8E5E0)
-    return MoodTileColors(
-        accent = lerp(warmBase, accent, 0.56f),
-        surfaceTop = lerp(warmBase, accent, 0.14f).copy(alpha = 0.86f),
-        surfaceBottom = lerp(warmBase, accent, 0.24f).copy(alpha = 0.84f),
-        content = Color(0xFF242832),
+        accent = Color.hsv(hue, 0.55f, 1f),
+        surfaceTop = Color.hsv(hue, 0.70f, 0.30f),
+        surfaceBottom = Color.hsv(neighbour, 0.80f, 0.14f),
+        glowPrimary = Color.hsv(hue, 0.80f, 1f),
+        glowSecondary = Color.hsv(neighbour, 0.85f, 0.95f),
     )
 }

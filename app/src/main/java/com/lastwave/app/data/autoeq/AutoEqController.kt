@@ -60,7 +60,7 @@ data class AutoEqState(
 /** Current audio output, as the per-device association sees it. */
 data class OutputDevice(val key: String, val label: String)
 
-private val Context.autoEqDataStore: DataStore<Preferences> by preferencesDataStore(name = "autoeq_prefs")
+internal val Context.autoEqDataStore: DataStore<Preferences> by preferencesDataStore(name = "autoeq_prefs")
 
 @Singleton
 class AutoEqController @Inject constructor(

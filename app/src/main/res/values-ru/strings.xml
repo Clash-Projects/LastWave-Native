@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Лента</string>
     <string name="nav_stats">Статистика</string>
-    <string name="nav_playlists">Плейлисты</string>
+    <string name="nav_playlists">Библиотека</string>
     <string name="nav_create_playlist">Создать / Сгенерировать плейлист</string>
     <string name="update_available">Доступно обновление</string>
     <string name="update">Обновить</string>
@@ -446,7 +446,6 @@
     <string name="menu_add_queue">Добавить в очередь</string>
     <string name="menu_open_lastfm">Открыто в Last.fm</string>
     <string name="menu_refresh_artwork">Обновить обложку</string>
-    <string name="menu_copy_song">Копировать песню</string>
     <string name="menu_details_specs">Детали и характеристики звука</string>
     <string name="menu_dont_recommend">Больше не рекомендую</string>
     <string name="menu_remove_from_playlist">Удалить из плейлиста</string>
@@ -499,10 +498,9 @@
     <string name="pl_export_title">Экспортировать плейлист</string>
     <string name="pl_choose_image">Выбрать изображение</string>
     <string name="pl_change_image">Изменить изображение</string>
-    <string name="pl_title">Плейлист</string>
+    <string name="pl_title">Библиотека</string>
     <string name="pl_selected_count">%1$d выбрано</string>
     <string name="pl_select_more_hint">Длительное нажатие, чтобы выбрать больше</string>
-    <string name="pl_count_only">%1$d Плейлисты</string>
     <string name="pl_count_tracks">%1$d Плейлисты • %2$d Треки</string>
     <string name="pl_delete_selected_cd">Удалить выбранное</string>
     <string name="pl_clear_selection_cd">Очистить выбор</string>
@@ -758,9 +756,9 @@
     <string name="set_lfm_remove">Удалить</string>
     <string name="set_lfm_key_label">API-ключ</string>
     <string name="set_lfm_key_saved">Ваш ключ сохранен</string>
-    <string name="set_lfm_key_hint">Обязательно — получите один бесплатно, а затем вставьте его сюда.</string>
-    <string name="set_lfm_get">Получите бесплатный ключ на сайте Last.fm/api →</string>
-    <string name="set_lfm_how">Как получить бесплатный ключ →</string>
+    <string name="set_lfm_key_hint">Обязательно — получите один, а затем вставьте его сюда.</string>
+    <string name="set_lfm_get">Получите ключ на сайте Last.fm/api →</string>
+    <string name="set_lfm_how">Как получить ключ →</string>
     <string name="set_lfm_disc_title">Отключить Last.fm?</string>
     <string name="set_lfm_disc_text">Глобальные скробблы приостанавливаются. Ваша статистика переключается на локальную историю прослушивания — ничего не удаляется.</string>
     <string name="set_lfm_disc_btn">Отключить</string>

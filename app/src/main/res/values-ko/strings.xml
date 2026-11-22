@@ -6,7 +6,7 @@
 
     <string name="nav_feed">피드</string>
     <string name="nav_stats">통계</string>
-    <string name="nav_playlists">플레이리스트</string>
+    <string name="nav_playlists">라이브러리</string>
     <string name="nav_create_playlist">플레이리스트 만들기 / 생성</string>
     <string name="update_available">업데이트 있음</string>
     <string name="update">업데이트</string>
@@ -446,7 +446,6 @@
     <string name="menu_add_queue">대기열에 추가</string>
     <string name="menu_open_lastfm">Last.fm에서 열기</string>
     <string name="menu_refresh_artwork">표지 아트 새로 고침</string>
-    <string name="menu_copy_song">노래 복사</string>
     <string name="menu_details_specs">세부정보 및 오디오 사양</string>
     <string name="menu_dont_recommend">다시는 추천하지 않음</string>
     <string name="menu_remove_from_playlist">재생목록에서 제거</string>
@@ -499,10 +498,9 @@
     <string name="pl_export_title">재생목록 내보내기</string>
     <string name="pl_choose_image">이미지 선택</string>
     <string name="pl_change_image">이미지 변경</string>
-    <string name="pl_title">재생목록</string>
+    <string name="pl_title">라이브러리</string>
     <string name="pl_selected_count">%1$d 선택됨</string>
     <string name="pl_select_more_hint">더 선택하려면 길게 누르세요.</string>
-    <string name="pl_count_only">%1$d 재생목록</string>
     <string name="pl_count_tracks">%1$d 재생 목록 • %2$d 트랙</string>
     <string name="pl_delete_selected_cd">선택 항목 삭제</string>
     <string name="pl_clear_selection_cd">선택 취소</string>
@@ -758,9 +756,9 @@
     <string name="set_lfm_remove">제거</string>
     <string name="set_lfm_key_label">API 키</string>
     <string name="set_lfm_key_saved">키가 저장되었습니다</string>
-    <string name="set_lfm_key_hint">필수 - 하나를 무료로 받은 후 여기에 붙여넣으세요.</string>
-    <string name="set_lfm_get">last.fm/api에서 무료 키 받기 →</string>
-    <string name="set_lfm_how">무료 열쇠를 얻는 방법 →</string>
+    <string name="set_lfm_key_hint">필수 - 하나를 받은 후 여기에 붙여넣으세요.</string>
+    <string name="set_lfm_get">last.fm/api에서 키 받기 →</string>
+    <string name="set_lfm_how">열쇠를 얻는 방법 →</string>
     <string name="set_lfm_disc_title">Last.fm을 연결 해제하시겠습니까?</string>
     <string name="set_lfm_disc_text">전역 스크롤이 일시 중지됩니다. 통계가 로컬 청취 기록으로 전환되며 아무것도 삭제되지 않습니다.</string>
     <string name="set_lfm_disc_btn">연결 끊기</string>

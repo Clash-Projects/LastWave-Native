@@ -21,12 +21,19 @@ interface HapticPulseListener {
     fun onHapticPulse(
         bassEnergy: Float,
         vocalEnergy: Float,
+        isKick: Boolean,
         isSharpTransient: Boolean,
         leadTimeMs: Long,
     )
 
     /** Seek / flush: any pulse still scheduled belongs to audio that will never play. */
     fun onAnalysisFlushed() {}
+
+    /**
+     * Every 10 ms window: bass or mid (instruments, snare) above its valley
+     * floor, 0..1 against the recent peak. The beat-synced background follows this.
+     */
+    fun onRhythmLevel(level: Float, leadTimeMs: Long) {}
 }
 
 /**
@@ -71,6 +78,9 @@ class MusicHapticsAnalyzer(
     // Auto-gain: slowly decaying peaks so quiet or loudness-normalised
     // tracks still drive the motor as hard as loud masters.
     private var bassPeak = 0.05f
+    // Valley followers: drop at once, rise over ~3 s.
+    private var bassFloor = 0f
+    private var vocalFloor = 0f
     private var vocalPeak = 0.05f
 
     private var analysisWindowFrames = 480
@@ -100,9 +110,11 @@ class MusicHapticsAnalyzer(
         val data = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
         var frameIndex = 0L
         while (data.remaining() >= bytesPerFrame) {
-            val mono = readMonoFrame(data)
-            // 2x decimation: skip every other frame (filters are designed for sr/2).
-            if (data.remaining() >= bytesPerFrame) data.position(data.position() + bytesPerFrame)
+            // 2x decimation (filters are designed for sr/2). Averaging the pair,
+            // not skipping one, keeps hi-hat/cymbal energy near Nyquist from
+            // aliasing down into the 1.1 kHz band and firing as fake accents.
+            var mono = readMonoFrame(data)
+            if (data.remaining() >= bytesPerFrame) mono = (mono + readMonoFrame(data)) * 0.5f
             frameIndex += DECIMATION
 
             val lpY = lpB0 * mono + lpB1 * lpX1 + lpB2 * lpX2 - lpA1 * lpY1 - lpA2 * lpY2
@@ -191,21 +203,28 @@ class MusicHapticsAnalyzer(
         frameIndex: Long,
         positionUs: () -> Long,
         playbackSpeed: () -> Float,
-    ): Long {
+    ): Long? {
         val nowUs = runCatching { positionUs() }.getOrDefault(Long.MIN_VALUE)
-        if (nowUs == Long.MIN_VALUE || presentationTimeUs == C.TIME_UNSET) return 0L
+        if (nowUs == Long.MIN_VALUE || presentationTimeUs == C.TIME_UNSET) return null
         // The onset is detected at the END of the analysis window it fell in
         // (after the fast envelope has risen), so stamp the pulse at the start
         // of that window: about 10 ms earlier, where the beat actually begins.
         val onsetFrame = frameIndex - analysisWindowFrames
         val pulseUs = presentationTimeUs + onsetFrame * 1_000_000L / sampleRate
         val speed = runCatching { playbackSpeed() }.getOrDefault(1f).coerceIn(0.25f, 4f)
-        val leadMs = ((pulseUs - nowUs) / 1000f / speed).toLong()
-        // Beyond this the clock is not trustworthy (AudioTrack buffers are < 1 s).
-        return if (leadMs in 0..MAX_LEAD_MS) leadMs else 0L
+        // Bounds are checked in media time: wall-clock lead grows as speed drops,
+        // and at 0.5x a 2.7 s buffer (5.4 s) dropped every pulse.
+        val mediaLeadMs = (pulseUs - nowUs) / 1000
+        // Unknown or implausible timing drops the pulse. It used to fire at
+        // once (lead 0): hundreds of ms before its beat, felt as random taps.
+        return when {
+            mediaLeadMs in 0..MAX_LEAD_MS -> (mediaLeadMs / speed).toLong()
+            mediaLeadMs in -MAX_LATE_MS until 0 -> 0L
+            else -> null
+        }
     }
 
-    private inline fun evaluate(bassRms: Float, vocalRms: Float, lead: () -> Long) {
+    private inline fun evaluate(bassRms: Float, vocalRms: Float, lead: () -> Long?) {
         fastBassEnv = if (bassRms > fastBassEnv) fastBassEnv * 0.45f + bassRms * 0.55f
         else fastBassEnv * 0.85f + bassRms * 0.15f
         slowBassEnv = slowBassEnv * 0.96f + bassRms * 0.04f
@@ -223,6 +242,13 @@ class MusicHapticsAnalyzer(
         val normBass = (fastBassEnv / bassPeak).coerceIn(0f, 1f)
         val normVocal = (fastVocalEnv / vocalPeak).coerceIn(0f, 1f)
         val bassRatio = fastBassEnv / max(slowBassEnv, 0.004f)
+        // Bass alone left songs without a kick (guitar, piano parts) motionless,
+        // so mid hits count too, a little softer so the kick still leads.
+        bassFloor = followFloor(bassFloor, fastBassEnv)
+        vocalFloor = followFloor(vocalFloor, fastVocalEnv)
+        val bassLevel = aboveFloor(fastBassEnv, bassFloor, bassPeak, 0.006f)
+        val midLevel = aboveFloor(fastVocalEnv, vocalFloor, vocalPeak, 0.005f)
+        lead()?.let { pulseListener.onRhythmLevel(max(bassLevel, MID_WEIGHT * midLevel), it) }
         val vocalRatio = fastVocalEnv / max(slowVocalEnv, 0.004f)
 
         // Relative (gain-independent) onset tests plus a small absolute floor
@@ -235,13 +261,24 @@ class MusicHapticsAnalyzer(
         if (!isKick && !isAccent) return
         framesSinceAnyTrigger = 0
         if (isKick) framesSinceBassTrigger = 0
+        val leadTimeMs = lead() ?: return
         pulseListener.onHapticPulse(
-            bassEnergy = if (isKick) max(normBass, 0.55f) else normBass * 0.6f,
+            bassEnergy = if (isKick) max(normBass, 0.55f) else normBass,
             vocalEnergy = normVocal,
+            isKick = isKick,
             isSharpTransient = isKick && bassRatio > 1.55f,
-            leadTimeMs = lead(),
+            leadTimeMs = leadTimeMs,
         )
     }
+
+    private fun followFloor(floor: Float, env: Float) =
+        if (env < floor) env else floor + (env - floor) * FLOOR_RISE
+
+    // Level above the valley floor rather than raw: a steady bass line sat at 0.6
+    // between kicks on pop, so only phonk visibly moved. Squared so that resting
+    // level settles near 0.15 while hits still reach 1.
+    private fun aboveFloor(env: Float, floor: Float, peak: Float, gate: Float) =
+        if (env > gate) ((env - floor) / max(peak - floor, MIN_PEAK)).coerceIn(0f, 1f).let { it * it } else 0f
 
     private fun computeCoefficients(rate: Float) {
         val fcLp = 100f.coerceAtMost(rate * 0.45f)
@@ -270,8 +307,8 @@ class MusicHapticsAnalyzer(
     private fun resetState() {
         lpX1 = 0f; lpX2 = 0f; lpY1 = 0f; lpY2 = 0f
         bpX1 = 0f; bpX2 = 0f; bpY1 = 0f; bpY2 = 0f
-        fastBassEnv = 0f; slowBassEnv = 0.01f
-        fastVocalEnv = 0f; slowVocalEnv = 0.01f
+        fastBassEnv = 0f; slowBassEnv = 0.01f; bassFloor = 0f
+        fastVocalEnv = 0f; slowVocalEnv = 0.01f; vocalFloor = 0f
         windowBassAccum = 0f; windowVocalAccum = 0f; windowCount = 0
         framesSinceBassTrigger = COUNTER_CAP
         framesSinceAnyTrigger = COUNTER_CAP
@@ -279,11 +316,16 @@ class MusicHapticsAnalyzer(
 
     private companion object {
         const val DECIMATION = 2
-        const val MAX_LEAD_MS = 1_500L
+        // Tablets buffer ~2.7 s of PCM ahead of the speaker; 1.5 s dropped every pulse.
+        const val MAX_LEAD_MS = 5_000L
+        /** A pulse this late still lands within the motor's own spin-up time. */
+        const val MAX_LATE_MS = 30L
         const val BASS_COOLDOWN_S = 0.110f
         const val ANY_COOLDOWN_S = 0.080f
         const val PEAK_DECAY = 0.9985f
         const val MIN_PEAK = 0.008f
+        const val FLOOR_RISE = 0.003f
+        const val MID_WEIGHT = 0.8f
         const val COUNTER_CAP = 1 shl 28
     }
 }

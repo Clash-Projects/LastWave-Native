@@ -1,5 +1,9 @@
 package com.lastwave.app.data.lyrics
 
+import org.jsoup.Jsoup
+import org.jsoup.nodes.TextNode
+import org.jsoup.parser.Parser
+
 /**
  * Cleans provider payloads before anything reaches the lyrics views:
  *
@@ -216,12 +220,29 @@ object LyricsSanitizer {
         return line.copy(text = newText, syllables = line.syllables.drop(dropCount))
     }
 
+    private val HTML_TAG = Regex(
+        """<\s*/?\s*(?:p|div|br|span|b|strong|i|em|u|section|article|li)\b[^>]*>""",
+        IC,
+    )
+
     /** Plain (unsynced) lyrics: same row suppression, labels kept as authored. */
     fun sanitizePlain(text: String?): String? {
         if (text.isNullOrBlank()) return text
-        val rows = text.lines()
+        // Some plain provider fallbacks contain untimed HTML paragraphs. This
+        // display funnel also repairs cached payloads without changing any LRC/TTML timing.
+        val markup = if (HTML_TAG.containsMatchIn(text)) text else {
+            Parser.unescapeEntities(text, false).takeIf { HTML_TAG.containsMatchIn(it) }
+        }
+        val plain = if (markup == null) text else {
+            val body = Jsoup.parseBodyFragment(markup).body()
+            body.select("script, style").remove()
+            body.select("br").forEach { it.replaceWith(TextNode("\n")) }
+            body.select("p, div, section, article, li").forEach { it.appendChild(TextNode("\n")) }
+            body.wholeText().replace('\u00A0', ' ').replace(Regex("\n{3,}"), "\n\n").trim()
+        }
+        val rows = plain.lines()
         val cleaned = rows.filterNot { shouldSuppress(it) }
-        if (cleaned.size == rows.size) return text
+        if (cleaned.size == rows.size) return plain.ifBlank { null }
         return cleaned.joinToString("\n").trim('\n').ifBlank { null }
     }
 

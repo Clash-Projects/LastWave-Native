@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LastWave</string>
     <string name="widget_name">LastWave Player</string>
@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Feed</string>
     <string name="nav_stats">Statistiken</string>
-    <string name="nav_playlists">Playlists</string>
+    <string name="nav_playlists">Bibliothek</string>
     <string name="nav_create_playlist">Playlist erstellen / generieren</string>
     <string name="update_available">Update verfügbar</string>
     <string name="update">Aktualisieren</string>
@@ -446,7 +446,6 @@
     <string name="menu_add_queue">Zur Warteschlange hinzufügen</string>
     <string name="menu_open_lastfm">Öffnen im Last.fm</string>
     <string name="menu_refresh_artwork">Coverbild aktualisieren</string>
-    <string name="menu_copy_song">Lied kopieren</string>
     <string name="menu_details_specs">Details und Audio-Spezifikationen</string>
     <string name="menu_dont_recommend">Nicht noch einmal empfehlen</string>
     <string name="menu_remove_from_playlist">Aus Playlist entfernen</string>
@@ -499,10 +498,9 @@
     <string name="pl_export_title">Playlist exportieren</string>
     <string name="pl_choose_image">Bild auswählen</string>
     <string name="pl_change_image">Bild ändern</string>
-    <string name="pl_title">Wiedergabeliste</string>
+    <string name="pl_title">Bibliothek</string>
     <string name="pl_selected_count">%1$d ausgewählt</string>
     <string name="pl_select_more_hint">Lange drücken, um mehr auszuwählen</string>
-    <string name="pl_count_only">%1$d Wiedergabelisten</string>
     <string name="pl_count_tracks">%1$d Wiedergabelisten • %2$d Titel</string>
     <string name="pl_delete_selected_cd">Ausgewählte löschen</string>
     <string name="pl_clear_selection_cd">Klare Auswahl</string>
@@ -758,9 +756,9 @@
     <string name="set_lfm_remove">Entfernen</string>
     <string name="set_lfm_key_label">API-Schlüssel</string>
     <string name="set_lfm_key_saved">Ihr Schlüssel ist gespeichert</string>
-    <string name="set_lfm_key_hint">Erforderlich – holen Sie sich eines kostenlos und fügen Sie es dann hier ein</string>
-    <string name="set_lfm_get">Holen Sie sich einen kostenlosen Schlüssel unter last.fm/api →</string>
-    <string name="set_lfm_how">So erhalten Sie einen kostenlosen Schlüssel →</string>
+    <string name="set_lfm_key_hint">Erforderlich – holen Sie sich eines und fügen Sie es dann hier ein</string>
+    <string name="set_lfm_get">Holen Sie sich einen Schlüssel unter last.fm/api →</string>
+    <string name="set_lfm_how">So erhalten Sie einen Schlüssel →</string>
     <string name="set_lfm_disc_title">Last.fm trennen?</string>
     <string name="set_lfm_disc_text">Globales Gekritzel pausiert. Ihre Statistiken wechseln zum lokalen Hörverlauf – es wird nichts gelöscht.</string>
     <string name="set_lfm_disc_btn">Trennen</string>

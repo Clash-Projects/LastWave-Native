@@ -254,24 +254,34 @@ class FeedPlaylistDetailViewModel @Inject constructor(
         }
     }
 
-    fun playFrom(index: Int) {
+    fun playTracks(tracks: List<YouTubeMusicTrack>, startIndex: Int = 0) {
         val playlist = (_uiState.value as? FeedPlaylistDetailUiState.Success)?.playlist ?: return
-        if (playlist.tracks.isEmpty()) return
+        if (tracks.isEmpty()) return
         musicPlayer.playQueue(
-            tracks = playlist.tracks.map { it.toPlayableTrack() },
-            startIndex = index.coerceIn(0, playlist.tracks.lastIndex),
+            tracks = tracks.map { it.toPlayableTrack() },
+            startIndex = startIndex.coerceIn(0, tracks.lastIndex),
             sourceLabel = playlist.title.ifBlank { "Feed mix" },
         )
     }
 
-    fun shuffle() {
+    fun shuffleTracks(tracks: List<YouTubeMusicTrack>) {
         val playlist = (_uiState.value as? FeedPlaylistDetailUiState.Success)?.playlist ?: return
-        if (playlist.tracks.isEmpty()) return
+        if (tracks.isEmpty()) return
         musicPlayer.playQueue(
-            tracks = playlist.tracks.shuffled().map { it.toPlayableTrack() },
+            tracks = tracks.shuffled().map { it.toPlayableTrack() },
             startIndex = 0,
             sourceLabel = playlist.title.ifBlank { "Feed mix" },
         )
+    }
+
+    fun playFrom(index: Int) {
+        val playlist = (_uiState.value as? FeedPlaylistDetailUiState.Success)?.playlist ?: return
+        playTracks(playlist.tracks, index)
+    }
+
+    fun shuffle() {
+        val playlist = (_uiState.value as? FeedPlaylistDetailUiState.Success)?.playlist ?: return
+        shuffleTracks(playlist.tracks)
     }
 
     private fun GeneratedTrack.toYouTubeMusicTrack(): YouTubeMusicTrack = YouTubeMusicTrack(

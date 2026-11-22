@@ -6,7 +6,7 @@
 
     <string name="nav_feed">フィード</string>
     <string name="nav_stats">統計</string>
-    <string name="nav_playlists">プレイリスト</string>
+    <string name="nav_playlists">ライブラリ</string>
     <string name="nav_create_playlist">プレイリストを作成 / 生成</string>
     <string name="update_available">アップデートあり</string>
     <string name="update">更新</string>
@@ -446,7 +446,6 @@
     <string name="menu_add_queue">キューに追加</string>
     <string name="menu_open_lastfm">Last.fmにオープン</string>
     <string name="menu_refresh_artwork">カバーアートを更新</string>
-    <string name="menu_copy_song">曲をコピーする</string>
     <string name="menu_details_specs">詳細とオーディオ仕様</string>
     <string name="menu_dont_recommend">二度とお勧めしないでください</string>
     <string name="menu_remove_from_playlist">プレイリストから削除</string>
@@ -499,10 +498,9 @@
     <string name="pl_export_title">プレイリストのエクスポート</string>
     <string name="pl_choose_image">画像を選択してください</string>
     <string name="pl_change_image">イメージを変更する</string>
-    <string name="pl_title">プレイリスト</string>
+    <string name="pl_title">ライブラリ</string>
     <string name="pl_selected_count">%1$d が選択されました</string>
     <string name="pl_select_more_hint">長押ししてさらに選択します</string>
-    <string name="pl_count_only">%1$d プレイリスト</string>
     <string name="pl_count_tracks">%1$d プレイリスト • %2$d トラック</string>
     <string name="pl_delete_selected_cd">選択したものを削除</string>
     <string name="pl_clear_selection_cd">選択をクリア</string>
@@ -758,9 +756,9 @@
     <string name="set_lfm_remove">削除する</string>
     <string name="set_lfm_key_label">APIキー</string>
     <string name="set_lfm_key_saved">キーが保存されました</string>
-    <string name="set_lfm_key_hint">必須 — 1 つ無料で入手して、ここに貼り付けてください</string>
-    <string name="set_lfm_get">last.fm/api で無料キーを取得 →</string>
-    <string name="set_lfm_how">無料キーの入手方法 →</string>
+    <string name="set_lfm_key_hint">必須 — 1 つ入手して、ここに貼り付けてください</string>
+    <string name="set_lfm_get">last.fm/api でキーを取得 →</string>
+    <string name="set_lfm_how">キーの入手方法 →</string>
     <string name="set_lfm_disc_title">Last.fm を切断しますか?</string>
     <string name="set_lfm_disc_text">グローバル スクロブルは一時停止します。統計情報はローカルのリスニング履歴に切り替わります。何も削除されません。</string>
     <string name="set_lfm_disc_btn">切断する</string>

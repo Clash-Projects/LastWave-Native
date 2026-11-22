@@ -2,6 +2,7 @@ package com.lastwave.app.data.repository
 
 import android.net.Uri
 import com.lastwave.app.data.local.SessionPreferences
+import com.lastwave.app.data.local.awaitLoadedSession
 import com.lastwave.app.data.model.AuthState
 import com.lastwave.app.data.network.LastFmApiService
 import com.lastwave.app.data.network.LastFmErrors
@@ -11,7 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -77,7 +77,7 @@ class AuthRepository @Inject constructor(
         transientState.value = AuthState.SigningIn
         // Must match the key that produced authUrl() above, and must be
         // preserved on save.
-        val stored = sessionPreferences.session.first()
+        val stored = sessionPreferences.awaitLoadedSession()
         val apiKey = stored.apiKey
         val apiSecret = stored.apiSecret
         if (apiKey.isBlank() || apiSecret.isBlank()) {
@@ -123,7 +123,7 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signInDirect(username: String): Result<String> {
-        val stored = sessionPreferences.currentSession
+        val stored = sessionPreferences.awaitLoadedSession()
         if (stored.apiKey.isBlank() || stored.apiSecret.isBlank()) {
             val message = "Add your Last.fm API key in Settings → Integrations first"
             transientState.value = AuthState.Error(message)
@@ -208,7 +208,7 @@ class AuthRepository @Inject constructor(
      * calls) or wants track.scrobble.delete to work.
      */
     suspend fun obtainSessionKey(password: String): SessionKeyResult {
-        val session = sessionPreferences.session.first()
+        val session = sessionPreferences.awaitLoadedSession()
         if (session.apiKey.isBlank() || session.apiSecret.isBlank()) {
             return SessionKeyResult.Failed("API key/secret required first \u2014 sign in above")
         }
@@ -268,7 +268,7 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun deleteScrobble(trackName: String, artistName: String, timestampMillis: Long?): DeleteScrobbleResult {
-        val session = sessionPreferences.session.first()
+        val session = sessionPreferences.awaitLoadedSession()
         if (session.apiKey.isBlank() || session.apiSecret.isBlank()) {
             return DeleteScrobbleResult.Failed("API credentials required \u2014 go to Settings")
         }

@@ -8,8 +8,14 @@ internal fun PlayableTrack.toGeneratedTrack() = GeneratedTrack(
     artist = artist,
     artworkUrl = artworkUrl,
     album = album,
-    // Local songs: an imported file keeps its path so any playlist it
-    // is added to plays the copy on disk instead of a YouTube search.
-    url = LocalAudioFormats.importedPathOrNull(playbackUrl)
-        ?: videoId?.let { "https://music.youtube.com/watch?v=$it" }.orEmpty(),
+    trackNumber = trackNumber,
+    durationMs = durationMs,
+    // Pure device-local files (no videoId) keep their storage path/URI so offline likes
+    // and offline playlists operate on the file directly.
+    url = if (videoId.isNullOrBlank()) {
+        LocalAudioFormats.importedPathOrNull(playbackUrl).orEmpty()
+    } else {
+        LocalAudioFormats.importedPathOrNull(playbackUrl)
+            ?: "https://music.youtube.com/watch?v=$videoId"
+    },
 )

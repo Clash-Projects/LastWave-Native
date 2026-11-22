@@ -3,9 +3,7 @@ package com.lastwave.app.ui.common
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,8 +39,7 @@ import com.lastwave.app.R
  */
 @Composable
 fun GenerationProgressCard(message: String, modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "genRotation")
-    val rotation by infiniteTransition.animateFloat(
+    val rotation by rememberAmbientFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -50,8 +47,7 @@ fun GenerationProgressCard(message: String, modifier: Modifier = Modifier) {
         ),
         label = "genRot",
     )
-    // One lifecycle-aware transition drives both properties without a coroutine loop.
-    val breathe by infiniteTransition.animateFloat(
+    val breathe by rememberAmbientFloat(
         initialValue = 0.94f,
         targetValue = 1.06f,
         animationSpec = infiniteRepeatable(

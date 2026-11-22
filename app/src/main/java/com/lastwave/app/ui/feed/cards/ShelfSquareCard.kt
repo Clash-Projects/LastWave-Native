@@ -33,14 +33,15 @@ fun ShelfSquareCard(
     cardWidth: Dp = rememberSquareCardWidth(),
 ) {
     val coverHeight = cardWidth
+    val art = rememberArtworkCardWidth(artworkUrl, coverHeight, cardWidth)
     Column(
         modifier = modifier
-            .width(cardWidth)
+            .width(art.width)
             .cardPressable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(
             modifier = Modifier
-                .width(cardWidth)
+                .width(art.width)
                 .height(coverHeight),
         ) {
             CardArtwork(
@@ -49,6 +50,7 @@ fun ShelfSquareCard(
                 artworkUrl = artworkUrl,
                 fallbackIcon = fallbackIcon,
                 modifier = Modifier.fillMaxSize(),
+                onAspect = art.onAspect,
             )
         }
         Spacer(Modifier.height(CardTokens.coverToTextGap))

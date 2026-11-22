@@ -69,6 +69,8 @@ class LosslessAtmosManifestTest {
         assertTrue(LosslessMusicApi.isAtmosCodec("EC-3"))
         assertTrue(LosslessMusicApi.isAtmosCodec("eac3"))
         assertTrue(LosslessMusicApi.isAtmosCodec("ac-3"))
+        assertTrue(LosslessMusicApi.isAtmosCodec("atmos"))
+        assertTrue(LosslessMusicApi.isAtmosCodec("dolby_atmos"))
         assertFalse(LosslessMusicApi.isAtmosCodec("flac"))
         assertFalse(LosslessMusicApi.isAtmosCodec("mp4a.40.2"))
         assertFalse(LosslessMusicApi.isAtmosCodec(null))

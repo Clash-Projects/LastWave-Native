@@ -6,7 +6,7 @@
 
     <string name="nav_feed">Beranda</string>
     <string name="nav_stats">Statistik</string>
-    <string name="nav_playlists">Playlist</string>
+    <string name="nav_playlists">Perpustakaan</string>
     <string name="nav_create_playlist">Buat / Hasilkan playlist</string>
     <string name="update_available">Pembaruan tersedia</string>
     <string name="update">Perbarui</string>
@@ -446,7 +446,6 @@
     <string name="menu_add_queue">Tambahkan ke antrean</string>
     <string name="menu_open_lastfm">Buka di Last.fm</string>
     <string name="menu_refresh_artwork">Segarkan Seni Sampul</string>
-    <string name="menu_copy_song">Salin Lagu</string>
     <string name="menu_details_specs">Detail &amp; Spesifikasi Audio</string>
     <string name="menu_dont_recommend">Jangan rekomendasikan lagi</string>
     <string name="menu_remove_from_playlist">Hapus dari Daftar Putar</string>
@@ -499,10 +498,9 @@
     <string name="pl_export_title">Ekspor Daftar Putar</string>
     <string name="pl_choose_image">Pilih gambar</string>
     <string name="pl_change_image">Ubah gambar</string>
-    <string name="pl_title">Daftar putar</string>
+    <string name="pl_title">Perpustakaan</string>
     <string name="pl_selected_count">%1$d dipilih</string>
     <string name="pl_select_more_hint">Tekan lama untuk memilih lebih banyak</string>
-    <string name="pl_count_only">%1$d Daftar Putar</string>
     <string name="pl_count_tracks">%1$d Daftar Putar • %2$d Lagu</string>
     <string name="pl_delete_selected_cd">Hapus yang dipilih</string>
     <string name="pl_clear_selection_cd">Hapus pilihan</string>
@@ -758,9 +756,9 @@
     <string name="set_lfm_remove">Hapus</string>
     <string name="set_lfm_key_label">Kunci API</string>
     <string name="set_lfm_key_saved">Kunci Anda disimpan</string>
-    <string name="set_lfm_key_hint">Wajib — dapatkan satu gratis, lalu tempelkan di sini</string>
-    <string name="set_lfm_get">Dapatkan kunci gratis di last.fm/api →</string>
-    <string name="set_lfm_how">Cara mendapatkan kunci gratis →</string>
+    <string name="set_lfm_key_hint">Wajib — dapatkan satu, lalu tempelkan di sini</string>
+    <string name="set_lfm_get">Dapatkan kunci di last.fm/api →</string>
+    <string name="set_lfm_how">Cara mendapatkan kunci →</string>
     <string name="set_lfm_disc_title">Putuskan sambungan Last.fm?</string>
     <string name="set_lfm_disc_text">Permasalahan global terhenti. Statistik Anda beralih ke riwayat mendengarkan lokal — tidak ada yang dihapus.</string>
     <string name="set_lfm_disc_btn">Putuskan sambungan</string>

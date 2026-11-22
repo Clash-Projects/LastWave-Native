@@ -26,6 +26,7 @@ object PlaybackStartupLog {
     private var attemptId = 0L
     private var trackId = ""
     private var youtubeVideoId = ""
+    private var source = ""
 
     fun begin(trackId: String, youtubeVideoId: String?) {
         synchronized(lock) {
@@ -47,6 +48,7 @@ object PlaybackStartupLog {
             readyLogged = false
             this.trackId = trackId
             this.youtubeVideoId = youtubeVideoId.orEmpty()
+            source = ""
         }
         event("TAP_TRACK")
     }
@@ -90,6 +92,16 @@ object PlaybackStartupLog {
         event("STREAM_EXTRACT_END")
     }
 
+    /** Which candidate won the startup race (provider, youtube, local, prepared). */
+    fun sourceSelected(name: String, detail: String) {
+        val elapsed = synchronized(lock) {
+            if (source.isNotEmpty()) return
+            source = name
+            elapsedSince(tapElapsedMs)
+        }
+        Log.i(TAG, "[SOURCE_SELECTED] attempt=$attemptId source=$name $detail elapsedMs=$elapsed")
+    }
+
     fun prepareStart() {
         synchronized(lock) { prepareStartMs = android.os.SystemClock.elapsedRealtime() }
         event("PLAYER_PREPARE_START")
@@ -116,7 +128,7 @@ object PlaybackStartupLog {
             val total = elapsedSince(tapElapsedMs)
             "totalMs=$total cacheMs=$cacheMs videoIdMs=$videoIdMs extractMs=$extractMs " +
                 "prepareMs=$prepareMs cacheHit=$cacheHit videoIdLookup=$lookedUpVideoId " +
-                "extracted=$extracted trackId=$trackId youtubeVideoId=$youtubeVideoId"
+                "extracted=$extracted source=$source trackId=$trackId youtubeVideoId=$youtubeVideoId"
         }
         event("PLAYER_READY")
         Log.i(TAG, "[STARTUP] $summary")

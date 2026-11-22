@@ -100,7 +100,7 @@ object DiscordPresence {
      * upload is required.
      */
     const val DISCORD_LOGO_URL =
-        "https://raw.githubusercontent.com/Clash-Projects/LastWave-Native/main/lastwave_logo.png"
+        "https://raw.githubusercontent.com/Clash-Projects/LastWave-Native/main/assets/lastwave_logo.png"
 
     /** 2 = "Listening to". */
     const val TYPE_LISTENING = 2

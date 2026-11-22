@@ -1,19 +1,28 @@
 package com.lastwave.app.data.backup
 
 import androidx.datastore.core.DataStore
+import android.content.Context
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.lastwave.app.data.autoeq.autoEqDataStore
+import com.lastwave.app.playback.automix.api.autoMixDataStore
 import com.lastwave.app.data.local.db.SavedPlaylistDao
 import com.lastwave.app.data.local.db.SavedPlaylistEntity
 import com.lastwave.app.data.local.db.RecommendationExclusionDao
 import com.lastwave.app.data.local.db.RecommendationExclusionEntity
 import com.lastwave.app.data.local.readSafely
 import com.lastwave.app.data.playlist.PlaylistPublicMirror
+import com.lastwave.app.playback.loudnessDataStore
+import com.lastwave.app.playback.usb.internalDirectDataStore
+import com.lastwave.app.playback.usb.usbExclusiveDataStore
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -22,7 +31,7 @@ import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val SCHEMA_VERSION = 8
+private const val SCHEMA_VERSION = 9
 private const val BACKUP_TYPE = "lastwave-backup"
 
 /**
@@ -37,30 +46,13 @@ private val LONG_PREFERENCE_NAMES = setOf(
     "ytm_last_sync_at",
 )
 
-/**
- * Credentials and tokens that must never be written into an exported backup
- * file. Backups are plaintext JSON the user shares/copies around, so a leaked
- * cookie, API secret, session token, or addon URL (which embeds an access
- * token) would be a full account compromise. These keys are excluded from
- * buildBackup(); restoring therefore clears them and the user re-authenticates
- * (the web-auth restore flow preserves the signed-in session separately via
- * AUTH_PREFERENCE_NAMES).
- */
-private val SENSITIVE_PREFERENCE_NAMES = setOf(
-    "ytm_cookies",
-    "lw_apikey",
-    "lw_apisecret",
-    "lw_sessionkey",
-    "lw_addon_url",
-)
-
-
 @Serializable
 data class BackupPrefsSnapshot(
     val strings: Map<String, String> = emptyMap(),
     val booleans: Map<String, Boolean> = emptyMap(),
     val integers: Map<String, Int> = emptyMap(),
     val longs: Map<String, Long> = emptyMap(),
+    val floats: Map<String, Float> = emptyMap(),
     val stringSets: Map<String, Set<String>> = emptyMap(),
 )
 
@@ -95,6 +87,8 @@ data class BackupFile(
     val prefs: BackupPrefsSnapshot,
     val playlists: List<BackupPlaylistSnapshot>,
     val recommendationExclusions: List<BackupRecommendationExclusionSnapshot> = emptyList(),
+    /** Separate DataStore files (EQ, loudness, automix, USB), added in schema v9. */
+    val extraStores: Map<String, BackupPrefsSnapshot> = emptyMap(),
 )
 
 sealed interface RestoreResult {
@@ -122,6 +116,7 @@ sealed interface BackupCheck {
  */
 @Singleton
 class BackupRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val dataStore: DataStore<Preferences>,
     private val playlistDao: SavedPlaylistDao,
     private val recommendationExclusionDao: RecommendationExclusionDao,
@@ -138,26 +133,8 @@ class BackupRepository @Inject constructor(
     }
 
     suspend fun buildBackup(appVersionName: String): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val prefs = dataStore.data.first()
-        val strings = mutableMapOf<String, String>()
-        val booleans = mutableMapOf<String, Boolean>()
-        val integers = mutableMapOf<String, Int>()
-        val longs = mutableMapOf<String, Long>()
-        val stringSets = mutableMapOf<String, Set<String>>()
-        for (entry in prefs.asMap()) {
-            val key = entry.key.name
-            if (key in SENSITIVE_PREFERENCE_NAMES) continue
-            when (val value = entry.value) {
-                is String -> strings[key] = value
-                is Boolean -> booleans[key] = value
-                // A timestamp found as Int has already been truncated by the
-                // old schema and cannot be reconstructed; reset it safely.
-                is Int -> if (key in LONG_PREFERENCE_NAMES) longs[key] = 0L else integers[key] = value
-                is Long -> longs[key] = value
-                is Set<*> -> stringSets[key] = value.mapNotNull { it as? String }.toSet()
-                else -> Unit
-            }
-        }
+        val prefsSnapshot = dataStore.data.first().toSnapshot()
+        val extraStores = extraStores().mapValues { (_, store) -> store.data.first().toSnapshot() }
         val playlists = playlistDao.getAll().map {
             BackupPlaylistSnapshot(
                 id = it.id,
@@ -182,15 +159,10 @@ class BackupRepository @Inject constructor(
         val backup = BackupFile(
             createdAt = System.currentTimeMillis(),
             appVersion = appVersionName,
-            prefs = BackupPrefsSnapshot(
-                strings = strings,
-                booleans = booleans,
-                integers = integers,
-                longs = longs,
-                stringSets = stringSets,
-            ),
+            prefs = prefsSnapshot,
             playlists = playlists,
             recommendationExclusions = exclusions,
+            extraStores = extraStores,
         )
         json.encodeToString(backup)
     }
@@ -227,19 +199,7 @@ class BackupRepository @Inject constructor(
         return try {
             dataStore.edit { mutablePrefs ->
                 mutablePrefs.clear()
-                backup.prefs.strings.forEach { (k, v) -> mutablePrefs[stringPreferencesKey(k)] = v }
-                backup.prefs.booleans.forEach { (k, v) -> mutablePrefs[booleanPreferencesKey(k)] = v }
-                backup.prefs.integers.forEach { (k, v) ->
-                    // Repair v7-and-older backups that wrote Long preferences
-                    // into the integer bucket.
-                    if (k in LONG_PREFERENCE_NAMES) {
-                        mutablePrefs[longPreferencesKey(k)] = 0L
-                    } else {
-                        mutablePrefs[intPreferencesKey(k)] = v
-                    }
-                }
-                backup.prefs.longs.forEach { (k, v) -> mutablePrefs[longPreferencesKey(k)] = v }
-                backup.prefs.stringSets.forEach { (k, v) -> mutablePrefs[stringSetPreferencesKey(k)] = v }
+                mutablePrefs.applySnapshot(backup.prefs)
                 if (preserveSignedInSession) {
                     preservedAuthStrings.forEach { (name, value) ->
                         mutablePrefs[stringPreferencesKey(name)] = value
@@ -247,6 +207,7 @@ class BackupRepository @Inject constructor(
                     mutablePrefs[booleanPreferencesKey(GUEST_MODE_PREFERENCE)] = false
                 }
             }
+            restoreExtraStores(backup.extraStores)
             playlistDao.replaceAll(backup.playlists.map { p ->
                 SavedPlaylistEntity(
                     id = p.id,
@@ -292,18 +253,61 @@ class BackupRepository @Inject constructor(
         val snapshot = json.decodeFromString<BackupFile>(snapshotJson)
         dataStore.edit { mutablePrefs ->
             mutablePrefs.clear()
-            snapshot.prefs.strings.forEach { (k, v) -> mutablePrefs[stringPreferencesKey(k)] = v }
-            snapshot.prefs.booleans.forEach { (k, v) -> mutablePrefs[booleanPreferencesKey(k)] = v }
-            snapshot.prefs.integers.forEach { (k, v) ->
-                if (k in LONG_PREFERENCE_NAMES) {
-                    mutablePrefs[longPreferencesKey(k)] = 0L
-                } else {
-                    mutablePrefs[intPreferencesKey(k)] = v
-                }
-            }
-            snapshot.prefs.longs.forEach { (k, v) -> mutablePrefs[longPreferencesKey(k)] = v }
-            snapshot.prefs.stringSets.forEach { (k, v) -> mutablePrefs[stringSetPreferencesKey(k)] = v }
+            mutablePrefs.applySnapshot(snapshot.prefs)
         }
+        restoreExtraStores(snapshot.extraStores)
+    }
+
+    private fun extraStores(): Map<String, DataStore<Preferences>> = mapOf(
+        "autoeq_prefs" to context.autoEqDataStore,
+        "loudness_prefs" to context.loudnessDataStore,
+        "automix_prefs" to context.autoMixDataStore,
+        "internal_direct_prefs" to context.internalDirectDataStore,
+        "usb_exclusive_prefs" to context.usbExclusiveDataStore,
+    )
+
+    private suspend fun restoreExtraStores(snapshots: Map<String, BackupPrefsSnapshot>) {
+        val stores = extraStores()
+        snapshots.forEach { (name, snapshot) ->
+            stores[name]?.edit { it.clear(); it.applySnapshot(snapshot) }
+        }
+    }
+
+    private fun Preferences.toSnapshot(): BackupPrefsSnapshot {
+        val strings = mutableMapOf<String, String>()
+        val booleans = mutableMapOf<String, Boolean>()
+        val integers = mutableMapOf<String, Int>()
+        val longs = mutableMapOf<String, Long>()
+        val floats = mutableMapOf<String, Float>()
+        val stringSets = mutableMapOf<String, Set<String>>()
+        for (entry in asMap()) {
+            val key = entry.key.name
+            when (val value = entry.value) {
+                is String -> strings[key] = value
+                is Boolean -> booleans[key] = value
+                // A timestamp found as Int has already been truncated by the
+                // old schema and cannot be reconstructed; reset it safely.
+                is Int -> if (key in LONG_PREFERENCE_NAMES) longs[key] = 0L else integers[key] = value
+                is Long -> longs[key] = value
+                // Float prefs (lyrics scale, app volume, loudness preamp) were silently dropped before v9.
+                is Float -> floats[key] = value
+                is Set<*> -> stringSets[key] = value.mapNotNull { it as? String }.toSet()
+                else -> Unit
+            }
+        }
+        return BackupPrefsSnapshot(strings, booleans, integers, longs, floats, stringSets)
+    }
+
+    private fun MutablePreferences.applySnapshot(snapshot: BackupPrefsSnapshot) {
+        snapshot.strings.forEach { (k, v) -> this[stringPreferencesKey(k)] = v }
+        snapshot.booleans.forEach { (k, v) -> this[booleanPreferencesKey(k)] = v }
+        // Repair v7-and-older backups that wrote Long preferences into the integer bucket.
+        snapshot.integers.forEach { (k, v) ->
+            if (k in LONG_PREFERENCE_NAMES) this[longPreferencesKey(k)] = 0L else this[intPreferencesKey(k)] = v
+        }
+        snapshot.longs.forEach { (k, v) -> this[longPreferencesKey(k)] = v }
+        snapshot.floats.forEach { (k, v) -> this[floatPreferencesKey(k)] = v }
+        snapshot.stringSets.forEach { (k, v) -> this[stringSetPreferencesKey(k)] = v }
     }
 
     private companion object {

@@ -52,6 +52,12 @@ interface SongPlayStatsDao {
     @Query("SELECT trackKey FROM song_play_stats")
     suspend fun getAllTrackKeys(): List<String>
 
+    @Query("SELECT * FROM song_play_stats")
+    suspend fun getAll(): List<SongPlayStatsEntity>
+
+    @Query("SELECT * FROM song_play_stats WHERE lastPlayedAtMillis >= :sinceMillis")
+    suspend fun getAllSince(sinceMillis: Long): List<SongPlayStatsEntity>
+
     @Query("DELETE FROM song_play_stats")
     suspend fun clearAll()
 }

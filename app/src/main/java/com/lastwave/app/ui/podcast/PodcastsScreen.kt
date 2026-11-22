@@ -39,6 +39,7 @@ import com.lastwave.app.R
 import com.lastwave.app.data.podcast.PodcastEpisode
 import com.lastwave.app.data.podcast.PodcastShelf
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.adaptiveContentWidth
 import com.lastwave.app.ui.common.groupPositionFor
@@ -57,12 +58,14 @@ fun PodcastsScreen(
     val musicPlayer = LocalMusicPlayer.current
     val playbackState by musicPlayer.listPlaybackState.collectAsStateWithLifecycle()
 
-    Column(
+    GlassHeaderLayout(
         Modifier
             .fillMaxSize()
             .adaptiveContentWidth(maxWidth = 860.dp),
-    ) {
+        header = { headerModifier, headerBackdrop ->
         ExpressiveHeader(
+            modifier = headerModifier,
+            backdrop = headerBackdrop,
             title = stringResource(R.string.podcasts_title),
             subtitle = stringResource(R.string.podcasts_subtitle),
             onBack = onBack,
@@ -70,6 +73,9 @@ fun PodcastsScreen(
                 HeaderActionIcon(Icons.Filled.Refresh, "Refresh", viewModel::refresh)
             },
         )
+        },
+    ) { headerInset ->
+    Column(Modifier.fillMaxSize()) {
 
         if (!state.enabled) {
             PodcastsDisabledState()
@@ -86,8 +92,10 @@ fun PodcastsScreen(
                 onPlayShelfEpisode = { shelf, episode ->
                     viewModel.playEpisode(episode, shelf.episodes)
                 },
+                topInset = headerInset,
             )
         }
+    }
     }
 }
 
@@ -128,11 +136,12 @@ private fun PodcastsContent(
     onOpenShow: (String) -> Unit,
     onPlayEpisode: (PodcastEpisode) -> Unit,
     onPlayShelfEpisode: (PodcastShelf, PodcastEpisode) -> Unit,
+    topInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
         contentPadding = PaddingValues(
-            top = 10.dp,
+            top = 10.dp + topInset,
             bottom = 24.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
         ),
         verticalArrangement = Arrangement.spacedBy(6.dp),

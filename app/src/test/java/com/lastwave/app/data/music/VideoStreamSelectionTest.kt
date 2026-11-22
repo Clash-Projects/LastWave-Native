@@ -64,7 +64,7 @@ class VideoStreamSelectionTest {
     }
 
     @Test
-    fun manifestKeepsOneCodecFamilyAndCapsAt1080p() {
+    fun manifestKeepsOneCodecFamilyAndIncludes4kRenditions() {
         val manifest = buildAdaptiveVideoManifest(
             listOf(
                 adaptive(360),
@@ -75,7 +75,7 @@ class VideoStreamSelectionTest {
         )!!
         assertTrue(manifest.contains("""height="720""""))
         assertFalse(manifest.contains("vp9"))
-        assertFalse(manifest.contains("""height="1608""""))
+        assertTrue(manifest.contains("""height="1608""""))
     }
 
     @Test
@@ -101,12 +101,12 @@ class VideoStreamSelectionTest {
                 stream(536).copy(resolution = "720p"),
             ),
         )
-        assertEquals(listOf(536, 800, 1608), ranked.map { it.height })
+        assertEquals(listOf(1608, 800, 536), ranked.map { it.height })
     }
 
     @Test
-    fun autoPlaybackTries720pThen1080pFirst() {
+    fun autoPlaybackPrefersHighestResolutionThenFallsBack() {
         val ranked = rankedForAutoPlayback(listOf(stream(2160), stream(360), stream(1080), stream(720), stream(480)))
-        assertEquals(listOf(720, 1080, 480, 2160, 360), ranked.map { it.height })
+        assertEquals(listOf(2160, 1080, 720, 480, 360), ranked.map { it.height })
     }
 }

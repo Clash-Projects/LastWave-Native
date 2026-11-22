@@ -1,8 +1,13 @@
 package com.lastwave.app.ui.settings.autoeq
 
+import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,13 +31,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -70,9 +80,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -140,8 +154,10 @@ fun AutoEqScreen(
     val deviceProfiles by viewModel.deviceProfiles.collectAsStateWithLifecycle()
     val deviceLabels by viewModel.deviceLabels.collectAsStateWithLifecycle()
     val autoPerDevice by viewModel.autoPerDevice.collectAsStateWithLifecycle()
+    val clipboardManager = LocalClipboardManager.current
     var searchOpen by remember { mutableStateOf(false) }
     var expandedFilter by remember { mutableStateOf(-1) }
+    var importDialogOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { res -> Toast.makeText(context, context.getString(res), Toast.LENGTH_SHORT).show() }
@@ -271,6 +287,38 @@ fun AutoEqScreen(
                     )
                     if (state.isCustom) {
                         AssistChip(onClick = {}, label = { Text(stringResource(R.string.autoeq_custom)) })
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    IconButton(
+                        onClick = { importDialogOpen = true },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.FileDownload,
+                            contentDescription = stringResource(R.string.autoeq_import),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            val exported = viewModel.exportSettings()
+                            clipboardManager.setText(AnnotatedString(exported))
+                            Toast.makeText(context, R.string.autoeq_export_copied, Toast.LENGTH_SHORT).show()
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, exported)
+                                putExtra(Intent.EXTRA_TITLE, "ParametricEQ.txt")
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.autoeq_export_share)))
+                        },
+                        enabled = state.settings.filters.isNotEmpty(),
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.Share,
+                            contentDescription = stringResource(R.string.autoeq_export),
+                            modifier = Modifier.size(20.dp),
+                        )
                     }
                 }
                 Text(
@@ -359,6 +407,12 @@ fun AutoEqScreen(
 
     if (searchOpen) {
         SearchSheet(viewModel = viewModel, onDismiss = { searchOpen = false })
+    }
+    if (importDialogOpen) {
+        ImportPeqDialog(
+            onDismiss = { importDialogOpen = false },
+            onImport = { viewModel.importSettings(it) },
+        )
     }
 }
 
@@ -578,6 +632,110 @@ private fun FilterRow(
                             )
                         }
                     }
+                }
+
+                var freqInput by remember { mutableStateOf(filter.frequencyHz.roundToInt().toString()) }
+                LaunchedEffect(filter.frequencyHz) {
+                    val current = freqInput.toDoubleOrNull()
+                    if (current == null || kotlin.math.abs(current - filter.frequencyHz) > 0.5) {
+                        freqInput = filter.frequencyHz.roundToInt().toString()
+                    }
+                }
+
+                var gainInput by remember { mutableStateOf("%.1f".format(Locale.ROOT, filter.gainDb)) }
+                LaunchedEffect(filter.gainDb) {
+                    val current = gainInput.toDoubleOrNull()
+                    if (current == null || kotlin.math.abs(current - filter.gainDb) > 0.05) {
+                        gainInput = "%.1f".format(Locale.ROOT, filter.gainDb)
+                    }
+                }
+
+                var qInput by remember { mutableStateOf("%.2f".format(Locale.ROOT, filter.q)) }
+                LaunchedEffect(filter.q) {
+                    val current = qInput.toDoubleOrNull()
+                    if (current == null || kotlin.math.abs(current - filter.q) > 0.005) {
+                        qInput = "%.2f".format(Locale.ROOT, filter.q)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = freqInput,
+                        onValueChange = { str ->
+                            if (str.isEmpty() || str.matches(Regex("^\\d*$"))) {
+                                freqInput = str
+                                str.toDoubleOrNull()?.let {
+                                    if (it in 20.0..20000.0) onChange(filter.copy(frequencyHz = PeqMath.roundTo(it, 1.0)))
+                                }
+                            }
+                        },
+                        label = { Text(stringResource(R.string.autoeq_freq_label)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = if (filter.type.hasGain) ImeAction.Next else ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = {
+                                val fVal = freqInput.toDoubleOrNull()?.coerceIn(20.0, 20000.0) ?: filter.frequencyHz
+                                onChange(filter.copy(frequencyHz = PeqMath.roundTo(fVal, 1.0)))
+                                freqInput = fVal.roundToInt().toString()
+                            },
+                        ),
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (filter.type.hasGain) {
+                        OutlinedTextField(
+                            value = gainInput,
+                            onValueChange = { str ->
+                                if (str.isEmpty() || str == "-" || str.matches(Regex("^-?\\d*\\.?\\d*$"))) {
+                                    gainInput = str
+                                    str.toDoubleOrNull()?.let {
+                                        if (it in -24.0..24.0) onChange(filter.copy(gainDb = PeqMath.roundTo(it, 0.1)))
+                                    }
+                                }
+                            },
+                            label = { Text(stringResource(R.string.autoeq_gain_label)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(
+                                onNext = {
+                                    val gVal = gainInput.toDoubleOrNull()?.coerceIn(-20.0, 20.0) ?: filter.gainDb
+                                    onChange(filter.copy(gainDb = PeqMath.roundTo(gVal, 0.1)))
+                                    gainInput = "%.1f".format(Locale.ROOT, gVal)
+                                },
+                            ),
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    OutlinedTextField(
+                        value = qInput,
+                        onValueChange = { str ->
+                            if (str.isEmpty() || str.matches(Regex("^\\d*\\.?\\d*$"))) {
+                                qInput = str
+                                str.toDoubleOrNull()?.let {
+                                    if (it in 0.05..20.0) onChange(filter.copy(q = PeqMath.roundTo(it, 0.01)))
+                                }
+                            }
+                        },
+                        label = { Text(stringResource(R.string.autoeq_q_label)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val qVal = qInput.toDoubleOrNull()?.coerceIn(0.1, 10.0) ?: filter.q
+                                onChange(filter.copy(q = PeqMath.roundTo(qVal, 0.01)))
+                                qInput = "%.2f".format(Locale.ROOT, qVal)
+                            },
+                        ),
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 LogSlider(
                     label = stringResource(R.string.autoeq_frequency),
@@ -829,4 +987,95 @@ private fun SearchSheet(viewModel: AutoEqViewModel, onDismiss: () -> Unit) {
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+@Composable
+private fun ImportPeqDialog(
+    onDismiss: () -> Unit,
+    onImport: (String) -> Boolean,
+) {
+    var text by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val content = stream.bufferedReader().use { it.readText() }
+                    text = content
+                    error = false
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.autoeq_import_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.getText()?.text?.let { clipText ->
+                                text = clipText
+                                error = false
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.autoeq_import_clipboard), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    OutlinedButton(
+                        onClick = { filePickerLauncher.launch("*/*") },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.autoeq_import_file), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it
+                        error = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 220.dp),
+                    placeholder = { Text(stringResource(R.string.autoeq_import_hint)) },
+                    isError = error,
+                    supportingText = if (error) {
+                        { Text(stringResource(R.string.autoeq_import_error), color = MaterialTheme.colorScheme.error) }
+                    } else null,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (onImport(text)) {
+                        onDismiss()
+                    } else {
+                        error = true
+                    }
+                },
+                enabled = text.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.autoeq_import_apply))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
 }

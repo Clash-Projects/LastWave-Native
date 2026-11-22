@@ -5,11 +5,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,8 +50,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,7 +67,9 @@ import kotlinx.coroutines.isActive
 import java.text.DateFormat
 import java.util.Date
 
-private val cacheLimitOptions = listOf(128, 192, 256, 320, 512, 768, 1024, 1536, 2048)
+private val cacheLimitOptions = listOf(128, 192, 256, 320, 512, 768, 1024, 1536, 2048, 3072, 4000)
+private val storageCardShape = RoundedCornerShape(28.dp)
+private val storageIconShape = RoundedCornerShape(14.dp)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -209,23 +219,39 @@ fun StorageScreen(
                 .padding(bottom = 92.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Card(
+                shape = storageCardShape,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Filled.Album, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text(stringResource(R.string.storage_cached_media), style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StorageIconBadge(
+                            icon = Icons.Filled.Album,
+                            container = MaterialTheme.colorScheme.primaryContainer,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.storage_cached_media),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                stringResource(
+                                    R.string.storage_cache_usage,
+                                    Formatter.formatShortFileSize(context, state.cacheBytes),
+                                    Formatter.formatShortFileSize(
+                                        context,
+                                        state.cacheLimitMb * CacheStoragePolicy.MEGABYTE_BYTES,
+                                    ),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    Text(
-                        text = stringResource(
-                            R.string.storage_cache_usage,
-                            Formatter.formatShortFileSize(context, state.cacheBytes),
-                            Formatter.formatShortFileSize(
-                                context,
-                                state.cacheLimitMb * CacheStoragePolicy.MEGABYTE_BYTES,
-                            ),
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
                     Text(
                         stringResource(
                             R.string.storage_cache_artwork_usage,
@@ -258,6 +284,10 @@ fun StorageScreen(
                             Formatter.formatShortFileSize(
                                 context,
                                 cacheLimitOptions[sliderIndex.toInt().coerceIn(cacheLimitOptions.indices)] * CacheStoragePolicy.MEGABYTE_BYTES,
+                            ),
+                            Formatter.formatShortFileSize(
+                                context,
+                                CacheStoragePolicy.MAX_LIMIT_MB * CacheStoragePolicy.MEGABYTE_BYTES,
                             ),
                         ),
                         style = MaterialTheme.typography.bodySmall,
@@ -300,19 +330,32 @@ fun StorageScreen(
                 }
             }
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Card(
+                shape = storageCardShape,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column {
-                            Text(stringResource(R.string.storage_downloaded_music), style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StorageIconBadge(
+                            icon = Icons.Filled.MusicNote,
+                            container = MaterialTheme.colorScheme.secondaryContainer,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.storage_downloaded_music),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                            )
                             Text(
                                 stringResource(
                                     R.string.storage_download_usage,
                                     state.downloadCount,
                                     Formatter.formatShortFileSize(context, state.downloadBytes),
                                 ),
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -333,5 +376,21 @@ fun StorageScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StorageIconBadge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    container: Color,
+    tint: Color,
+) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .background(container, storageIconShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
     }
 }

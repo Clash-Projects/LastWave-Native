@@ -6,7 +6,7 @@
 
     <string name="nav_feed">फ़ीड</string>
     <string name="nav_stats">आँकड़े</string>
-    <string name="nav_playlists">प्लेलिस्ट</string>
+    <string name="nav_playlists">लाइब्रेरी</string>
     <string name="nav_create_playlist">प्लेलिस्ट बनाएँ / जनरेट करें</string>
     <string name="update_available">अपडेट उपलब्ध</string>
     <string name="update">अपडेट करें</string>
@@ -450,7 +450,6 @@
     <string name="menu_add_queue">कतार में जोड़ें</string>
     <string name="menu_open_lastfm">Last.fm में खोलें</string>
     <string name="menu_refresh_artwork">कवर आर्ट ताज़ा करें</string>
-    <string name="menu_copy_song">गाना कॉपी करें</string>
     <string name="menu_details_specs">विवरण एवं ऑडियो विशिष्टताएँ</string>
     <string name="menu_dont_recommend">दोबारा अनुशंसा न करें</string>
     <string name="menu_remove_from_playlist">प्लेलिस्ट से हटाएँ</string>
@@ -503,10 +502,9 @@
     <string name="pl_export_title">प्लेलिस्ट निर्यात करें</string>
     <string name="pl_choose_image">छवि चुनें</string>
     <string name="pl_change_image">छवि बदलें</string>
-    <string name="pl_title">प्लेलिस्ट</string>
+    <string name="pl_title">लाइब्रेरी</string>
     <string name="pl_selected_count">%1$d चयनित</string>
     <string name="pl_select_more_hint">अधिक चुनने के लिए देर तक दबाएँ</string>
-    <string name="pl_count_only">%1$d प्लेलिस्ट</string>
     <string name="pl_count_tracks">%1$d प्लेलिस्ट • %2$d ट्रैक</string>
     <string name="pl_delete_selected_cd">चयनित हटाएँ</string>
     <string name="pl_clear_selection_cd">स्पष्ट चयन</string>
@@ -762,9 +760,9 @@
     <string name="set_lfm_remove">हटाओ</string>
     <string name="set_lfm_key_label">एपीआई कुंजी</string>
     <string name="set_lfm_key_saved">आपकी कुंजी सहेज ली गई है</string>
-    <string name="set_lfm_key_hint">आवश्यक - एक निःशुल्क प्राप्त करें, फिर इसे यहां चिपकाएँ</string>
-    <string name="set_lfm_get">Last.fm/api → पर निःशुल्क कुंजी प्राप्त करें</string>
-    <string name="set_lfm_how">मुफ़्त कुंजी कैसे प्राप्त करें →</string>
+    <string name="set_lfm_key_hint">आवश्यक - एक प्राप्त करें, फिर इसे यहां चिपकाएँ</string>
+    <string name="set_lfm_get">Last.fm/api → पर कुंजी प्राप्त करें</string>
+    <string name="set_lfm_how">कुंजी कैसे प्राप्त करें →</string>
     <string name="set_lfm_disc_title">Last.fm को डिस्कनेक्ट करें?</string>
     <string name="set_lfm_disc_text">वैश्विक स्क्रैबल्स रुक गए। आपके आँकड़े स्थानीय श्रवण इतिहास पर स्विच हो जाते हैं - कुछ भी नहीं हटाया जाता है।</string>
     <string name="set_lfm_disc_btn">डिस्कनेक्ट करें</string>

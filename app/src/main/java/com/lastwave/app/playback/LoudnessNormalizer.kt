@@ -32,6 +32,12 @@ private const val KEY_ALBUM_PEAK = "REPLAYGAIN_ALBUM_PEAK"
 /** Target level, in LUFS, normalization aims for. */
 const val LOUDNESS_TARGET_LUFS = -14f
 
+/**
+ * ReplayGain 2.0 gains bring a track to -18 LUFS. Without this offset tagged
+ * files would play 4 dB quieter than measured streams at [LOUDNESS_TARGET_LUFS].
+ */
+private const val REPLAYGAIN_REFERENCE_LUFS = -18f
+
 /** Hard clamp applied to the final correction, in dB. */
 const val LOUDNESS_GAIN_CLAMP_DB = 15f
 
@@ -154,9 +160,9 @@ object LoudnessNormalizer {
      * Computes the correction for parsed tags under [mode].
      *
      * TRACK uses the track gain (falling back to album gain); ALBUM uses
-     * the album gain (falling back to track gain). The stored gain already
-     * encodes the adjustment to the reference level, so the correction is
-     * that gain plus [preampDb], clamped to +/- [LOUDNESS_GAIN_CLAMP_DB];
+     * the album gain (falling back to track gain). The stored gain targets
+     * the ReplayGain reference, so the correction is that gain moved to
+     * [LOUDNESS_TARGET_LUFS], plus [preampDb], clamped to +/- [LOUDNESS_GAIN_CLAMP_DB];
      * [applyPeakGuard] then lowers it if the corrected peak would exceed
      * 0 dBFS while no limiter is engaged. Returns 0 dB when normalization
      * is off or no usable gain tag is present.
@@ -177,7 +183,8 @@ object LoudnessNormalizer {
             else -> tags.trackPeak ?: tags.albumPeak
         }
         val preamp = sanitizePreamp(preampDb)
-        val clamped = (selectedGain + preamp).coerceIn(-LOUDNESS_GAIN_CLAMP_DB, LOUDNESS_GAIN_CLAMP_DB)
+        val referenceOffset = LOUDNESS_TARGET_LUFS - REPLAYGAIN_REFERENCE_LUFS
+        val clamped = (selectedGain + referenceOffset + preamp).coerceIn(-LOUDNESS_GAIN_CLAMP_DB, LOUDNESS_GAIN_CLAMP_DB)
         return applyPeakGuard(clamped, selectedPeak, limiterEngaged)
     }
 

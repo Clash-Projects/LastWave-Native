@@ -293,9 +293,10 @@ fun LastWaveNavHost(
                 onOpenSettings = {
                     navController.navigate(Screen.Settings.route) { launchSingleTop = true }
                 },
-                onOpenSearch = { navController.navigate(Screen.Search.route) },
+                onOpenSearch = { navController.navigate(Screen.Search.createRoute()) },
                 onOpenDiscover = { navController.navigate(Screen.Discover.route) },
                 onOpenGenres = { navController.navigate(Screen.Genres.route) },
+                onOpenListeningStats = { navController.navigate(Screen.ListeningStats.route) },
                 onOpenFriends = { navController.navigate(Screen.Friends.route) },
                 onOpenFriendProfile = { username, displayName, avatarUrl ->
                     navController.navigate(Screen.FriendProfile.createRoute(username, displayName, avatarUrl))
@@ -437,6 +438,14 @@ fun LastWaveNavHost(
             }
         }
 
+        composable(Screen.ListeningStats.route) { backStackEntry ->
+            PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
+                com.lastwave.app.ui.stats.ListeningStatsScreen(
+                    onBack = { navController.safePopBackStack(backStackEntry) },
+                )
+            }
+        }
+
         composable(Screen.Settings.route) { backStackEntry ->
             PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 SettingsScreen(
@@ -571,7 +580,15 @@ fun LastWaveNavHost(
         }
 
 
-        composable(Screen.Search.route) { backStackEntry ->
+        composable(
+            route = Screen.Search.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("q") {
+                    type = androidx.navigation.NavType.StringType
+                    defaultValue = ""
+                },
+            ),
+        ) { backStackEntry ->
             PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {
                 SearchScreen(
                     onBack = { navController.safePopBackStack(backStackEntry) },

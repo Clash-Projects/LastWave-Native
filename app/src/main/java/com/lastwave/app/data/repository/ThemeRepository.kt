@@ -49,6 +49,7 @@ data class ThemeUiState(
     /** Settings' "Use Application Font" toggle — see ui/theme/Type.kt for
      *  what turning it off falls back to. */
     val useCustomFont: Boolean = true,
+    val useBoldFont: Boolean = false,
     /** Experimental liquid-glass materials (Settings → Experimental). When
      *  true, container roles in [colorScheme] are semi-translucent and the
      *  chrome surfaces get specular glass dressing. */
@@ -64,6 +65,7 @@ data class ThemeUiState(
     val isNowPlayingThemed: Boolean = false,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val isLastWaveTheme: Boolean = false,
+    val useLegacyColors: Boolean = false,
     val appIcon: AppIcon = AppIcon.DEFAULT,
 )
 
@@ -84,15 +86,20 @@ class ThemeRepository @Inject constructor(
 
     /** Cache key (ArtworkNormalizer.cacheKey(name, artist)) of the currently-
      *  scrobbling track, or null when nothing is playing. This is what
-     *  actually drives now-playing theming — see the init block below for
-     *  why a raw artwork URL isn't tracked directly. */
+     *  identifies the track; its cover is [nowPlayingArtworkUrl] when the
+     *  player supplied one, else the ArtworkRepository lookup for this key. */
     private val nowPlayingTrackKey = MutableStateFlow<String?>(null)
 
-    /** Hex extracted from the currently-scrobbling track's artwork, when
+    /** The player's own cover for the current track. Looking the cover up
+     *  again by title/artist could land on a different release, so the
+     *  theme did not match the artwork on screen. */
+    private val nowPlayingArtworkUrl = MutableStateFlow<String?>(null)
+
+    /** Colours extracted from the current track's artwork, when
      *  "Dynamic Now Playing Theme" is on. Null whenever nothing is playing,
      *  no artwork could be resolved from any provider, or extraction
      *  failed — see the init block below. */
-    private val nowPlayingHex = MutableStateFlow<String?>(null)
+    private val nowPlayingAccent = MutableStateFlow<ArtworkAccent?>(null)
 
     private val deferredArtwork = DeferredArtworkLookup(
         scope = applicationScope,
@@ -126,14 +133,14 @@ class ThemeRepository @Inject constructor(
         // disk cache), so this recomputes automatically the moment a
         // result lands, rather than needing a one-shot synchronous URL.
         applicationScope.launch {
-            combine(nowPlayingTrackKey, artworkRepository.resolved) { key, resolvedMap ->
-                key?.let { resolvedMap[it] }
+            combine(nowPlayingTrackKey, nowPlayingArtworkUrl, artworkRepository.resolved) { key, direct, resolvedMap ->
+                key?.let { direct ?: resolvedMap[it] }
             }.distinctUntilChanged().collect { url ->
-                nowPlayingHex.value = if (url.isNullOrBlank()) {
+                nowPlayingAccent.value = if (url.isNullOrBlank()) {
                     null
                 } else {
                     try {
-                        paletteExtractor.extractAccentHex(url)
+                        paletteExtractor.extractAccent(url)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (error: Exception) {
@@ -214,29 +221,43 @@ class ThemeRepository @Inject constructor(
         }
     }
 
+    /** System wallpaper (Monet) schemes, or null before Android 12 / on ROMs without them. */
+    private fun systemDynamicSchemes(amoled: Boolean, useLegacyColors: Boolean): Pair<ColorScheme, ColorScheme>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        return runCatching {
+            val systemDark = androidx.compose.material3.dynamicDarkColorScheme(context)
+            val dark = when {
+                amoled -> Md3SchemeBuilder.applyAmoledTheme(systemDark)
+                useLegacyColors -> systemDark
+                else -> Md3SchemeBuilder.applyDarkSurfaces(systemDark)
+            }
+            dark to androidx.compose.material3.dynamicLightColorScheme(context)
+        }.getOrNull()
+    }
+
     val uiState: StateFlow<ThemeUiState> = combine(
         themePreferences.prefs,
         dynamicHex,
-        nowPlayingHex,
+        nowPlayingAccent,
         settingsPreferences.settings,
-    ) { prefs: ThemePrefs, dynamic: String?, nowPlaying: String?, misc: MiscSettings ->
+    ) { prefs: ThemePrefs, dynamic: String?, nowPlaying: ArtworkAccent?, misc: MiscSettings ->
         val isAmoled = prefs.amoled
         val isGlass = prefs.liquidGlass
         val isLastWave = prefs.lastWaveTheme
+        val useLegacy = prefs.useLegacyColors
         val nowPlayingActive = misc.dynamicNowPlayingEnabled && nowPlaying != null && !isLastWave
-        val (darkScheme, lightScheme) = when {
+        // Real wallpaper Monet on S+. Built here (not only in LastWaveTheme)
+        // so widgets and the media notification use the same colors as the UI.
+        val systemDynamic = if (prefs.accentMode == AccentMode.DYNAMIC && !isLastWave) systemDynamicSchemes(isAmoled, useLegacy) else null
+        val (baseDark, baseLight) = when {
             isLastWave -> {
-                val dark = Md3SchemeBuilder.buildLastWaveDarkScheme(isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildLastWaveDarkScheme(isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildLastWaveLightScheme(isGlass)
                 dark to light
             }
-            nowPlayingActive -> {
-                val dark = Md3SchemeBuilder.buildDarkScheme(nowPlaying!!, isAmoled, isGlass)
-                val light = Md3SchemeBuilder.buildLightScheme(nowPlaying, isGlass)
-                dark to light
-            }
+            systemDynamic != null -> systemDynamic
             prefs.accentMode == AccentMode.MONOCHROME -> {
-                val dark = Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildMonochromeDarkScheme(isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildMonochromeLightScheme(isGlass)
                 dark to light
             }
@@ -247,15 +268,22 @@ class ThemeRepository @Inject constructor(
                 // and cold-start frames already show the wallpaper accent
                 // instead of the default red or monochrome.
                 val seed = dynamic ?: getSystemWallpaperColorHex() ?: prefs.accentColor
-                val dark = Md3SchemeBuilder.buildDarkScheme(seed, isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildDarkScheme(seed, isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildLightScheme(seed, isGlass)
                 dark to light
             }
             else -> {
-                val dark = Md3SchemeBuilder.buildDarkScheme(prefs.accentColor, isAmoled, isGlass)
+                val dark = Md3SchemeBuilder.buildDarkScheme(prefs.accentColor, isAmoled, isGlass, useLegacy)
                 val light = Md3SchemeBuilder.buildLightScheme(prefs.accentColor, isGlass)
                 dark to light
             }
+        }
+        // The cover owns the palette while there is one: blended 40% into the
+        // wallpaper theme and muted, every song ended up the same generic tint.
+        val (darkScheme, lightScheme) = if (nowPlayingActive) {
+            Md3SchemeBuilder.buildArtworkSchemes(nowPlaying!!.seed, nowPlaying.second, isAmoled, useLegacy)
+        } else {
+            baseDark to baseLight
         }
         ThemeUiState(
             darkColorScheme = darkScheme,
@@ -266,12 +294,14 @@ class ThemeRepository @Inject constructor(
             mode = prefs.accentMode,
             accentColorHex = if (isLastWave) "#9581F6" else prefs.accentColor,
             useCustomFont = misc.useCustomFont,
+            useBoldFont = misc.useBoldFont,
             liquidGlass = isGlass,
             md3NavBar = prefs.md3NavBar,
             hideNavTabs = prefs.hideNavTabs,
             uiHaptics = prefs.uiHaptics,
             isNowPlayingThemed = nowPlayingActive,
             isLastWaveTheme = isLastWave,
+            useLegacyColors = useLegacy,
             appIcon = prefs.appIcon,
         )
     }.stateIn(
@@ -290,6 +320,7 @@ class ThemeRepository @Inject constructor(
             md3NavBar = false,
             hideNavTabs = false,
             isLastWaveTheme = false,
+            useLegacyColors = false,
             appIcon = AppIcon.DEFAULT,
         ),
     )
@@ -299,6 +330,8 @@ class ThemeRepository @Inject constructor(
     }
 
     suspend fun setLastWaveTheme(enabled: Boolean) = themePreferences.setLastWaveTheme(enabled)
+
+    suspend fun setLegacyColors(enabled: Boolean) = themePreferences.setLegacyColors(enabled)
 
     suspend fun setAppIcon(icon: AppIcon) {
         themePreferences.setAppIcon(icon)
@@ -369,16 +402,20 @@ class ThemeRepository @Inject constructor(
      * artwork-showing screen uses — so this benefits from whatever's
      * already cached for that track and won't hammer either provider.
      */
-    fun updateNowPlayingArtwork(trackName: String?, artistName: String?) {
+    fun updateNowPlayingArtwork(trackName: String?, artistName: String?, artworkUrl: String? = null) {
         if (trackName.isNullOrBlank() || artistName.isNullOrBlank()) {
             nowPlayingTrackKey.value = null
+            nowPlayingArtworkUrl.value = null
             deferredArtwork.cancel()
             return
         }
         val key = ArtworkNormalizer.cacheKey(trackName, artistName)
-        if (key == nowPlayingTrackKey.value) return
+        val direct = artworkUrl?.takeIf { it.isNotBlank() }
+        // A caller without a cover (Home's Last.fm poll) must not drop the player's own.
+        if (key == nowPlayingTrackKey.value && (direct == null || direct == nowPlayingArtworkUrl.value)) return
+        nowPlayingArtworkUrl.value = direct
         nowPlayingTrackKey.value = key
-        deferredArtwork.request(trackName, artistName)
+        if (direct == null) deferredArtwork.request(trackName, artistName) else deferredArtwork.cancel()
     }
 
     private fun Color.toHex(): String = "#%02X%02X%02X".format(

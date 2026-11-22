@@ -117,6 +117,19 @@ internal class TappingAudioSink(
 
 internal class SwapCapture(val signal: FloatArray, val firstPtsUs: Long)
 
+internal class SwapAlignmentMatch(val lagMs: Long, val confidence: Double)
+
+/** What comparing the playing stream's audio with a candidate's found. */
+internal sealed interface SwapAlignmentVerdict {
+    class Same(val match: SwapAlignmentMatch) : SwapAlignmentVerdict
+
+    /** Both had sound and it does not line up: another language, version or master. */
+    object Different : SwapAlignmentVerdict
+
+    /** Nothing to judge by: silence, a short capture, or the probe could not run. */
+    object Unknown : SwapAlignmentVerdict
+}
+
 internal object SwapAlignment {
     const val BIN_RATE_HZ = 8_000
     const val CAPTURE_BINS = BIN_RATE_HZ * 6
@@ -135,9 +148,18 @@ internal object SwapAlignment {
      * audio at reference position P sits at candidate position P + result.
      * Null when the match is too weak to trust (silence, a different master).
      */
-    fun measureLagMs(reference: SwapCapture, candidate: SwapCapture): Long? {
+    fun measure(reference: SwapCapture, candidate: SwapCapture): SwapAlignmentMatch? =
+        (compare(reference, candidate) as? SwapAlignmentVerdict.Same)?.match
+
+    /**
+     * [measure], but telling apart a weak match that proves the candidate is
+     * other audio ([SwapAlignmentVerdict.Different]) from one with nothing to
+     * judge by ([SwapAlignmentVerdict.Unknown]). Only the first may veto a swap.
+     */
+    fun compare(reference: SwapCapture, candidate: SwapCapture): SwapAlignmentVerdict {
+        val unknown = SwapAlignmentVerdict.Unknown
         val startSkewUs = candidate.firstPtsUs - reference.firstPtsUs
-        if (abs(startSkewUs) > MAX_START_SKEW_US) return null
+        if (abs(startSkewUs) > MAX_START_SKEW_US) return unknown
 
         val coarseRef = downsample(reference.signal, COARSE_FACTOR)
         val coarseCand = downsample(candidate.signal, COARSE_FACTOR)
@@ -145,10 +167,10 @@ internal object SwapAlignment {
         val templateStart = TEMPLATE_START_MS * coarseRate / 1_000
         val templateSize = TEMPLATE_MS * coarseRate / 1_000
         val maxLag = MAX_LAG_MS * coarseRate / 1_000
-        if (coarseRef.size < templateStart + templateSize) return null
-        if (rms(coarseRef, templateStart, templateSize) < MIN_RMS) return null
+        if (coarseRef.size < templateStart + templateSize) return unknown
+        if (rms(coarseRef, templateStart, templateSize) < MIN_RMS) return unknown
 
-        val coarse = bestLag(coarseRef, coarseCand, templateStart, templateSize, -maxLag, maxLag) ?: return null
+        val coarse = bestLag(coarseRef, coarseCand, templateStart, templateSize, -maxLag, maxLag) ?: return unknown
         val fineStart = templateStart * COARSE_FACTOR
         val fineSize = templateSize * COARSE_FACTOR
         val center = coarse.lag * COARSE_FACTOR
@@ -159,10 +181,18 @@ internal object SwapAlignment {
             fineSize,
             center - REFINE_BINS,
             center + REFINE_BINS,
-        ) ?: return null
-        if (fine.score < MIN_CONFIDENCE) return null
-        return startSkewUs / 1_000L + fine.lag * 1_000L / BIN_RATE_HZ
+        ) ?: return unknown
+        if (fine.score < MIN_CONFIDENCE) return SwapAlignmentVerdict.Different
+        return SwapAlignmentVerdict.Same(
+            SwapAlignmentMatch(
+                lagMs = startSkewUs / 1_000L + fine.lag * 1_000L / BIN_RATE_HZ,
+                confidence = fine.score,
+            ),
+        )
     }
+
+    fun measureLagMs(reference: SwapCapture, candidate: SwapCapture): Long? =
+        measure(reference, candidate)?.lagMs
 
     private class Match(val lag: Int, val score: Double)
 

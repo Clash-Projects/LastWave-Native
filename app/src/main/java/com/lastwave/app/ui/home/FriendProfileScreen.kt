@@ -78,6 +78,7 @@ import com.lastwave.app.data.repository.HomeTrack
 import com.lastwave.app.playback.PlayableTrack
 import com.lastwave.app.ui.common.ArtworkImage
 import com.lastwave.app.ui.common.ExpressiveHeader
+import com.lastwave.app.ui.common.GlassHeaderLayout
 import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
 import com.lastwave.app.ui.common.HeaderActionIcon
 import com.lastwave.app.ui.common.TrackContextMenuSheet
@@ -127,12 +128,14 @@ fun FriendProfileScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        Column(
+        GlassHeaderLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .adaptiveContentWidth(maxWidth = 760.dp),
-        ) {
+            header = { headerModifier, headerBackdrop ->
             ExpressiveHeader(
+                modifier = headerModifier,
+                backdrop = headerBackdrop,
                 title = displayTitle,
                 subtitle = "@$username",
                 onBack = onBack,
@@ -152,8 +155,11 @@ fun FriendProfileScreen(
                     )
                 },
             )
+            },
+        ) { headerInset ->
+        Column(Modifier.fillMaxSize()) {
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp + headerInset))
 
             PullToRefreshBox(
                 isRefreshing = uiState.isRefreshing,
@@ -371,12 +377,13 @@ fun FriendProfileScreen(
                 }
             }
         }
+        }
     }
 
     menuTrack?.let { track ->
         TrackContextMenuSheet(
             target = TrackMenuTarget.Track(track.name, track.artist, track.artworkUrl.orEmpty()),
-            capabilities = TrackMenuCapabilities(showCopyActions = true, showDeleteScrobble = false),
+            capabilities = TrackMenuCapabilities(showDeleteScrobble = false),
             playbackSourceLabel = "${uiState.displayName}'s Profile",
             onDismiss = { menuTrack = null },
         )

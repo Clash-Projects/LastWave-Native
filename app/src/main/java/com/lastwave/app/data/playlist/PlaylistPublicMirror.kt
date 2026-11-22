@@ -105,7 +105,12 @@ class PlaylistPublicMirror @Inject constructor(
         null
     }
 
-    private suspend fun writeLocked(entities: List<SavedPlaylistEntity>): Result<Unit> {
+    /** User-initiated only (Export backup): also copies the library to Download/LastWave. */
+    suspend fun exportToDownloads(): Result<Unit> = mutex.withLock {
+        writeLocked(dao.getAll(), toDownloads = true)
+    }
+
+    private suspend fun writeLocked(entities: List<SavedPlaylistEntity>, toDownloads: Boolean = false): Result<Unit> {
         val mirror = PlaylistMirrorFile(
             updatedAtMillis = System.currentTimeMillis(),
             playlists = entities.map { entity ->
@@ -124,7 +129,9 @@ class PlaylistPublicMirror @Inject constructor(
                 )
             },
         )
-        return fileExportHelper.writePublicPlaylistMirror(json.encodeToString(mirror))
+        val content = json.encodeToString(mirror)
+        return if (toDownloads) fileExportHelper.writePublicPlaylistMirrorToDownloads(content)
+        else fileExportHelper.writePublicPlaylistMirror(content)
     }
 
     private fun PlaylistMirrorEntry.toEntity() = SavedPlaylistEntity(

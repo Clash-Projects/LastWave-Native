@@ -48,7 +48,7 @@
     <!-- Bottom navigation -->
     <string name="nav_feed">Feed</string>
     <string name="nav_stats">Stats</string>
-    <string name="nav_playlists">Playlists</string>
+    <string name="nav_playlists">Library</string>
     <string name="nav_create_playlist">Create / Generate Playlist</string>
     <string name="nav_generator">Generator</string>
     <string name="update_available">Update Available</string>
@@ -119,12 +119,22 @@
     <string name="settings_lastwave_theme_sub">Bespoke logo palette • Electric Violet &amp; Lavender Accent</string>
     <string name="settings_amoled">MIDNIGHT Mode</string>
     <string name="settings_amoled_sub">Pure black background (Dark mode only)</string>
+    <string name="settings_legacy_colors">Use legacy colours</string>
+    <string name="settings_legacy_colors_sub">Use authentic Material You background and surface tones instead of deep obsidian surfaces</string>
+    <string name="settings_legacy_track_menu">Use classic song menu</string>
+    <string name="settings_legacy_track_menu_sub">Use the classic card-based song options menu instead of the redesigned sheet</string>
+    <string name="settings_menu_blur">Use blur in menus</string>
+    <string name="settings_menu_blur_sub">Blur the background behind song options and context menus</string>
     <string name="settings_dynamic_color">Dynamic Color</string>
     <string name="settings_dynamic_color_sub">Use your wallpaper\'s colors</string>
     <string name="settings_dynamic_now_playing">Dynamic Now Playing</string>
     <string name="settings_dynamic_now_playing_sub">Match player artwork</string>
     <string name="settings_app_font">Use Application Font</string>
     <string name="settings_app_font_sub">A custom look across the whole app</string>
+    <string name="settings_bold_font">Use Bold Font</string>
+    <string name="settings_bold_font_sub">Makes all text thicker, lyrics included</string>
+    <string name="settings_collapsing_nav_bar">Collapsing Navigation Bar</string>
+    <string name="settings_collapsing_nav_bar_sub">Shrink the bar to a tab icon and dock the mini player beside it while scrolling</string>
     <string name="settings_section_accent">Accent</string>
 
     <string name="settings_section_experimental">Experimental</string>
@@ -153,18 +163,27 @@
     <string name="settings_ui_haptics_sub">Vibrate on taps, buttons, toggles and gestures</string>
     <string name="settings_lyrics_animation">Lyrics Animation</string>
     <string name="settings_lyrics_provider">Lyrics provider</string>
+    <string name="settings_lyrics_settings">Lyrics settings</string>
+    <string name="settings_lyrics_settings_sub">Provider, sync offset, text size and button hiding</string>
     <string name="settings_lyrics_provider_desc">Tried first for every song. If it returns nothing, the app automatically falls through to the other providers.</string>
     <string name="settings_equalizer">Equalizer</string>
     <string name="settings_equalizer_sub">Shape your sound across 15 frequencies</string>
     <string name="settings_wavy_seekbar">Wavy Seekbar</string>
     <string name="settings_wavy_seekbar_on">Multi-layer fluid wavy progress slider</string>
     <string name="settings_wavy_seekbar_off">Classic standard progress slider</string>
+    <string name="settings_seekbar_style">Seekbar Style</string>
+    <string name="settings_seekbar_style_default">Default</string>
+    <string name="settings_seekbar_style_wavy">Wavy</string>
+    <string name="settings_seekbar_style_waveform">Waveform</string>
     <string name="settings_rotating_background">Rotating Background</string>
     <string name="settings_rotating_background_on">Animate fluid rotating artwork in player and lyrics view</string>
     <string name="settings_rotating_background_off">Static blurred background (recommended for Android 11 and below)</string>
     <string name="settings_lyrics_rotating_background">Lyrics Background Motion</string>
     <string name="settings_lyrics_rotating_background_on">Animate fluid rotating artwork in lyrics view</string>
     <string name="settings_lyrics_rotating_background_off">Static blurred cover background in lyrics view</string>
+    <string name="settings_fluid_beat_sync">Beat-Synced Fluid Motion</string>
+    <string name="settings_fluid_beat_sync_on">Fluid artwork pulses and swirls in sync with musical beats</string>
+    <string name="settings_fluid_beat_sync_off">Fluid artwork moves at a steady constant speed</string>
     <string name="settings_studio_clarity">Studio Master Clarity</string>
     <string name="settings_studio_clarity_on">Crystal-clear open sound • airy detail • deep clean separation</string>
     <string name="settings_studio_clarity_off">Original unshaped output</string>
@@ -189,6 +208,8 @@
     <string name="settings_stop_on_recents">Stop Playback When Swiped Away</string>
     <string name="settings_stop_on_recents_on">Removing SoundDrop from Recents stops playback</string>
     <string name="settings_stop_on_recents_off">Playback continues in the background after leaving Recents</string>
+    <string name="settings_pause_on_zero_volume">Pause Playback at Volume 0</string>
+    <string name="settings_pause_on_zero_volume_desc">Automatically pause playback when media volume reaches 0</string>
     <string name="settings_download_lyrics">Download Synced Lyrics</string>
     <string name="settings_download_lyrics_on">Save .lrc companion files &amp; embed lyrics in downloads</string>
     <string name="settings_download_lyrics_off">Do not fetch or save lyrics when downloading</string>
@@ -221,7 +242,7 @@
     <string name="storage_cache_audio_usage">Streamed audio: %1$s</string>
     <string name="storage_cache_last_cleared">Last cleared %1$s • %2$s freed</string>
     <string name="storage_cache_limit">Cache size limit</string>
-    <string name="storage_cache_limit_summary">Maximum combined cache size: %1$s. Oldest cached items are removed as needed; downloads are excluded.</string>
+    <string name="storage_cache_limit_summary">Selected cache limit: %1$s • Maximum available: %2$s. Oldest cached items are removed as needed; downloads are excluded.</string>
     <string name="storage_quality_note">Artwork uses smaller thumbnails on mobile data. If a high-resolution cover is already cached, LastWave reuses it without downloading it again.</string>
     <string name="storage_clear_cache">Clear cache</string>
     <string name="storage_clear_cache_title">Clear cached artwork and audio?</string>
@@ -290,6 +311,8 @@
     <string name="home_section_taste_strip_sub">Genre and mood quick radio</string>
     <string name="home_section_discover_title">Discover new music</string>
     <string name="home_section_discover_sub">Rotates fresh songs on refresh</string>
+    <string name="home_section_preview_queues_title">Preview queues</string>
+    <string name="home_section_preview_queues_sub">Previous played queues</string>
     <string name="home_section_quick_picks_title">Quick picks</string>
     <string name="home_section_quick_picks_sub">Quick picks matched to your taste</string>
     <string name="home_section_because_title">Because you listen to</string>
@@ -464,7 +487,7 @@
     <!-- Local songs -->
     <string name="local_add_to_playlist">Add to a playlist</string>
     <string name="local_panel_title">Songs from this device</string>
-    <string name="local_panel_hint">Pick a folder: every MP3, FLAC, WAV, OGG/Opus, M4A/ALAC or AAC file inside it (sub-folders included) is indexed and played directly from this device without using extra storage.</string>
+    <string name="local_panel_hint">Pick a folder or turn on device audio scanning: MP3, FLAC, WAV, AIFF, DSD (DSF/DFF), OGG/Opus, M4A/ALAC, AAC and E-AC-3 files play directly from this device.</string>
     <string name="local_no_folder">No folder chosen yet.</string>
     <string name="local_forget_folder">Forget this folder</string>
     <string name="local_choose_folder">Choose a folder</string>
@@ -480,6 +503,49 @@
     <string name="local_report_failed">%1$d file(s) couldn\'t be indexed</string>
     <string name="local_report_unreachable">%1$d folder(s) no longer reachable — choose them again</string>
     <string name="local_storage_used">Space used by local songs: %1$s</string>
+    <string name="local_tab_songs">Songs</string>
+    <string name="local_tab_albums">Albums</string>
+    <string name="local_tab_artists">Artists</string>
+    <string name="local_tab_folders">Folders</string>
+    <string name="local_tab_playlists">Playlists</string>
+    <string name="local_sort_title">Title</string>
+    <string name="local_sort_artist">Artist</string>
+    <string name="local_sort_album">Album</string>
+    <string name="local_sort_track_number">Track #</string>
+    <string name="local_sort_added">Added order</string>
+    <string name="local_sort_format">Format</string>
+    <string name="local_search_hint">Search songs, albums, artists, folders…</string>
+    <string name="local_view_grid_cd">Grid view</string>
+    <string name="local_view_list_cd">List view</string>
+    <string name="local_autoscan_title">Scan device audio automatically</string>
+    <string name="local_autoscan_sub">Index MediaStore music folders alongside picked folders</string>
+    <string name="local_filter_non_music_title">Skip short &amp; system clips</string>
+    <string name="local_filter_non_music_sub">Hide ringtones, alarms, voice notes &amp; clips under 30s</string>
+    <string name="local_grant_permission">Allow audio access</string>
+    <string name="local_permission_title">Device audio permission needed</string>
+    <string name="local_permission_sub">Grant audio access to automatically index music stored on your phone, or pick folders manually.</string>
+    <string name="local_manage_sources_cd">Folders &amp; scan settings</string>
+    <string name="local_sources_sheet_title">Local folders &amp; scan</string>
+    <string name="local_offline_likes">Offline Likes</string>
+    <string name="local_offline_likes_sub">Favorite local tracks saved only on this device</string>
+    <string name="local_offline_playlists">Offline Playlists</string>
+    <string name="local_new_playlist">New playlist</string>
+    <string name="local_rename_playlist">Rename playlist</string>
+    <string name="local_delete_playlist">Delete playlist</string>
+    <string name="local_delete_playlist_confirm">Delete offline playlist “%1$s”? Audio files on your device will stay untouched.</string>
+    <string name="local_playlist_name_hint">Playlist name</string>
+    <string name="local_empty_tracks">No local songs yet</string>
+    <string name="local_empty_filtered">Nothing matches your search</string>
+    <string name="local_empty_offline_likes">Tap the heart on any local song to add it to Offline Likes.</string>
+    <string name="local_empty_offline_playlists">Create an offline-only playlist for your device music.</string>
+    <string name="local_selected_count">%1$d selected</string>
+    <string name="local_play_next">Play next</string>
+    <string name="local_add_queue">Add to queue</string>
+    <string name="local_like_offline">Offline like</string>
+    <string name="local_remove_from_library">Remove</string>
+    <string name="local_remove_from_playlist">Remove from offline playlist</string>
+    <string name="local_select_all_cd">Select all</string>
+    <string name="local_add_to_offline_playlist">Add to offline playlist</string>
     <!-- Fork: internal direct output (mixer bypass without a USB DAC) -->
     <string name="signal_label_internal">Internal direct output</string>
     <string name="signal_detail_internal_resampled">Output fixed at %2$d Hz — %1$d Hz resampled in-app (libsoxr)</string>
@@ -593,8 +659,23 @@
     <string name="menu_open_lastfm">Open in Last.fm</string>
     <string name="menu_copy_link">Copy link</string>
     <string name="link_copied">Link copied to clipboard</string>
+    <string name="menu_copy_song">Copy song</string>
+    <string name="menu_go_to_artist">Artist</string>
+    <string name="menu_go_to_album">Album</string>
+    <string name="settings_music_video_np_button">Add button on Now Playing</string>
+    <string name="settings_music_video_np_button_desc">Show video button directly on Now Playing screen</string>
+    <string name="account_menu_title">Quick Controls</string>
+    <string name="artist_sort_most_played">Most played</string>
+    <string name="artist_sort_recent">Recent</string>
+    <string name="artist_sort_known">Songs that I know</string>
+    <string name="pl_filter_all">All</string>
+    <string name="pl_filter_generated">Generated</string>
+    <string name="pl_filter_ytmusic">YT Music</string>
+    <string name="pl_filter_spotify">Spotify</string>
+    <string name="pl_filter_imported">Imported</string>
+    <string name="pl_filter_pinned">Pinned</string>
+    <string name="song_copied">Song name copied to clipboard</string>
     <string name="menu_refresh_artwork">Refresh Cover Art</string>
-    <string name="menu_copy_song">Copy Song</string>
     <string name="menu_details_specs">Details &amp; Audio Specs</string>
     <string name="menu_dont_recommend">Don\'t recommend again</string>
     <string name="menu_remove_from_playlist">Remove from Playlist</string>
@@ -623,6 +704,9 @@
     <string name="menu_quick_play_next">Play next</string>
     <string name="menu_quick_add_playlist">Add to playlist</string>
     <string name="menu_quick_jam">Jam</string>
+    <string name="menu_start_mix_short">Start a mix</string>
+    <string name="menu_audio_details">Audio details</string>
+    <string name="menu_cast_short">Cast</string>
     <string name="settings_jam_title">LastWave Jam</string>
     <string name="settings_jam_sub">Listen together in real-time \u2022 Host or join with code</string>
 
@@ -652,10 +736,9 @@
     <string name="pl_export_title">Export Playlist</string>
     <string name="pl_choose_image">Choose image</string>
     <string name="pl_change_image">Change image</string>
-    <string name="pl_title">Playlist</string>
+    <string name="pl_title">Library</string>
     <string name="pl_selected_count">%1$d selected</string>
     <string name="pl_select_more_hint">Long press to select more</string>
-    <string name="pl_count_only">%1$d Playlists</string>
     <string name="pl_count_tracks">%1$d Playlists • %2$d Tracks</string>
     <string name="pl_delete_selected_cd">Delete selected</string>
     <string name="pl_clear_selection_cd">Clear selection</string>
@@ -737,6 +820,7 @@
     <string name="feed_see_all">See all</string>
     <string name="feed_discover">Discover New Music</string>
     <string name="feed_discover_sub">Handpicked tracks matched to your taste</string>
+    <string name="feed_discover_empty">No recommendations available</string>
     <string name="feed_fresh">Fresh finds</string>
     <string name="feed_fresh_sub">New tracks beyond your usual rotation</string>
     <string name="feed_jump">Jump back in</string>
@@ -837,7 +921,9 @@
     <string name="search_voice_unavailable">Voice search is not available on this device.</string>
     <string name="search_hint_users">Search Last.fm users…</string>
     <string name="search_hint_yt">Search YouTube Music…</string>
+    <string name="search_hint_local">Search local songs, albums, artists…</string>
     <string name="search_tab_tracks">Tracks</string>
+    <string name="search_tab_local">Local</string>
     <string name="search_tab_podcasts">Podcasts</string>
     <string name="search_tab_artists">Artists</string>
     <string name="search_tab_albums">Albums</string>
@@ -940,9 +1026,9 @@
     <string name="set_lfm_remove">Remove</string>
     <string name="set_lfm_key_label">API key</string>
     <string name="set_lfm_key_saved">Your key is saved</string>
-    <string name="set_lfm_key_hint">Required — get one free, then paste it here</string>
-    <string name="set_lfm_get">Get a free key at last.fm/api →</string>
-    <string name="set_lfm_how">How to get a free key →</string>
+    <string name="set_lfm_key_hint">Required — add your own API key and secret</string>
+    <string name="set_lfm_get">Get API credentials at last.fm/api →</string>
+    <string name="set_lfm_how">How to get API credentials →</string>
     <string name="set_lfm_disc_title">Disconnect Last.fm?</string>
     <string name="set_lfm_disc_text">Global scrobbles pause. Your Stats switch to local listening history — nothing is deleted.</string>
     <string name="set_lfm_disc_btn">Disconnect</string>
@@ -1050,6 +1136,23 @@
     <string name="set_cat_yt_sub">Account connection, 24/7 Library sync, Channels, History</string>
     <string name="set_cat_spotify">Spotify</string>
     <string name="set_cat_spotify_sub">Account connection, Canvas, Playlist imports &amp; Liked Songs sync</string>
+    <string name="set_cat_scrobblers">Scrobblers</string>
+    <string name="set_cat_scrobblers_sub">ListenBrainz, Libre.fm &amp; Last.fm</string>
+    <string name="set_scrobbler_lb_desc">Scrobble with your user token. A server address is optional for compatible services such as Maloja or Koito.</string>
+    <string name="set_scrobbler_lf_desc">Sign in to Libre.fm or your GNU FM server. Your password is used for sign-in and is never saved.</string>
+    <string name="set_scrobbler_token">User token</string>
+    <string name="set_scrobbler_username">Username</string>
+    <string name="set_scrobbler_password">Password</string>
+    <string name="set_scrobbler_server">Server (optional)</string>
+    <string name="set_scrobbler_get_token">Get your ListenBrainz token</string>
+    <string name="set_scrobbler_connect">Connect %1$s</string>
+    <string name="set_scrobbler_connecting">Updating %1$s connection…</string>
+    <string name="set_scrobbler_connected">Connected as %1$s</string>
+    <string name="set_scrobbler_not_connected">Not connected</string>
+    <string name="set_scrobbler_disconnect_title">Disconnect %1$s?</string>
+    <string name="set_scrobbler_disconnect_text">New listens will stop syncing to this account. Your listening history stays on the service.</string>
+    <string name="set_scrobbler_error">Could not update this connection. Please try again.</string>
+    <string name="set_scrobbler_browser_error">No browser available to open the token page</string>
     <string name="set_cat_lfm">Last.fm</string>
     <string name="set_cat_lfm_sub">Account connection, Scrobbling sync &amp; API credentials</string>
     <string name="set_cat_lib">Library &amp; Content</string>
@@ -1185,6 +1288,31 @@
     <string name="ly_no_vocals">This track has no vocal lyrics.</string>
     <string name="ly_no_synced">No synced lyrics found for this track.</string>
     <string name="ly_retry">Try again</string>
+    <string name="ly_signature_credit">Lyrics by %1$s</string>
+    <string name="ly_signature_not_found">Couldn\'t find your lyrics, %1$s</string>
+    <string name="ly_signature_not_found_hint">The words are shy on this one. The music isn\'t.</string>
+    <string-array name="ly_signature_loading">
+        <item>Finding your lyrics…</item>
+        <item>Hunting down every word…</item>
+        <item>Getting the verses ready…</item>
+        <item>Brewing your lyrics…</item>
+        <item>Tuning in to the words…</item>
+        <item>Lining up the first line…</item>
+        <item>Asking the providers nicely…</item>
+        <item>Warming up the stage…</item>
+    </string-array>
+    <string-array name="ly_signature_address">
+        <item>Sir</item>
+        <item>Comrade</item>
+        <item>Master</item>
+        <item>My Lord</item>
+        <item>Captain</item>
+        <item>Chief</item>
+        <item>Maestro</item>
+        <item>Your Highness</item>
+        <item>Legend</item>
+        <item>Boss</item>
+    </string-array>
     <string name="ly_size_cd">Adjust lyrics text size</string>
 
     <!-- Artist detail -->
@@ -1223,6 +1351,12 @@
     <string name="ge_title">Your Genres</string>
     <string name="ge_sub">Your Genres</string>
     <string name="ge_empty">No genre data yet</string>
+    <string name="ge_glance">Your taste, at a glance</string>
+    <string name="ge_leading_genre">Leading genre</string>
+    <string name="ge_relative_strength">Strength relative to your top genre</string>
+    <string name="ge_beyond_top">Beyond your top genre</string>
+    <string name="ge_strength_percent">%1$d%%</string>
+    <string name="ge_updating">Updating genres</string>
     <string name="ge_tracks">Your Tracks</string>
     <string name="ge_discover">Discover More</string>
     <string name="ge_no_tracks">No tracks found</string>
@@ -1233,6 +1367,7 @@
     <string name="login_guest">Continue as Guest</string>
     <string name="login_guest_desc">Guest mode works fully offline with local recommendations. Connect Last.fm anytime in Settings to sync scrobbles.</string>
     <string name="login_restore">Restore backup</string>
+    <string name="login_prefs_reset">Your settings were reset after a crash. Tap Restore backup to bring them back from your backup file.</string>
     <string name="login_downloads">Open Offline Downloads</string>
     <string name="ly_source_cd">Change lyrics provider</string>
     <string name="ly_source_title">Lyrics Provider</string>
@@ -1379,6 +1514,19 @@
     <string name="autoeq_msg_loaded">AutoEQ profile applied</string>
     <string name="autoeq_msg_download_failed">Couldn\'t download this profile</string>
     <string name="autoeq_msg_device_saved">Profile saved for this device</string>
+    <string name="autoeq_import">Import</string>
+    <string name="autoeq_export">Export</string>
+    <string name="autoeq_import_title">Import Parametric EQ</string>
+    <string name="autoeq_import_hint">Paste Equalizer APO / AutoEQ / SquigLink text</string>
+    <string name="autoeq_import_clipboard">Paste from clipboard</string>
+    <string name="autoeq_import_file">Open file</string>
+    <string name="autoeq_import_apply">Apply</string>
+    <string name="autoeq_import_error">Invalid EQ format. Expected Equalizer APO or AutoEQ ParametricEQ.txt format.</string>
+    <string name="autoeq_export_copied">Parametric EQ copied to clipboard</string>
+    <string name="autoeq_export_share">Share Parametric EQ</string>
+    <string name="autoeq_freq_label">Freq (Hz)</string>
+    <string name="autoeq_gain_label">Gain (dB)</string>
+    <string name="autoeq_q_label">Q</string>
     <string name="signal_label_autoeq">AutoEQ</string>
     <string name="signal_detail_autoeq">Correction applied by SoundDrop (changes the samples, Android mixer still bypassed)</string>
     <string name="signal_verdict_direct_eq">Android mixer bypassed. SoundDrop applies your AutoEQ correction, then the samples go straight to the HAL.</string>
@@ -1401,4 +1549,19 @@
     <string name="spotify_playlists_section_title">Spotify</string>
     <string name="spotify_liked_songs_title">Liked Songs</string>
     <string name="spotify_liked_songs_sub">Your Spotify likes</string>
+    <string name="recognize_music">Identify music</string>
+    <string name="recognize_listening">Listening…</string>
+    <string name="recognize_listening_hint">Hold your phone near the music</string>
+    <string name="recognize_identifying">Identifying…</string>
+    <string name="recognize_cancel">Cancel</string>
+    <string name="recognize_close">Close</string>
+    <string name="recognize_search">Search in LastWave</string>
+    <string name="recognize_retry">Try again</string>
+    <string name="recognize_open_settings">Open settings</string>
+    <string name="recognize_error_permission">Microphone access is needed to listen for music.</string>
+    <string name="recognize_error_mic">The microphone is not available. Close other apps that use it and try again.</string>
+    <string name="recognize_error_silence">Nothing was heard. Turn the music up or move closer and try again.</string>
+    <string name="recognize_error_no_match">This song could not be recognised. Move closer to the music and try again.</string>
+    <string name="recognize_error_rate_limited">Too many attempts. Wait a moment and try again.</string>
+    <string name="recognize_error_network">The recognition service could not be reached. Check your connection and try again.</string>
 </resources>

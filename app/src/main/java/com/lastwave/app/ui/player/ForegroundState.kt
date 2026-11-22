@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -34,3 +35,17 @@ fun rememberIsForeground(): Boolean {
     }
     return foreground
 }
+
+/**
+ * Whether player motion should run: the activity is resumed and this window owns
+ * focus. Focus goes false while the notification shade / Quick Settings are
+ * expanded, while a dialog or popup owns the window stack, and while another
+ * split-screen pane (or another app) is focused.
+ *
+ * Screen-off and backgrounding also fall out of this because the lifecycle is
+ * no longer RESUMED. Playback and progress tracking are independent and keep
+ * running in the service/player.
+ */
+@Composable
+fun rememberPlayerWindowActive(): Boolean =
+    rememberIsForeground() && LocalWindowInfo.current.isWindowFocused

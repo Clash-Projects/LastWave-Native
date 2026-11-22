@@ -75,6 +75,14 @@ class OriginOsMusicCardTest {
     // --- lyrics ------------------------------------------------------------------
 
     @Test
+    fun lyricsOfTheLyricsScreenAreMatchedToTheTrackWhereverItIsInTheQueue() {
+        assertThat(OriginOsMusicCard.trackKeyOf(song)).isEqualTo(OriginOsMusicCard.trackKeyOf(song.copy()))
+        assertThat(OriginOsMusicCard.trackKeyOf(song))
+            .isNotEqualTo(OriginOsMusicCard.trackKeyOf(song.copy(videoId = "kjihgfedcba")))
+        assertThat(OriginOsMusicCard.trackKeyOf(song.copy(videoId = null))).isEqualTo("Song|Artist")
+    }
+
+    @Test
     fun syncedLinesBecomeWholeSongLrc() {
         val lines = listOf(
             com.lastwave.app.data.lyrics.LyricLine(timeMs = 5_230L, text = "First line"),

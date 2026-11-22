@@ -5,7 +5,11 @@
  */
 package com.lastwave.app.ui.feed.cards
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -19,8 +23,16 @@ import androidx.compose.runtime.remember
 @Composable
 fun rememberCardDimensions(): CardDimensions {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    return remember(screenWidth) {
-        calculateCardDimensions(screenWidth)
+    val peekWidth = with(LocalDensity.current) { 20.toDp() }
+    return remember(screenWidth, peekWidth) {
+        // Two square covers plus a peek must fit; capping the shared cover height here keeps
+        // wide cards exactly as tall as square ones on narrow screens (no row jitter).
+        val fitsTwoCards = (screenWidth - 48.dp - CardTokens.cardGap * 2 - peekWidth) / 2
+        calculateCardDimensions(
+            screenWidth,
+            minCoverHeight = minOf(CardTokens.MIN_COVER_HEIGHT, fitsTwoCards),
+            maxCoverHeight = minOf(CardTokens.MAX_COVER_HEIGHT, fitsTwoCards),
+        )
     }
 }
 
@@ -31,12 +43,7 @@ fun rememberCoverHeight(): Dp = rememberCardDimensions().coverHeight
 /** Square card width: two full cards with a small third-cover peek on phones. */
 @Composable
 fun rememberSquareCardWidth(): Dp {
-    val dimensions = rememberCardDimensions()
-    val peekWidth = with(LocalDensity.current) { 20.toDp() }
-    // Reserve the existing section margins, row start inset, and two card gaps.
-    val widthForTwoCards =
-        (dimensions.screenWidth - 48.dp - CardTokens.cardGap * 2 - peekWidth) / 2
-    return dimensions.squareWidth.coerceAtMost(widthForTwoCards)
+    return rememberCardDimensions().squareWidth
 }
 
 /** Wide 16:9 card width: equals coverHeight * 16/9. */
@@ -74,3 +81,32 @@ fun rememberPodcastEpisodeCardWidth(): Dp {
     return (screenWidth * 0.80f).coerceIn(260.dp, 400.dp)
 }
 
+
+/** Card width that follows the shown artwork, plus the callback the artwork reports into. */
+internal class ArtworkCardWidth(val width: Dp, val onAspect: (Float) -> Unit)
+
+/**
+ * The shelf flag and the URL only guess the cover shape (a song flagged 16:9 may resolve to
+ * square album art and vice versa). Once the image has loaded, its real aspect ratio picks
+ * the slot: wide art gets the 16:9 width, anything else the square width, at one shared
+ * height. Until then [defaultWidth] is used.
+ */
+@Composable
+internal fun rememberArtworkCardWidth(
+    artworkUrl: String?,
+    coverHeight: Dp,
+    defaultWidth: Dp,
+): ArtworkCardWidth {
+    val aspect = remember(artworkUrl) { mutableStateOf<Float?>(null) }
+    val known = aspect.value
+    val target = when {
+        known == null -> defaultWidth
+        known >= WIDE_ART_MIN_ASPECT -> (coverHeight.value * (16f / 9f)).dp
+        else -> coverHeight
+    }
+    val width by animateDpAsState(target, tween(220), label = "ArtworkCardWidth")
+    return remember(width) { ArtworkCardWidth(width) { aspect.value = it } }
+}
+
+/** 16:9 is 1.78 and 4:3 letterboxed thumbnails 1.33; anything from 1.5 up counts as wide. */
+private const val WIDE_ART_MIN_ASPECT = 1.5f

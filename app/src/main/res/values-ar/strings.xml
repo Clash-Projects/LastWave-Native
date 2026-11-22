@@ -6,7 +6,7 @@
 
     <string name="nav_feed">الموجز</string>
     <string name="nav_stats">الإحصائيات</string>
-    <string name="nav_playlists">القوائم</string>
+    <string name="nav_playlists">المكتبة</string>
     <string name="nav_create_playlist">إنشاء / توليد قائمة</string>
     <string name="update_available">يتوفر تحديث</string>
     <string name="update">تحديث</string>
@@ -446,7 +446,6 @@
     <string name="menu_add_queue">أضف إلى قائمة الانتظار</string>
     <string name="menu_open_lastfm">مفتوح في Last.fm</string>
     <string name="menu_refresh_artwork">تحديث الغلاف الفني</string>
-    <string name="menu_copy_song">نسخ الأغنية</string>
     <string name="menu_details_specs">التفاصيل والمواصفات الصوتية</string>
     <string name="menu_dont_recommend">لا أوصي مرة أخرى</string>
     <string name="menu_remove_from_playlist">إزالة من قائمة التشغيل</string>
@@ -499,10 +498,9 @@
     <string name="pl_export_title">تصدير قائمة التشغيل</string>
     <string name="pl_choose_image">اختر الصورة</string>
     <string name="pl_change_image">تغيير الصورة</string>
-    <string name="pl_title">قائمة التشغيل</string>
+    <string name="pl_title">المكتبة</string>
     <string name="pl_selected_count">%1$d تم التحديد</string>
     <string name="pl_select_more_hint">اضغط لفترة طويلة لتحديد المزيد</string>
-    <string name="pl_count_only">%1$d قوائم التشغيل</string>
     <string name="pl_count_tracks">%1$d قوائم التشغيل • %2$d المقاطع الصوتية</string>
     <string name="pl_delete_selected_cd">حذف المحدد</string>
     <string name="pl_clear_selection_cd">مسح التحديد</string>
@@ -758,9 +756,9 @@
     <string name="set_lfm_remove">إزالة</string>
     <string name="set_lfm_key_label">مفتاح واجهة برمجة التطبيقات</string>
     <string name="set_lfm_key_saved">تم حفظ المفتاح الخاص بك</string>
-    <string name="set_lfm_key_hint">مطلوب - احصل على واحدة مجانًا، ثم الصقها هنا</string>
-    <string name="set_lfm_get">احصل على مفتاح مجاني على last.fm/api →</string>
-    <string name="set_lfm_how">كيفية الحصول على مفتاح مجاني →</string>
+    <string name="set_lfm_key_hint">مطلوب - احصل على واحدة، ثم الصقها هنا</string>
+    <string name="set_lfm_get">احصل على مفتاح على last.fm/api →</string>
+    <string name="set_lfm_how">كيفية الحصول على مفتاح →</string>
     <string name="set_lfm_disc_title">هل تريد قطع الاتصال بـ Last.fm؟</string>
     <string name="set_lfm_disc_text">توقف الخربشات العالمية. تتحول إحصائياتك إلى سجل الاستماع المحلي - ولا يتم حذف أي شيء.</string>
     <string name="set_lfm_disc_btn">قطع الاتصال</string>

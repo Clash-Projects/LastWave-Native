@@ -10,6 +10,7 @@
 
 # JNI exports use the Kotlin class and method names verbatim.
 -keep class com.lastwave.app.playback.NativeAudioEngine { *; }
+-keep class com.lastwave.app.data.lossless.NativeSecrets { *; }
 
 # kotlinx.serialization: keep generated serializers and Serializable models
 -keepclassmembers class com.lastwave.app.** {

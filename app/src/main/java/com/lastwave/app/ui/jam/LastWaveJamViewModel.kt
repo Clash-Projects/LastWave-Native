@@ -13,7 +13,7 @@ import com.lastwave.app.data.jam.RemotePlaybackEvent
 import com.lastwave.app.data.jam.TrackInfoPayload
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.playback.MusicPlayer
-import com.lastwave.app.playback.MusicPlayerState
+import com.lastwave.app.playback.ListPlaybackState
 import com.lastwave.app.playback.PlaybackProgressState
 import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -52,8 +52,6 @@ data class JamUiState(
     val currentTrackArtist: String = "",
     val currentArtworkUrl: String? = null,
     val isPlaying: Boolean = false,
-    val currentPositionMs: Long = 0L,
-    val durationMs: Long = 0L,
     val serverUrl: String = JamRepository.DEFAULT_JAM_SERVER_WS,
 )
 
@@ -103,12 +101,15 @@ class LastWaveJamViewModel @Inject constructor(
     /** Live stations: the admin hands the station to someone else. */
     fun makeAdmin(userId: String) = jamRepository.transferAdmin(userId)
 
+    /** Playhead ticks every 60 ms; kept out of [uiState] so only the screens that draw it recompose. */
+    val progress: StateFlow<PlaybackProgressState> = musicPlayer.progressState
+
     val uiState: StateFlow<JamUiState> = combine(
         combine(jamRepository.sessionState, _pendingRoomCode, _pendingDisplayName, _pendingRoomMode) { session, code, name, mode ->
             SessionInput(session, code, name, mode)
         },
-        combine(musicPlayer.state, musicPlayer.progressState, settingsPreferences.settings) { playerState, progress, settings ->
-            PlayerAndSettings(playerState, progress, settings.jamServerUrl.ifBlank { JamRepository.DEFAULT_JAM_SERVER_WS })
+        combine(musicPlayer.listPlaybackState, settingsPreferences.settings) { playerState, settings ->
+            PlayerAndSettings(playerState, settings.jamServerUrl.ifBlank { JamRepository.DEFAULT_JAM_SERVER_WS })
         }
     ) { input, extra ->
         val session = input.session
@@ -116,15 +117,12 @@ class LastWaveJamViewModel @Inject constructor(
         val name = input.name
         val mode = input.mode
         val playerState = extra.playerState
-        val progress = extra.progress
         val currentTrack = playerState.current
         val activeSession = session as? JamSessionState.Active
         val title = currentTrack?.title ?: activeSession?.currentTrack?.title.orEmpty()
         val artist = currentTrack?.artist ?: activeSession?.currentTrack?.artist.orEmpty()
         val artworkUrl = currentTrack?.artworkUrl ?: activeSession?.currentTrack?.artworkUrl
         val isPlaying = playerState.isPlaying
-        val pos = progress.positionMs
-        val dur = progress.durationMs
 
         when (session) {
             is JamSessionState.Active -> JamUiState(
@@ -149,8 +147,6 @@ class LastWaveJamViewModel @Inject constructor(
                 currentTrackArtist = artist,
                 currentArtworkUrl = artworkUrl,
                 isPlaying = isPlaying,
-                currentPositionMs = pos,
-                durationMs = dur,
                 serverUrl = extra.serverUrl,
             )
             is JamSessionState.Connecting -> JamUiState(
@@ -164,8 +160,6 @@ class LastWaveJamViewModel @Inject constructor(
                 currentTrackArtist = artist,
                 currentArtworkUrl = artworkUrl,
                 isPlaying = isPlaying,
-                currentPositionMs = pos,
-                durationMs = dur,
                 serverUrl = extra.serverUrl,
             )
             is JamSessionState.Error -> JamUiState(
@@ -178,8 +172,6 @@ class LastWaveJamViewModel @Inject constructor(
                 currentTrackArtist = artist,
                 currentArtworkUrl = artworkUrl,
                 isPlaying = isPlaying,
-                currentPositionMs = pos,
-                durationMs = dur,
                 serverUrl = extra.serverUrl,
             )
             JamSessionState.Disconnected -> JamUiState(
@@ -191,8 +183,6 @@ class LastWaveJamViewModel @Inject constructor(
                 currentTrackArtist = artist,
                 currentArtworkUrl = artworkUrl,
                 isPlaying = isPlaying,
-                currentPositionMs = pos,
-                durationMs = dur,
                 serverUrl = extra.serverUrl,
             )
         }
@@ -206,8 +196,7 @@ class LastWaveJamViewModel @Inject constructor(
     )
 
     private data class PlayerAndSettings(
-        val playerState: MusicPlayerState,
-        val progress: PlaybackProgressState,
+        val playerState: ListPlaybackState,
         val serverUrl: String,
     )
 

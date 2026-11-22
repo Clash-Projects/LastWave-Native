@@ -30,7 +30,7 @@ import com.lastwave.app.R
 @Composable
 fun PodcastHeroBackground(
     backgroundUrl: String?,
-    scrollOffsetY: Float,
+    scrollOffsetY: () -> Float,
     modifier: Modifier = Modifier,
     heroHeight: Dp = 320.dp,
 ) {
@@ -42,7 +42,7 @@ fun PodcastHeroBackground(
             .fillMaxWidth()
             .height(heroHeight)
             .graphicsLayer {
-                translationY = -scrollOffsetY.coerceAtLeast(0f)
+                translationY = -scrollOffsetY().coerceAtLeast(0f)
             },
     ) {
         // Hero Image with crossfade and local fallback

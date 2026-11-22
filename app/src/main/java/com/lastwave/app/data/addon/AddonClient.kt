@@ -1,7 +1,6 @@
 package com.lastwave.app.data.addon
 
 import android.util.Log
-import com.lastwave.app.BuildConfig
 import com.lastwave.app.data.lossless.NativeSecrets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -52,12 +51,8 @@ class AddonClient(
         }
         Log.d(TAG, "Native addon signing unavailable; using fallback signer")
 
-        // 2. Fallback to obfuscated client secret decoded in memory at runtime (Desktop approach)
-        val secret = clientSecret?.takeIf { it.isNotBlank() }
-            ?: runCatching {
-                decodeSecretBytes(BuildConfig.ADDON_CLIENT_SECRET_BYTES, BuildConfig.SECRET_MASK_BYTES)
-            }.getOrNull()?.takeIf { it.isNotBlank() }
-            ?: return
+        // 2. Fallback to explicit caller-provided secret (tests/injection) only
+        val secret = clientSecret?.takeIf { it.isNotBlank() } ?: return
         try {
             val uri = java.net.URI(urlStr)
             val path = uri.path ?: "/"
@@ -102,7 +97,12 @@ class AddonClient(
         search("test", "lossless", false).map { it.size }
     }
 
-    suspend fun search(query: String, quality: String, atmos: Boolean = false): Result<List<AddonTrack>> = withContext(Dispatchers.IO) {
+    suspend fun search(
+        query: String,
+        quality: String,
+        atmos: Boolean = false,
+        warmTarget: String? = null,
+    ): Result<List<AddonTrack>> = withContext(Dispatchers.IO) {
         if (baseUrl.isBlank()) return@withContext Result.failure(IllegalArgumentException("Empty addon URL"))
         val q = query.trim()
         if (q.isBlank()) return@withContext Result.success(emptyList())
@@ -113,6 +113,7 @@ class AddonClient(
 
         try {
             val reqBuilder = Request.Builder().url(url).get()
+            if (!warmTarget.isNullOrBlank()) reqBuilder.header("X-LW-Warm-Target", warmTarget)
             signRequest(url, "GET", reqBuilder)
             val req = reqBuilder.build()
             client.newCall(req).awaitAddonResponse().let { res ->
@@ -278,14 +279,6 @@ class AddonClient(
 
     companion object {
         private const val TAG = "AddonClient"
-
-        fun decodeSecretBytes(data: ByteArray, mask: ByteArray): String {
-            if (data.isEmpty() || mask.isEmpty()) return ""
-            val decoded = ByteArray(data.size) { i ->
-                (data[i].toInt() xor mask[i % mask.size].toInt()).toByte()
-            }
-            return String(decoded, Charsets.UTF_8).trim()
-        }
 
         fun normalizeBase(raw: String): String {
             if (raw.isBlank()) return ""

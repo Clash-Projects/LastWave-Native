@@ -32,6 +32,7 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +90,10 @@ fun DraggableDownloadOverlay(
             var offsetX by remember { mutableFloatStateOf(maxMarginX) }
             var offsetY by remember { mutableFloatStateOf(with(density) { 140.dp.toPx() }) }
             var isDragging by remember { mutableStateOf(false) }
+            LaunchedEffect(minMarginX, maxMarginX, minMarginY, maxMarginY) {
+                offsetX = offsetX.coerceIn(minMarginX, maxMarginX)
+                offsetY = offsetY.coerceIn(minMarginY, maxMarginY)
+            }
             var dragDistance by remember { mutableFloatStateOf(0f) }
 
             val infiniteTransition = rememberInfiniteTransition(label = "download_pulse")
@@ -120,7 +125,7 @@ fun DraggableDownloadOverlay(
                         indication = null,
                         onClick = onOpenDownloads
                     )
-                    .pointerInput(Unit) {
+                    .pointerInput(minMarginX, maxMarginX, minMarginY, maxMarginY) {
                         detectDragGestures(
                             onDragStart = {
                                 isDragging = true

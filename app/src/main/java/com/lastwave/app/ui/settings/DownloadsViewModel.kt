@@ -15,6 +15,7 @@ import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -175,7 +177,7 @@ class DownloadsViewModel @Inject constructor(
                 )
             }
             .sortedBy { it.name.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val downloadedAlbums: StateFlow<List<DownloadedAlbum>> = downloadedTracks.map { tracks ->
         val albumsList = mutableListOf<DownloadedAlbum>()
@@ -225,7 +227,7 @@ class DownloadsViewModel @Inject constructor(
             }
         }
         albumsList.sortedBy { it.title.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalBytes: StateFlow<Long?> =
         downloadedTrackDao.totalBytes().withDownloadsFallback(0L).stateIn(
@@ -559,8 +561,7 @@ class DownloadsViewModel @Inject constructor(
                 val label = describeCustomLocation() ?: tree
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(treeUri, android.provider.DocumentsContract.Document.MIME_TYPE_DIR)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(
                     Intent.createChooser(intent, context.getString(com.lastwave.app.R.string.dl_open_location, label))

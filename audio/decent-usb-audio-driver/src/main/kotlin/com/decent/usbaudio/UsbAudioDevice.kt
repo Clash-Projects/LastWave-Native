@@ -34,6 +34,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     private var connection: UsbDeviceConnection? = null
     private var currentDevice: UsbDevice? = null
     private var claimedInterface: UsbInterface? = null
+    private var claimedControlInterface: UsbInterface? = null
     /**
      * bInterfaceNumber of the PLAYBACK AudioStreaming interface (-1 = unknown).
      * USB headset-style dongles also expose a CAPTURE (microphone) AS
@@ -41,6 +42,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
      * playback one or the driver ends up driving the microphone.
      */
     @Volatile private var playbackInterfaceId: Int = -1
+    @Volatile private var audioControlInterfaceId: Int = 0
 
     /** UAC version of the open device (100 / 200 / 300, 0 = unknown). */
     @Volatile var currentUacVersion: Int = 0
@@ -85,6 +87,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
          */
         private val CONTINUOUS_FEEDBACK_DEVICES = setOf(
             0x2fc6 to 0xf82d, // Luxury & Precision UAC Device (#474)
+            0x2d87 to 0x003b, // Cayin RU3 UAC 2.0
         )
 
         fun needsContinuousFeedback(vendorId: Int, productId: Int): Boolean =
@@ -279,8 +282,13 @@ class UsbAudioDevice private constructor(private val context: Context) {
                 .firstOrNull { it.interfaceClass == UsbConstants.USB_CLASS_AUDIO && it.interfaceSubclass == 1 }
 
         if (controlInterface != null) {
+            audioControlInterfaceId = controlInterface.id
             val claimed = conn.claimInterface(controlInterface, true)
             Log.i(TAG, "Claimed AudioControl interface ${controlInterface.id} force=true: $claimed")
+            claimedControlInterface = if (claimed) controlInterface else null
+        } else {
+            audioControlInterfaceId = 0
+            claimedControlInterface = null
         }
 
         // Claim the AudioStreaming interface with force=true to disconnect kernel driver (snd-usb-audio)
@@ -412,6 +420,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         // so the same fd is reused (native claims are on this fd).
         cachedDeviceInfo = null
         claimedInterface = null
+        claimedControlInterface = null
         // DO NOT close connection — the fd from reset+native claim must be reused
         // The next openDevice() will see connection != null and skip re-opening
     }
@@ -816,6 +825,10 @@ class UsbAudioDevice private constructor(private val context: Context) {
         parsedClockSelectorId = -1
         parsedClockSelectorPins = emptyList()
         activeClockSourceId = -1
+        claimedControlInterface?.let { iface ->
+            runCatching { connection?.releaseInterface(iface) }
+            claimedControlInterface = null
+        }
         claimedInterface?.let { iface ->
             runCatching { connection?.releaseInterface(iface) }
             claimedInterface = null
@@ -824,6 +837,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         connection = null
         currentDevice = null
         playbackInterfaceId = -1
+        audioControlInterfaceId = 0
         Log.i(TAG, "USB device closed")
     }
 
@@ -853,7 +867,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val rangeBuf = ByteArray(258)
         val stopOnFirstHit = parsedClockSourceIds.size <= 1
         for (csId in candidateIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = (csId shl 8) or (audioControlInterfaceId and 0xFF)
             val ret = conn.controlTransfer(
                 0xA1,
                 0x02,   // GET_RANGE
@@ -972,7 +986,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         if (pinZeroIndex < 0) return
         val pinNumber = (pinZeroIndex + 1).toByte() // UAC2 Clock Selector pins are 1-based
         val pinData = byteArrayOf(pinNumber)
-        val wIndex = (parsedClockSelectorId shl 8) or 0
+        val wIndex = (parsedClockSelectorId shl 8) or (audioControlInterfaceId and 0xFF)
         val ret = conn.controlTransfer(
             0x21,
             0x01,   // SET_CUR
@@ -1043,7 +1057,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
         for (csId in clockSourceIds) {
             selectClockSelectorPinIfNeeded(conn, csId)
-            val wIndex = (csId shl 8) or 0  // entityId << 8 | audioControlInterface(0)
+            val wIndex = (csId shl 8) or (audioControlInterfaceId and 0xFF)
             val ret = conn.controlTransfer(
                     0x21,    // bmRequestType: Host-to-Device, Class, Interface
                     0x01,    // bRequest: SET_CUR
@@ -1112,7 +1126,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
             }
         }.distinct()
         for (csId in clockSourceIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = (csId shl 8) or (audioControlInterfaceId and 0xFF)
             val ret = conn.controlTransfer(
                     0xA1,    // bmRequestType: Device-to-Host, Class, Interface
                     0x01,    // bRequest: GET_CUR (actually CUR is 0x01 for both)
@@ -1209,7 +1223,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
         val clockSourceIds = if (detectedId > 0) intArrayOf(detectedId)
                 else intArrayOf(0x05, 0x09, 0x0A, 0x0B, 0x0C, 0x28, 0x29)
         for (csId in clockSourceIds) {
-            val wIndex = (csId shl 8) or 0
+            val wIndex = (csId shl 8) or (audioControlInterfaceId and 0xFF)
             val ret = conn.controlTransfer(
                     0xA1,    // bmRequestType: Device-to-Host, Class, Interface
                     0x01,    // bRequest: GET_CUR

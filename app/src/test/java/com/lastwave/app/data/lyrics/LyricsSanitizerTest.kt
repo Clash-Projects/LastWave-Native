@@ -38,7 +38,7 @@ class LyricsSanitizerTest {
     @Test
     fun sanitize_dropsCreditsWithoutTouchingTiming() {
         val lines = listOf(
-            LyricLine(timeMs = 0L, durationMs = 1000L, text = "Lyrics by Someone"),
+            LyricLine(timeMs = 0L, durationMs = 1000L, text = "Lyrics provided by Someone"),
             LyricLine(timeMs = 1000L, durationMs = 2000L, text = "Hello there"),
         )
         val out = LyricsSanitizer.sanitize(lines)
@@ -98,5 +98,33 @@ class LyricsSanitizerTest {
         assertThat(LyricsSanitizer.safeLineText("Hello,   world", listOf("Hello", "world"))).isEqualTo("Hello, world")
         assertThat(LyricsSanitizer.safeLineText("Hello world (ooh)", listOf("Hello", "world"))).isEqualTo("Hello world")
         assertThat(LyricsSanitizer.safeLineText(null, listOf("Hello", "world"))).isEqualTo("Hello world")
+    }
+
+    @Test
+    fun sanitizePlain_rendersUntimedHtmlParagraphsAsLyrics() {
+        val html = "<div><p>लोगों को लगता है सुलझा हूँ</p><p>कितने सवालों में उलझा हूँ</p></div>" +
+            "<div><p>मिलनी वो मंज़िल तो बाकी है</p><p>रस्ते पे हूँ, ये ही काफी है</p></div>"
+        assertThat(LyricsSanitizer.sanitizePlain(html)).isEqualTo(
+            "लोगों को लगता है सुलझा हूँ\nकितने सवालों में उलझा हूँ\n\n" +
+                "मिलनी वो मंज़िल तो बाकी है\nरस्ते पे हूँ, ये ही काफी है",
+        )
+    }
+
+    @Test
+    fun sanitizePlain_decodesHtmlEntitiesAndLineBreaks() {
+        val html = "&lt;p&gt;You &amp;amp; I&lt;br/&gt;&lt;em&gt;Stay&lt;/em&gt;&lt;/p&gt;"
+        assertThat(LyricsSanitizer.sanitizePlain(html)).isEqualTo("You & I\nStay")
+    }
+
+    @Test
+    fun sanitizePlain_keepsOrdinaryLyricsExactlyAsAuthored() {
+        val plain = "  You <3 me &amp; I > you\r\n\r\n[00:12.34] Stay  close  "
+        assertThat(LyricsSanitizer.sanitizePlain(plain)).isEqualTo(plain)
+    }
+
+    @Test
+    fun sanitizePlain_stillSuppressesCreditsInsideMarkup() {
+        assertThat(LyricsSanitizer.sanitizePlain("<p>Lyrics provided by Musixmatch</p><p>Hello</p>"))
+            .isEqualTo("Hello")
     }
 }

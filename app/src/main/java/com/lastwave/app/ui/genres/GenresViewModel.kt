@@ -10,6 +10,8 @@ import com.lastwave.app.data.generate.GenresRepository
 import com.lastwave.app.data.naming.PlaylistNamer
 import com.lastwave.app.data.playlist.PlaylistRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +52,8 @@ class GenresViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(GenresUiState())
     val uiState: StateFlow<GenresUiState> = _uiState.asStateFlow()
+    private var detailJob: Job? = null
+    private var statsJob: Job? = null
 
     init {
         loadGenres()
@@ -70,12 +74,16 @@ class GenresViewModel @Inject constructor(
     }
 
     private fun loadGenres() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+        statsJob?.cancel()
+        val period = _uiState.value.period
+        _uiState.update { it.copy(isLoading = true, error = null) }
+        statsJob = viewModelScope.launch {
             try {
-                val stats = genresRepository.fetchGenreStats(_uiState.value.period)
+                val stats = genresRepository.fetchGenreStats(period)
+                coroutineContext.ensureActive()
                 _uiState.update { it.copy(isLoading = false, stats = stats) }
             } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "Couldn't load genres") }
             }
         }
@@ -97,7 +105,8 @@ class GenresViewModel @Inject constructor(
     }
 
     fun closeDetail() {
-        _uiState.update { it.copy(detailGenre = null, detailTracks = emptyList(), isDiscoverMode = false) }
+        detailJob?.cancel()
+        _uiState.update { it.copy(detailGenre = null, detailTracks = emptyList(), isDiscoverMode = false, detailLoading = false) }
     }
 
     fun setDetailSort(sort: GenreDetailSort) {
@@ -108,7 +117,7 @@ class GenresViewModel @Inject constructor(
         }
     }
 
-    fun showYourTracks(genre: String) {
+    fun showYourTracks() {
         _uiState.update {
             it.copy(
                 isDiscoverMode = false,
@@ -122,21 +131,24 @@ class GenresViewModel @Inject constructor(
     }
 
     fun loadDetailPage(reset: Boolean = false) {
-        val genre = _uiState.value.detailGenre ?: return
-        if (_uiState.value.isDiscoverMode) return
-        if (_uiState.value.detailLoading && !reset) return
-        if (!reset && !_uiState.value.detailHasMore) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(detailLoading = true) }
+        val state = _uiState.value
+        val genre = state.detailGenre ?: return
+        if (state.isDiscoverMode || (!reset && (state.detailLoading || !state.detailHasMore))) return
+        detailJob?.cancel()
+        val page = if (reset) 1 else state.detailPage
+        _uiState.update { it.copy(detailLoading = true) }
+        detailJob = viewModelScope.launch {
             try {
-                val page = if (reset) 1 else _uiState.value.detailPage
                 val fetched = genresRepository.fetchGenreTracks(genre, page)
+                // Repository fallbacks may swallow cancellation; a replaced sheet must never receive this result.
+                coroutineContext.ensureActive()
                 _uiState.update { s ->
                     val merged = if (reset) fetched else s.detailTracks + fetched
                     val ordered = if (s.detailSort == GenreDetailSort.AZ) merged.sortedBy { it.name.lowercase() } else merged
                     s.copy(detailTracks = ordered, detailLoading = false, detailPage = page + 1, detailHasMore = fetched.isNotEmpty())
                 }
             } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 _uiState.update { it.copy(detailLoading = false, detailHasMore = false) }
             }
         }
@@ -182,19 +194,22 @@ class GenresViewModel @Inject constructor(
 
     /** §5.5 "Discover More" — directly loads and displays 30-35 fresh undiscovered genre recommendations. */
     fun discoverMore(genre: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(detailLoading = true, isDiscoverMode = true) }
+        if (_uiState.value.detailGenre != genre) return
+        detailJob?.cancel()
+        _uiState.update { it.copy(detailLoading = true, isDiscoverMode = true) }
+        detailJob = viewModelScope.launch {
             try {
                 val fresh = genresRepository.discoverMore(genre)
+                coroutineContext.ensureActive()
                 _uiState.update { s ->
                     s.copy(
                         detailTracks = fresh.ifEmpty { s.detailTracks },
-                        isDiscoverMode = true,
                         detailLoading = false,
                         detailHasMore = false,
                     )
                 }
             } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 _uiState.update { it.copy(detailLoading = false, error = e.message ?: "Failed to discover genre tracks") }
             }
         }

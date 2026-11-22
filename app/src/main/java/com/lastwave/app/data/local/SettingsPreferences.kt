@@ -15,13 +15,17 @@ import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
 import com.lastwave.app.playback.haptics.MusicHapticsIntensity
 import com.lastwave.app.playback.haptics.MusicHapticsMode
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.lastwave.app.ui.player.LyricsStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -100,6 +104,38 @@ enum class RecommendationSource(val id: String, val titleRes: Int, val subtitleR
     }
 }
 
+/** Visual style for the player seekbar progress slider. */
+enum class SeekbarStyle(val id: String) {
+    DEFAULT("default"),
+    WAVY("wavy"),
+    WAVEFORM("waveform");
+
+    companion object {
+        fun fromId(id: String?, legacyWavyEnabled: Boolean?): SeekbarStyle {
+            if (id != null) {
+                return entries.firstOrNull { it.id == id }
+                    ?: if (legacyWavyEnabled == true) WAVY else DEFAULT
+            }
+            return if (legacyWavyEnabled == true) WAVY else DEFAULT
+        }
+    }
+}
+
+/** How a track reaches the selected streaming quality. Downgrades are always seamless. */
+enum class HiResStart(val id: String, val title: String, val subtitle: String) {
+    FAST("fast", "Fast start", "Start on Opus, then switch to your quality when ready"),
+    DIRECT("direct", "Best quality first", "Wait up to 8 s for your quality, then Opus"),
+    NEVER("never", "Never upgrade", "Keep the stream a song starts with");
+
+    companion object {
+        fun fromId(id: String?, legacyAutoUpgrade: Boolean?): HiResStart =
+            entries.firstOrNull { it.id == id } ?: if (legacyAutoUpgrade == false) NEVER else DIRECT
+    }
+}
+
+/** Cellular-only streaming choice: adapt to the link and buffer, never above the Wi-Fi choice. */
+const val CELLULAR_QUALITY_AUTO = 0
+
 data class MiscSettings(
     /** When on, the app's accent color follows the dominant color of the
      *  currently-scrobbling track's artwork (Home's "now playing" track),
@@ -111,6 +147,10 @@ data class MiscSettings(
      *  font (see ui/theme/Type.kt); off: the device's own system font.
      *  Defaults on so the app ships with its own identity out of the box. */
     val useCustomFont: Boolean = true,
+    /** "Use Bold Font": on draws every piece of text, lyrics included, in a heavier weight. */
+    val useBoldFont: Boolean = false,
+    /** Scrolling a tab shrinks the nav bar to an icon pill with the mini player docked beside it. Off keeps the classic bar. */
+    val collapsingNavBar: Boolean = true,
     /** Last.fm usernames pinned to the top of Home's friend-switcher sheet
      *  (long-press a friend row to toggle). Order among pinned friends
      *  follows whatever order user.getfriends itself returns them in —
@@ -119,12 +159,14 @@ data class MiscSettings(
     /** When true, the player attempts to resolve and stream lossless / Hi-Res audio
      *  directly from lossless CDN when a high-confidence match exists. Falls back to YouTube Music. */
     val preferLosslessStreaming: Boolean = true,
+    val hiResStart: HiResStart = HiResStart.DIRECT,
     /** When true, the player also queries installed provider modules in
      *  parallel with the addon; a module hit plays instantly on miss. */
     val preferProviderModules: Boolean = true,
-    /** Preferred quality preset for lossless streaming (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k).
-     *  If a track does not support the requested quality, the worker automatically selects the highest available. */
-    val losslessQuality: Int = 27,
+    /** Preferred streaming quality when connected over Wi-Fi or Ethernet. */
+    val wifiStreamingQuality: Int = 27,
+    /** Streaming quality over cellular data; [CELLULAR_QUALITY_AUTO] adapts to the link. */
+    val cellularStreamingQuality: Int = 5,
     /** Preferred quality preset for downloads (27: 24/192, 7: 24/96, 6: 16/44.1, 5: 320k, -1: YouTube Music). */
     val downloadQuality: Int = 27,
     /** Optional studio-clarity curve. On by default; Bit-Perfect disables it. */
@@ -144,6 +186,8 @@ data class MiscSettings(
     val buttonNowPlayingEnabled: Boolean = false,
     /** When true, shows synced music video option in the Now Playing menu (Settings -> Experimental). On by default. */
     val musicVideoEnabled: Boolean = true,
+    /** When true, shows watch video button on the Now Playing screen when music video is enabled. */
+    val musicVideoNowPlayingButtonEnabled: Boolean = false,
     /** When true (default), shows AutoEQ and Parametric EQ card in Now Playing audio controls sheet. */
     val showAutoEqInVolumePanel: Boolean = true,
     val wordByWordLyrics: Boolean = true,
@@ -159,19 +203,26 @@ data class MiscSettings(
     /** Scale factor applied to lyrics font size across both modern and classic views.
      *  Default 1.0f (100%), clamped between 0.7f (70%) and 1.5f (150%). */
     val lyricsFontScale: Float = 1.0f,
+    /** Synced and plain lyrics centred instead of following each row's singer side. */
+    val lyricsCentered: Boolean = false,
     /** Blend the end of one queued track into the beginning of the next. */
     val crossfadeEnabled: Boolean = false,
     /** When the queue runs out, keep playing similar songs (radio). Off = stop at the end. */
     val autoplaySimilarEnabled: Boolean = true,
     /** Crossfade length in seconds; kept within the native settings slider range. */
     val crossfadeSeconds: Int = 5,
-    /** When true (default), uses the multi-layer dynamic wavy seekbar.
-     *  When false, uses the classic standard progress slider in the player tab. */
-    val wavySeekbarEnabled: Boolean = true,
+    /** Player seekbar visual style (Default, Wavy, Waveform). */
+    val lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
+    val seekbarStyle: SeekbarStyle = SeekbarStyle.DEFAULT,
+    /** Animated wavy seekbar in the player (kept for backward compatibility). */
+    val wavySeekbarEnabled: Boolean = (seekbarStyle == SeekbarStyle.WAVY),
     val rotatingBackgroundEnabled: Boolean = true,
     /** When true, animates fluid rotating artwork in the lyrics background.
      *  When false (default), uses static blurred artwork background in the lyrics view. */
     val lyricsRotatingBackgroundEnabled: Boolean = false,
+    /** When true (default), fluid background motion dynamically surges and pulses to musical beats.
+     *  When false, fluid background moves at a steady constant speed. */
+    val fluidBeatSyncEnabled: Boolean = false,
     /** When true, keeps the screen from turning off when the user has the lyrics view open. */
     val keepLyricsScreenAwake: Boolean = false,
     /** Seconds of inactivity before the floating lyrics buttons (font size,
@@ -230,10 +281,6 @@ data class MiscSettings(
     val canvasGradientBlurEnabled: Boolean = true,
     /** When true, canvas video loops may be fetched over cellular data. */
     val canvasOverCellular: Boolean = true,
-    /** When true, a liked song is also marked as liked on YouTube Music. */
-    val likedSongsYouTubeSync: Boolean = true,
-    /** When true, a liked song is added to this app's own Liked Songs playlist. */
-    val likedSongsLocalSync: Boolean = true,
     /** When false, podcast shelves, screens and episode search stay hidden.
      *  Existing progress is preserved so re-enabling resumes where you left off. */
     val podcastsEnabled: Boolean = true,
@@ -241,12 +288,13 @@ data class MiscSettings(
      *  tears down the playback service. When false, playback keeps running in
      *  the background after the task is removed. */
     val stopPlaybackOnTaskRemoved: Boolean = false,
+    val pauseOnZeroVolume: Boolean = false,
     val suppressYouTubeLoginPrompt: Boolean = false,
     val hasDismissedJoinSupportPrompt: Boolean = false,
     /** Display name used in SoundDrop Jam sessions. */
     val jamDisplayName: String = "",
     /** Custom Jam WebSocket server URL. */
-    val jamServerUrl: String = "wss://jam.clashprojects.qd.je/ws",
+    val jamServerUrl: String = "wss://jam.clashgram.org/ws",
     /** Jam Room Mode default: "collaborative" or "host_only". */
     val jamRoomMode: String = "collaborative",
     /** Apple Music-style tactile rhythm synchronization. */
@@ -255,6 +303,10 @@ data class MiscSettings(
     val musicHapticsIntensity: MusicHapticsIntensity = MusicHapticsIntensity.MEDIUM,
     val musicHapticsEngineMode: MusicHapticsEngineMode = MusicHapticsEngineMode.AUTO,
     val musicHapticsPauseOnBatterySaver: Boolean = true,
+    /** When true, uses the classic card-based 3-dots song menu instead of the redesigned layout. */
+    val useLegacyTrackMenu: Boolean = false,
+    /** When true, enables blur effect behind and around song options menus. */
+    val useMenuBlur: Boolean = true,
 )
 
 val MiscSettings.musicHapticsConfig: MusicHapticsConfig
@@ -269,6 +321,7 @@ val MiscSettings.musicHapticsConfig: MusicHapticsConfig
 val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "taste_strip",
     "discover_new_music",
+    "preview_queues",
     "quick_picks",
     "because_you_listen_to",
     "fresh_finds",
@@ -298,6 +351,7 @@ val DEFAULT_SECTION_ORDER: List<String> = listOf(
     "yt:Live performances",
     "friends_activity",
     "podcast_shelf",
+    "moods_and_genres",
     "yt:Similar to",
     "yt:Music video for you",
     "yt:Trending songs for you",
@@ -392,10 +446,17 @@ class SettingsPreferences @Inject constructor(
     private object Keys {
         val DYNAMIC_NOW_PLAYING = booleanPreferencesKey("lw_dynamic_now_playing")
         val USE_CUSTOM_FONT = booleanPreferencesKey("lw_use_custom_font")
+        val USE_BOLD_FONT = booleanPreferencesKey("lw_use_bold_font")
+        val COLLAPSING_NAV_BAR = booleanPreferencesKey("lw_collapsing_nav_bar")
         val PINNED_FRIENDS = stringSetPreferencesKey("lw_pinned_friends")
         val PREFER_LOSSLESS_STREAMING = booleanPreferencesKey("lw_prefer_lossless_streaming")
+        /** Legacy on/off toggle; read once to seed [HI_RES_START]. */
+        val AUTO_UPGRADE_HI_RES = booleanPreferencesKey("lw_auto_upgrade_hi_res")
+        val HI_RES_START = stringPreferencesKey("lw_hi_res_start")
         val PREFER_PROVIDER_MODULES = booleanPreferencesKey("lw_prefer_provider_modules")
         val LOSSLESS_QUALITY = intPreferencesKey("lw_lossless_quality")
+        val WIFI_STREAMING_QUALITY = intPreferencesKey("lw_wifi_streaming_quality")
+        val CELLULAR_STREAMING_QUALITY = intPreferencesKey("lw_cellular_streaming_quality")
         val DOWNLOAD_QUALITY = intPreferencesKey("lw_download_quality")
         val MUSIC_ENHANCER = booleanPreferencesKey("lw_music_enhancer")
         val CLARITY_PRESET = intPreferencesKey("lw_clarity_preset")
@@ -407,14 +468,18 @@ class SettingsPreferences @Inject constructor(
         val SPOTIFY_PLAYLISTS_SYNC_ENABLED = booleanPreferencesKey("lw_spotify_playlists_sync_enabled")
         val LYRICS_OFFSET_MS = longPreferencesKey("lw_lyrics_offset_ms")
         val LYRICS_FONT_SCALE = floatPreferencesKey("lw_lyrics_font_scale")
+        val LYRICS_CENTERED = booleanPreferencesKey("lw_lyrics_centered")
         val APP_VOLUME = floatPreferencesKey("lw_app_volume")
         val APP_VOLUME_CAST_FIX_DONE = booleanPreferencesKey("lw_app_volume_cast_fix_done")
         val CROSSFADE_ENABLED = booleanPreferencesKey("lw_crossfade_enabled")
         val AUTOPLAY_SIMILAR_ENABLED = booleanPreferencesKey("lw_autoplay_similar_enabled")
         val CROSSFADE_SECONDS = intPreferencesKey("lw_crossfade_seconds")
+        val LYRICS_STYLE = stringPreferencesKey("lw_lyrics_style")
+        val SEEKBAR_STYLE = stringPreferencesKey("lw_seekbar_style")
         val WAVY_SEEKBAR_ENABLED = booleanPreferencesKey("lw_wavy_seekbar_enabled")
         val ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_rotating_background_enabled")
         val LYRICS_ROTATING_BACKGROUND_ENABLED = booleanPreferencesKey("lw_lyrics_rotating_background_enabled")
+        val FLUID_BEAT_SYNC_ENABLED = booleanPreferencesKey("lw_fluid_beat_sync_enabled")
         val KEEP_LYRICS_SCREEN_AWAKE = booleanPreferencesKey("lw_keep_lyrics_screen_awake")
         val LYRICS_BUTTONS_AUTO_HIDE_SECONDS = intPreferencesKey("lw_lyrics_buttons_auto_hide_seconds")
         val TRANSLATION_LANGUAGE = stringPreferencesKey("lw_translation_language")
@@ -432,6 +497,7 @@ class SettingsPreferences @Inject constructor(
         val SYSTEM_EFFECTS_MODE = booleanPreferencesKey("lw_system_effects_mode")
         val BUTTON_NOW_PLAYING_ENABLED = booleanPreferencesKey("lw_button_now_playing_enabled")
         val MUSIC_VIDEO_ENABLED = booleanPreferencesKey("lw_music_video_enabled")
+        val MUSIC_VIDEO_NP_BUTTON_ENABLED = booleanPreferencesKey("lw_music_video_np_button_enabled")
         val SHOW_AUTO_EQ_IN_VOLUME_PANEL = booleanPreferencesKey("lw_show_auto_eq_in_volume_panel")
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
@@ -448,11 +514,10 @@ class SettingsPreferences @Inject constructor(
         val CANVAS_FULL_BLEED = booleanPreferencesKey("lw_canvas_full_bleed")
         val CANVAS_GRADIENT_BLUR_ENABLED = booleanPreferencesKey("lw_canvas_gradient_blur_enabled")
         val CANVAS_OVER_CELLULAR = booleanPreferencesKey("lw_canvas_over_cellular")
-        val LIKED_SONGS_YOUTUBE_SYNC = booleanPreferencesKey("lw_liked_songs_youtube_sync")
-        val LIKED_SONGS_LOCAL_SYNC = booleanPreferencesKey("lw_liked_songs_local_sync")
         val LIKED_SONGS_LOCAL_ONLY = stringPreferencesKey("lw_liked_songs_local_only")
         val PODCASTS_ENABLED = booleanPreferencesKey("lw_podcasts_enabled")
         val STOP_PLAYBACK_ON_TASK_REMOVED = booleanPreferencesKey("lw_stop_playback_on_task_removed")
+        val PAUSE_ON_ZERO_VOLUME = booleanPreferencesKey("lw_pause_on_zero_volume")
         val SUPPRESS_YOUTUBE_LOGIN_PROMPT = booleanPreferencesKey("lw_suppress_youtube_login_prompt")
         val HAS_DISMISSED_JOIN_SUPPORT_PROMPT = booleanPreferencesKey("lw_has_dismissed_join_support_prompt")
         val JAM_DISPLAY_NAME = stringPreferencesKey("lw_jam_display_name")
@@ -463,6 +528,8 @@ class SettingsPreferences @Inject constructor(
         val MUSIC_HAPTICS_INTENSITY = stringPreferencesKey("lw_music_haptics_intensity")
         val MUSIC_HAPTICS_ENGINE_MODE = stringPreferencesKey("lw_music_haptics_engine_mode")
         val MUSIC_HAPTICS_BATTERY_SAVER = booleanPreferencesKey("lw_music_haptics_battery_saver")
+        val USE_LEGACY_TRACK_MENU = booleanPreferencesKey("lw_use_legacy_track_menu")
+        val USE_MENU_BLUR = booleanPreferencesKey("lw_use_menu_blur")
     }
 
     val settings: Flow<MiscSettings> = dataStore.data
@@ -496,18 +563,30 @@ class SettingsPreferences @Inject constructor(
             MiscSettings(
                 dynamicNowPlayingEnabled = p.readSafely(Keys.DYNAMIC_NOW_PLAYING) ?: false,
                 useCustomFont = p.readSafely(Keys.USE_CUSTOM_FONT) ?: true,
+                useBoldFont = p.readSafely(Keys.USE_BOLD_FONT) ?: false,
+                collapsingNavBar = p.readSafely(Keys.COLLAPSING_NAV_BAR) ?: true,
                 pinnedFriends = p.readSafely(Keys.PINNED_FRIENDS) ?: emptySet(),
                 preferLosslessStreaming = p.readSafely(Keys.PREFER_LOSSLESS_STREAMING) ?: true,
+                hiResStart = HiResStart.fromId(p.readSafely(Keys.HI_RES_START), p.readSafely(Keys.AUTO_UPGRADE_HI_RES)),
                 preferProviderModules = p.readSafely(Keys.PREFER_PROVIDER_MODULES) ?: true,
-                losslessQuality = p.readSafely(Keys.LOSSLESS_QUALITY)?.takeIf { it in LOSSLESS_QUALITIES } ?: 27,
+                wifiStreamingQuality = p.readSafely(Keys.WIFI_STREAMING_QUALITY)
+                    ?.let(::normalizeStreamingQuality)
+                    ?: p.readSafely(Keys.LOSSLESS_QUALITY)?.let(::normalizeStreamingQuality)
+                    ?: 27,
+                cellularStreamingQuality = p.readSafely(Keys.CELLULAR_STREAMING_QUALITY)
+                    ?.let { it.takeIf { q -> q == CELLULAR_QUALITY_AUTO } ?: normalizeStreamingQuality(it) }
+                    ?: p.readSafely(Keys.LOSSLESS_QUALITY)?.let(::normalizeStreamingQuality)
+                    ?: 5,
                 downloadQuality = p.readSafely(Keys.DOWNLOAD_QUALITY)?.takeIf { it in DOWNLOAD_QUALITIES } ?: 27,
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
                 musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: true,
+                musicVideoNowPlayingButtonEnabled = p.readSafely(Keys.MUSIC_VIDEO_NP_BUTTON_ENABLED) ?: false,
                 showAutoEqInVolumePanel = p.readSafely(Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL) ?: true,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
-                clarityPreset = p.readSafely(Keys.CLARITY_PRESET)?.takeIf { it in 0..3 } ?: 0,
-                clarityAtmosBypass = p.readSafely(Keys.CLARITY_ATMOS_BYPASS) ?: false,
+                // Clarity is a single on/off again: always the Reference curve, never bypassed on spatial.
+                clarityPreset = 0,
+                clarityAtmosBypass = false,
                 isBitPerfectEnabled = p.readSafely(Keys.BIT_PERFECT_ENABLED) ?: false,
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
@@ -515,12 +594,16 @@ class SettingsPreferences @Inject constructor(
                 spotifyPlaylistsSyncEnabled = p.readSafely(Keys.SPOTIFY_PLAYLISTS_SYNC_ENABLED) ?: false,
                 lyricsOffsetMs = (p.readSafely(Keys.LYRICS_OFFSET_MS) ?: 0L).coerceIn(-10000L, 10000L),
                 lyricsFontScale = (p.readSafely(Keys.LYRICS_FONT_SCALE) ?: 1.0f).coerceIn(0.7f, 1.5f),
+                lyricsCentered = p.readSafely(Keys.LYRICS_CENTERED) ?: false,
                 crossfadeEnabled = p.readSafely(Keys.CROSSFADE_ENABLED) ?: false,
                 autoplaySimilarEnabled = p.readSafely(Keys.AUTOPLAY_SIMILAR_ENABLED) ?: true,
                 crossfadeSeconds = (p.readSafely(Keys.CROSSFADE_SECONDS) ?: 5).coerceIn(1, 12),
-                wavySeekbarEnabled = p.readSafely(Keys.WAVY_SEEKBAR_ENABLED) ?: true,
+                lyricsStyle = LyricsStyle.fromId(p.readSafely(Keys.LYRICS_STYLE)),
+                seekbarStyle = SeekbarStyle.fromId(p.readSafely(Keys.SEEKBAR_STYLE), p.readSafely(Keys.WAVY_SEEKBAR_ENABLED)),
+                wavySeekbarEnabled = SeekbarStyle.fromId(p.readSafely(Keys.SEEKBAR_STYLE), p.readSafely(Keys.WAVY_SEEKBAR_ENABLED)) == SeekbarStyle.WAVY,
                 rotatingBackgroundEnabled = p.readSafely(Keys.ROTATING_BACKGROUND_ENABLED) ?: true,
                 lyricsRotatingBackgroundEnabled = p.readSafely(Keys.LYRICS_ROTATING_BACKGROUND_ENABLED) ?: false,
+                fluidBeatSyncEnabled = p.readSafely(Keys.FLUID_BEAT_SYNC_ENABLED) ?: false,
                 keepLyricsScreenAwake = p.readSafely(Keys.KEEP_LYRICS_SCREEN_AWAKE) ?: false,
                 lyricsButtonsAutoHideSeconds =
                     sanitizeLyricsButtonsAutoHideSeconds(p.readSafely(Keys.LYRICS_BUTTONS_AUTO_HIDE_SECONDS)),
@@ -548,22 +631,34 @@ class SettingsPreferences @Inject constructor(
                 canvasFullBleed = p.readSafely(Keys.CANVAS_FULL_BLEED) ?: true,
                 canvasGradientBlurEnabled = p.readSafely(Keys.CANVAS_GRADIENT_BLUR_ENABLED) ?: false,
                 canvasOverCellular = p.readSafely(Keys.CANVAS_OVER_CELLULAR) ?: true,
-                likedSongsYouTubeSync = p.readSafely(Keys.LIKED_SONGS_YOUTUBE_SYNC) ?: true,
-                likedSongsLocalSync = p.readSafely(Keys.LIKED_SONGS_LOCAL_SYNC) ?: true,
                 podcastsEnabled = p.readSafely(Keys.PODCASTS_ENABLED) ?: true,
                 stopPlaybackOnTaskRemoved = p.readSafely(Keys.STOP_PLAYBACK_ON_TASK_REMOVED) ?: false,
+                pauseOnZeroVolume = p.readSafely(Keys.PAUSE_ON_ZERO_VOLUME) ?: false,
                 suppressYouTubeLoginPrompt = p.readSafely(Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT) ?: false,
                 hasDismissedJoinSupportPrompt = p.readSafely(Keys.HAS_DISMISSED_JOIN_SUPPORT_PROMPT) ?: false,
                 jamDisplayName = p.readSafely(Keys.JAM_DISPLAY_NAME)?.trim().orEmpty(),
-                jamServerUrl = p.readSafely(Keys.JAM_SERVER_URL)?.trim().takeIf { !it.isNullOrBlank() } ?: "wss://jam.clashprojects.qd.je/ws",
+                jamServerUrl = p.readSafely(Keys.JAM_SERVER_URL)?.trim().let { raw ->
+                    when {
+                        raw.isNullOrBlank() || raw == "wss://jam.clashprojects.qd.je/ws" -> "wss://jam.clashgram.org/ws"
+                        else -> raw
+                    }
+                },
                 jamRoomMode = p.readSafely(Keys.JAM_ROOM_MODE)?.trim().takeIf { it == "host_only" || it == "collaborative" } ?: "collaborative",
                 musicHapticsEnabled = p.readSafely(Keys.MUSIC_HAPTICS_ENABLED) ?: false,
                 musicHapticsMode = MusicHapticsMode.fromName(p.readSafely(Keys.MUSIC_HAPTICS_MODE)),
                 musicHapticsIntensity = MusicHapticsIntensity.fromName(p.readSafely(Keys.MUSIC_HAPTICS_INTENSITY)),
                 musicHapticsEngineMode = MusicHapticsEngineMode.fromName(p.readSafely(Keys.MUSIC_HAPTICS_ENGINE_MODE)),
                 musicHapticsPauseOnBatterySaver = p.readSafely(Keys.MUSIC_HAPTICS_BATTERY_SAVER) ?: true,
+                useLegacyTrackMenu = p.readSafely(Keys.USE_LEGACY_TRACK_MENU) ?: false,
+                useMenuBlur = p.readSafely(Keys.USE_MENU_BLUR) ?: true,
             )
         }
+        // Cold, every one of ~60 collectors (mostly on Main) re-ran this mapping and
+        // its JSON parse on each write to this DataStore: 0.5 s main-thread stalls
+        // at launch. Map once per change off Main and share one value.
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.Default)
+        .shareIn(CoroutineScope(Dispatchers.Default + SupervisorJob()), SharingStarted.Eagerly, replay = 1)
 
     val storageCacheLimitMb: Flow<Int> = dataStore.data
         .recoverPreferences("SettingsPreferences")
@@ -748,6 +843,14 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.USE_CUSTOM_FONT] = enabled }
     }
 
+    suspend fun setUseBoldFont(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_BOLD_FONT] = enabled }
+    }
+
+    suspend fun setCollapsingNavBar(enabled: Boolean) {
+        dataStore.edit { it[Keys.COLLAPSING_NAV_BAR] = enabled }
+    }
+
     suspend fun setPodcastsEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.PODCASTS_ENABLED] = enabled }
     }
@@ -786,6 +889,10 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.STOP_PLAYBACK_ON_TASK_REMOVED] = enabled }
     }
 
+    suspend fun setPauseOnZeroVolume(enabled: Boolean) {
+        dataStore.edit { it[Keys.PAUSE_ON_ZERO_VOLUME] = enabled }
+    }
+
     suspend fun setSuppressYouTubeLoginPrompt(suppress: Boolean) {
         dataStore.edit { it[Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT] = suppress }
     }
@@ -800,16 +907,35 @@ class SettingsPreferences @Inject constructor(
         }
     }
 
+    suspend fun setHiResStart(mode: HiResStart) {
+        dataStore.edit { it[Keys.HI_RES_START] = mode.id }
+    }
+
     suspend fun setPreferProviderModules(enabled: Boolean) {
         dataStore.edit {
             it[Keys.PREFER_PROVIDER_MODULES] = enabled
         }
     }
 
-    suspend fun setLosslessQuality(quality: Int) {
+    suspend fun setWifiStreamingQuality(quality: Int) {
         dataStore.edit {
-            val q = quality.takeIf { it in LOSSLESS_QUALITIES } ?: 27
+            val q = quality.takeIf { it in STREAMING_QUALITIES } ?: 27
+            if (it[Keys.CELLULAR_STREAMING_QUALITY] == null) {
+                // Preserve an existing one-profile preference on both networks the first time
+                // the user opens the new controls; fresh installs start cellular at 320 kbps.
+                it[Keys.CELLULAR_STREAMING_QUALITY] =
+                    it[Keys.LOSSLESS_QUALITY]?.let(::normalizeStreamingQuality) ?: 5
+            }
+            it[Keys.WIFI_STREAMING_QUALITY] = q
+            // Keep the old preference in sync for downgrade compatibility.
             it[Keys.LOSSLESS_QUALITY] = q
+        }
+    }
+
+    suspend fun setCellularStreamingQuality(quality: Int) {
+        dataStore.edit {
+            it[Keys.CELLULAR_STREAMING_QUALITY] =
+                quality.takeIf { it == CELLULAR_QUALITY_AUTO || it in STREAMING_QUALITIES } ?: 5
         }
     }
 
@@ -826,6 +952,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setMusicVideoEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.MUSIC_VIDEO_ENABLED] = enabled }
+    }
+
+    suspend fun setMusicVideoNowPlayingButtonEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.MUSIC_VIDEO_NP_BUTTON_ENABLED] = enabled }
     }
 
     suspend fun setShowAutoEqInVolumePanel(enabled: Boolean) {
@@ -898,6 +1028,10 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.LYRICS_FONT_SCALE] = scale.coerceIn(0.7f, 1.5f) }
     }
 
+    suspend fun setLyricsCentered(centered: Boolean) {
+        dataStore.edit { it[Keys.LYRICS_CENTERED] = centered }
+    }
+
     suspend fun setAutoplaySimilarEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.AUTOPLAY_SIMILAR_ENABLED] = enabled }
     }
@@ -912,8 +1046,19 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.CROSSFADE_SECONDS] = seconds.coerceIn(1, 12) }
     }
 
+    suspend fun setLyricsStyle(style: LyricsStyle) {
+        dataStore.edit { it[Keys.LYRICS_STYLE] = style.id }
+    }
+
+    suspend fun setSeekbarStyle(style: SeekbarStyle) {
+        dataStore.edit {
+            it[Keys.SEEKBAR_STYLE] = style.id
+            it[Keys.WAVY_SEEKBAR_ENABLED] = (style == SeekbarStyle.WAVY)
+        }
+    }
+
     suspend fun setWavySeekbarEnabled(enabled: Boolean) {
-        dataStore.edit { it[Keys.WAVY_SEEKBAR_ENABLED] = enabled }
+        setSeekbarStyle(if (enabled) SeekbarStyle.WAVY else SeekbarStyle.DEFAULT)
     }
 
     suspend fun setRotatingBackgroundEnabled(enabled: Boolean) {
@@ -922,6 +1067,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setLyricsRotatingBackgroundEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.LYRICS_ROTATING_BACKGROUND_ENABLED] = enabled }
+    }
+
+    suspend fun setFluidBeatSyncEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.FLUID_BEAT_SYNC_ENABLED] = enabled }
     }
 
     suspend fun setKeepLyricsScreenAwake(enabled: Boolean) {
@@ -1102,25 +1251,7 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.CANVAS_OVER_CELLULAR] = enabled }
     }
 
-    /** Whether a liked song is added to this app's own Liked Songs playlist. */
-    val likedSongsLocalSync: Flow<Boolean> = dataStore.data
-        .recoverPreferences("SettingsPreferences")
-        .map { it.readSafely(Keys.LIKED_SONGS_LOCAL_SYNC) ?: true }
-
-    /** Whether a liked song is also marked as liked on YouTube Music. */
-    val likedSongsYouTubeSync: Flow<Boolean> = dataStore.data
-        .recoverPreferences("SettingsPreferences")
-        .map { it.readSafely(Keys.LIKED_SONGS_YOUTUBE_SYNC) ?: true }
-
-    suspend fun setLikedSongsYouTubeSync(enabled: Boolean) {
-        dataStore.edit { it[Keys.LIKED_SONGS_YOUTUBE_SYNC] = enabled }
-    }
-
-    suspend fun setLikedSongsLocalSync(enabled: Boolean) {
-        dataStore.edit { it[Keys.LIKED_SONGS_LOCAL_SYNC] = enabled }
-    }
-
-    /** The likes kept while the local Liked Songs playlist was switched off, as stored tracks. */
+    /** Likes kept by older builds while "Save to Liked Songs" was off; moved into Liked Songs once on start. */
     val localOnlyLikedTracks: Flow<String> = dataStore.data
         .recoverPreferences("SettingsPreferences")
         .map { it.readSafely(Keys.LIKED_SONGS_LOCAL_ONLY).orEmpty() }
@@ -1134,15 +1265,29 @@ class SettingsPreferences @Inject constructor(
     }
 
     suspend fun setJamServerUrl(url: String) {
-        val trimmed = url.trim().ifEmpty { "wss://jam.clashprojects.qd.je/ws" }
+        val trimmed = url.trim().ifEmpty { "wss://jam.clashgram.org/ws" }
         dataStore.edit { it[Keys.JAM_SERVER_URL] = trimmed }
     }
 
     suspend fun setJamRoomMode(mode: String) {
         dataStore.edit { it[Keys.JAM_ROOM_MODE] = mode }
     }
+
+    suspend fun setLegacyTrackMenu(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_LEGACY_TRACK_MENU] = enabled }
+    }
+
+    suspend fun setMenuBlur(enabled: Boolean) {
+        dataStore.edit { it[Keys.USE_MENU_BLUR] = enabled }
+    }
     private companion object {
-        val LOSSLESS_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
+        val STREAMING_QUALITIES = setOf(-1, 4, 5, 6, 27, 28)
         val DOWNLOAD_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
+    }
+
+    private fun normalizeStreamingQuality(quality: Int): Int? = when (quality) {
+        in STREAMING_QUALITIES -> quality
+        7 -> 27 // Fold the old 24/96 option into the single Hi-Res choice.
+        else -> null
     }
 }
