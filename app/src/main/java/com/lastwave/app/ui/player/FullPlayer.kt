@@ -56,6 +56,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import com.lastwave.app.ui.player.automix.AutoMixPopupHost
+import com.lastwave.app.ui.player.automix.AutoMixPopupState
+import com.lastwave.app.ui.player.automix.autoMixIdentity
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.cos
@@ -512,6 +515,15 @@ internal fun FullPlayer(
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSignalPath by remember { mutableStateOf(false) }
+    val autoMixUi = remember { AutoMixPopupState() }
+    val autoMixTracks = remember(state.queue, track) {
+        if (track in state.queue) state.queue else state.queue + track
+    }
+    val openBadge = {
+        if (!autoMixUi.open(state.deckBlendTelemetry, progressState.value, track.autoMixIdentity())) {
+            showSignalPath = true
+        }
+    }
     var showAudioControls by remember { mutableStateOf(false) }
     var showAutoEq by remember { mutableStateOf(false) }
     val signalPath by player.signalPath.collectAsStateWithLifecycle()
@@ -1449,7 +1461,8 @@ internal fun FullPlayer(
                                     onTabChange = onTabChange,
                                     shownDismissY = shownDismissY,
                                     swipeThreshold = swipeThreshold,
-                                    onOpenSignalPath = { showSignalPath = true },
+                                    onOpenSignalPath = openBadge,
+                                    autoMixUi = autoMixUi,
                                     onOpenAudioControls = { showAudioControls = true },
                                     musicVideoEnabled = musicVideoEnabled,
                                     isVideoActive = isVideoActive,
@@ -2001,7 +2014,9 @@ internal fun FullPlayer(
                                         state = state,
                                         signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
-                                        onClick = { showSignalPath = true },
+                                        autoMixUi = autoMixUi,
+                                        progressState = progressState,
+                                        onClick = openBadge,
                                         modifier = Modifier.offset(y = (-2).dp),
                                     )
                                     Spacer(Modifier.height(12.dp))
@@ -2086,6 +2101,15 @@ internal fun FullPlayer(
             onDismiss = { showLyricsOffsetDialog = false },
         )
     }
+    AutoMixPopupHost(
+        ui = autoMixUi,
+        telemetry = state.deckBlendTelemetry,
+        progressState = progressState,
+        trackKey = track.autoMixIdentity(),
+        isPlayerOpen = isOpen,
+        player = player,
+        tracks = autoMixTracks,
+    )
     if (showSignalPath) {
         val dac = usbDac.dac
         val internalAvailability by player.internalDirectAvailability.collectAsStateWithLifecycle()

@@ -65,6 +65,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.layout.boundsInRoot
+import com.lastwave.app.ui.player.automix.AutoMixPopupState
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -365,6 +366,7 @@ internal fun FullPlayerLandscape(
     shownDismissY: Float,
     swipeThreshold: Float,
     onOpenSignalPath: () -> Unit = {},
+    autoMixUi: AutoMixPopupState,
     onOpenAudioControls: () -> Unit = {},
     musicVideoEnabled: Boolean = true,
     showAutoEqInVolumePanel: Boolean = true,
@@ -535,6 +537,8 @@ internal fun FullPlayerLandscape(
                 state = state,
                 signalPath = signalPath,
                 isTranslucent = LocalLiquidGlass.current,
+                autoMixUi = autoMixUi,
+                progressState = progressState,
                 onClick = onOpenSignalPath,
                 modifier = Modifier.offset(y = (-2).dp),
             )

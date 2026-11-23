@@ -2,9 +2,6 @@ package com.lastwave.app.playback.automix.analysis
 
 import com.lastwave.app.playback.automix.api.CamelotKey
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 enum class HarmonicCompatibilityTier {
     PERFECT_LOCK,      // Tier 1: Identical, +-1 step, or relative Major/Minor. Allows 12s-30s extended blend.
@@ -71,43 +68,24 @@ object AutoMixCamelotClassifier {
             return CamelotKey("$num$letter")
         }
 
-        // Accidental and tonality normalization
-        var root = clean.lowercase()
+        // Spelled-out or symbol accidentals; the old chained replace() turned "minor" into "minoror".
+        val compact = clean.lowercase()
             .replace("sharp", "#")
             .replace("flat", "b")
             .replace("♯", "#")
             .replace("♭", "b")
-            .replace("maj", " major")
-            .replace("min", " minor")
-            .replace("m", " minor")
-            .trim()
-
-        val isMinor = root.contains("minor") || root.endsWith("m")
-        root = root.replace("minor", "").replace("major", "").trim()
-
-        val pitchClass = when (root) {
-            "c" -> 0
-            "c#", "db" -> 1
-            "d" -> 2
-            "d#", "eb" -> 3
-            "e" -> 4
-            "f" -> 5
-            "f#", "gb" -> 6
-            "g" -> 7
-            "g#", "ab" -> 8
-            "a" -> 9
-            "a#", "bb" -> 10
-            "b" -> 11
-            else -> return CamelotKey.UNKNOWN
-        }
-
-        val code = if (isMinor) {
-            PITCH_CLASS_TO_CAMELOT_MINOR[pitchClass] ?: return CamelotKey.UNKNOWN
-        } else {
-            PITCH_CLASS_TO_CAMELOT_MAJOR[pitchClass] ?: return CamelotKey.UNKNOWN
-        }
-
-        return CamelotKey(code)
+            .filterNot(Char::isWhitespace)
+        val match = Regex("""^([a-g])([#b]?)(major|maj|minor|min|m)?$""").matchEntire(compact)
+            ?: return CamelotKey.UNKNOWN
+        val (letter, accidental, mode) = match.destructured
+        val natural = mapOf('c' to 0, 'd' to 2, 'e' to 4, 'f' to 5, 'g' to 7, 'a' to 9, 'b' to 11).getValue(letter[0])
+        val pitchClass = (natural + when (accidental) {
+            "#" -> 1
+            "b" -> -1
+            else -> 0
+        }).mod(12)
+        val isMinor = mode.startsWith("m") && !mode.startsWith("maj")
+        return camelotFor(pitchClass, isMinor)?.let(::CamelotKey) ?: CamelotKey.UNKNOWN
     }
 
     /**
@@ -201,70 +179,7 @@ object AutoMixCamelotClassifier {
         )
     }
 
-    /**
-     * Computes a 12-pitch-class chroma vector from 22.05 kHz mono PCM ring buffer
-     * and maps the dominant pitch class to a CamelotKey if metadata is unavailable.
-     */
-    fun classifyChromaPcm(pcm: FloatArray, sampleRate: Float = 22050f): CamelotKey {
-        if (pcm.size < 4096) return CamelotKey.UNKNOWN
-
-        val chroma = FloatArray(12)
-        val baseFreqs = floatArrayOf(
-            130.81f, // C3
-            138.59f, // C#3
-            146.83f, // D3
-            155.56f, // D#3
-            164.81f, // E3
-            174.61f, // F3
-            185.00f, // F#3
-            196.00f, // G3
-            207.65f, // G#3
-            220.00f, // A3
-            233.08f, // A#3
-            246.94f  // B3
-        )
-
-        // Simplified Goertzel energy accumulation across 2 octaves
-        for (oct in 0..1) {
-            val multiplier = 1 shl oct
-            for (p in 0 until 12) {
-                val f = baseFreqs[p] * multiplier
-                val w = 2.0 * Math.PI * f / sampleRate
-                var q1 = 0.0
-                var q2 = 0.0
-                val coeff = 2.0 * cos(w)
-                val step = 4
-                for (i in 0 until minOf(pcm.size, 8192) step step) {
-                    val q0 = coeff * q1 - q2 + pcm[i]
-                    q2 = q1
-                    q1 = q0
-                }
-                val energy = q1 * q1 + q2 * q2 - q1 * q2 * coeff
-                chroma[p] += energy.toFloat()
-            }
-        }
-
-        // Find primary pitch class
-        var maxIdx = 0
-        var maxEnergy = chroma[0]
-        for (i in 1 until 12) {
-            if (chroma[i] > maxEnergy) {
-                maxEnergy = chroma[i]
-                maxIdx = i
-            }
-        }
-
-        // Check minor third energy (idx + 3) vs major third (idx + 4)
-        val minorThirdEnergy = chroma[(maxIdx + 3) % 12]
-        val majorThirdEnergy = chroma[(maxIdx + 4) % 12]
-        val isMinor = minorThirdEnergy > majorThirdEnergy
-
-        val code = if (isMinor) {
-            PITCH_CLASS_TO_CAMELOT_MINOR[maxIdx]
-        } else {
-            PITCH_CLASS_TO_CAMELOT_MAJOR[maxIdx]
-        }
-
-        return code?.let { CamelotKey(it) } ?: CamelotKey.UNKNOWN
-    }
+    /** Camelot code for a tonic pitch class (0 = C) and mode, or null for an invalid class. */
+    fun camelotFor(pitchClass: Int, minor: Boolean): String? =
+        (if (minor) PITCH_CLASS_TO_CAMELOT_MINOR else PITCH_CLASS_TO_CAMELOT_MAJOR)[pitchClass]
 }
