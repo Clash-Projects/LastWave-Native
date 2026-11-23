@@ -49,7 +49,11 @@ private fun selectPlaylistVariant(item: HomeShelfItem.Playlist): HomeCardVariant
 }
 
 private fun selectTrackVariant(item: HomeShelfItem.Track): HomeCardVariant {
-    if (isWideAspect(item.aspectRatio)) return HomeCardVariant.WIDE
+    // The 16:9 flag can arrive with square album art; a wide card would crop it, so only
+    // real video thumbnails (i.ytimg.com/vi/...) or a not-yet-known cover get the wide card.
+    val art = item.track.artworkUrl
+    val isVideoThumbnail = art.isNullOrBlank() || art.contains("ytimg.com/vi")
+    if (isWideAspect(item.aspectRatio) && isVideoThumbnail) return HomeCardVariant.WIDE
     return HomeCardVariant.SQUARE
 }
 

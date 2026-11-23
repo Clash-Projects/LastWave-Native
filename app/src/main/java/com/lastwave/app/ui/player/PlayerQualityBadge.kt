@@ -261,6 +261,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.isSpecified
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -445,16 +446,20 @@ internal fun AppleMusicQualityBadge(
         darkTheme -> Color.Black.copy(alpha = 0.32f)
         else -> Color.White.copy(alpha = 0.62f)
     }
+    // One progress value drives the whole AutoMix look (size, colour, neon) so entering and
+    // leaving it morphs from/to the quality pill instead of snapping.
     val mixState = animateFloatAsState(
         targetValue = if (isMixActive) 1f else 0f,
         animationSpec = tween(520, easing = FastOutSlowInEasing),
         label = "AutoMixMorph",
     )
-    val capsuleColor = lerp(baseCapsuleColor, Color.Black.copy(alpha = 0.55f), mixState.value)
+    val mix = mixState.value
+    val capsuleColor = lerp(baseCapsuleColor, Color.Black.copy(alpha = 0.55f), mix)
     val targetTint = when {
         // Two decks are live during a transition, so the signal path report
         // flips between them; keep a neutral tint until it settles.
         (isMixActive || isFadeActive) && isTranslucent -> Color.White.copy(alpha = 0.95f)
+        // The mix capsule is always dark, so its label is white in every theme.
         isMixActive -> Color.White.copy(alpha = 0.95f)
         isFadeActive -> MaterialTheme.colorScheme.onSurface
         signalPath.bitPerfect -> if (lightCapsule) Color(0xFF8A6A00) else Color(0xFFE6C15A)
@@ -465,7 +470,7 @@ internal fun AppleMusicQualityBadge(
     }
 
     val tintColor by animateColorAsState(targetTint, tween(380), label = "BadgeTint")
-    val neonPhase = if (mixState.value > 0.01f) {
+    val neonPhase = if (mix > 0.01f) {
         rememberInfiniteTransition(label = "AutoMixNeon").animateFloat(
             initialValue = 0f,
             targetValue = 360f,
@@ -476,6 +481,9 @@ internal fun AppleMusicQualityBadge(
         )
     } else {
         null
+    }
+    val badgeTextStyle = MaterialTheme.typography.labelSmall.let {
+        if (it.fontSize.isSpecified) it.copy(fontSize = it.fontSize * (1f + 0.09f * mix)) else it
     }
 
     Box(
@@ -505,7 +513,12 @@ internal fun AppleMusicQualityBadge(
                         onClick()
                     },
                 )
-                .padding(start = 9.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                .padding(
+                    start = androidx.compose.ui.unit.lerp(9.dp, 11.dp, mix),
+                    end = androidx.compose.ui.unit.lerp(8.dp, 10.dp, mix),
+                    top = androidx.compose.ui.unit.lerp(4.dp, 6.dp, mix),
+                    bottom = androidx.compose.ui.unit.lerp(4.dp, 6.dp, mix),
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -513,9 +526,9 @@ internal fun AppleMusicQualityBadge(
                 imageVector = badgeIcon,
                 contentDescription = null,
                 tint = tintColor,
-                modifier = Modifier.size(13.dp),
+                modifier = Modifier.size(androidx.compose.ui.unit.lerp(13.dp, 15.dp, mix)),
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(androidx.compose.ui.unit.lerp(4.dp, 5.dp, mix)))
             val fullText = when {
                 isMixActive || isFadeActive || switch != null -> displayTitle
                 baseLabel.isNotBlank() && !baseLabel.equals(displayTitle, ignoreCase = true) && !baseLabel.equals("AUDIO", ignoreCase = true) -> "$displayTitle \u2022 $baseLabel"
@@ -528,8 +541,8 @@ internal fun AppleMusicQualityBadge(
             ) { label ->
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
+                    style = badgeTextStyle.copy(
+                        fontWeight = FontWeight(androidx.compose.ui.util.lerp(700, 900, mix)),
                         letterSpacing = 0.4.sp,
                     ),
                     color = tintColor,

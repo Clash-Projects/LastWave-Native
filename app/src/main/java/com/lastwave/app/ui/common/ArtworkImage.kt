@@ -53,6 +53,7 @@ fun ArtworkImage(
     decodeSizePx: Int? = null,
     alignment: Alignment = Alignment.Center,
     transformations: List<Transformation> = emptyList(),
+    onAspect: ((Float) -> Unit)? = null,
     artworkViewModel: ArtworkViewModel = LocalArtworkViewModel.current ?: hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -147,6 +148,12 @@ fun ArtworkImage(
                 error = retainedPainter,
                 onSuccess = {
                     lastSuccessfulPainter = it.painter
+                    val size = it.painter.intrinsicSize
+                    if (onAspect != null && size.width > 0f && size.height > 0f &&
+                        size != androidx.compose.ui.geometry.Size.Unspecified
+                    ) {
+                        onAspect(size.width / size.height)
+                    }
                 },
                 modifier = Modifier.fillMaxSize(),
                 onError = {

@@ -6,6 +6,8 @@
         tools:overrideLibrary="com.decent.usbaudio" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- In-app updates install the GitHub release APK through PackageInstaller. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -355,6 +357,11 @@
                 <action android:name="com.lastwave.app.ACTION_RECONNECT_DOWNLOAD" />
             </intent-filter>
         </receiver>
+
+        <!-- Install status for in-app updates (explicit PendingIntent only). -->
+        <receiver
+            android:name=".data.update.UpdateInstallReceiver"
+            android:exported="false" />
 
         <!-- Retained for the Playlist module's M3U export (SAF/legacy write) -->
         <provider

@@ -1,6 +1,7 @@
 package com.lastwave.app.ui.settings
 
 import androidx.compose.material3.HorizontalDivider
+import com.lastwave.app.data.scrobbler.ExtraService
 import com.lastwave.app.data.local.SeekbarStyle
 
 import androidx.activity.compose.BackHandler
@@ -336,12 +337,12 @@ enum class SettingsTab(
         subtitle = "Account connection, Canvas, Playlist imports & Liked Songs sync",
         icon = QualityGlyphs.Spotify,
     ),
-    LAST_FM(
-        titleRes = R.string.set_cat_lfm,
-        subtitleRes = R.string.set_cat_lfm_sub,
-        title = "Last.fm",
-        subtitle = "Account connection, Scrobbling sync & API credentials",
-        icon = QualityGlyphs.LastFm,
+    SCROBBLERS(
+        titleRes = R.string.set_cat_scrobblers,
+        subtitleRes = R.string.set_cat_scrobblers_sub,
+        title = "Scrobblers",
+        subtitle = "ListenBrainz, Libre.fm & Last.fm",
+        icon = Icons.Filled.Album,
     ),
     LIBRARY(
         titleRes = R.string.set_cat_lib,
@@ -425,6 +426,9 @@ fun SettingsScreen(
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
     val discordPresenceEnabled by viewModel.discordPresenceEnabled.collectAsStateWithLifecycle()
     val isLastFmConnected by viewModel.isLastFmConnected.collectAsStateWithLifecycle()
+    val listenBrainzAccount by viewModel.listenBrainzAccount.collectAsStateWithLifecycle()
+    val libreFmAccount by viewModel.libreFmAccount.collectAsStateWithLifecycle()
+    val scrobblerConnections by viewModel.scrobblerConnections.collectAsStateWithLifecycle()
     val hasApiKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
     val lastFmAuthUrl by viewModel.lastFmAuthUrl.collectAsStateWithLifecycle()
     val lastFmConnecting by viewModel.lastFmConnecting.collectAsStateWithLifecycle()
@@ -646,13 +650,13 @@ fun SettingsScreen(
                     top = 16.dp + listTopInset,
                     bottom = 32.dp + LocalMiniPlayerScrollClearance.current + safeDrawingBottomPadding(),
                 ),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.fillMaxSize().safeHorizontalContentPadding(),
             ) {
                 when (tab) {
                     null -> {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel("Collaboration & Social")
                                 SettingsGroup(rowCount = 1) { _, position ->
                                     SettingsActionCard(
@@ -673,7 +677,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel("Services & Add-ons")
                                 SettingsGroup(rowCount = 4) { index, position ->
                                     when (index) {
@@ -688,12 +692,12 @@ fun SettingsScreen(
                                             isHighlighted = (highlightedSettingId == "services.modules" || highlightedSettingId == "library.modules"),
                                         )
                                         1 -> SettingsActionCard(
-                                            icon = QualityGlyphs.LastFm,
+                                            icon = Icons.Filled.Album,
                                             iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                             iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            title = stringResource(R.string.set_cat_lfm),
-                                            subtitle = if (isLastFmConnected) "Connected as ${session.username} \u2022 Scrobbling active" else "Connect account, scrobbles & statistics sync",
-                                            onClick = { activeTab = SettingsTab.LAST_FM },
+                                            title = stringResource(R.string.set_cat_scrobblers),
+                                            subtitle = stringResource(R.string.set_cat_scrobblers_sub),
+                                            onClick = { activeTab = SettingsTab.SCROBBLERS },
                                             position = position,
                                         )
                                         2 -> SettingsActionCard(
@@ -728,7 +732,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel("Playback & UI")
                                 SettingsGroup(rowCount = 3) { index, position ->
                                     when (index) {
@@ -768,7 +772,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel("System & About")
                                 SettingsGroup(rowCount = 2) { index, position ->
                                     when (index) {
@@ -798,7 +802,7 @@ fun SettingsScreen(
 
                     SettingsTab.AUDIO -> {
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_audio))
                     val wifiQualitySubtitle = streamingQualityLabel(misc.wifiStreamingQuality)
                     val cellularQualitySubtitle = streamingQualityLabel(misc.cellularStreamingQuality)
@@ -1062,7 +1066,7 @@ fun SettingsScreen(
             }
 
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel("Output & Loudness")
                     val loudnessSubtitle = when (loudness.mode) {
                         LoudnessMode.TRACK -> "Track \u2022 Match every track to -14 LUFS"
@@ -1215,9 +1219,9 @@ fun SettingsScreen(
 
                     SettingsTab.APPEARANCE -> {
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_appearance))
-                    SettingsGroup(rowCount = 16) { index, position ->
+                    SettingsGroup(rowCount = 15) { index, position ->
                         when (index) {
                             0 -> ThemeModeSelectorCard(
                                 currentThemeMode = theme?.themeMode ?: ThemeMode.SYSTEM,
@@ -1380,17 +1384,6 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.legacy_track_menu"),
                             )
-                            15 -> SettingsToggleCard(
-                                icon = Icons.Filled.BlurOn,
-                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = stringResource(R.string.settings_menu_blur),
-                                subtitle = stringResource(R.string.settings_menu_blur_sub),
-                                checked = misc.useMenuBlur,
-                                onCheckedChange = viewModel::setMenuBlur,
-                                position = position,
-                                isHighlighted = (highlightedSettingId == "appearance.menu_blur"),
-                            )
                         }
                     }
                 }
@@ -1437,10 +1430,9 @@ fun SettingsScreen(
             }
 
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_experimental))
-                    val experimentalRowCount = if (misc.musicVideoEnabled) 10 else 9
-                    SettingsGroup(rowCount = experimentalRowCount) { index, position ->
+                    SettingsGroup(rowCount = 6) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Subtitles,
@@ -1526,7 +1518,12 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = false,
                             )
-                            9 -> SettingsActionCard(
+                        }
+                    }
+                    val additionalRowCount = if (misc.musicVideoEnabled) 4 else 3
+                    SettingsGroup(rowCount = additionalRowCount) { index, position ->
+                        when (index) {
+                            0 -> SettingsActionCard(
                                 icon = Icons.Filled.Translate,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1540,7 +1537,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.translation_language"),
                             )
-                            10 -> SettingsToggleCard(
+                            1 -> SettingsToggleCard(
                                 icon = Icons.Filled.SmartDisplay,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1555,7 +1552,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.music_video"),
                             )
-                            11 -> if (misc.musicVideoEnabled) {
+                            2 -> if (misc.musicVideoEnabled) {
                                 SettingsToggleCard(
                                     icon = Icons.Filled.SmartDisplay,
                                     iconContainer = MaterialTheme.colorScheme.secondaryContainer,
@@ -1584,7 +1581,7 @@ fun SettingsScreen(
                                     isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
                                 )
                             }
-                            12 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.PlayCircle,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1605,7 +1602,7 @@ fun SettingsScreen(
             }
 
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_canvas_enabled))
                     val canvasRowCount = if (misc.canvasEnabled) 4 else 2
                     SettingsGroup(rowCount = canvasRowCount) { index, position ->
@@ -1663,7 +1660,7 @@ fun SettingsScreen(
 
                     SettingsTab.YOUTUBE -> {
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_youtube))
                     val ytConnected = ytConnection.isConnected
                     val syncSubtitle = when (val sync = ytSyncState) {
@@ -1838,7 +1835,7 @@ fun SettingsScreen(
 
                     SettingsTab.SPOTIFY -> {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel("Spotify")
                                 val spotifyCanvasEnabled by viewModel.spotifyCanvasEnabled.collectAsStateWithLifecycle()
                                 val spotifyPreferCanvas by viewModel.spotifyPreferCanvas.collectAsStateWithLifecycle()
@@ -1912,7 +1909,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel(stringResource(R.string.settings_section_recommendations))
                                 SettingsGroup(rowCount = 1) { _, position ->
                                     SettingsActionCard(
@@ -1934,7 +1931,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel("Session Token")
                                 SettingsGroup(rowCount = 1) { _, position ->
                                     SettingsActionCard(
@@ -1952,13 +1949,34 @@ fun SettingsScreen(
                         }
                     }
 
-                    SettingsTab.LAST_FM -> {
+                    SettingsTab.SCROBBLERS -> {
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel("Integrations / Scrobbling")
-                    // Last.fm is optional here — never a gate. Connected:
-                    // global scrobbles + stats sync. Disconnected: Stats and
-                    // recommendations run local-first from Room.
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SectionLabel(stringResource(R.string.set_cat_scrobblers))
+                    ScrobblerIntegrationCard(
+                        service = ExtraService.LISTENBRAINZ,
+                        account = listenBrainzAccount,
+                        connection = scrobblerConnections[ExtraService.LISTENBRAINZ] ?: ScrobblerConnectionState(),
+                        isHighlighted = highlightedSettingId == "listenbrainz.connect",
+                        onConnect = { _, token, server -> viewModel.connectListenBrainz(token, server) },
+                        onDisconnect = { viewModel.disconnectScrobbler(ExtraService.LISTENBRAINZ) },
+                        onOpenTokenPage = {
+                            runCatching {
+                                androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                                    .launchUrl(context, android.net.Uri.parse("https://listenbrainz.org/settings/"))
+                            }.onFailure {
+                                viewModel.showToast(context.getString(R.string.set_scrobbler_browser_error))
+                            }
+                        },
+                    )
+                    ScrobblerIntegrationCard(
+                        service = ExtraService.LIBREFM,
+                        account = libreFmAccount,
+                        connection = scrobblerConnections[ExtraService.LIBREFM] ?: ScrobblerConnectionState(),
+                        isHighlighted = highlightedSettingId == "librefm.connect",
+                        onConnect = viewModel::connectLibreFm,
+                        onDisconnect = { viewModel.disconnectScrobbler(ExtraService.LIBREFM) },
+                    )
                     LastFmIntegrationCard(
                         isConnected = isLastFmConnected,
                         username = session.username,
@@ -1981,12 +1999,6 @@ fun SettingsScreen(
                             }
                         },
                     )
-                    // Discord presence, next to Last.fm because both are "tell
-                    // other services what I'm listening to" integrations and
-                    // neither is required for playback. Unlike Last.fm this
-                    // needs no account in LastWave — it publishes as the
-                    // LastWave application through the Discord app itself, so
-                    // the copy says exactly that.
                     SettingsToggleCard(
                         icon = Icons.Filled.Public,
                         iconContainer = MaterialTheme.colorScheme.secondaryContainer,
@@ -2009,7 +2021,7 @@ fun SettingsScreen(
 
                     SettingsTab.LIBRARY -> {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel("Home & Organization")
                                 SettingsGroup(rowCount = 2) { index, position ->
                                     when (index) {
@@ -2044,7 +2056,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel(stringResource(R.string.settings_section_content))
                                 SettingsGroup(rowCount = 1) { _, position ->
                                     SettingsToggleCard(
@@ -2067,7 +2079,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel(stringResource(R.string.settings_section_imports))
                                 SettingsGroup(rowCount = 3) { index, position ->
                                     when (index) {
@@ -2116,7 +2128,7 @@ fun SettingsScreen(
 
                     SettingsTab.DATA_BACKUP -> {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel(stringResource(R.string.settings_section_storage))
                                 SettingsGroup(rowCount = 1) { _, position ->
                                     SettingsActionCard(
@@ -2133,7 +2145,7 @@ fun SettingsScreen(
                         }
 
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_backup))
                     SettingsGroup(rowCount = 2) { index, position ->
                         when (index) {
@@ -2169,7 +2181,7 @@ fun SettingsScreen(
             }
 
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SectionLabel(stringResource(R.string.settings_section_data))
                                 SettingsGroup(rowCount = 1) { index, position ->
                                     when (index) {
@@ -2192,7 +2204,7 @@ fun SettingsScreen(
 
                     SettingsTab.ABOUT -> {
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_language))
                     SettingsGroup(rowCount = 1) { _, position ->
                         SettingsActionCard(
@@ -2210,7 +2222,7 @@ fun SettingsScreen(
             }
 
                         item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     SectionLabel(stringResource(R.string.settings_section_about))
                     SettingsGroup(rowCount = 4) { index, position ->
                         when (index) {
@@ -3028,7 +3040,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.outline,
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     tiers.forEach { (qualityId, title, meta) ->
                         val (subtitle, badge) = meta
                         val isSelected = selectedQuality == qualityId
@@ -3208,7 +3220,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.outline,
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     downloadTiers.forEach { (qualityId, title, meta) ->
                         val (subtitle, badge) = meta
                         val isSelected = misc.downloadQuality == qualityId

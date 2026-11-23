@@ -759,9 +759,9 @@
     <string name="set_lfm_remove">删除</string>
     <string name="set_lfm_key_label">API密钥</string>
     <string name="set_lfm_key_saved">您的密钥已保存</string>
-    <string name="set_lfm_key_hint">必填 — 免费获取一份，然后将其粘贴到此处</string>
-    <string name="set_lfm_get">在last.fm/api 获取免费密钥 →</string>
-    <string name="set_lfm_how">如何获得免费密钥 →</string>
+    <string name="set_lfm_key_hint">必填 — 获取一份，然后将其粘贴到此处</string>
+    <string name="set_lfm_get">在last.fm/api 获取密钥 →</string>
+    <string name="set_lfm_how">如何获得密钥 →</string>
     <string name="set_lfm_disc_title">断开Last.fm？</string>
     <string name="set_lfm_disc_text">全球乱序暂停。您的统计信息切换到本地收听历史记录 - 没有删除任何内容。</string>
     <string name="set_lfm_disc_btn">断开连接</string>

@@ -375,7 +375,7 @@ internal fun PlaylistCard(
     }
 }
 
-/** Library's Downloads entry: the same big card as Local songs, opening the Downloads screen. */
+/** Library's Downloads entry: side-by-side hero card opening the Downloads screen. */
 @Composable
 internal fun DownloadsHeroCard(
     downloadedCount: Int,

@@ -226,6 +226,13 @@ class UsbAudioStream(
         }
 
         /**
+         * Re-attaches the default Linux kernel driver (snd-usb-audio) to the specified USB interface.
+         * @return 0 on success, negative on error
+         */
+        @JvmStatic
+        external fun nativeUsbAttachKernelDriver(fd: Int, interfaceNum: Int): Int
+
+        /**
          * Perform a USB port reset on the device. Resets the DAC's clock state.
          * The fd remains valid but all interface claims are released.
          * @return 0 on success, negative on error

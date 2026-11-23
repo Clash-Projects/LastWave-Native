@@ -154,4 +154,18 @@ class AppUpdateManagerTest {
             AppUpdateManager.selectBestAsset(assets = assetsWithVivo, isUncompressed = false, sdkInt = 34)?.name,
         ).isEqualTo("LastWave-v4.2.4-universal.apk")
     }
+
+    @Test
+    fun digestMatches_acceptsOnlyTheGitHubSha256OfTheFile() {
+        val file = java.io.File.createTempFile("update", ".apk").apply {
+            writeText("abc")
+            deleteOnExit()
+        }
+        val abcSha256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        assertThat(AppUpdateManager.digestMatches(file, "sha256:$abcSha256")).isTrue()
+        assertThat(AppUpdateManager.digestMatches(file, "sha256:${abcSha256.uppercase()}")).isTrue()
+        assertThat(AppUpdateManager.digestMatches(file, "sha256:" + "0".repeat(64))).isFalse()
+        assertThat(AppUpdateManager.digestMatches(file, abcSha256)).isFalse()
+        assertThat(AppUpdateManager.digestMatches(file, "")).isFalse()
+    }
 }

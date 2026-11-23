@@ -48,6 +48,19 @@ class HomeCardVariantTest {
     }
 
     @Test
+    fun wideFlagWithSquareAlbumArtStaysSquare() {
+        val wide = "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_RECTANGLE_16_9"
+        fun withArt(url: String) = HomeShelfItem.Track(
+            YouTubeMusicTrack("v1", "Song", "Artist", artworkUrl = url),
+            aspectRatio = wide,
+        )
+        assertThat(selectCardVariant(withArt("https://lh3.googleusercontent.com/abc=w544")))
+            .isEqualTo(HomeCardVariant.SQUARE)
+        assertThat(selectCardVariant(withArt("https://i.ytimg.com/vi/abc/hq720.jpg")))
+            .isEqualTo(HomeCardVariant.WIDE)
+    }
+
+    @Test
     fun captionAloneDoesNotSelectFeatured() {
         assertThat(selectCardVariant(track(caption = "Because you liked X")))
             .isEqualTo(HomeCardVariant.SQUARE)

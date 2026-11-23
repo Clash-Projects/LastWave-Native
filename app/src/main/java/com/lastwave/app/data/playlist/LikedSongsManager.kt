@@ -128,7 +128,7 @@ class LikedSongsManager @Inject constructor(
                 synchronized(heartLock) {
                     pendingHeartTaps++
                     heartTapGeneration++
-                    val optimistic = if (liked) saved.tracks + track else saved.tracks.filterNot { it.sameSongAs(track) }
+                    val optimistic = if (liked) listOf(track) + saved.tracks.filterNot { it.sameSongAs(track) } else saved.tracks.filterNot { it.sameSongAs(track) }
                     _likedTrackKeys.value = optimistic.flatMapTo(mutableSetOf()) { it.likedMarkers() }
                 }
                 try {
@@ -156,7 +156,7 @@ class LikedSongsManager @Inject constructor(
             val playlist = playlistRepository.getLikedSongs() ?: playlistRepository.ensureLikedSongs()
             val present = playlist.tracks.any { it.sameSongAs(track) }
             if (liked == present) return
-            val updated = if (liked) playlist.tracks + track else playlist.tracks.filterNot { it.sameSongAs(track) }
+            val updated = if (liked) listOf(track) + playlist.tracks.filterNot { it.sameSongAs(track) } else playlist.tracks.filterNot { it.sameSongAs(track) }
             if (playlistRepository.replaceTracksForSync(playlist.id, updated, expectedTracks = playlist.tracks) != null) return
         }
         throw IllegalStateException("Liked Songs kept changing during the write")
@@ -193,7 +193,7 @@ class LikedSongsManager @Inject constructor(
         // overwriting their change or duplicating ours.
         repeat(3) {
             val liked = playlistRepository.ensureLikedSongs()
-            val merged = (liked.tracks + tracks).distinctSongs()
+            val merged = (tracks + liked.tracks).distinctSongs()
             if (merged.size == liked.tracks.size) return@withLock true
             if (playlistRepository.replaceTracksForSync(liked.id, merged, liked.tracks) != null) {
                 refresh()

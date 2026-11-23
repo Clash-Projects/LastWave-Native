@@ -30,10 +30,10 @@ interface HapticPulseListener {
     fun onAnalysisFlushed() {}
 
     /**
-     * Every 10 ms window: the bass envelope, 0..1 against the recent peak.
-     * The beat-synced background follows this.
+     * Every 10 ms window: bass or mid (instruments, snare) above its valley
+     * floor, 0..1 against the recent peak. The beat-synced background follows this.
      */
-    fun onBassLevel(level: Float, leadTimeMs: Long) {}
+    fun onRhythmLevel(level: Float, leadTimeMs: Long) {}
 }
 
 /**
@@ -78,6 +78,9 @@ class MusicHapticsAnalyzer(
     // Auto-gain: slowly decaying peaks so quiet or loudness-normalised
     // tracks still drive the motor as hard as loud masters.
     private var bassPeak = 0.05f
+    // Valley followers: drop at once, rise over ~3 s.
+    private var bassFloor = 0f
+    private var vocalFloor = 0f
     private var vocalPeak = 0.05f
 
     private var analysisWindowFrames = 480
@@ -209,12 +212,14 @@ class MusicHapticsAnalyzer(
         val onsetFrame = frameIndex - analysisWindowFrames
         val pulseUs = presentationTimeUs + onsetFrame * 1_000_000L / sampleRate
         val speed = runCatching { playbackSpeed() }.getOrDefault(1f).coerceIn(0.25f, 4f)
-        val leadMs = ((pulseUs - nowUs) / 1000f / speed).toLong()
+        // Bounds are checked in media time: wall-clock lead grows as speed drops,
+        // and at 0.5x a 2.7 s buffer (5.4 s) dropped every pulse.
+        val mediaLeadMs = (pulseUs - nowUs) / 1000
         // Unknown or implausible timing drops the pulse. It used to fire at
         // once (lead 0): hundreds of ms before its beat, felt as random taps.
         return when {
-            leadMs in 0..MAX_LEAD_MS -> leadMs
-            leadMs in -MAX_LATE_MS until 0 -> 0L
+            mediaLeadMs in 0..MAX_LEAD_MS -> (mediaLeadMs / speed).toLong()
+            mediaLeadMs in -MAX_LATE_MS until 0 -> 0L
             else -> null
         }
     }
@@ -237,9 +242,13 @@ class MusicHapticsAnalyzer(
         val normBass = (fastBassEnv / bassPeak).coerceIn(0f, 1f)
         val normVocal = (fastVocalEnv / vocalPeak).coerceIn(0f, 1f)
         val bassRatio = fastBassEnv / max(slowBassEnv, 0.004f)
-        // The bass level itself, not its rise above the average: that rise fell back
-        // within ~100 ms, so hits barely moved the background next to Lyra.
-        lead()?.let { pulseListener.onBassLevel(if (fastBassEnv > 0.006f) normBass else 0f, it) }
+        // Bass alone left songs without a kick (guitar, piano parts) motionless,
+        // so mid hits count too, a little softer so the kick still leads.
+        bassFloor = followFloor(bassFloor, fastBassEnv)
+        vocalFloor = followFloor(vocalFloor, fastVocalEnv)
+        val bassLevel = aboveFloor(fastBassEnv, bassFloor, bassPeak, 0.006f)
+        val midLevel = aboveFloor(fastVocalEnv, vocalFloor, vocalPeak, 0.005f)
+        lead()?.let { pulseListener.onRhythmLevel(max(bassLevel, MID_WEIGHT * midLevel), it) }
         val vocalRatio = fastVocalEnv / max(slowVocalEnv, 0.004f)
 
         // Relative (gain-independent) onset tests plus a small absolute floor
@@ -261,6 +270,15 @@ class MusicHapticsAnalyzer(
             leadTimeMs = leadTimeMs,
         )
     }
+
+    private fun followFloor(floor: Float, env: Float) =
+        if (env < floor) env else floor + (env - floor) * FLOOR_RISE
+
+    // Level above the valley floor rather than raw: a steady bass line sat at 0.6
+    // between kicks on pop, so only phonk visibly moved. Squared so that resting
+    // level settles near 0.15 while hits still reach 1.
+    private fun aboveFloor(env: Float, floor: Float, peak: Float, gate: Float) =
+        if (env > gate) ((env - floor) / max(peak - floor, MIN_PEAK)).coerceIn(0f, 1f).let { it * it } else 0f
 
     private fun computeCoefficients(rate: Float) {
         val fcLp = 100f.coerceAtMost(rate * 0.45f)
@@ -289,8 +307,8 @@ class MusicHapticsAnalyzer(
     private fun resetState() {
         lpX1 = 0f; lpX2 = 0f; lpY1 = 0f; lpY2 = 0f
         bpX1 = 0f; bpX2 = 0f; bpY1 = 0f; bpY2 = 0f
-        fastBassEnv = 0f; slowBassEnv = 0.01f
-        fastVocalEnv = 0f; slowVocalEnv = 0.01f
+        fastBassEnv = 0f; slowBassEnv = 0.01f; bassFloor = 0f
+        fastVocalEnv = 0f; slowVocalEnv = 0.01f; vocalFloor = 0f
         windowBassAccum = 0f; windowVocalAccum = 0f; windowCount = 0
         framesSinceBassTrigger = COUNTER_CAP
         framesSinceAnyTrigger = COUNTER_CAP
@@ -306,6 +324,8 @@ class MusicHapticsAnalyzer(
         const val ANY_COOLDOWN_S = 0.080f
         const val PEAK_DECAY = 0.9985f
         const val MIN_PEAK = 0.008f
+        const val FLOOR_RISE = 0.003f
+        const val MID_WEIGHT = 0.8f
         const val COUNTER_CAP = 1 shl 28
     }
 }

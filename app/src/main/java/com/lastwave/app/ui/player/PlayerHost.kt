@@ -232,8 +232,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -411,6 +413,15 @@ fun PlayerHost(
         }
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val expandPlayer = remember(focusManager, keyboardController) {
+        {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            expanded = true
+        }
+    }
     val requestAddToPlaylist = remember(viewModel) {
         { track: PlayableTrack ->
             viewModel.prepareCustomPlaylists()
@@ -425,7 +436,10 @@ fun PlayerHost(
         }
     }
     LaunchedEffect(expanded) {
-        if (!expanded) {
+        if (expanded) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        } else {
             currentTab = FullPlayerTab.NOW_PLAYING
             playerLyrics = false
         }
@@ -460,7 +474,7 @@ fun PlayerHost(
                 } == true
             if (hasTrack && com.lastwave.app.widget.wave.WaveWidgetNavigation.consume(requestId)) {
                 currentTab = FullPlayerTab.NOW_PLAYING
-                expanded = true
+                expandPlayer()
             }
         }
     }
@@ -586,7 +600,7 @@ fun PlayerHost(
                 MiniPlayer(
                     state = state,
                     progressState = viewModel.miniProgressState,
-                    onExpand = { expanded = true },
+                    onExpand = expandPlayer,
                     onToggle = viewModel.player::togglePlayPause,
                     onPrevious = viewModel.player::previous,
                     onNext = viewModel.player::next,
@@ -627,7 +641,7 @@ fun PlayerHost(
                     track = currentTrack,
                     progressState = viewModel.miniProgressState,
                     isPlaying = state.isPlaying,
-                    onExpand = { expanded = true },
+                    onExpand = expandPlayer,
                     onClose = viewModel.player::stopAndClear,
                 )
             }

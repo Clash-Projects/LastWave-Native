@@ -229,6 +229,7 @@ internal data class LocalFolderGroup(
     val subtitle: String,
     val safUri: Uri?,
     val tracks: List<GeneratedTrack>,
+    val artworkUrl: String? = null,
 )
 
 @HiltViewModel
@@ -1231,19 +1232,13 @@ fun LocalMusicHub(
                                     detailRoute = LocalDetailRoute.Folder(folder.key, folder.title)
                                 },
                                 leading = {
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.secondaryContainer,
-                                        modifier = Modifier.size(48.dp),
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Filled.FolderOpen,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                            )
-                                        }
-                                    }
+                                    ArtworkImage(
+                                        name = folder.title,
+                                        artist = folder.subtitle,
+                                        embeddedUrl = folder.artworkUrl,
+                                        fallbackIcon = Icons.Filled.FolderOpen,
+                                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
+                                    )
                                 },
                                 trailing = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1794,16 +1789,13 @@ private fun LocalHeroHeader(
                             Icon(Icons.Filled.Favorite, contentDescription = null, modifier = Modifier.size(40.dp))
                         }
                     }
-                    is LocalDetailRoute.Folder -> Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(92.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(40.dp))
-                        }
-                    }
+                    is LocalDetailRoute.Folder -> ArtworkImage(
+                        name = representativeTrack?.name ?: title,
+                        artist = representativeTrack?.artist ?: "",
+                        embeddedUrl = representativeTrack?.artworkUrl,
+                        fallbackIcon = Icons.Filled.FolderOpen,
+                        modifier = artModifier,
+                    )
                     else -> ArtworkImage(
                         name = representativeTrack?.name ?: title,
                         artist = representativeTrack?.artist ?: "",
@@ -2777,6 +2769,7 @@ private fun buildFolderGroups(
         grouped.getOrPut("saf:$saf") { mutableListOf() }
     }
     return grouped.map { (key, list) ->
+        val folderArt = list.firstNotNullOfOrNull { it.artworkUrl?.takeIf(String::isNotBlank) }
         when {
             key.startsWith("saf:") -> {
                 val uriStr = key.removePrefix("saf:")
@@ -2789,6 +2782,7 @@ private fun buildFolderGroups(
                     subtitle = label,
                     safUri = uri,
                     tracks = list,
+                    artworkUrl = folderArt,
                 )
             }
             key.startsWith("dir:") -> {
@@ -2800,6 +2794,7 @@ private fun buildFolderGroups(
                     subtitle = dirPath,
                     safUri = null,
                     tracks = list,
+                    artworkUrl = folderArt,
                 )
             }
             else -> LocalFolderGroup(
@@ -2808,6 +2803,7 @@ private fun buildFolderGroups(
                 subtitle = "MediaStore",
                 safUri = null,
                 tracks = list,
+                artworkUrl = folderArt,
             )
         }
     }.sortedBy { it.title.lowercase() }

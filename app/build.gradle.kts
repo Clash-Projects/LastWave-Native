@@ -572,9 +572,11 @@ configurations.all {
 
 tasks.withType<Test> {
     maxHeapSize = "2048m"
-    javaLauncher.set(project.extensions.getByType<org.gradle.jvm.toolchain.JavaToolchainService>().launcherFor {
-        languageVersion.set(org.gradle.jvm.toolchain.JavaLanguageVersion.of(17))
-    })
+    if (System.getenv("CI") != null) {
+        javaLauncher.set(project.extensions.getByType<org.gradle.jvm.toolchain.JavaToolchainService>().launcherFor {
+            languageVersion.set(org.gradle.jvm.toolchain.JavaLanguageVersion.of(17))
+        })
+    }
 }
 
 val nativeVaultFp = MessageDigest.getInstance("SHA-256")

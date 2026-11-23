@@ -104,8 +104,10 @@ internal fun reconcileLikedTracks(
     pending: List<PendingYouTubeLike>,
 ): List<GeneratedTrack> {
     val replaced = pending.flatMapTo(mutableSetOf()) { it.track.toGenerated().likedMarkers() }
-    return ((local.filter { it.youtubeVideoIdOrNull() == null } + remote).filterNot { it.isLikedIn(replaced) } +
-        pending.filter { it.liked }.map { it.track.toGenerated() }).distinctSongs()
+    val pendingLiked = pending.filter { it.liked }.map { it.track.toGenerated() }.reversed()
+    val activeRemote = remote.filterNot { it.isLikedIn(replaced) }
+    val localFiles = local.filter { it.youtubeVideoIdOrNull() == null }.filterNot { it.isLikedIn(replaced) }
+    return (pendingLiked + activeRemote + localFiles).distinctSongs()
 }
 
 /**
@@ -192,7 +194,7 @@ class YtLikedSongsSync @Inject constructor(
                     val blocked = journal.pending.filter { !it.liked && (it.account == account || it.account == GUEST_LIKES) }
                         .flatMapTo(mutableSetOf()) { it.track.toGenerated().likedMarkers() }
                     val local = playlists.getLikedSongs() ?: playlists.ensureLikedSongs()
-                    val merged = (local.tracks + tracks.filterNot { it.isLikedIn(blocked) }).distinctSongs()
+                    val merged = (tracks.filterNot { it.isLikedIn(blocked) } + local.tracks).distinctSongs()
                     if (merged == local.tracks) return@withLock true
                     if (playlists.replaceTracksForSync(local.id, merged, local.tracks) != null) {
                         // Imported remote likes are a snapshot, not new user intents.

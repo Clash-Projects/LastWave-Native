@@ -481,13 +481,15 @@ internal fun MiniPlayer(
                     },
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                        Modifier.fillMaxWidth().padding(horizontal = 10.dp)
                             .collapseVerticalPadding(10.dp, 2.5.dp, compactProgress),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.collapseSquare(56.dp, 40.dp, compactProgress)) {
+                        Box(Modifier.collapseSquare(60.dp, 40.dp, compactProgress)) {
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                // Capsule bar: a circle with the same 10dp gap on every side is
+                                // concentric with the bar's end cap.
+                                shape = if (edgeToEdge && !isTablet) RoundedCornerShape(18.dp) else CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 tonalElevation = 2.dp,
                                 modifier = Modifier.fillMaxSize(),
@@ -495,7 +497,7 @@ internal fun MiniPlayer(
                                 PlayerArtwork(
                                     track = track,
                                     modifier = Modifier.fillMaxSize(),
-                                    corner = 18.dp,
+                                    corner = 0.dp,
                                 )
                             }
                         }
@@ -585,100 +587,106 @@ internal fun MiniPlayer(
                     .collapseHeight(72.dp, 56.dp, compactProgress)
                     .clickable(interactionSource = barInteraction, indication = null, onClick = onExpand),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = 10.dp, end = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    // Concentric Left Geometry: 54.dp artwork nesting inside the 72.dp capsule curve
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .collapseSquare(54.dp, 40.dp, compactProgress)
-                            .clip(RoundedCornerShape(percent = m3ArtworkCornerPercent))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                        contentAlignment = Alignment.Center,
+                            .fillMaxSize()
+                            .padding(start = 10.dp, end = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        PlayerArtwork(
-                            track = track,
-                            modifier = Modifier.fillMaxSize(),
-                            corner = 0.dp,
-                        )
-                    }
+                        // Concentric Left Geometry: 54.dp artwork nesting inside the 72.dp capsule curve
+                        Box(
+                            modifier = Modifier
+                                .collapseSquare(54.dp, 40.dp, compactProgress)
+                                .clip(RoundedCornerShape(percent = m3ArtworkCornerPercent))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            PlayerArtwork(
+                                track = track,
+                                modifier = Modifier.fillMaxSize(),
+                                corner = 0.dp,
+                            )
+                        }
 
-                    // Typography Hierarchy: 15.sp bold title (-0.2.sp letterSpacing) + 13.sp medium artist (0.78 alpha) + 1.dp space
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 12.dp),
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            text = track.title,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.2).sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
-                        )
-                        Spacer(Modifier.height(1.dp))
-                        Text(
-                            text = track.artist,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
-                        )
-                    }
+                        // Typography Hierarchy: 15.sp bold title (-0.2.sp letterSpacing) + 13.sp medium artist (0.78 alpha) + 1.dp space
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 12.dp),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = track.title,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.2).sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
+                            )
+                            Spacer(Modifier.height(1.dp))
+                            Text(
+                                text = track.artist,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().playingMarquee(state.isPlaying && windowActive),
+                            )
+                        }
 
-                    // Clean solid play/pause button without outer progress indicator
-                    Surface(
-                        onClick = onToggle,
-                        shape = RoundedCornerShape(percent = m3PlayPauseCornerPercent),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(42.dp).collapseScale(0.9f, compactProgress),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (state.isBuffering) {
-                                ExpressiveInlineLoadingIndicator(
-                                    size = 20.dp,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(22.dp))
+                        // Clean solid play/pause button without outer progress indicator
+                        Surface(
+                            onClick = onToggle,
+                            shape = RoundedCornerShape(percent = m3PlayPauseCornerPercent),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(42.dp).collapseScale(0.9f, compactProgress),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (state.isBuffering) {
+                                    ExpressiveInlineLoadingIndicator(
+                                        size = 20.dp,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    AnimatedPlayPauseIcon(state.isPlaying, Modifier.size(22.dp))
+                                }
                             }
                         }
-                    }
 
-                    // Skip Next IconButton with an outline stroke
-                    IconButton(
-                        onClick = onNext,
-                        enabled = state.queueSize > 1,
-                        modifier = Modifier
-                            .padding(start = 6.dp)
-                            .size(40.dp)
-                            .collapseScale(0.9f, compactProgress)
-                            .border(
-                                width = 1.2.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                                shape = CircleShape,
+                        // Skip Next IconButton with an outline stroke
+                        IconButton(
+                            onClick = onNext,
+                            enabled = state.queueSize > 1,
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .size(40.dp)
+                                .collapseScale(0.9f, compactProgress)
+                                .border(
+                                    width = 1.2.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                                    shape = CircleShape,
+                                )
+                                .clip(CircleShape),
+                        ) {
+                            Icon(
+                                Icons.Filled.SkipNext,
+                                contentDescription = "Next",
+                                modifier = Modifier.size(22.dp),
+                                tint = if (state.queueSize > 1) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
                             )
-                            .clip(CircleShape),
-                    ) {
-                        Icon(
-                            Icons.Filled.SkipNext,
-                            contentDescription = "Next",
-                            modifier = Modifier.size(22.dp),
-                            tint = if (state.queueSize > 1) MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                        )
+                        }
                     }
+                    MiniPlayerProgress(progressState)
                 }
             }
         }

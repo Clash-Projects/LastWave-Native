@@ -6,9 +6,9 @@ import kotlin.math.exp
 import kotlin.math.max
 
 /**
- * Beat envelope for the beat-synced fluid background: follows the bass level
- * from the sink's [com.lastwave.app.playback.haptics.MusicHapticsAnalyzer],
- * so the artwork swells with every kick and bass hit and settles between them.
+ * Beat envelope for the beat-synced fluid background: follows the rhythm level
+ * (bass and mid hits) from the sink's [com.lastwave.app.playback.haptics.MusicHapticsAnalyzer],
+ * so the artwork swells with every hit and settles between them.
  * Discrete kick triggers missed hits and re-fired on 808 rolls.
  */
 object FluidRhythmEngine : HapticPulseListener {
@@ -43,7 +43,7 @@ object FluidRhythmEngine : HapticPulseListener {
         leadTimeMs: Long,
     ) = Unit
 
-    override fun onBassLevel(level: Float, leadTimeMs: Long) {
+    override fun onRhythmLevel(level: Float, leadTimeMs: Long) {
         synchronized(pendingLevels) { pendingLevels.addLast(SystemClock.uptimeMillis() + leadTimeMs to level) }
     }
 

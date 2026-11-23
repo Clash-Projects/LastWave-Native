@@ -410,7 +410,12 @@ class PlaylistRepository @Inject constructor(
             } else {
                 track
             }
-            persist(entity.withTracks(playlist.tracks + trackToAdd))
+            val updatedTracks = if (playlist.mode == LIKED_SONGS_MODE) {
+                listOf(trackToAdd) + playlist.tracks
+            } else {
+                playlist.tracks + trackToAdd
+            }
+            persist(entity.withTracks(updatedTracks))
         }
     }
 

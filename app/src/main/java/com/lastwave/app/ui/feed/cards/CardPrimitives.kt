@@ -88,6 +88,7 @@ internal fun CardArtwork(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = CardTokens.coverCornerRadius,
     decodeSizePx: Int? = null,
+    onAspect: ((Float) -> Unit)? = null,
 ) {
     Surface(
         shape = RoundedCornerShape(cornerRadius),
@@ -102,6 +103,7 @@ internal fun CardArtwork(
                 embeddedUrl = artworkUrl,
                 fallbackIcon = fallbackIcon,
                 decodeSizePx = decodeSizePx,
+                onAspect = onAspect,
                 modifier = Modifier.fillMaxSize(),
             )
         }

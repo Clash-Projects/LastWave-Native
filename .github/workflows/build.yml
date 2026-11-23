@@ -40,7 +40,7 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x gradlew
 
-      - name: Verify download and playback regressions
+      - name: Verify download, playback and scrobbler regressions
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests 'com.lastwave.app.data.download.YouTubeDownloadResolverTest'
@@ -54,6 +54,10 @@ jobs:
           --tests 'com.lastwave.app.playback.ChunkedRangeDataSourceTest'
           --tests 'com.lastwave.app.data.music.PlaybackCandidateRaceTest'
           --tests 'com.lastwave.app.playback.automix.*'
+          --tests 'com.lastwave.app.data.scrobbler.*'
+          --tests 'com.lastwave.app.data.repository.ScrobbleRepositoryTest'
+          --tests 'com.lastwave.app.data.backup.BackupScrobblerCredentialsTest'
+          --tests 'com.lastwave.app.ui.settings.SettingsClearAllDataTest'
           --stacktrace
 
       - name: Upload regression test results

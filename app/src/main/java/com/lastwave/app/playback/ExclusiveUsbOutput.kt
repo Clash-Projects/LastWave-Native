@@ -1017,6 +1017,7 @@ class ExclusiveUsbOutput @Inject constructor(
     private fun teardownLocked(closeDevice: Boolean) {
         stopStreamLocked()
         if (closeDevice) {
+            runCatching { featureVolume?.setNormalized(1.0f) }
             runCatching { usbAudio.closeDevice() }
             connection = null
         }

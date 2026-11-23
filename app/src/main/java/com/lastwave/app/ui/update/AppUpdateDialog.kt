@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,8 +56,8 @@ class AppUpdateDialogViewModel @Inject constructor(
 
 /**
  * The in-app update dialog, as on desktop: opens by itself when a new release
- * is found on launch, and from Settings' "Update Ready". Update now opens
- * the APK download in the browser, as before. Hosted once at the app root.
+ * is found on launch, and from Settings' "Update Ready". Update now downloads
+ * and installs the APK inside the app, as in Metrolist. Hosted once at the app root.
  */
 @Composable
 fun AppUpdateDialogHost(viewModel: AppUpdateDialogViewModel = hiltViewModel()) {
@@ -66,12 +67,11 @@ fun AppUpdateDialogHost(viewModel: AppUpdateDialogViewModel = hiltViewModel()) {
     val manager = viewModel.manager
     AppUpdateDialog(
         info = info,
-        onUpdate = {
-            manager.openDownload(context)
-            manager.hideDialog()
-        },
+        onUpdate = { manager.startUpdate(context) },
+        onCancelDownload = manager::cancelDownload,
         onOpenGitHub = { manager.openReleasePage(context) },
         onClose = { skipThisVersion ->
+            manager.cancelDownload()
             if (skipThisVersion) manager.dismissUpdate(info.latestVersion)
             manager.hideDialog()
         },
@@ -82,6 +82,7 @@ fun AppUpdateDialogHost(viewModel: AppUpdateDialogViewModel = hiltViewModel()) {
 private fun AppUpdateDialog(
     info: UpdateInfo,
     onUpdate: () -> Unit,
+    onCancelDownload: () -> Unit,
     onOpenGitHub: () -> Unit,
     onClose: (skipThisVersion: Boolean) -> Unit,
 ) {
@@ -147,6 +148,13 @@ private fun AppUpdateDialog(
                     )
                 }
 
+                info.downloadProgress?.let { progress ->
+                    LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+                }
+                info.installError?.let { error ->
+                    Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = skipThisVersion, onCheckedChange = { skipThisVersion = it })
                     Text("Don't show again for this version", style = MaterialTheme.typography.bodyMedium)
@@ -159,7 +167,20 @@ private fun AppUpdateDialog(
                 ) {
                     TextButton(onClick = onOpenGitHub) { Text("GitHub") }
                     TextButton(onClick = { onClose(skipThisVersion) }) { Text("Remind me later") }
-                    Button(onClick = onUpdate) { Text("Update now") }
+                    val downloading = info.downloadProgress != null
+                    Button(
+                        onClick = if (downloading) onCancelDownload else onUpdate,
+                        enabled = !info.isInstalling,
+                    ) {
+                        Text(
+                            when {
+                                downloading -> "Cancel ${info.downloadProgress}%"
+                                info.isInstalling -> "Installing…"
+                                info.readyToInstall -> "Install"
+                                else -> "Update now"
+                            },
+                        )
+                    }
                 }
             }
         }

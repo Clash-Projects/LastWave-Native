@@ -48,7 +48,7 @@
     <string name="settings_legacy_colors">Usar colores heredados</string>
     <string name="settings_legacy_colors_sub">Usa tonos auténticos de fondo y superficie de Material You en lugar de superficies de obsidiana profunda</string>
     <string name="settings_legacy_track_menu">Usar menú de canción clásico</string>
-    <string name="settings_legacy_track_menu_sub">Usar la hoja de opciones de canción más nueva en lugar del menú predeterminado</string>
+    <string name="settings_legacy_track_menu_sub">Usar el menú de opciones de canción clásico en lugar del diseño nuevo</string>
     <string name="settings_menu_blur">Usar desenfoque en menús</string>
     <string name="settings_menu_blur_sub">Desenfocar el fondo detrás de los menús contextuales y de canción</string>
     <string name="settings_dynamic_color">Color dinámico</string>
@@ -962,9 +962,9 @@
     <string name="set_lfm_remove">Quitar</string>
     <string name="set_lfm_key_label">clave API</string>
     <string name="set_lfm_key_saved">Tu clave está guardada</string>
-    <string name="set_lfm_key_hint">Obligatorio: obtenga uno gratis y luego péguelo aquí</string>
-    <string name="set_lfm_get">Obtenga una clave gratuita en last.fm/api →</string>
-    <string name="set_lfm_how">Cómo conseguir una clave gratis →</string>
+    <string name="set_lfm_key_hint">Obligatorio: obtenga uno y luego péguelo aquí</string>
+    <string name="set_lfm_get">Obtenga una clave en last.fm/api →</string>
+    <string name="set_lfm_how">Cómo conseguir una clave →</string>
     <string name="set_lfm_disc_title">¿Desconectar Last.fm?</string>
     <string name="set_lfm_disc_text">Los scrobbles globales hacen una pausa. Tus estadísticas cambian al historial de escucha local: no se elimina nada.</string>
     <string name="set_lfm_disc_btn">Desconectar</string>

@@ -175,10 +175,6 @@ class UsbDacMonitor @Inject constructor(
         runCatching { manager.requestPermission(device, pending) }
     }
 
-    private fun AudioDeviceInfo.isUsbOutput(): Boolean = type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-        type == AudioDeviceInfo.TYPE_USB_HEADSET ||
-        type == AudioDeviceInfo.TYPE_USB_ACCESSORY
-
     private fun UsbDevice.isAudioPeripheral(): Boolean {
         if (deviceClass == UsbConstants.USB_CLASS_AUDIO) return true
         for (index in 0 until interfaceCount) {
@@ -194,3 +190,8 @@ class UsbDacMonitor @Inject constructor(
         const val USB_PERMISSION_REQUEST = 4107
     }
 }
+
+internal fun AudioDeviceInfo.isUsbOutput(): Boolean = type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+    type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+    type == AudioDeviceInfo.TYPE_USB_ACCESSORY
+

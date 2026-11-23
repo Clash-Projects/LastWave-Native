@@ -175,6 +175,7 @@ fun HomeScreen(
     onOpenListeningStats: () -> Unit = {},
     onOpenFriends: () -> Unit,
     onOpenDownloads: () -> Unit = {},
+    avatarUrl: String? = null,
     viewModel: HomeViewModel = hiltViewModel(),
     artistAlbumNavigator: com.lastwave.app.ui.navigation.ArtistAlbumNavigator = hiltViewModel<ArtistAlbumNavBridgeHome>().navigator,
 ) {
@@ -202,7 +203,8 @@ fun HomeScreen(
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
                         com.lastwave.app.ui.recognition.MusicRecognitionButton(key = "recognition_stats")
                         IconButton(onClick = onOpenSettings) {
-                            ProfileAvatar(avatarUrl = uiState.stats?.avatarUrl, modifier = Modifier.size(38.dp))
+                            val displayAvatar = uiState.stats?.avatarUrl ?: avatarUrl
+                            ProfileAvatar(avatarUrl = displayAvatar, modifier = Modifier.size(38.dp))
                         }
                     },
                 )
