@@ -40,6 +40,7 @@ import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.database.StandaloneDatabaseProvider
 import android.media.MediaCodecList
+import android.media.MediaFormat
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -221,7 +222,7 @@ class MusicPlayer @Inject constructor(
             "LastWave:StreamResolutionWakeLock",
         )?.apply { setReferenceCounted(false) }
     }
-    private val extractorsFactory: ExtractorsFactory by lazy {
+    internal val extractorsFactory: ExtractorsFactory by lazy {
         val defaults = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
             .setMp3ExtractorFlags(
@@ -778,7 +779,7 @@ class MusicPlayer @Inject constructor(
             .setDefaultRequestProperties(NEUTRAL_MEDIA_HEADERS)
     }
 
-    private val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
+    internal val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
         val defaultDataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(appContext, httpUpstreamFactory)
         val chunkedUpstreamFactory = androidx.media3.datasource.DataSource.Factory {
             ChunkedRangeDataSource(defaultDataSourceFactory.createDataSource(), refresher = ::refreshRejectedYouTubeUrl)
@@ -836,6 +837,30 @@ class MusicPlayer @Inject constructor(
         if (refreshedYouTubeUrls.size > MAX_REFRESHED_URL_ENTRIES) refreshedYouTubeUrls.clear()
         refreshedYouTubeUrls[failedUrl] = replacement
         return replacement
+    }
+
+    /**
+     * The player's own read path for AutoMix analysis: cached and range-chunked
+     * for streams (same headers as playback), plain for local files. Null while
+     * the item is still an unresolved placeholder or its signed URL has expired.
+     */
+    private fun autoMixAnalysisInput(item: MediaItem): com.lastwave.app.playback.automix.analysis.AnalysisInput? {
+        val uri = item.localConfiguration?.uri ?: return null
+        if (uri.scheme == "lastwave") return null
+        val key = item.localConfiguration?.customCacheKey
+        val spec = DataSpec.Builder().setUri(uri).setKey(key).build()
+        if (uri.scheme != "http" && uri.scheme != "https") {
+            return com.lastwave.app.playback.automix.analysis.AnalysisInput(
+                androidx.media3.datasource.DefaultDataSource.Factory(appContext),
+                spec,
+            )
+        }
+        val stream = key?.let(preparedStreams::get) ?: preparedStreams.values.firstOrNull { it.url == uri.toString() }
+        if (stream?.isExpired() == true) return null
+        return com.lastwave.app.playback.automix.analysis.AnalysisInput(
+            cacheDataSourceFactory,
+            spec.withRequestHeaders(mediaRequestHeaders(stream)),
+        )
     }
 
     /** Headers for one media request, scoped to the stream that owns the URL. */
@@ -1078,6 +1103,8 @@ class MusicPlayer @Inject constructor(
             runCatching { autoMixCoordinator.get().setTransportPaused(!playWhenReady) }
         }
         override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+            // An AutoMix beat match stretches the deck; the user's speed has not changed.
+            if (autoMixCoordinator.get().userParametersFor(player) != null) return
             _state.update { it.copy(speed = playbackParameters.speed, pitch = playbackParameters.pitch) }
         }
         override fun onVolumeChanged(volume: Float) {
@@ -1767,7 +1794,7 @@ class MusicPlayer @Inject constructor(
                     }
                     val isSpatial = isSpatialAudioCodec(_state.value.audioCodec)
                     createdSink.setBitPerfectRequested(!isSpatial && bitPerfectEnabled)
-                    createdSink.syncExclusiveUsb(handleAudioFocus && !isSpatial && exclusiveUsbWanted())
+                    createdSink.syncExclusiveUsb(handleAudioFocus && exclusiveUsbWanted())
                     createdSink.syncInternalDirect(handleAudioFocus && !isSpatial && internalDirectWanted())
                     audioSinks.add(createdSink)
                     runCatching {
@@ -1814,6 +1841,22 @@ class MusicPlayer @Inject constructor(
                             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
                         }
                         return super.supportsFormat(mediaCodecSelector, format)
+                    }
+
+                    override fun getMediaFormat(
+                        format: androidx.media3.common.Format,
+                        codecMimeType: String,
+                        codecMaxInputSize: Int,
+                        codecOperatingRate: Float,
+                    ): MediaFormat {
+                        val mediaFormat = super.getMediaFormat(
+                            format,
+                            codecMimeType,
+                            codecMaxInputSize,
+                            codecOperatingRate,
+                        )
+                        configureDolbySpatialMediaFormat(mediaFormat, format)
+                        return mediaFormat
                     }
                 }
                 out.add(dolbySpatialRenderer)
@@ -2121,7 +2164,7 @@ class MusicPlayer @Inject constructor(
             }
             incoming.shuffleModeEnabled = outgoing.shuffleModeEnabled
             incoming.repeatMode = outgoing.repeatMode
-            incoming.playbackParameters = outgoing.playbackParameters
+            // Speed stays AutoMix's: a beat match runs the incoming deck at the matched tempo.
             crossfadeStandbyArmed = false
             crossfadeStandbyPreparing = false
             outgoingPlayer = outgoing
@@ -2142,6 +2185,8 @@ class MusicPlayer @Inject constructor(
             toStop?.stop()
             toStop?.clearMediaItems()
         }
+        autoMixCoord.analysisInput = ::autoMixAnalysisInput
+        autoMixCoord.deckSink = { deck -> playerToSink[deck]?.autoMixTaps }
         setupSpatializerListener()
         runCatching { restorePlaybackSession() }.getOrElse { error ->
             // A corrupt session or OEM media-stack failure must not become a
@@ -2229,7 +2274,6 @@ class MusicPlayer @Inject constructor(
 
                             val stream = nextItem?.localConfiguration?.customCacheKey?.let(preparedStreams::get)
                                 ?: preparedStreams.values.firstOrNull { it.url == nextItem?.localConfiguration?.uri?.toString() }
-                            val nextStreamUrl = stream?.url ?: nextItem?.localConfiguration?.uri?.toString()
 
                             val transitionActive = crossfadeEnabled || autoMixCoordinator.get().isEnabled
                             if (transitionActive && upcomingIdx != C.INDEX_UNSET && nextItem != null) {
@@ -2250,8 +2294,11 @@ class MusicPlayer @Inject constructor(
                                         }
                                     } else {
                                         standbyOrCreate()
-                                        // A quality hot-swap owns the standby until it commits.
-                                        if (!hotSwapActive && (!crossfadeStandbyArmed || standbyIndex != upcomingIdx)) {
+                                        // A quality hot-swap owns the standby until it commits; during an
+                                        // AutoMix blend the "standby" is the old song still fading out.
+                                        if (!hotSwapActive && !autoMixCoordinator.get().isBlending &&
+                                            (!crossfadeStandbyArmed || standbyIndex != upcomingIdx)
+                                        ) {
                                             armCrossfadeStandby(upcomingIdx, nextItem)
                                         }
                                     }
@@ -2261,15 +2308,18 @@ class MusicPlayer @Inject constructor(
                             // Only the decoded stream length may time a mix:
                             // catalog metadata can describe another edit of the
                             // song and opened the blend halfway through it.
-                            autoMixCoordinator.get().onTrackProgressTick(
-                                primaryPlayer = player,
-                                // A quality hot-swap is playing this same song on the standby.
-                                secondaryPlayer = currentStandby().takeUnless { hotSwapActive },
-                                currentTrack = _state.value.current,
-                                nextTrack = nextTrk,
-                                positionMs = runCatching { player.currentPosition }.getOrDefault(pos).coerceAtLeast(0L),
-                                durationMs = player.duration.takeIf { it > 0L } ?: 0L,
-                                nextTrackStreamUrl = nextStreamUrl,
+                            autoMixCoordinator.get().onTick(
+                                com.lastwave.app.playback.automix.engine.DualDeckTransportCoordinator.Tick(
+                                    primary = player,
+                                    // A quality hot-swap is playing this same song on the standby.
+                                    standby = currentStandby().takeUnless { hotSwapActive },
+                                    current = _state.value.current,
+                                    currentItem = player.currentMediaItem,
+                                    next = nextTrk,
+                                    nextItem = nextItem,
+                                    positionMs = runCatching { player.currentPosition }.getOrDefault(pos).coerceAtLeast(0L),
+                                    durationMs = player.duration.takeIf { it > 0L } ?: 0L,
+                                ),
                             )
                             if (updateCrossfade(pos)) {
                                 cadenceMs = 60L
@@ -2547,7 +2597,8 @@ class MusicPlayer @Inject constructor(
                 }
                 if (playerDelegate.isInitialized()) {
                     onMain {
-                        if (!crossfadeEnabled || bitPerfectEnabled) cancelCrossfade()
+                        // Any settings write (even the volume) lands here: an AutoMix blend has its own gates.
+                        if (!crossfadeEnabled || bitPerfectEnabled) cancelCrossfade(endAutoMix = false)
                         if (bitPerfectEnabled) {
                             // Tempo stretch resamples, which defeats bit-perfect.
                             // Volume is left alone: the direct sinks scale it in
@@ -2578,6 +2629,7 @@ class MusicPlayer @Inject constructor(
         applicationScope.launch(Dispatchers.Main.immediate) {
             jamRepository.get().sessionState.collect { session ->
                 val isJam = session is com.lastwave.app.data.jam.JamSessionState.Active
+                autoMixCoordinator.get().setJamActive(isJam)
                 if (isJam != _state.value.isJamActive) {
                     _state.update { it.copy(isJamActive = isJam) }
                 }
@@ -2822,8 +2874,6 @@ class MusicPlayer @Inject constructor(
         onMain {
             if (generation != playRequestGeneration.get()) return@onMain
             ensureForegroundService()
-            // drop any running automix blend, the old decks are going away
-            autoMixCoordinator.get().cancelTransition(revertToPrimary = true)
             cancelCrossfade()
             losslessBypassMediaIds.clear()
             errorRetryCount = 0
@@ -3503,11 +3553,8 @@ class MusicPlayer @Inject constructor(
             castPlayback?.seek(positionMs.coerceAtLeast(0))
             return@onMain
         }
-        if (autoMixCoordinator.get().isEnabled) {
-            autoMixCoordinator.get().handleSeekEvent(positionMs.coerceAtLeast(0))
-        } else {
-            cancelCrossfade()
-        }
+        // Before an AutoMix hand-over the seek is in the old song (revert), after it in the new one (commit).
+        cancelCrossfade()
         cancelActiveUpgrade()
         currentTrackCacheJob?.cancel()
         currentTrackCacheJob = null
@@ -4061,8 +4108,6 @@ class MusicPlayer @Inject constructor(
             if (playerDelegate.isInitialized() && player.mediaItemCount > 0) player.currentPosition else null
         }.getOrNull()?.takeIf { it > 0L } ?: _state.value.positionMs
         if (isCasting) castPlayback?.disconnect()
-        // stop any automix blend too
-        autoMixCoordinator.get().cancelTransition(revertToPrimary = true)
         cancelCrossfade()
         resolutionRequests.values.forEach { it.second.cancel() }
         resolutionRequests.clear()
@@ -7884,6 +7929,41 @@ class MusicPlayer @Inject constructor(
         return true
     }
 
+    /**
+     * Configures the platform Dolby/Spatial MediaCodec decoder format.
+     * When routing to a 2-channel USB DAC (which cannot negotiate multi-channel audio)
+     * or on endpoints where the system Spatializer cannot spatialize the stream,
+     * instructs the decoder to fold the spatial mix into 2-channel stereo with
+     * hardware dialogue normalization and dynamic range control.
+     */
+    private fun configureDolbySpatialMediaFormat(
+        mediaFormat: MediaFormat,
+        format: androidx.media3.common.Format,
+    ) {
+        val isUsbDac = routedDacDeviceId != null ||
+            usbDacMonitor.state.value.dac != null ||
+            audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any { it.isUsbOutput() } == true
+        val canSpatialize = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
+            val sp = audioManager?.spatializer
+            val attr = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setSpatializationBehavior(android.media.AudioAttributes.SPATIALIZATION_BEHAVIOR_AUTO)
+                .build()
+            val fmt = android.media.AudioFormat.Builder()
+                .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(format.sampleRate.takeIf { it > 0 } ?: 48000)
+                .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_5POINT1)
+                .build()
+            sp?.isEnabled == true && sp.isAvailable && sp.canBeSpatialized(attr, fmt)
+        } else {
+            false
+        }
+        if (exclusiveUsbWanted() || isUsbDac || !canSpatialize) {
+            mediaFormat.setInteger(MediaFormat.KEY_MAX_OUTPUT_CHANNEL_COUNT, 2)
+        }
+    }
+
     /** A muted player with the real decode path, for testing a stream off-air. */
     private fun buildSilentPlayer(probe: SwapPcmProbe? = null): ExoPlayer {
         val resolvingFactory = ResolvingDataSource.Factory(cacheDataSourceFactory) { dataSpec ->
@@ -7942,6 +8022,22 @@ class MusicPlayer @Inject constructor(
                             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
                         }
                         return super.supportsFormat(mediaCodecSelector, format)
+                    }
+
+                    override fun getMediaFormat(
+                        format: androidx.media3.common.Format,
+                        codecMimeType: String,
+                        codecMaxInputSize: Int,
+                        codecOperatingRate: Float,
+                    ): MediaFormat {
+                        val mediaFormat = super.getMediaFormat(
+                            format,
+                            codecMimeType,
+                            codecMaxInputSize,
+                            codecOperatingRate,
+                        )
+                        configureDolbySpatialMediaFormat(mediaFormat, format)
+                        return mediaFormat
                     }
                 }
                 out.add(immersiveRenderer)
@@ -8973,8 +9069,8 @@ class MusicPlayer @Inject constructor(
             durationMs = dur,
             shuffleEnabled = player.shuffleModeEnabled,
             repeatMode = player.repeatMode,
-            speed = player.playbackParameters.speed,
-            pitch = player.playbackParameters.pitch,
+            speed = (autoMixCoordinator.get().userParametersFor(player) ?: player.playbackParameters).speed,
+            pitch = (autoMixCoordinator.get().userParametersFor(player) ?: player.playbackParameters).pitch,
             bitrateKbps = previous.bitrateKbps.takeIf { hasExplicitPrevious } ?: streamForCurrent?.bitrateKbps,
             audioCodec = previous.audioCodec.takeIf { hasExplicitPrevious } ?: streamForCurrent?.audioCodec,
             isLossless = (previous.isLossless && sameTrack) || (streamForCurrent?.isLossless == true),

@@ -825,15 +825,23 @@ class UsbAudioDevice private constructor(private val context: Context) {
         parsedClockSelectorId = -1
         parsedClockSelectorPins = emptyList()
         activeClockSourceId = -1
+        val conn = connection
+        val fd = conn?.fileDescriptor ?: -1
         claimedControlInterface?.let { iface ->
-            runCatching { connection?.releaseInterface(iface) }
+            runCatching { conn?.releaseInterface(iface) }
+            if (fd >= 0) {
+                runCatching { UsbAudioStream.nativeUsbAttachKernelDriver(fd, iface.id) }
+            }
             claimedControlInterface = null
         }
         claimedInterface?.let { iface ->
-            runCatching { connection?.releaseInterface(iface) }
+            runCatching { conn?.releaseInterface(iface) }
+            if (fd >= 0) {
+                runCatching { UsbAudioStream.nativeUsbAttachKernelDriver(fd, iface.id) }
+            }
             claimedInterface = null
         }
-        runCatching { connection?.close() }
+        runCatching { conn?.close() }
         connection = null
         currentDevice = null
         playbackInterfaceId = -1
