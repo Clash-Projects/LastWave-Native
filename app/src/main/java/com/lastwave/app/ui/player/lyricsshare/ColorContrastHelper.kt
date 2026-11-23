@@ -36,7 +36,7 @@ data class DerivedCardColors(
 object ColorContrastHelper {
 
     const val SWATCH_COVER_ART: Int = 0x00C0BEA7 // Sentinel ARGB for Cover Art background swatch
-    const val BRAND_LIME: Int = 0xFFC9FB00.toInt()
+    const val BRAND_LIME: Int = 0xFF9581F6.toInt()
     const val DEFAULT_DARK: Int = 0xFF12161A.toInt()
     const val PURE_WHITE: Int = 0xFFFFFFFF.toInt()
     const val PURE_BLACK: Int = 0xFF333333.toInt()

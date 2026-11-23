@@ -235,7 +235,7 @@ class QualitySwitch(val upgrade: Boolean, val title: String)
 @androidx.compose.runtime.Immutable
 data class PlaybackChromeState(
     val current: PlayableTrack? = null,
-    val sourceLabel: String = "LastWave",
+    val sourceLabel: String = "SoundDrop",
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     val queueSize: Int = 0,
@@ -254,7 +254,7 @@ data class PlaybackChromeState(
 @androidx.compose.runtime.Immutable
 data class ListPlaybackState(
     val current: PlayableTrack? = null,
-    val sourceLabel: String = "LastWave",
+    val sourceLabel: String = "SoundDrop",
     val isPlaying: Boolean = false,
     val shuffleEnabled: Boolean = false,
 )

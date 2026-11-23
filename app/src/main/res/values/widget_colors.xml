@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_surface">#FF9C3645</color>
-    <color name="widget_surface_top">#FF9C3645</color>
-    <color name="widget_surface_variant">#FF9C3645</color>
-    <color name="widget_on_surface">#FFFFFFFF</color>
-    <color name="widget_on_surface_variant">#FFE0B8BC</color>
-    <color name="widget_icon_tint">#FF3C1117</color>
-    <color name="widget_primary">#FF9C3645</color>
-    <color name="widget_primary_deep">#FF9C3645</color>
-    <color name="widget_primary_top">#FF9C3645</color>
-    <color name="widget_on_primary">#FF3C1117</color>
-    <color name="widget_accent">#FFF1C295</color>
+    <color name="widget_surface">#FF17171F</color>
+    <color name="widget_surface_top">#FF1E1E28</color>
+    <color name="widget_surface_variant">#FF262633</color>
+    <color name="widget_on_surface">#FFECEAF5</color>
+    <color name="widget_on_surface_variant">#FFB4B0C8</color>
+    <color name="widget_icon_tint">#FF0E0E14</color>
+    <color name="widget_primary">#FF9581F6</color>
+    <color name="widget_primary_deep">#FF7F6AE8</color>
+    <color name="widget_primary_top">#FFA594F8</color>
+    <color name="widget_on_primary">#FF0E0E14</color>
+    <color name="widget_accent">#FFB8A7F2</color>
     <color name="widget_hairline">#00000000</color>
     <color name="widget_track">#33000000</color>
     <color name="widget_eq_bar">#FFFFFFFF</color>

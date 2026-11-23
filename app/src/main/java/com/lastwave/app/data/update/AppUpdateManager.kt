@@ -310,7 +310,7 @@ class AppUpdateManager @Inject constructor(
         dir.listFiles()?.forEach(File::delete)
         val partial = File(dir, "$fileName.part")
         val output = File(dir, fileName)
-        val request = Request.Builder().url(url).header("User-Agent", "LastWave-Android").build()
+        val request = Request.Builder().url(url).header("User-Agent", "SoundDrop-Android").build()
         val call = okHttpClient.newCall(request).also { activeDownload = it }
         call.execute().use { response ->
             check(response.isSuccessful) { "HTTP ${response.code}" }

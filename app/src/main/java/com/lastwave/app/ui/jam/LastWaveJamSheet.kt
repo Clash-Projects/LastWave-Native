@@ -121,8 +121,8 @@ fun LastWaveJamSheet(
     val context = LocalContext.current
 
     val isDark = com.lastwave.app.ui.theme.LocalIsDarkTheme.current
-    val LimeAccent = if (isDark) Color(0xFFC9FB00) else Color(0xFF2E6B12)
-    val DarkTeal = if (isDark) Color(0xFF012226) else Color.White
+    val LimeAccent = if (isDark) Color(0xFF9581F6) else Color(0xFF6A55D9)
+    val DarkTeal = if (isDark) Color(0xFF0E0E14) else Color.White
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var chatInputText by remember { mutableStateOf("") }
