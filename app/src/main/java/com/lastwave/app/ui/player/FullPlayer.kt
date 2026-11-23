@@ -1349,6 +1349,12 @@ internal fun FullPlayer(
                                 // Now Playing.
                                 // Lyrics' own fullscreen still takes the whole width.
                                 val landscapeSplit = isTabletLandscape && !lyricsFullscreen
+                                // Tablet fullscreen lyrics span a wide screen; side-staged rows
+                                // read as ragged, so they are always centred there.
+                                val tabletFullscreen = isTablet && lyricsFullscreen
+                                CompositionLocalProvider(
+                                    LocalLyricsAlignment provides if (tabletFullscreen) LyricsAlignment(centered = true) else LocalLyricsAlignment.current,
+                                ) {
                                 Row(Modifier.fillMaxSize()) {
                                 if (landscapeSplit) {
                                     LandscapeArtworkPane(
@@ -1415,6 +1421,7 @@ internal fun FullPlayer(
                                             .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp)
                                     },
                                 )
+                                }
                                 }
                             }
                         }
