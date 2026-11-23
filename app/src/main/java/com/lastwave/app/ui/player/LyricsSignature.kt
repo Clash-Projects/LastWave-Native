@@ -337,7 +337,7 @@ private fun SignatureWordmark(
             label = "lwSignatureSweep",
         )
     } else null
-    val text = "LastWave"
+    val text = "SoundDrop"
     Box(modifier, contentAlignment = Alignment.Center) {
         // Glow: the same glyphs with a soft shadow under the wordmark. No
         // graphicsLayer here: a layer clips the blur to the text box and

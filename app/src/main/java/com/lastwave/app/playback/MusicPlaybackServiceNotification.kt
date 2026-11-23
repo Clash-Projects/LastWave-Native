@@ -398,7 +398,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
 
         return builder
             .setSmallIcon(R.drawable.ic_launcher_logo)
-            .setContentTitle(state.current?.title ?: "LastWave")
+            .setContentTitle(state.current?.title ?: "SoundDrop")
             .setContentText(state.current?.artist ?: "Music player")
             .setSubText(state.current?.album)
             .setContentIntent(openAppPendingIntent())

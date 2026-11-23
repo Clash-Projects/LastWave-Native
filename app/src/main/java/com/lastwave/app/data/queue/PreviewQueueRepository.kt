@@ -61,7 +61,7 @@ class PreviewQueueRepository @Inject constructor(
         if (tracks.size < 2) return
         val snapshotTracks = tracks.take(1500)
         val firstTrack = snapshotTracks.firstOrNull() ?: return
-        val title = if (sourceLabel.isNotBlank() && sourceLabel != "LastWave" && sourceLabel != "Home") {
+        val title = if (sourceLabel.isNotBlank() && sourceLabel != "SoundDrop" && sourceLabel != "Home") {
             sourceLabel
         } else {
             "${firstTrack.title} & more"

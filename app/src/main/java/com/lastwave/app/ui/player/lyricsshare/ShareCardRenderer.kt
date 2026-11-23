@@ -533,7 +533,7 @@ object ShareCardRenderer {
         drawLogoMark(canvas, context, x + (logoSize / 2f), centerY, logoSize, brandColor)
         // Baseline that centres the glyphs on the mark instead of a fixed guess.
         val textY = centerY - (textPaint.ascent() + textPaint.descent()) / 2f
-        canvas.drawText("LastWave", x + logoSize + gap, textY, textPaint)
+        canvas.drawText("SoundDrop", x + logoSize + gap, textY, textPaint)
     }
 
     private fun drawLogoMark(

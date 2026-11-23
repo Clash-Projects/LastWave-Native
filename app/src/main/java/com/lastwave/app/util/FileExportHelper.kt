@@ -36,9 +36,9 @@ class FileExportHelper @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     companion object {
-        private const val PUBLIC_EXPORT_SUBDIR = "LastWave"
-        private const val PUBLIC_BACKUP_SUBDIR = "LastWave/Backups"
-        private const val PUBLIC_PLAYLIST_SUBDIR = "LastWave/Playlists"
+        private const val PUBLIC_EXPORT_SUBDIR = "SoundDrop"
+        private const val PUBLIC_BACKUP_SUBDIR = "SoundDrop/Backups"
+        private const val PUBLIC_PLAYLIST_SUBDIR = "SoundDrop/Playlists"
         private const val PLAYLIST_MIRROR_FILENAME = "lastwave-playlists.json"
         private const val PLAYLIST_RECOVERY_FILENAME = "lastwave-playlists-recovery.json"
         private const val MIRROR_PREFS = "playlist_file_mirror"
@@ -272,7 +272,7 @@ class FileExportHelper @Inject constructor(
             val resolver = context.contentResolver
             val sanitized = sanitizeFilename(title)
             val filename = "lyrics_${sanitized}_${System.currentTimeMillis()}.png"
-            val relativePath = "${Environment.DIRECTORY_PICTURES}/LastWave"
+            val relativePath = "${Environment.DIRECTORY_PICTURES}/SoundDrop"
 
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, filename)
