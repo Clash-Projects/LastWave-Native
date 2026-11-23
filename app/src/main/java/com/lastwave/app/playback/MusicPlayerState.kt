@@ -180,7 +180,7 @@ internal data class PersistedPlaybackSession(
     val queue: List<PlayableTrack>,
     val currentIndex: Int,
     val positionMs: Long,
-    val sourceLabel: String = "LastWave",
+    val sourceLabel: String = "SoundDrop",
     val isEndlessQueue: Boolean = false,
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,

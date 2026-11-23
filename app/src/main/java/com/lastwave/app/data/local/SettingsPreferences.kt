@@ -219,12 +219,12 @@ data class MiscSettings(
     val rotatingBackgroundEnabled: Boolean = true,
     /** When true, animates fluid rotating artwork in the lyrics background.
      *  When false (default), uses static blurred artwork background in the lyrics view. */
-    val lyricsRotatingBackgroundEnabled: Boolean = false,
+    val lyricsRotatingBackgroundEnabled: Boolean = true,
     /** When true (default), fluid background motion dynamically surges and pulses to musical beats.
      *  When false, fluid background moves at a steady constant speed. */
     val fluidBeatSyncEnabled: Boolean = false,
     /** When true, keeps the screen from turning off when the user has the lyrics view open. */
-    val keepLyricsScreenAwake: Boolean = false,
+    val keepLyricsScreenAwake: Boolean = true,
     /** Seconds of inactivity before the floating lyrics buttons (font size,
      *  fullscreen) fade out on the Lyrics screen; 0 = Never. Default 5. */
     val lyricsButtonsAutoHideSeconds: Int = 5,

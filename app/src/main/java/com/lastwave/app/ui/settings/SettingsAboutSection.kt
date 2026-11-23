@@ -486,7 +486,7 @@ internal fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=com.sernheise.app") }
+                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -519,7 +519,7 @@ internal fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://play.google.com/store/apps/details?id=aman.lyricify") }
+                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -551,7 +551,7 @@ internal fun MoreFromUsCard(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onOpenUrl("https://github.com/duxtami/SleepTracker") }
+                    .clickable { onOpenUrl("https://xaero.framer.website/apps") }
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -653,7 +653,7 @@ internal fun AboutCard(
                 shape = ExpressivePillShape,
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sounddrop.framer.website/download"))
                     if (!startActivitySafely(context, intent)) {
                         android.widget.Toast.makeText(context, context.getString(R.string.toast_no_browser_plain), android.widget.Toast.LENGTH_SHORT).show()
                     }

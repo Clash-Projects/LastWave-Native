@@ -365,7 +365,7 @@ internal fun String.isChannelId(): Boolean =
 internal suspend fun InnerTubeMusicApi.createRemotePlaylistImpl(title: String): String? = withContext(Dispatchers.IO) {
         if (!ytAuth.connection.value.isConnected) return@withContext null
         val cleanTitle = title.replace("<", "(").replace(">", ")").take(150)
-            .ifBlank { "LastWave Playlist" }
+            .ifBlank { "SoundDrop Playlist" }
         val config = getWebConfig()
         val root = runCatching {
             post(

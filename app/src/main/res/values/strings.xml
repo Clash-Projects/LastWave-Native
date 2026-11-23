@@ -243,7 +243,7 @@
     <string name="storage_cache_last_cleared">Last cleared %1$s • %2$s freed</string>
     <string name="storage_cache_limit">Cache size limit</string>
     <string name="storage_cache_limit_summary">Selected cache limit: %1$s • Maximum available: %2$s. Oldest cached items are removed as needed; downloads are excluded.</string>
-    <string name="storage_quality_note">Artwork uses smaller thumbnails on mobile data. If a high-resolution cover is already cached, LastWave reuses it without downloading it again.</string>
+    <string name="storage_quality_note">Artwork uses smaller thumbnails on mobile data. If a high-resolution cover is already cached, SoundDrop reuses it without downloading it again.</string>
     <string name="storage_clear_cache">Clear cache</string>
     <string name="storage_clear_cache_title">Clear cached artwork and audio?</string>
     <string name="storage_clear_cache_message">This removes cached artwork and streamed audio. Downloaded music will stay on your device.</string>
@@ -707,7 +707,7 @@
     <string name="menu_start_mix_short">Start a mix</string>
     <string name="menu_audio_details">Audio details</string>
     <string name="menu_cast_short">Cast</string>
-    <string name="settings_jam_title">LastWave Jam</string>
+    <string name="settings_jam_title">SoundDrop Jam</string>
     <string name="settings_jam_sub">Listen together in real-time \u2022 Host or join with code</string>
 
     <!-- Playlists screen -->
@@ -1555,7 +1555,7 @@
     <string name="recognize_identifying">Identifying…</string>
     <string name="recognize_cancel">Cancel</string>
     <string name="recognize_close">Close</string>
-    <string name="recognize_search">Search in LastWave</string>
+    <string name="recognize_search">Search in SoundDrop</string>
     <string name="recognize_retry">Try again</string>
     <string name="recognize_open_settings">Open settings</string>
     <string name="recognize_error_permission">Microphone access is needed to listen for music.</string>

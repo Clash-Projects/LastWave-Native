@@ -86,7 +86,7 @@ class PlaylistPublicMirror @Inject constructor(
 
     suspend fun importAndMerge(content: String): Result<Int> = mutex.withLock {
         val mirror = decode(content)
-            ?: return@withLock Result.failure(IllegalArgumentException("Invalid LastWave playlist JSON"))
+            ?: return@withLock Result.failure(IllegalArgumentException("Invalid SoundDrop playlist JSON"))
         try {
             dao.upsertAll(mirror.playlists.map { it.toEntity() })
             writeLocked(dao.getAll()).onFailure { error ->

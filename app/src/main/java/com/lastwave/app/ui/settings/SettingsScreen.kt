@@ -2380,9 +2380,9 @@ fun SettingsScreen(
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_source_code),
-                                subtitle = "github.com/Clash-Projects/LastWave-native",
+                                subtitle = "github.com/1f81-official/SoundDrop",
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-native"))
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/1f81-official/SoundDrop"))
                                     if (!startActivitySafely(context, intent)) {
                                         viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
                                     }
@@ -2395,9 +2395,9 @@ fun SettingsScreen(
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_desktop_app),
-                                subtitle = "github.com/Clash-Projects/LastWave-Desktop",
+                                subtitle = "sounddrop.framer.website/download",
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Clash-Projects/LastWave-Desktop"))
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://sounddrop.framer.website/download"))
                                     if (!startActivitySafely(context, intent)) {
                                         viewModel.showToast(context.getString(R.string.toast_no_browser_plain))
                                     }

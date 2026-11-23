@@ -332,7 +332,7 @@ internal fun MusicPlaybackService.buildNotification(state: MusicPlayerState, art
             val playPauseLabel = if (state.isPlaying) "Pause" else "Play"
             return builder
                 .setSmallIcon(R.drawable.ic_launcher_logo)
-                .setContentTitle(state.current?.title ?: "LastWave")
+                .setContentTitle(state.current?.title ?: "SoundDrop")
                 .setContentText(state.current?.artist ?: "Music player")
                 .setSubText(state.current?.album)
                 .setContentIntent(openAppPendingIntent())
@@ -442,7 +442,7 @@ internal fun MusicPlaybackService.notificationRemoteViews(
         // 192px is already sharp. Two sizes keep the Binder parcel small.
         if (art != null) setImageViewBitmap(R.id.notification_artwork, scaledBitmap(art, if (expanded) 288 else 192))
         else setImageViewResource(R.id.notification_artwork, R.mipmap.ic_launcher)
-        setTextViewText(R.id.notification_title, state.current?.title ?: "LastWave")
+        setTextViewText(R.id.notification_title, state.current?.title ?: "SoundDrop")
         setTextViewText(R.id.notification_artist, state.current?.artist ?: "Music player")
         setTextColor(R.id.notification_title, palette.onSurface)
         setTextColor(R.id.notification_artist, palette.onSurfaceVariant)
@@ -571,7 +571,7 @@ internal fun MusicPlaybackService.createNotificationChannel() {
             runCatching { nm.deleteNotificationChannel(LEGACY_CHANNEL_ID_V1) }
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Music playback", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Native LastWave playback controls"
+                    description = "Native SoundDrop playback controls"
                     setShowBadge(false)
                     setSound(null, null)
                     enableVibration(false)

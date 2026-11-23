@@ -241,7 +241,7 @@ class AppUpdateManager @Inject constructor(
     /** The release page, for the dialog's GitHub button. */
     fun openReleasePage(context: Context) {
         val targetUrl = _updateInfo.value.releaseUrl.ifBlank {
-            "https://github.com/Clash-Projects/LastWave-native/releases"
+            "https://github.com/1f81-official/SoundDrop/releases"
         }
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -268,7 +268,7 @@ class AppUpdateManager @Inject constructor(
         if (fileName == null || url.isNullOrBlank() || digest == null) return openDownload(context)
         // Before Android 8 unknown sources is a global setting the installer prompt checks itself.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            _updateInfo.update { it.copy(installError = "Allow LastWave to install apps, then tap Update again") }
+            _updateInfo.update { it.copy(installError = "Allow SoundDrop to install apps, then tap Update again") }
             runCatching {
                 context.startActivity(
                     Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))

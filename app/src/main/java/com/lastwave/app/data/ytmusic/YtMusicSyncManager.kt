@@ -499,7 +499,7 @@ class YtMusicSyncManager @Inject constructor(
 
     /** The title YouTube stores for [title] (same cleanup as createRemotePlaylist). */
     private fun remoteTitleOf(title: String): String =
-        title.replace("<", "(").replace(">", ")").take(150).ifBlank { "LastWave Playlist" }.trim()
+        title.replace("<", "(").replace(">", ")").take(150).ifBlank { "SoundDrop Playlist" }.trim()
 
     private fun Throwable.isAuthError(): Boolean =
         this is InnerTubeMusicApi.InnerTubeHttpException && (responseCode == 401 || responseCode == 403)
