@@ -307,7 +307,10 @@ data class MiscSettings(
     val useLegacyTrackMenu: Boolean = false,
     /** When true, enables blur effect behind and around song options menus. */
     val useMenuBlur: Boolean = true,
-)
+) {
+    val enabledHttpAddons: List<HttpAddonConfig>
+        get() = httpAddons.filter { it.enabled && it.url.isNotBlank() }
+}
 
 val MiscSettings.musicHapticsConfig: MusicHapticsConfig
     get() = MusicHapticsConfig(

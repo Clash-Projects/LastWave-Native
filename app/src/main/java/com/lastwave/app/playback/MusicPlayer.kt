@@ -6466,11 +6466,11 @@ class MusicPlayer @Inject constructor(
         } else {
             STARTUP_PROVIDER_PROBE_MS
         }
-        suspend fun awaitProvider(): ResolvedStream? = try {
-            if (!startDirect) {
-                awaitProviderUntil(startedAtMs + STARTUP_PROVIDER_RESOLVE_MS)
-            } else {
-                awaitProviderUntil(startedAtMs + BEST_QUALITY_WAIT_MS)
+        suspend fun awaitProvider(fallbackFailed: Boolean): ResolvedStream? = try {
+            when {
+                fallbackFailed -> awaitProviderUntil(startedAtMs + LOSSLESS_BACKGROUND_BUDGET_MS)
+                !startDirect -> awaitProviderUntil(startedAtMs + STARTUP_PROVIDER_RESOLVE_MS)
+                else -> awaitProviderUntil(startedAtMs + BEST_QUALITY_WAIT_MS)
                     ?: if (addonMatched.matched) awaitProviderUntil(startedAtMs + BEST_QUALITY_RESOLVING_WAIT_MS) else null
             }
         } catch (error: CancellationException) {
@@ -6514,13 +6514,14 @@ class MusicPlayer @Inject constructor(
         }
         // DASH/DRM cannot be byte-probed; it needs a full player prepare.
         fun isManifest(stream: ResolvedStream) = !stream.mimeType.startsWith("audio/") || stream.segmentedDrm != null
-        suspend fun playableProvider(acceptManifest: Boolean): ResolvedStream? = awaitProvider()?.takeIf {
-            isStreamAllowedForQuality(it, requestedQuality, miscSnapshot) &&
-                (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it, probeTimeoutMs()))
-        }
-        // Whichever source is playable first starts. Waiting on the provider
-        // first cost 5 s per song whenever it answered slowly or with an error;
-        // the upgrade job promotes to the chosen tier once that is playable.
+        suspend fun playableProvider(acceptManifest: Boolean, fallbackFailed: Boolean = false): ResolvedStream? =
+            awaitProvider(fallbackFailed)?.takeIf {
+                val probeTimeout = if (fallbackFailed) STARTUP_PROVIDER_RESOLVE_MS else probeTimeoutMs()
+                isStreamAllowedForQuality(it, requestedQuality, miscSnapshot) &&
+                    (if (isManifest(it)) acceptManifest else isProviderReadyForStartup(it, probeTimeout))
+            }
+        // The addon gets the longer wait only after YouTube fails, since
+        // there is no playable fallback to start while the addon resolves.
         try {
             ((if (startDirect) {
                 racePlaybackCandidates(
@@ -6537,7 +6538,7 @@ class MusicPlayer @Inject constructor(
                         second = { playableProvider(acceptManifest = false) },
                     )
                 },
-            ) ?: playableProvider(acceptManifest = true)
+            ) ?: playableProvider(acceptManifest = true, fallbackFailed = true)
                 ?: fallback.await().getOrThrow()).also { winner ->
                 if (claimPlayback) {
                     val name = when {

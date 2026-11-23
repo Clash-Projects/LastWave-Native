@@ -28,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.model.AuthState
 import com.lastwave.app.ui.auth.AuthViewModel
 import com.lastwave.app.ui.auth.LoginScreen
@@ -44,6 +45,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** Thin bridge so LastWaveNavHost (a plain composable, no direct Hilt
@@ -64,21 +67,13 @@ class ArtistAlbumNavBridge @Inject constructor(val navigator: ArtistAlbumNavigat
 @HiltViewModel
 class AppRouteNavBridge @Inject constructor(val routeNavigator: AppRouteNavigator) : ViewModel()
 
-/**
- * Splash / onboarding gate for the YouTube Music-first flow.
- *
- * Routes to MainShell when ANY onboarding signal is present:
- *  - a Last.fm session (legacy [AuthState.SignedIn]), OR
- *  - a YouTube Music connection (cookies captured via YtMusicAuthManager), OR
- *  - a previously-selected guest mode (account-free).
- * Otherwise routes to Login, which now shows only "Login with YouTube Music"
- * and "Continue as Guest".
- */
+/** Opens the app for connected accounts, returning guests, and users with enabled addons. */
 @HiltViewModel
 class LaunchGateViewModel @Inject constructor(
     authRepository: com.lastwave.app.data.repository.AuthRepository,
     sessionPreferences: com.lastwave.app.data.local.SessionPreferences,
     ytAuthManager: com.lastwave.app.data.ytmusic.YtMusicAuthManager,
+    settingsPreferences: SettingsPreferences,
 ) : ViewModel() {
     sealed interface GateTarget {
         data object Loading : GateTarget
@@ -92,21 +87,12 @@ class LaunchGateViewModel @Inject constructor(
             sessionPreferences.session,
             sessionPreferences.guestMode,
             ytAuthManager.connection,
-        ) { authState, session, guestMode, ytConnection ->
-            // Wait for DataStore to load before deciding; otherwise every
-            // cold start would flash Login.
-            if (!session.isLoaded) {
-                GateTarget.Loading
-            } else if (authState is AuthState.Unknown) {
-                GateTarget.Loading
-            } else if (authState is AuthState.SignedIn) {
-                GateTarget.MainShell
-            } else if (guestMode) {
-                GateTarget.MainShell
-            } else if (ytConnection.isConnected) {
-                GateTarget.MainShell
-            } else {
-                GateTarget.Login
+            settingsPreferences.settings.map { it.enabledHttpAddons.isNotEmpty() }.distinctUntilChanged(),
+        ) { authState, session, guestMode, ytConnection, hasAddon ->
+            when {
+                !session.isLoaded || authState is AuthState.Unknown -> GateTarget.Loading
+                authState is AuthState.SignedIn || guestMode || ytConnection.isConnected || hasAddon -> GateTarget.MainShell
+                else -> GateTarget.Login
             }
         }.stateIn(
             scope = viewModelScope,
@@ -220,10 +206,7 @@ fun LastWaveNavHost(
         popExitTransition = { ExpressiveMotion.backExit() },
     ) {
 
-        // Resolves the persisted session BEFORE showing any interactive UI.
-        // YouTube Music-first gate: MainShell when Last.fm signed in OR
-        // YouTube Music connected OR guest mode was previously selected.
-        // This keeps login persistent without flashing Login on cold start.
+        // Wait for stored account and addon settings to avoid flashing Login.
         composable(Screen.Splash.route) {
             val gateViewModel: LaunchGateViewModel = hiltViewModel()
             val gateTarget by gateViewModel.gateTarget.collectAsStateWithLifecycle()
@@ -249,10 +232,7 @@ fun LastWaveNavHost(
             val gateTarget by gateViewModel.gateTarget.collectAsStateWithLifecycle()
             val webAuthState by authViewModel.webAuthState.collectAsStateWithLifecycle()
 
-            // YouTube Music-first onboarding: any onboarded signal (Last.fm
-            // session, YT connection, or guest flag) skips straight to
-            // MainShell. YT login returns here via YouTubeLogin's onConnected
-            // pop, then this effect immediately forwards to MainShell.
+            // YouTube sign-in pops back here before forwarding to MainShell.
             LaunchedEffect(gateTarget, webAuthState) {
                 if (gateTarget == LaunchGateViewModel.GateTarget.MainShell &&
                     webAuthState == com.lastwave.app.ui.auth.WebAuthState.Idle
