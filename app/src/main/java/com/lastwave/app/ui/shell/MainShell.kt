@@ -315,6 +315,7 @@ fun MainShell(
     val shouldShowLoginPrompt = currentSettings != null &&
         !shouldShowJoinSupport &&
         !ytConnection.isConnected &&
+        currentSettings.enabledHttpAddons.isEmpty() &&
         !currentSettings.suppressYouTubeLoginPrompt &&
         !promptDismissedThisSession
 
