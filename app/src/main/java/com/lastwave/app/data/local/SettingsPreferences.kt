@@ -186,8 +186,6 @@ data class MiscSettings(
     val buttonNowPlayingEnabled: Boolean = false,
     /** When true, shows synced music video option in the Now Playing menu (Settings -> Experimental). On by default. */
     val musicVideoEnabled: Boolean = true,
-    /** When true, shows watch video button on the Now Playing screen when music video is enabled. */
-    val musicVideoNowPlayingButtonEnabled: Boolean = false,
     /** When true (default), shows AutoEQ and Parametric EQ card in Now Playing audio controls sheet. */
     val showAutoEqInVolumePanel: Boolean = true,
     val wordByWordLyrics: Boolean = true,
@@ -497,7 +495,6 @@ class SettingsPreferences @Inject constructor(
         val SYSTEM_EFFECTS_MODE = booleanPreferencesKey("lw_system_effects_mode")
         val BUTTON_NOW_PLAYING_ENABLED = booleanPreferencesKey("lw_button_now_playing_enabled")
         val MUSIC_VIDEO_ENABLED = booleanPreferencesKey("lw_music_video_enabled")
-        val MUSIC_VIDEO_NP_BUTTON_ENABLED = booleanPreferencesKey("lw_music_video_np_button_enabled")
         val SHOW_AUTO_EQ_IN_VOLUME_PANEL = booleanPreferencesKey("lw_show_auto_eq_in_volume_panel")
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
@@ -581,7 +578,6 @@ class SettingsPreferences @Inject constructor(
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
                 musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: true,
-                musicVideoNowPlayingButtonEnabled = p.readSafely(Keys.MUSIC_VIDEO_NP_BUTTON_ENABLED) ?: false,
                 showAutoEqInVolumePanel = p.readSafely(Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL) ?: true,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
                 // Clarity is a single on/off again: always the Reference curve, never bypassed on spatial.
@@ -952,10 +948,6 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setMusicVideoEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.MUSIC_VIDEO_ENABLED] = enabled }
-    }
-
-    suspend fun setMusicVideoNowPlayingButtonEnabled(enabled: Boolean) {
-        dataStore.edit { it[Keys.MUSIC_VIDEO_NP_BUTTON_ENABLED] = enabled }
     }
 
     suspend fun setShowAutoEqInVolumePanel(enabled: Boolean) {
