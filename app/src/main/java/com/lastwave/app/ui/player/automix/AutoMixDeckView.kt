@@ -72,9 +72,6 @@ internal fun AutoMixDeckView(
     incomingStatus: WaveformPreviewStatus = WaveformPreviewStatus.READY,
 ) {
     val head = animateFloatAsState(playheadMs.toFloat(), tween(80, easing = LinearEasing), label = "mixPlayhead")
-    val reveal = animateFloatAsState(
-        if (view.outgoing.bands.isEmpty() && view.incoming.bands.isEmpty()) 0f else 1f, tween(400), label = "mixReveal",
-    )
     BoxWithConstraints(modifier) {
         val fontScale = LocalDensity.current.fontScale
         val compact = maxHeight < 350.dp && maxWidth >= 440.dp
@@ -106,7 +103,7 @@ internal fun AutoMixDeckView(
                 ) {
                     // Own layer: the playhead redraws every frame without re-recording the waveforms.
                     Canvas(
-                        Modifier.fillMaxSize().graphicsLayer { this.alpha = reveal.value }.semantics {
+                        Modifier.fillMaxSize().graphicsLayer().semantics {
                             contentDescription = "Transition waveform: ${view.outgoing.title} into ${view.incoming.title}"
                         },
                     ) {
@@ -303,30 +300,38 @@ private fun DrawScope.drawMix(view: MixView) {
             val py = laneTop + plot.laneHeight - gain * (plot.laneHeight - 4.dp.toPx())
             if (step == 0) path.moveTo(px, py) else path.lineTo(px, py)
         }
-        val color = if (outgoing) CueColor else LevelColor
+        // The box and its curve use opposite colours so the two never blend together.
+        val boxColor = if (outgoing) CueColor else LevelColor
+        val curveColor = if (outgoing) LevelColor else CueColor
         drawPath(path, StudioSurface.copy(alpha = 0.85f), style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
-        drawPath(path, color, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
-        drawRoundRect(color, Offset(plot.boxLeft, laneTop), Size(boxWidth, plot.laneHeight), corner, Stroke(1.5.dp.toPx()))
+        drawPath(path, curveColor, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round))
+        drawRoundRect(boxColor, Offset(plot.boxLeft, laneTop), Size(boxWidth, plot.laneHeight), corner, Stroke(1.5.dp.toPx()))
     }
 }
 
 private fun DrawScope.drawPlayhead(view: MixView, playheadMs: Double) {
     val plot = mixPlot(view)
     val mixEnd = view.cueOutMs + view.overlapMs
-    val outX = if (playheadMs <= mixEnd) plot.outgoing.x(playheadMs) else null
-    val inX = if (playheadMs >= view.cueOutMs) plot.incoming.x(view.cueInMs + (playheadMs - view.cueOutMs) * view.tempoRatio) else null
-    fun mark(x: Float, from: Float, to: Float) {
-        drawLine(PlayheadColor.copy(alpha = 0.1f), Offset(x, from), Offset(x, to), 8.dp.toPx())
-        drawLine(PlayheadColor, Offset(x, from), Offset(x, to), 1.5.dp.toPx(), StrokeCap.Round)
-    }
-    outX?.let { mark(it, plot.top, plot.top + plot.laneHeight) }
-    inX?.let { mark(it, plot.lowerTop, plot.lowerTop + plot.laneHeight) }
-    if (outX != null && inX != null) {
-        // Inside the box both lanes share one x, so the playhead reads as a single line across the overlap.
-        mark(outX, plot.top + plot.laneHeight, plot.lowerTop)
-        val seam = plot.top + plot.laneHeight + plot.gap / 2
-        drawCircle(StudioSurface, 5.dp.toPx(), Offset(outX, seam))
-        drawCircle(PlayheadColor, 3.dp.toPx(), Offset(outX, seam))
+    // One full-height line: it rides the outgoing lane up to the box and the incoming lane after it.
+    val x = if (playheadMs <= mixEnd) plot.outgoing.x(playheadMs)
+    else plot.incoming.x(view.cueInMs + (playheadMs - view.cueOutMs) * view.tempoRatio)
+    drawLine(PlayheadColor.copy(alpha = 0.1f), Offset(x, plot.top), Offset(x, plot.bottom), 8.dp.toPx())
+    drawLine(PlayheadColor, Offset(x, plot.top), Offset(x, plot.bottom), 1.5.dp.toPx(), StrokeCap.Round)
+    val seam = plot.top + plot.laneHeight + plot.gap / 2
+    drawCircle(StudioSurface, 5.dp.toPx(), Offset(x, seam))
+    drawCircle(PlayheadColor, 3.dp.toPx(), Offset(x, seam))
+    if (playheadMs < view.cueOutMs || playheadMs > mixEnd) return
+    // A dot rides each fade curve in step with the playhead.
+    val p = ((playheadMs - view.cueOutMs) / view.overlapMs).toFloat()
+    val gains = MixCurve.gains(p, view.shape)
+    for ((laneTop, gain, color) in listOf(
+        Triple(plot.top, gains.first, LevelColor),
+        Triple(plot.lowerTop, gains.second, CueColor),
+    )) {
+        val center = Offset(x, laneTop + plot.laneHeight - gain * (plot.laneHeight - 4.dp.toPx()))
+        drawCircle(color.copy(alpha = 0.25f), 7.dp.toPx(), center)
+        drawCircle(StudioSurface, 4.dp.toPx(), center)
+        drawCircle(color, 2.8.dp.toPx(), center)
     }
 }
 
@@ -334,10 +339,21 @@ private fun DrawScope.drawPlayhead(view: MixView, playheadMs: Double) {
 private fun DrawScope.drawLane(deck: MixDeckView, lane: Lane, top: Float, height: Float, outgoing: Boolean) {
     val center = top + height / 2f
     drawLine(StudioContent.copy(alpha = 0.08f), Offset(0f, center), Offset(size.width, center), 1.dp.toPx())
-    if (deck.bands.isEmpty()) return
     val half = (height / 2f - 2.dp.toPx()).coerceAtLeast(1f)
     val pitch = 1.5.dp.toPx()
     val barWidth = 1.dp.toPx().coerceAtLeast(1f)
+    if (deck.bands.isEmpty()) {
+        // Placeholder bars hold the lane until the real waveform is decoded.
+        var x = 0f
+        var i = 0
+        while (x < size.width) {
+            val h = (0.25f + 0.55f * kotlin.math.abs(kotlin.math.sin(i * 0.37f) * kotlin.math.cos(i * 0.11f))) * half
+            drawRect(StudioContent.copy(alpha = 0.1f), Offset(floor(x), center - h), Size(barWidth, h * 2f))
+            x += pitch * 2f
+            i++
+        }
+        return
+    }
     val last = deck.bands.lastIndex
     lane.segments.forEachIndexed { index, segment ->
         val width = segment.x1 - segment.x0

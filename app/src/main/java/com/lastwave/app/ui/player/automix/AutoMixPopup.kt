@@ -42,11 +42,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -289,8 +291,13 @@ internal fun AutoMixPopupHost(
                             ) {
                                 Text(
                                     "AUTOMIX",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp),
-                                    color = StudioContent.copy(alpha = 0.5f),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.8.sp,
+                                        shadow = Shadow(StudioContent.copy(alpha = 0.55f), Offset.Zero, 18f),
+                                    ),
+                                    color = StudioContent,
                                 )
                                 Spacer(Modifier.weight(1f))
                                 IconButton(onClick = ui::dismiss) {
