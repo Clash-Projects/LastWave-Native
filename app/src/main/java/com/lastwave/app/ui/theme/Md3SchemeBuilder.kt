@@ -296,29 +296,29 @@ object Md3SchemeBuilder {
         @Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false,
         useLegacyColors: Boolean = false,
     ): ColorScheme {
-        val brandLime = Color(0xFFC9FB00)
-        val darkTeal = Color(0xFF012226)
-        val deepTeal = Color(0xFF01181B)
+        val brandLime = Color(0xFF9581F6)
+        val darkTeal = Color(0xFF0E0E14)
+        val deepTeal = Color(0xFF09090D)
 
         val backgroundCol = if (amoled) Color.Black else deepTeal
         val surfaceCol = if (amoled) Color.Black else darkTeal
-        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF011E22)
-        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF001214)
+        val surfaceLowCol = if (amoled) Color.Black else Color(0xFF121218)
+        val surfaceLowestCol = if (amoled) Color.Black else Color(0xFF07070A)
 
         return darkColorScheme(
             primary = brandLime,
             onPrimary = darkTeal,
-            primaryContainer = Color(0xFF8C21FF),
-            onPrimaryContainer = Color(0xFFF7FBFF),
+            primaryContainer = Color(0xFF2A2347),
+            onPrimaryContainer = Color(0xFFE9E4FF),
 
-            secondary = Color(0xFFB56BFF),
+            secondary = Color(0xFFB8A7F2),
             onSecondary = darkTeal,
-            secondaryContainer = Color(0xFF3A1675),
+            secondaryContainer = Color(0xFF2B2540),
             onSecondaryContainer = Color(0xFFE9DEFF),
 
             tertiary = Color(0xFFD5E3FF),
             onTertiary = Color(0xFF0F1B33),
-            tertiaryContainer = Color(0xFF2F2259),
+            tertiaryContainer = Color(0xFF262338),
             onTertiaryContainer = brandLime,
 
             error = Color(0xFFFFB4AB),
@@ -327,23 +327,23 @@ object Md3SchemeBuilder {
             onError = Color(0xFF690005),
 
             background = backgroundCol,
-            onBackground = Color(0xFFE4F8F8),
+            onBackground = Color(0xFFECEAF5),
             surface = surfaceCol,
-            onSurface = Color(0xFFE4F8F8),
-            surfaceContainer = if (amoled) AmoledSurfaceContainer else Color(0xFF02272C),
-            surfaceContainerHigh = if (amoled) AmoledSurfaceContainerHigh else Color(0xFF04333A),
-            surfaceContainerHighest = if (amoled) AmoledSurfaceContainerHighest else Color(0xFF073F47),
+            onSurface = Color(0xFFECEAF5),
+            surfaceContainer = if (amoled) AmoledSurfaceContainer else Color(0xFF17171F),
+            surfaceContainerHigh = if (amoled) AmoledSurfaceContainerHigh else Color(0xFF1E1E28),
+            surfaceContainerHighest = if (amoled) AmoledSurfaceContainerHighest else Color(0xFF262633),
             surfaceContainerLow = surfaceLowCol,
             surfaceContainerLowest = surfaceLowestCol,
-            surfaceVariant = if (amoled) AmoledSurfaceVariant else Color(0xFF063B42),
-            onSurfaceVariant = Color(0xFFA1CACE),
+            surfaceVariant = if (amoled) AmoledSurfaceVariant else Color(0xFF23232F),
+            onSurfaceVariant = Color(0xFFB4B0C8),
 
-            outline = Color(0xFF23656E),
-            outlineVariant = Color(0xFF0A444C),
+            outline = Color(0xFF6E6A85),
+            outlineVariant = Color(0xFF2C2A3D),
 
             inverseSurface = Color(0xFFF7FBFF),
             inverseOnSurface = darkTeal,
-            inversePrimary = Color(0xFF8C21FF),
+            inversePrimary = Color(0xFF6A55D9),
             scrim = Color.Black,
         )
     }
@@ -352,13 +352,13 @@ object Md3SchemeBuilder {
      * LastWave Signature Light Scheme built around the official app logo colors.
      */
     fun buildLastWaveLightScheme(@Suppress("UNUSED_PARAMETER") liquidGlass: Boolean = false): ColorScheme {
-        val brandLime = Color(0xFFC9FB00)
-        val darkTeal = Color(0xFF012226)
+        val brandLime = Color(0xFF9581F6)
+        val darkTeal = Color(0xFF14141C)
 
         return lightColorScheme(
-            primary = Color(0xFF486300),
+            primary = Color(0xFF6A55D9),
             onPrimary = Color.White,
-            primaryContainer = Color(0xFFE0FE5B),
+            primaryContainer = Color(0xFFE8E4FF),
             onPrimaryContainer = darkTeal,
 
             secondary = Color(0xFF5B47D1),
