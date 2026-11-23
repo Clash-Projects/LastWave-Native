@@ -59,7 +59,7 @@ internal fun normalizeServer(raw: String, fallback: String): String {
 }
 
 private val json = Json { ignoreUnknownKeys = true }
-private val USER_AGENT = "LastWave/${BuildConfig.VERSION_NAME} (https://github.com/Clash-Projects/LastWave-Native)"
+private val USER_AGENT = "SoundDrop/${BuildConfig.VERSION_NAME} (https://github.com/1f81-official/SoundDrop)"
 private const val TAG = "ExtraScrobblers"
 
 private data class ApiResponse(val code: Int, val body: JsonObject?, val retryAfterMs: Long = 0L) {
@@ -155,8 +155,8 @@ class ListenBrainzClient @Inject constructor(
                         put("track_name", listen.track)
                         if (!listen.album.isNullOrBlank()) put("release_name", listen.album)
                         put("additional_info", buildJsonObject {
-                            put("media_player", "LastWave")
-                            put("submission_client", "LastWave Android")
+                            put("media_player", "SoundDrop")
+                            put("submission_client", "SoundDrop Android")
                             put("submission_client_version", BuildConfig.VERSION_NAME)
                         })
                     })
