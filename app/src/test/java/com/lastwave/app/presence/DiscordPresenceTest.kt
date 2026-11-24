@@ -364,6 +364,14 @@ class DiscordPresenceTest {
         val paused = state(isPlaying = false, isBuffering = false)
         val activity = DiscordPresence.buildActivity(paused, NOW_MS)
         assertNull(activity["timestamps"])
+        assertEquals(
+            "Paused \u00B7 Moondrop \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz",
+            str(activity, "state"),
+        )
+        assertEquals(
+            "LastWave \u00B7 Paused \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz",
+            str(activity["assets"], "small_text"),
+        )
         assertFalse(
             DiscordPresence.signature(paused) == DiscordPresence.signature(state()),
         )

@@ -662,8 +662,6 @@
     <string name="menu_copy_song">Copy song</string>
     <string name="menu_go_to_artist">Artist</string>
     <string name="menu_go_to_album">Album</string>
-    <string name="settings_music_video_np_button">Add button on Now Playing</string>
-    <string name="settings_music_video_np_button_desc">Show video button directly on Now Playing screen</string>
     <string name="account_menu_title">Quick Controls</string>
     <string name="artist_sort_most_played">Most played</string>
     <string name="artist_sort_recent">Recent</string>
