@@ -301,10 +301,10 @@ object DiscordPresence {
         // audio-format line in the brand badge's tooltip.
         val smallText = clip(
             when {
-                !playing && quality.isEmpty() -> "LastWave \u00B7 Paused"
-                !playing -> "LastWave \u00B7 Paused \u00B7 $quality"
-                quality.isEmpty() -> "LastWave"
-                else -> "LastWave \u00B7 $quality"
+                !playing && quality.isEmpty() -> "SoundDrop \u00B7 Paused"
+                !playing -> "SoundDrop \u00B7 Paused \u00B7 $quality"
+                quality.isEmpty() -> "SoundDrop"
+                else -> "SoundDrop \u00B7 $quality"
             },
         )
 
