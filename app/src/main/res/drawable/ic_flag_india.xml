@@ -1,19 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Indian flag (3:2). Drawn instead of the 🇮🇳 emoji, which some OEM emoji fonts box in black. -->
+<!-- Bangladesh flag (3:2 ratio for UI consistency). Drawn instead of the 🇧🇩 emoji, which some OEM emoji fonts box in black. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="18dp"
     android:height="12dp"
     android:viewportWidth="30"
     android:viewportHeight="20">
     <group>
+        <!-- Rounded rectangle clip path matching the original style -->
         <clip-path android:pathData="M2,0h26a2,2 0,0 1,2 2v16a2,2 0,0 1,-2 2h-26a2,2 0,0 1,-2 -2v-16a2,2 0,0 1,2 -2z" />
-        <path android:fillColor="#FF9933" android:pathData="M0,0h30v6.67h-30z" />
-        <path android:fillColor="#FFFFFF" android:pathData="M0,6.67h30v6.66h-30z" />
-        <path android:fillColor="#138808" android:pathData="M0,13.33h30v6.67h-30z" />
+        
+        <!-- Bottle Green Background (#006A4E) -->
         <path
-            android:pathData="M15,7.6a2.4,2.4 0,1 1,0 4.8a2.4,2.4 0,1 1,0 -4.8z"
-            android:strokeColor="#000080"
-            android:strokeWidth="0.55" />
-        <path android:fillColor="#000080" android:pathData="M15,9.4a0.6,0.6 0,1 1,0 1.2a0.6,0.6 0,1 1,0 -1.2z" />
+            android:fillColor="#006A4E"
+            android:pathData="M0,0h30v20h-30z" />
+            
+        <!-- Crimson Red Disc (#F42A41), slightly offset to the left (center at x=13.5, y=10, radius=6.67) -->
+        <path
+            android:fillColor="#F42A41"
+            android:pathData="M13.5,3.33a6.67,6.67 0,1 1,0 13.34a6.67,6.67 0,1 1,0 -13.34z" />
     </group>
 </vector>

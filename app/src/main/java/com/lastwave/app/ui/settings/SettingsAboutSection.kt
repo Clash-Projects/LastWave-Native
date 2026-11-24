@@ -645,7 +645,7 @@ internal fun AboutCard(
                 Spacer(Modifier.width(6.dp))
                 Image(
                     painter = painterResource(R.drawable.ic_flag_india),
-                    contentDescription = "India",
+                    contentDescription = "Bangladesh",
                 )
             }
             Spacer(Modifier.height(14.dp))
