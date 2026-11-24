@@ -641,10 +641,6 @@ class SettingsViewModel @Inject constructor(
         settingsPreferences.setMusicVideoEnabled(enabled)
     }
 
-    fun setMusicVideoNowPlayingButtonEnabled(enabled: Boolean) = launchSettingsAction("update music video now playing button setting") {
-        settingsPreferences.setMusicVideoNowPlayingButtonEnabled(enabled)
-    }
-
     fun setShowAutoEqInVolumePanel(enabled: Boolean) = launchSettingsAction("update show autoeq in volume panel") {
         settingsPreferences.setShowAutoEqInVolumePanel(enabled)
     }

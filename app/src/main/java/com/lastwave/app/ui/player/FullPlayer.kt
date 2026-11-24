@@ -374,7 +374,6 @@ internal fun FullPlayer(
     canvasFullBleedEnabled: Boolean = true,
     canvasGradientBlurEnabled: Boolean = false,
     musicVideoEnabled: Boolean = true,
-    musicVideoNowPlayingButtonEnabled: Boolean = false,
     showAutoEqInVolumePanel: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
@@ -1245,28 +1244,6 @@ internal fun FullPlayer(
                                         Icon(
                                             imageVector = if (isQueueLockedState) Icons.Filled.Lock else Icons.Filled.LockOpen,
                                             contentDescription = if (isQueueLockedState) "Unlock queue" else "Lock queue",
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                    }
-                                }
-                                if (musicVideoEnabled && musicVideoNowPlayingButtonEnabled && onToggleSyncedVideo != null) {
-                                    LiquidGlassSurface(
-                                        onClick = hapticClick { onToggleSyncedVideo() },
-                                        shape = CircleShape,
-                                        color = if (isVideoActive) MaterialTheme.colorScheme.primaryContainer
-                                        else liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
-                                        contentColor = if (isVideoActive) MaterialTheme.colorScheme.onPrimaryContainer
-                                        else (if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f)),
-                                        glassModifier = Modifier.liquidGlassChrome(
-                                            CircleShape,
-                                            LocalLiquidGlass.current,
-                                            LiquidGlassPreset.FloatingControls,
-                                        ),
-                                        modifier = Modifier.size(44.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isVideoActive) Icons.Filled.SmartDisplay else Icons.Outlined.SmartDisplay,
-                                            contentDescription = "Watch video",
                                             modifier = Modifier.size(22.dp),
                                         )
                                     }
