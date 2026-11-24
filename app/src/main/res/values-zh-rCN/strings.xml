@@ -60,8 +60,8 @@
     <string name="settings_studio_clarity_on">晶透开阔的声音 • 空灵细节 • 深邃干净的分离度</string>
     <string name="settings_studio_clarity_off">原始未加工输出</string>
 
-    <string name="settings_section_audio">音频与串流</string>
-    <string name="settings_streaming_quality">串流音质</string>
+    <string name="settings_section_audio">音频与流媒体</string>
+    <string name="settings_streaming_quality">流媒体音质</string>
     <string name="settings_download_quality">下载音质</string>
     <string name="settings_bit_perfect">比特完美模式（直接输出）</string>
     <string name="settings_bit_perfect_sub">绕过所有 DSP、EQ 与音频处理，实现比特级精确还原</string>
@@ -77,9 +77,9 @@
     <string name="settings_import_file_sub">CSV、TSV、M3U/M3U8 或 TXT • 不确定的曲目会被跳过</string>
 
     <string name="settings_section_scrobbler">Scrobbler</string>
-    <string name="settings_scrobble">记录播放</string>
+    <string name="settings_scrobble">同步听歌记录</string>
     <string name="settings_choose_apps">选择应用</string>
-    <string name="settings_now_playing">提交正在播放</string>
+    <string name="settings_now_playing">提交当前播放信息</string>
     <string name="settings_now_playing_sub">在个人主页即时显示正在播放</string>
 
     <string name="settings_section_data">数据管理</string>
@@ -290,9 +290,9 @@
     <string name="settings_lyrics_rotating_background_on">在歌词视图中制作流体旋转图稿的动画</string>
     <string name="settings_lyrics_rotating_background_off">歌词视图中的静态模糊封面背景</string>
     <string name="settings_canvas_enabled">动画专辑画布</string>
-    <string name="settings_canvas_enabled_sub">从 Apple Music、Tidal 和社区流式传输动态艺术作品</string>
-    <string name="settings_canvas_full_bleed">全屏艺术作品</string>
-    <string name="settings_canvas_full_bleed_sub">静态和动画轨道的全屏边到边艺术作品</string>
+    <string name="settings_canvas_enabled_sub">从 Apple Music、Tidal 和社区加载动态封面动画</string>
+    <string name="settings_canvas_full_bleed">封面全屏显示</string>
+    <string name="settings_canvas_full_bleed_sub">让静态封面和动态封面铺满整个屏幕</string>
     <string name="settings_canvas_cellular">蜂窝画布</string>
     <string name="settings_canvas_cellular_sub">通过移动数据下载动态图稿（第一次循环后缓存）</string>
     <string name="settings_keep_lyrics_screen_awake">保持屏幕唤醒歌词</string>
@@ -407,7 +407,7 @@
     <string name="details_downloaded">已下载</string>
     <string name="details_not_downloaded">未下载</string>
     <string name="details_listening_stats">听力统计</string>
-    <string name="details_your_scrobbles">你的涂鸦</string>
+    <string name="details_your_scrobbles">你的听歌记录</string>
     <string name="details_plays_count">%1$s 播放</string>
     <string name="details_zero_plays">0 次播放</string>
     <string name="details_last_played">上次播放</string>
@@ -646,7 +646,7 @@
     <string name="gen_period_1mo">1个月</string>
     <string name="gen_period_7d">7天</string>
     <string name="gen_options">选项</string>
-    <string name="gen_hint_recent">使用您最近的涂鸦</string>
+    <string name="gen_hint_recent">使用你最近的听歌记录</string>
     <string name="gen_hint_mix">热门曲目、最近播放的歌曲、深度剪辑和无需帐户的 YouTube 广播。</string>
     <string name="gen_hint_reco">%1$d 双引擎赛道，尊重您的排除</string>
     <string name="gen_hint_never">根据您的口味量身定制的新鲜发现，严格排除您以前在收听历史记录、库和喜欢中听过的歌曲。</string>
@@ -793,7 +793,7 @@
     <string name="set_loud_row_album">专辑 • 保持有意的专辑动态</string>
     <string name="set_loud_row_off">关 • 以原始级别播放标记的曲目</string>
     <string name="set_clarity_title">清晰度输出预设</string>
-    <string name="set_clarity_desc">将 Studio Master Clarity 链调整到输出。参考是未修改的运输曲线。</string>
+    <string name="set_clarity_desc">根据当前音频输出调整 Studio Master Clarity 音效链。参考曲线为未修改的默认曲线。</string>
     <string name="set_preset_reference">参考</string>
     <string name="set_preset_reference_desc">未修改的默认曲线；各阶段增益调整均为 0 dB。</string>
     <string name="set_preset_speaker">扬声器</string>
@@ -832,7 +832,7 @@
     <string name="toast_unsupported">此设备不支持此操作。</string>
     <string name="toast_eq_fail">无法应用均衡器设置。</string>
     <string name="toast_eq_missing">均衡器在此设备上不可用。</string>
-    <string name="toast_key_short">该密钥/秘密看起来太短 - 检查这两个字段</string>
+    <string name="toast_key_short">密钥或密钥串看起来过短，请检查这两个输入框。</string>
     <string name="toast_key_saved">API 密钥已保存 — 现在连接 Last.fm</string>
     <string name="toast_key_removed">API 密钥已删除</string>
     <string name="toast_lfm_ok">Last.fm 已连接</string>
@@ -960,7 +960,7 @@
     <string name="fr_tab_recent">最近</string>
     <string name="fr_tab_tracks">热门曲目</string>
     <string name="fr_tab_artists">顶尖艺术家</string>
-    <string name="fr_empty_recent">没有找到这位朋友最近的涂鸦。</string>
+    <string name="fr_empty_recent">没有找到这位好友最近的听歌记录。</string>
     <string name="fr_empty_tracks">此期间没有可用的热门曲目。</string>
     <string name="fr_empty_artists">该朋友没有可用的顶级艺术家。</string>
     <string name="fr_period_all">整体</string>
