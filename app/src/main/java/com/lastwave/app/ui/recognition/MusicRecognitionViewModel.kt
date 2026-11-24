@@ -1,8 +1,12 @@
 package com.lastwave.app.ui.recognition
 
+import android.content.Context
+import android.media.AudioManager
+import android.media.projection.MediaProjection
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lastwave.app.data.recognition.AudioSignature
+import com.lastwave.app.data.recognition.AudioSourceDetector
 import com.lastwave.app.data.recognition.MicCapture
 import com.lastwave.app.data.recognition.PcmResampler
 import com.lastwave.app.data.recognition.RecognitionClient
@@ -41,14 +45,28 @@ class MusicRecognitionViewModel @Inject constructor(
     val state: StateFlow<RecognitionState> = _state.asStateFlow()
 
     private var job: Job? = null
+    private var activeMediaProjection: MediaProjection? = null
 
-    /** Caller must already hold RECORD_AUDIO. */
-    fun start() {
+    fun shouldUseInternalPlaybackCapture(context: Context): Boolean =
+        AudioSourceDetector.shouldUseInternalPlaybackCapture(context)
+
+    fun shouldUseInternalPlaybackCapture(audioManager: AudioManager): Boolean =
+        AudioSourceDetector.shouldUseInternalPlaybackCapture(audioManager)
+
+    /**
+     * Starts audio capture and song recognition.
+     * If [mediaProjection] is provided, captures internal media audio.
+     * Otherwise, captures from the microphone.
+     * Caller must already hold RECORD_AUDIO.
+     */
+    fun start(mediaProjection: MediaProjection? = null) {
         job?.cancel()
+        activeMediaProjection?.stop()
+        activeMediaProjection = mediaProjection
         job = viewModelScope.launch {
             _state.value = RecognitionState.Listening
             _state.value = try {
-                val clip = MicCapture.record(LISTEN_MS)
+                val clip = MicCapture.record(LISTEN_MS, mediaProjection)
                 if (MicCapture.isSilent(clip.samples)) {
                     RecognitionState.Failed(RecognitionError.SILENCE)
                 } else {
@@ -69,6 +87,8 @@ class MusicRecognitionViewModel @Inject constructor(
                 RecognitionState.Failed(RecognitionError.RATE_LIMITED)
             } catch (e: Exception) {
                 RecognitionState.Failed(RecognitionError.NETWORK)
+            } finally {
+                activeMediaProjection = null
             }
         }
     }
@@ -85,7 +105,16 @@ class MusicRecognitionViewModel @Inject constructor(
     /** Stops listening or identifying and closes the sheet. */
     fun dismiss() {
         job?.cancel()
+        activeMediaProjection?.stop()
+        activeMediaProjection = null
         _state.value = RecognitionState.Idle
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        job?.cancel()
+        activeMediaProjection?.stop()
+        activeMediaProjection = null
     }
 
     private companion object {

@@ -1,9 +1,13 @@
 package com.lastwave.app.ui.recognition
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,6 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.lastwave.app.R
+import com.lastwave.app.data.recognition.AudioSourceDetector
 import com.lastwave.app.data.recognition.RecognizedSong
 import com.lastwave.app.ui.common.HeaderActionIcon
 
@@ -65,13 +70,48 @@ fun MusicRecognitionButton(key: String) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    val mediaProjectionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+            val mediaProjection = mediaProjectionManager?.getMediaProjection(result.resultCode, result.data!!)
+            if (mediaProjection != null) {
+                viewModel.start(mediaProjection)
+            } else {
+                viewModel.start()
+            }
+        } else {
+            // User declined the capture prompt: fall back gracefully to microphone
+            viewModel.start()
+        }
+    }
+
+    val startCaptureFlow = {
+        val shouldUseInternal = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            AudioSourceDetector.shouldUseInternalPlaybackCapture(context)
+        if (shouldUseInternal) {
+            val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+            val captureIntent = mediaProjectionManager?.createScreenCaptureIntent()
+            if (captureIntent != null) {
+                try {
+                    mediaProjectionLauncher.launch(captureIntent)
+                } catch (e: Exception) {
+                    viewModel.start()
+                }
+            } else {
+                viewModel.start()
+            }
+        } else {
+            viewModel.start()
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) viewModel.start() else viewModel.onPermissionDenied()
+        if (granted) startCaptureFlow() else viewModel.onPermissionDenied()
     }
     val begin = {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
-        if (granted) viewModel.start() else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        if (granted) startCaptureFlow() else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     HeaderActionIcon(Icons.Filled.GraphicEq, stringResource(R.string.recognize_music), begin)
