@@ -1,8 +1,8 @@
-name: Build 5.2.1 Release Assets
+name: Build 5.3.0 Release Assets
 
 on:
   push:
-    branches: [ codex/release-5.2.1 ]
+    branches: [ codex/release-5.3.0 ]
     paths-ignore: [ '**.md' ]
   workflow_dispatch:
 
@@ -65,7 +65,7 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x gradlew
 
-      - name: Verify patch regressions
+      - name: Verify release regressions
         if: matrix.variant == 'universal'
         run: >-
           ./gradlew :app:testDebugUnitTest
@@ -79,6 +79,11 @@ jobs:
           --tests 'com.lastwave.app.data.download.Fmp4IndexBuilderTest'
           --tests 'com.lastwave.app.playback.ChunkedRangeDataSourceTest'
           --tests 'com.lastwave.app.data.music.PlaybackCandidateRaceTest'
+          --tests 'com.lastwave.app.playback.automix.*'
+          --tests 'com.lastwave.app.data.scrobbler.*'
+          --tests 'com.lastwave.app.data.repository.ScrobbleRepositoryTest'
+          --tests 'com.lastwave.app.data.backup.BackupScrobblerCredentialsTest'
+          --tests 'com.lastwave.app.ui.settings.SettingsClearAllDataTest'
           --tests 'com.lastwave.app.data.lyrics.LyricsSanitizerTest'
           --tests 'com.lastwave.app.data.localmusic.LocalMusicLibraryScanTest'
           --tests 'com.lastwave.app.data.playlist.LikedSongsManagerTest'
@@ -93,10 +98,11 @@ jobs:
         if: ${{ always() && matrix.variant == 'universal' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v5.2.1-regression-test-results
+          name: LastWave-v5.3.0-regression-test-results
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
+            app/build/automix-renders/
           if-no-files-found: ignore
 
       - name: Build signed APK
@@ -115,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p final_apk
-          APK="final_apk/LastWave-v5.2.1-${VARIANT}.apk"
+          APK="final_apk/LastWave-v5.3.0-${VARIANT}.apk"
           cp "app/build/outputs/apk/${APK_OUTPUT}" "$APK"
           SDKROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           BUILD_TOOLS=$(find "$SDKROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
@@ -132,13 +138,13 @@ jobs:
             *) echo "::error::Unexpected signing certificate for $APK"; exit 1 ;;
           esac
           "$AAPT" dump badging "$APK" > badging.txt
-          grep -F "package: name='${EXPECTED_PACKAGE}' versionCode='33' versionName='5.2.1'" badging.txt
+          grep -F "package: name='${EXPECTED_PACKAGE}' versionCode='34' versionName='5.3.0'" badging.txt
           grep -Fx "sdkVersion:'${EXPECTED_MIN_SDK}'" badging.txt
 
       - name: Upload verified APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v5.2.1-${{ matrix.variant }}-verified
+          name: LastWave-v5.3.0-${{ matrix.variant }}-verified
           path: final_apk/*.apk
           if-no-files-found: error
           compression-level: 0
@@ -151,7 +157,7 @@ jobs:
       - name: Download four verified APKs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: LastWave-v5.2.1-*-verified
+          pattern: LastWave-v5.3.0-*-verified
           merge-multiple: true
           path: final_apk
 
@@ -167,7 +173,7 @@ jobs:
       - name: Upload complete release assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v5.2.1-release-assets
+          name: LastWave-v5.3.0-release-assets
           path: final_apk/*
           if-no-files-found: error
           compression-level: 0

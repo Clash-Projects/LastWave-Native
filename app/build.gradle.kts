@@ -247,8 +247,8 @@ android {
         buildConfigField("boolean", "VIVO_ORIGIN", vivoOrigin.toString())
         minSdk = (project.findProperty("minSdk") as? String)?.toIntOrNull() ?: 29
         targetSdk = 35
-        versionCode = 33
-        versionName = "5.2.1"
+        versionCode = 34
+        versionName = "5.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         (project.findProperty("targetAbis") as? String)?.let { prop ->
@@ -571,6 +571,8 @@ configurations.all {
 }
 
 tasks.withType<Test> {
+    // repo1 rate limits prevented Robolectric SDK setup in CI before tests could run.
+    systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
     maxHeapSize = "2048m"
     if (System.getenv("CI") != null) {
         javaLauncher.set(project.extensions.getByType<org.gradle.jvm.toolchain.JavaToolchainService>().launcherFor {
