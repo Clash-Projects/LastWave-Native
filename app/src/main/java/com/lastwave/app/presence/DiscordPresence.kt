@@ -275,15 +275,24 @@ object DiscordPresence {
         val album = track.album?.trim().orEmpty()
         val videoId = track.videoId?.trim().orEmpty()
         val quality = qualityLine(state)
+        val baseState = stateLine(track.artist, track.album, quality)
+        val displayState = if (playing) baseState else clip("Paused \u00B7 $baseState", MAX_STATE)
         // The desktop card keeps the subtitle for the artist and parks the
         // audio-format line in the brand badge's tooltip.
-        val smallText = clip(if (quality.isEmpty()) "LastWave" else "LastWave \u00B7 $quality")
+        val smallText = clip(
+            when {
+                !playing && quality.isEmpty() -> "LastWave \u00B7 Paused"
+                !playing -> "LastWave \u00B7 Paused \u00B7 $quality"
+                quality.isEmpty() -> "LastWave"
+                else -> "LastWave \u00B7 $quality"
+            },
+        )
 
         return buildJsonObject {
             put("type", TYPE_LISTENING)
             put("name", activityName(title))
             put("details", title)
-            put("state", stateLine(track.artist, track.album, quality))
+            put("state", displayState)
             timestamps?.let { put("timestamps", it) }
             put("assets", buildJsonObject {
                 put("large_image", largeImage(track.artworkUrl))
