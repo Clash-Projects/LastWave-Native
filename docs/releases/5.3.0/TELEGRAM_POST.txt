@@ -1,0 +1,28 @@
+LastWave
+What's New in v5.3.0
+
+- AutoMix Pro: Smarter musical transitions with beat alignment, bass exchange and lyric-aware cues, plus a live studio view of both tracks and their transition waveforms.
+
+- Player Lyrics & Signature Card: Synced lyrics directly in Now Playing, Auto/Center alignment, and LastWave's glowing intro and loading card.
+
+- Flow, Halo & Smoother Lyrics: Two new lyrics styles, an in-player style chooser and letter-by-letter animation for default word-synced lyrics while preserving connected scripts.
+
+- Lyra Beat-Synced Artwork: Optional fluid artwork motion following the playing audio across songs and speeds. Android 13+.
+
+- Listening Insights & Scrobblers: More stats charts and comparisons, Legacy Colours, and independent ListenBrainz and Libre.fm connections alongside Last.fm.
+
+- Waveform & Playback Controls: A new seekbar with live style previews, optional pause/resume at zero volume, notification Repeat, and AutoEQ import/export with direct value entry.
+
+- Headphone Music Recognition: Recognize supported other-app audio through wired or Bluetooth headphones. Android 10+ and capture consent required.
+
+- Faster Startup & Refined UI: Reduced background work, smoother feed loading and refresh, Artist Spotlight paging, hideable Quick access and connected Local songs/Downloads pills.
+
+- Playback, Lyrics & Library Fixes: Improved queue/shuffle behavior, Cast next-track playback, tablet lyrics, Spotify matching, local artwork, likes and signed-out addon playback.
+
+- USB, Backups & Stability: Improved USB/Atmos routing, OriginOS lyrics, profile images, recognition capture and audio-setting backups. Completed Spanish translations.
+
+Thanks to Ayush, Dux Tami, Sahan, Shoyo and every contributor who helped shape this update.
+
+Release Note: https://github.com/Clash-Projects/LastWave-Native/releases/tag/5.3.0
+
+Team LastWave

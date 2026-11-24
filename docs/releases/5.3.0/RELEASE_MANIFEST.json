@@ -1,0 +1,96 @@
+{
+  "version": "5.3.0",
+  "version_code": 34,
+  "baseline": "5.2.1",
+  "source_sha": "75e6bdcb8a5fc3d8898f6d26ae58728d8c104223",
+  "build_sha": "86b9b8060cd3c813dcb5ec6e2309c83cd24eb767",
+  "build_run": "https://github.com/Clash-Projects/LastWave-Native/actions/runs/45432047472",
+  "status": "verified",
+  "verification": "All four APK signatures matched the freshly verified 5.2.1 signing certificate. Package identities, version 5.3.0/code 34, minimum SDKs, SHA256 checksums, archive CRCs and 16 KB native ZIP alignment passed verification. Native library ABIs and ZIP compression recorded. No device playback test performed.",
+  "assets": [
+    {
+      "name": "LastWave-v5.3.0-android7.apk",
+      "bytes": 28508503,
+      "sha256": "b68184fda07f13c62d5a37ae233954a90d390bd51b1d4944e568e0b8911c9763",
+      "signer_certificate_sha256": "ed79fe6fd316b592eed4aab8831ea83f8cd0923e6e5b08d1e6a7ac7fd20951d0",
+      "package": "com.lastwave.app",
+      "version_name": "5.3.0",
+      "version_code": 34,
+      "min_sdk": 24,
+      "abis": [
+        "arm64-v8a",
+        "armeabi-v7a",
+        "x86",
+        "x86_64"
+      ],
+      "native_zip_compression_methods": [
+        0
+      ],
+      "native_zip_alignment_bytes": 16384,
+      "archive_crc_verified": true
+    },
+    {
+      "name": "LastWave-v5.3.0-universal-uncompressed.apk",
+      "bytes": 111529252,
+      "sha256": "6df6d6bd985304d1598cf7c1b1eb5925a279ae49cd4bb61ff77cdde0952ff28e",
+      "signer_certificate_sha256": "ed79fe6fd316b592eed4aab8831ea83f8cd0923e6e5b08d1e6a7ac7fd20951d0",
+      "package": "com.lastwave.app",
+      "version_name": "5.3.0",
+      "version_code": 34,
+      "min_sdk": 29,
+      "abis": [
+        "arm64-v8a",
+        "armeabi-v7a",
+        "x86",
+        "x86_64"
+      ],
+      "native_zip_compression_methods": [
+        0
+      ],
+      "native_zip_alignment_bytes": 16384,
+      "archive_crc_verified": true
+    },
+    {
+      "name": "LastWave-v5.3.0-universal.apk",
+      "bytes": 37987017,
+      "sha256": "eb0903a87dfffbd3e3eb410de138ffa09be00a3b9b229d6799e66b787a008aac",
+      "signer_certificate_sha256": "ed79fe6fd316b592eed4aab8831ea83f8cd0923e6e5b08d1e6a7ac7fd20951d0",
+      "package": "com.lastwave.app",
+      "version_name": "5.3.0",
+      "version_code": 34,
+      "min_sdk": 29,
+      "abis": [
+        "arm64-v8a",
+        "armeabi-v7a",
+        "x86",
+        "x86_64"
+      ],
+      "native_zip_compression_methods": [
+        0
+      ],
+      "native_zip_alignment_bytes": 16384,
+      "archive_crc_verified": true
+    },
+    {
+      "name": "LastWave-v5.3.0-vivo-origin.apk",
+      "bytes": 37987037,
+      "sha256": "59820cf6244cd9180ebd94519bea81f908a5ca80ebe2613c95210cdd03f546e7",
+      "signer_certificate_sha256": "ed79fe6fd316b592eed4aab8831ea83f8cd0923e6e5b08d1e6a7ac7fd20951d0",
+      "package": "com.tencent.qqmusic",
+      "version_name": "5.3.0",
+      "version_code": 34,
+      "min_sdk": 29,
+      "abis": [
+        "arm64-v8a",
+        "armeabi-v7a",
+        "x86",
+        "x86_64"
+      ],
+      "native_zip_compression_methods": [
+        0
+      ],
+      "native_zip_alignment_bytes": 16384,
+      "archive_crc_verified": true
+    }
+  ]
+}
