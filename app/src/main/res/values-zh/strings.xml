@@ -143,8 +143,8 @@
     <string name="home_section_fresh_sub">轮播之外的全新曲目</string>
     <string name="home_section_jump_title">继续收听</string>
     <string name="home_section_jump_sub">最近播放 • 再次收听</string>
-    <string name="home_section_mixes_title">探索混音</string>
-    <string name="home_section_mixes_sub">无限艺人电台混音</string>
+    <string name="home_section_mixes_title">探索推荐歌单</string>
+    <string name="home_section_mixes_sub">源源不断的艺人电台歌单</string>
     <string name="home_section_spotlight_title">焦点</string>
     <string name="home_section_spotlight_sub">精选艺人横幅</string>
     <string name="home_section_artists_title">为你推荐的艺人</string>
@@ -264,7 +264,7 @@
 
     <string name="widget_obsidian_name">LastWave 黑曜石玻璃</string>
     <string name="widget_obsidian_description">磨砂黑曜石玻璃播放器，具有半透明深度和水晶边缘</string>
-    <string name="nav_generator">发电机</string>
+    <string name="nav_generator">歌单生成器</string>
     <string name="settings_downloads_sub_custom">%1$d 歌曲 • %2$s • %3$s</string>
     <string name="settings_downloads_sub_structured_custom">%1$d 歌曲 • %2$s • %3$s • %4$s</string>
     <string name="settings_modules_title">提供者模块</string>
@@ -282,7 +282,7 @@
     <string name="settings_md3_nav_bar">Material 3 导航栏</string>
     <string name="settings_md3_nav_bar_sub">使用经典的全角底部导航而不是浮动底座</string>
     <string name="settings_lyrics_provider">歌词提供者</string>
-    <string name="settings_lyrics_provider_desc">每首歌都先尝试一下。如果它没有返回任何内容，该应用程序将自动转交给其他提供商。</string>
+    <string name="settings_lyrics_provider_desc">每首歌都会先尝试此来源；如果没有返回歌词，应用会自动尝试其他来源。</string>
     <string name="settings_rotating_background">旋转背景</string>
     <string name="settings_rotating_background_on">在播放器和歌词视图中制作流体旋转图稿的动画</string>
     <string name="settings_rotating_background_off">静态模糊背景（推荐Android 11及以下版本）</string>
@@ -384,7 +384,7 @@
     <string name="route_unknown">未知</string>
     <string name="badge_mode_bit_perfect">位完美</string>
     <string name="badge_mode_direct">直接</string>
-    <string name="badge_mode_mixer">搅拌机</string>
+    <string name="badge_mode_mixer">混音器</string>
     <string name="settings_internal_direct">内部直接输出</string>
     <string name="settings_internal_direct_on">绕过 Android 混音器（扬声器、插孔、蓝牙） • 打开 Bit-Perfect</string>
     <string name="settings_internal_direct_off">关闭 • 与 UAPP HiRes Direct 类似，不带 USB DAC</string>
@@ -410,7 +410,7 @@
     <string name="details_your_scrobbles">你的涂鸦</string>
     <string name="details_plays_count">%1$s 播放</string>
     <string name="details_zero_plays">0 次播放</string>
-    <string name="details_last_played">上次玩过</string>
+    <string name="details_last_played">上次播放</string>
     <string name="details_in_library">在图书馆</string>
     <string name="details_never">从来没有</string>
     <string name="details_checking">正在检查...</string>
@@ -448,11 +448,11 @@
     <string name="menu_timer_minutes">%1$d 分钟</string>
     <string name="menu_add_queue">添加到队列</string>
     <string name="menu_open_lastfm">开放时间：Last.fm</string>
-    <string name="menu_refresh_artwork">刷新封面艺术</string>
+    <string name="menu_refresh_artwork">刷新封面</string>
     <string name="menu_details_specs">详细信息和音频规格</string>
     <string name="menu_dont_recommend">不再推荐</string>
-    <string name="menu_remove_from_playlist">从播放列表中删除</string>
-    <string name="menu_remove_from_queue">从队列中删除</string>
+    <string name="menu_remove_from_playlist">从歌单中移除</string>
+    <string name="menu_remove_from_queue">从队列中移除</string>
     <string name="menu_view_artist">查看艺术家页面</string>
     <string name="menu_view_artist_name">查看艺术家 (%1$s)</string>
     <string name="menu_view_album">查看相册页面</string>
@@ -467,12 +467,12 @@
     <string name="menu_quality_hires">高分辨率</string>
     <string name="menu_quality_cd">无损CD</string>
     <string name="menu_quality_standard">标准型</string>
-    <string name="menu_quality_saver">数据保护程序</string>
+    <string name="menu_quality_saver">流量节省模式</string>
     <string name="menu_quality_youtube">YouTube</string>
     <string name="menu_resolving_genre">解决类型...</string>
     <string name="menu_genre_value">类型：%1$s</string>
     <string name="menu_genre_unknown">未知</string>
-    <string name="menu_start_mix">开始与这首歌混音</string>
+    <string name="menu_start_mix">以这首歌为起点生成歌单</string>
     <string name="menu_quick_play">播放</string>
     <string name="menu_quick_play_next">播放下一个</string>
     <string name="menu_quick_add_playlist">添加到播放列表</string>
@@ -488,7 +488,7 @@
     <string name="pl_name_label">播放列表名称</string>
     <string name="pl_rename_title">重命名播放列表</string>
     <string name="pl_cover_title">播放列表封面</string>
-    <string name="pl_cover_auto_desc">自动封面使用带有可用艺术作品元数据的第一首歌曲。</string>
+    <string name="pl_cover_auto_desc">自动使用歌单中第一首带有封面信息的歌曲作为封面。</string>
     <string name="pl_cover_custom_desc">该播放列表正在使用您选择的图像。</string>
     <string name="pl_use_automatic">使用自动</string>
     <string name="pl_scrobble_auth_title">不可用</string>
@@ -510,12 +510,12 @@
     <string name="pl_create_cd">创建自定义播放列表</string>
     <string name="pl_sort_cd">对播放列表进行排序</string>
     <string name="pl_sort_label">排序</string>
-    <string name="pl_empty_hint">前往“生成”来创建您的第一个混音。</string>
+    <string name="pl_empty_hint">前往“生成器”创建你的第一个歌单。</string>
     <string name="pl_pinned_cd">已固定</string>
     <string name="pl_yt_tracks">%1$d 曲目</string>
     <string name="pl_yt_connected">关联账户</string>
     <string name="pl_subtitle_local">%1$d 曲目 • %2$s</string>
-    <string name="pl_play_cd">播放播放列表</string>
+    <string name="pl_play_cd">播放歌单</string>
     <string name="pl_options_cd">播放列表选项</string>
     <string name="pl_pin">销</string>
     <string name="pl_unpin">取消固定</string>
@@ -531,7 +531,7 @@
     <string name="pd_shuffle_cd">随机播放</string>
     <string name="pd_locate_cd">找到正在播放的歌曲</string>
     <string name="pd_play">播放</string>
-    <string name="pd_playing">演奏</string>
+    <string name="pd_playing">正在播放</string>
     <string name="pd_yt_subtitle">%1$s 歌曲 • YouTube Music</string>
     <string name="pd_yt_only">YouTube Music</string>
     <string name="pd_subtitle_local">%1$d 歌曲 • %2$s</string>
@@ -545,7 +545,7 @@
     <string name="pd_sort_date">添加日期</string>
     <string name="pd_sort_name">名称</string>
     <string name="pd_sort_artist">艺术家</string>
-    <string name="pd_sort_playtime">游玩时间</string>
+    <string name="pd_sort_playtime">播放时长</string>
     <string name="pd_cancel_downloads">取消播放列表下载</string>
     <string name="pd_change_cover">更改封面图片</string>
     <string name="pd_export_share">导出/共享</string>
@@ -594,9 +594,9 @@
     <string name="feed_albums">为你准备的专辑</string>
     <string name="feed_albums_sub">符合您口味的真实专辑 — Last.fm 热门 + YT 音乐精选</string>
     <string name="feed_trending">现在流行</string>
-    <string name="feed_trending_sub">目前最热门 • 点击排名即可玩</string>
-    <string name="feed_releases">新发布</string>
-    <string name="feed_releases_sub">新鲜的水滴和新专辑</string>
+    <string name="feed_trending_sub">当前热门 • 点击榜单条目即可播放</string>
+    <string name="feed_releases">新歌速递</string>
+    <string name="feed_releases_sub">新单曲与新专辑</string>
     <string name="feed_friends">你的朋友</string>
     <string name="feed_friends_sub">你的聆听圈子里的人</string>
     <string name="feed_footer_default">根据您的口味为您量身打造</string>
@@ -606,8 +606,8 @@
     <string name="feed_ago_day">%1$d 天前</string>
     <string name="feed_ago_week">%1$dw 前</string>
     <string name="feed_ago_month">%1$d 个月前</string>
-    <string name="feed_play_cd">玩</string>
-    <string name="feed_start_radio_cd">启动收音机</string>
+    <string name="feed_play_cd">播放</string>
+    <string name="feed_start_radio_cd">启动电台</string>
     <string name="feed_more_cd">%1$s 的更多选项</string>
     <string name="feed_play_title_cd">播放 %1$s</string>
     <string name="feed_open_artist_cd">打开%1$s</string>
@@ -619,7 +619,7 @@
     <string name="home_listen_time_cd">预计终生收听时间</string>
     <string name="home_view_genres_cd">查看流派</string>
     <string name="home_menu_cd">菜单</string>
-    <string name="home_play">玩</string>
+    <string name="home_play">播放</string>
     <string name="home_mix">混合</string>
     <string name="gen_mode_top">热门曲目</string>
     <string name="gen_mode_top_desc">您有史以来播放次数最多的曲目</string>
@@ -722,10 +722,10 @@
     <string name="dl_filter_lyrics">带歌词（LRC）</string>
     <string name="dl_shuffle_cd">随机播放</string>
     <string name="dl_play_all_cd">播放全部</string>
-    <string name="dl_play_cd">玩</string>
+    <string name="dl_play_cd">播放</string>
     <string name="dl_shuffle_all_cd">全部随机播放</string>
     <string name="dl_shuffle_all">全部随机播放</string>
-    <string name="dl_play_artist_cd">扮演艺术家</string>
+    <string name="dl_play_artist_cd">播放该艺人的歌曲</string>
     <string name="dl_play_album_cd">播放专辑</string>
     <string name="dl_play_all_btn">播放全部</string>
     <string name="dl_play_album_btn">播放专辑</string>
@@ -745,7 +745,7 @@
     <string name="imp_reading">正在阅读播放列表...</string>
     <string name="imp_preview">预览</string>
     <string name="dl_albums_count">专辑 (%1$d)</string>
-    <string name="set_scrobble_title">启用乱码</string>
+    <string name="set_scrobble_title">启用 Last.fm 听歌记录同步</string>
     <string name="set_scrobble_pass">Last.fm 密码</string>
     <string name="set_scrobble_enable">启用</string>
     <string name="set_xfade_dur">交叉淡入淡出持续时间</string>
@@ -763,7 +763,7 @@
     <string name="set_lfm_get">在last.fm/api 获取密钥 →</string>
     <string name="set_lfm_how">如何获得密钥 →</string>
     <string name="set_lfm_disc_title">断开Last.fm？</string>
-    <string name="set_lfm_disc_text">全球乱序暂停。您的统计信息切换到本地收听历史记录 - 没有删除任何内容。</string>
+    <string name="set_lfm_disc_text">Last.fm 全局听歌记录已暂停。统计数据将改用本地收听历史；已有记录不会删除。</string>
     <string name="set_lfm_disc_btn">断开连接</string>
     <string name="set_about_title">LastWave</string>
     <string name="set_color_title">定制颜色</string>
@@ -782,11 +782,11 @@
     <string name="set_yt_shown_title">显示 YouTube 播放列表</string>
     <string name="set_yt_none">找不到 YouTube 播放列表</string>
     <string name="set_loud_title">响度归一化</string>
-    <string name="set_loud_desc">平衡轨道之间的音量跳跃。在 Bit-Perfect 和 USB 独占模式下被绕过。</string>
+    <string name="set_loud_desc">平衡不同曲目之间的音量差异。Bit-Perfect 和 USB 独占模式下不生效。</string>
     <string name="set_loud_track">轨道</string>
-    <string name="set_loud_track_sub">将每个曲目匹配到 -14 LUFS（需要 ReplayGain 标签）</string>
+    <string name="set_loud_track_sub">将每首曲目的响度调整至 -14 LUFS（需要 ReplayGain 标签）</string>
     <string name="set_loud_album">专辑</string>
-    <string name="set_loud_album_sub">保持有意的专辑动态（退回到曲目标签）</string>
+    <string name="set_loud_album_sub">保留专辑原有的动态范围（缺少专辑标签时使用单曲标签）</string>
     <string name="set_loud_off">关闭</string>
     <string name="set_loud_off_sub">以原始级别播放曲目</string>
     <string name="set_loud_row_track">曲目 • 将每个曲目匹配到 -14 LUFS</string>
@@ -795,7 +795,7 @@
     <string name="set_clarity_title">清晰度输出预设</string>
     <string name="set_clarity_desc">将 Studio Master Clarity 链调整到输出。参考是未修改的运输曲线。</string>
     <string name="set_preset_reference">参考</string>
-    <string name="set_preset_reference_desc">未修改的运输曲线；每个阶段的微调都是 0 dB。</string>
+    <string name="set_preset_reference_desc">未修改的默认曲线；各阶段增益调整均为 0 dB。</string>
     <string name="set_preset_speaker">扬声器</string>
     <string name="set_preset_speaker_desc">为小型驱动器降低了低音提升 (-1.5 dB) 和更柔和的空气 (-0.5 dB)。</string>
     <string name="set_preset_headphone">耳机</string>
@@ -838,7 +838,7 @@
     <string name="toast_lfm_ok">Last.fm 已连接</string>
     <string name="toast_lfm_need_key">首先将您的 API 密钥粘贴到下面 — 然后连接</string>
     <string name="toast_lfm_off">Last.fm 已断开连接 — 使用本地统计数据</string>
-    <string name="toast_scrobble_on">启用乱码</string>
+    <string name="toast_scrobble_on">Last.fm 听歌记录同步已启用</string>
     <string name="toast_sync_fail">播放列表同步失败：%1$s</string>
     <string name="toast_synced">从本地 JSON 同步了 %1$d 播放列表</string>
     <string name="toast_restored">已恢复 %1$d 播放列表%2$s</string>
@@ -851,7 +851,7 @@
     <string name="toast_diag_ready">诊断准备好共享</string>
     <string name="toast_yt_off">YouTube Music 已断开连接</string>
     <string name="toast_yt_channels_fail">无法加载 YouTube 频道。请再试一次。</string>
-    <string name="toast_yt_switched">切换到 %1$s — 刷新库......</string>
+    <string name="toast_yt_switched">已切换到 %1$s，正在刷新曲库…</string>
     <string name="toast_usb_on">当授予 DAC 时，USB 独占 — Bit-Perfect 将使用 usbdevfs</string>
     <string name="toast_usb_old">USB 独占需要 Android 10 或更高版本</string>
     <string name="toast_backup_ok">备份已成功保存 (%1$d KB)</string>
@@ -870,7 +870,7 @@
     <string name="set_cat_spotify">Spotify</string>
     <string name="set_cat_spotify_sub">账户连接、Canvas、播放列表导入和喜欢歌曲同步</string>
     <string name="set_cat_lfm">Last.fm</string>
-    <string name="set_cat_lfm_sub">帐户连接、Scrobbling 同步和 API 凭据</string>
+    <string name="set_cat_lfm_sub">账号连接、听歌记录同步与 API 凭据</string>
     <string name="set_cat_lib">图书馆和内容</string>
     <string name="set_cat_lib_sub">主页布局、播放列表导入、下载、排除</string>
     <string name="set_cat_data">数据与存储</string>
@@ -969,7 +969,7 @@
     <string name="fr_badge_plays">%1$d 播放</string>
     <string name="fr_badge_lfm">Last.fm 朋友</string>
     <string name="fr_listen_along">一起听</string>
-    <string name="fr_start_mix">开始混音</string>
+    <string name="fr_start_mix">生成歌单</string>
     <string name="fr_time_now">刚才</string>
     <string name="fr_time_min">%1$d分钟前</string>
     <string name="fr_time_hour">%1$d 小时前</string>
@@ -1002,7 +1002,7 @@
     <string name="art_verified_cd">验证艺术家</string>
     <string name="art_shuffle_cd">随机播放艺术家</string>
     <string name="art_radio_cd">艺术家电台</string>
-    <string name="art_play_cd">扮演艺术家</string>
+    <string name="art_play_cd">播放该艺人的歌曲</string>
     <string name="art_about">关于</string>
     <string name="art_read_more">... 阅读更多</string>
     <string name="art_show_less_songs">显示较少</string>
@@ -1016,12 +1016,12 @@
     <string name="alb_empty">目前没有列出该专辑的曲目 - 稍后再试。</string>
     <string name="alb_load_fail">无法加载专辑详细信息</string>
     <string name="alb_save_fail">无法保存相册。再试一次。</string>
-    <string name="nr_title">新发布</string>
-    <string name="nr_sub">寻找新鲜的水滴</string>
-    <string name="nr_load_fail">无法加载新版本</string>
-    <string name="nr_empty">没有发现新版本</string>
+    <string name="nr_title">新歌速递</string>
+    <string name="nr_sub">发现新歌</string>
+    <string name="nr_load_fail">无法加载新发行内容</string>
+    <string name="nr_empty">暂无新发行内容</string>
     <string name="nr_empty_hint">下拉或点击刷新再次检查。</string>
-    <string name="nr_more_fail">无法加载更多版本。重试</string>
+    <string name="nr_more_fail">无法加载更多新发行内容，请重试。</string>
     <string name="ge_title">你的流派</string>
     <string name="ge_sub">根据您的收听历史记录</string>
     <string name="ge_empty">尚无流派数据</string>
@@ -1031,7 +1031,7 @@
     <string name="login_tagline">你的音乐，你的方式 — 由 YouTube Music 提供支持</string>
     <string name="login_yt">使用 YouTube Music 登录</string>
     <string name="login_guest">继续以访客身份</string>
-    <string name="login_guest_desc">访客模式完全离线工作，并提供本地推荐。随时在“设置”中连接 Last.fm 以同步涂鸦。</string>
+    <string name="login_guest_desc">访客模式可完全离线运行，并提供本地推荐。你可以随时在“设置”中连接 Last.fm，同步听歌记录。</string>
     <string name="login_restore">恢复备份</string>
     <string name="login_downloads">打开离线下载</string>
     <plurals name="local_report_unsupported">
@@ -1079,7 +1079,7 @@
     <string name="settings_section_recommendations">推荐</string>
     <string name="settings_recommendations_title">推荐提供源</string>
     <string name="settings_recommendations_sub_disconnected">YouTube Music • 连接 Spotify 以使用 Spotify 推荐算法</string>
-    <string name="settings_recommendations_dialog_desc">为首页、电台、探索和混音选择推荐曲目。无论哪种方式，播放始终在 YouTube Music 上进行。</string>
+    <string name="settings_recommendations_dialog_desc">为首页、电台、发现和推荐歌单选择曲目。无论选择哪种方式，音乐都由 YouTube Music 播放。</string>
     <string name="settings_recommendations_connect_first">请先连接 Spotify</string>
     <string name="recommendation_source_yt_music">YouTube Music</string>
     <string name="recommendation_source_yt_music_sub">基于 YouTube Music 推荐</string>
