@@ -143,8 +143,8 @@
     <string name="home_section_fresh_sub">轮播之外的全新曲目</string>
     <string name="home_section_jump_title">继续收听</string>
     <string name="home_section_jump_sub">最近播放 • 再次收听</string>
-    <string name="home_section_mixes_title">探索推荐歌单</string>
-    <string name="home_section_mixes_sub">源源不断的艺人电台歌单</string>
+    <string name="home_section_mixes_title">探索混音</string>
+    <string name="home_section_mixes_sub">不断更新的艺人电台歌单</string>
     <string name="home_section_spotlight_title">焦点</string>
     <string name="home_section_spotlight_sub">精选艺人横幅</string>
     <string name="home_section_artists_title">为你推荐的艺人</string>
