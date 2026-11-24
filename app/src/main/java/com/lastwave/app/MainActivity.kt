@@ -61,6 +61,9 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
     @Inject
     lateinit var musicPlayer: dagger.Lazy<com.lastwave.app.playback.MusicPlayer>
 
+    @Inject
+    lateinit var discordPresenceManager: dagger.Lazy<com.lastwave.app.presence.DiscordPresenceManager>
+
     private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -247,6 +250,7 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        runCatching { discordPresenceManager.get().onAppForegrounded() }
         requestHighestSupportedRefreshRate()
     }
 

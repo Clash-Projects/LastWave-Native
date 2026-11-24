@@ -1,3 +1,23 @@
+/*
+ * Copyright (C) 2026 LastWave Authors (https://github.com/Clash-Projects/LastWave-Native)
+ *
+ * SPDX-License-Identifier: GPL-3.0-only
+ *
+ * This file is part of LastWave.
+ *
+ * LastWave is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * LastWave is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with LastWave. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package com.lastwave.app.presence
 
 import android.content.Context
@@ -55,12 +75,16 @@ class DiscordPresenceManager @Inject constructor(
 ) {
     private val lock = Mutex()
 
-    private var transport: DiscordTransport? = null
+    @Volatile private var transport: DiscordTransport? = null
     private var started = false
 
     @Volatile private var enabled = true
+    // Only publish after playback actually runs in this process, so a background
+    // cold start restoring a saved session never broadcasts a stale paused track.
+    @Volatile private var hasActiveSession = false
+    @Volatile private var taskRemoved = false
     private var lastAttemptMs = 0L
-    private var lastKey = ""
+    @Volatile private var lastKey = ""
     private var lastPushMs = 0L
     private val deferredArtwork = DeferredArtworkLookup(
         scope = applicationScope,
@@ -102,6 +126,7 @@ class DiscordPresenceManager @Inject constructor(
         heartbeat = applicationScope.launch(Dispatchers.Default) {
             while (isActive) {
                 delay(DiscordPresence.PUSH_INTERVAL_MS)
+                if (!hasActiveSession) continue
                 val snapshot = musicPlayer.state.value
                 evaluate(snapshot, artworkRepository.resolved.value)
             }
@@ -115,19 +140,71 @@ class DiscordPresenceManager @Inject constructor(
         }
     }
 
+    /** Called when the UI returns to the foreground after a prior task removal. */
+    fun onAppForegrounded() {
+        taskRemoved = false
+    }
+
+    /**
+     * Called when the app is swiped away from Recents.
+     *
+     * When [keepWhilePlaying] is false (paused/stopped or stopping with task),
+     * clears Discord presence and closes the IPC binding immediately so a
+     * removed app never leaves a lingering card behind. When true, keeps
+     * presence alive only while audio continues playing and clears it as soon
+     * as playback pauses or stops.
+     */
+    fun onTaskRemoved(keepWhilePlaying: Boolean) {
+        taskRemoved = true
+        if (!keepWhilePlaying) {
+            clearOnRemoval()
+        }
+    }
+
+    /**
+     * Synchronous best-effort clear + disconnect for process/service teardown
+     * (`onTaskRemoved` / `onDestroy`), where launching a coroutine may race
+     * with process death.
+     */
+    fun clearOnRemoval() {
+        hasActiveSession = false
+        lastKey = ""
+        deferredArtwork.cancel()
+        val active = transport
+        transport = null
+        if (active != null) {
+            runCatching { active.clearActivity() }
+                .onFailure { Log.d(TAG, "Discord presence clear ignored on removal", it) }
+            runCatching { active.close() }
+                .onFailure { Log.d(TAG, "Discord transport close ignored on removal", it) }
+        }
+    }
+
     private suspend fun evaluate(state: MusicPlayerState, resolvedArt: Map<String, String>) {
         val now = SystemClock.elapsedRealtime()
         lock.withLock {
             // Disabled or unconfigured: hide anything still on the profile.
             if (!enabled || !DiscordPresence.isConfigured()) {
+                hasActiveSession = false
                 deferredArtwork.cancel()
-                clearQuiet()
+                clearAndDisconnectQuiet()
                 return
             }
             val track = state.current
             if (track == null || track.title.isBlank()) {
+                hasActiveSession = false
                 deferredArtwork.cancel()
-                clearQuiet()
+                clearAndDisconnectQuiet()
+                return
+            }
+            val playing = DiscordPresence.isPlayingForPresence(state)
+            if (playing) {
+                hasActiveSession = true
+            }
+            if (!hasActiveSession || (taskRemoved && !playing)) {
+                hasActiveSession = false
+                deferredArtwork.cancel()
+                clearAndDisconnectQuiet()
                 return
             }
             // The track's own http(s) art is exact; otherwise take whatever
@@ -157,6 +234,10 @@ class DiscordPresenceManager @Inject constructor(
             val active = ensureConnected(now)
             if (active == null) {
                 // ensureConnected already logged why (throttled vs missing).
+                return
+            }
+            if (!hasActiveSession || (taskRemoved && !playing)) {
+                clearAndDisconnectQuiet()
                 return
             }
             val sent = runCatching {
@@ -204,14 +285,18 @@ class DiscordPresenceManager @Inject constructor(
     }
 
     /**
-     * Hides the card without tearing the connection down, and forgets the last
-     * signature so the next real track is never deduped away as "unchanged".
+     * Hides the card, drops the IPC binding so we do not hold Discord bound
+     * while idle, and forgets the last signature so the next real track is
+     * never deduped away as "unchanged".
      */
-    private fun clearQuiet() {
+    private fun clearAndDisconnectQuiet() {
         lastKey = ""
         val active = transport ?: return
+        transport = null
         runCatching { active.clearActivity() }
             .onFailure { Log.d(TAG, "Discord presence clear ignored", it) }
+        runCatching { active.close() }
+            .onFailure { Log.d(TAG, "Discord transport close ignored", it) }
     }
 
     /** Best-effort clear + release. Never throws. */
@@ -220,10 +305,9 @@ class DiscordPresenceManager @Inject constructor(
         heartbeat = null
         observer?.cancel()
         observer = null
+        hasActiveSession = false
         lock.withLock {
-            clearQuiet()
-            runCatching { transport?.close() }
-            transport = null
+            clearAndDisconnectQuiet()
         }
         started = false
     }
