@@ -59,7 +59,7 @@ internal fun normalizeServer(raw: String, fallback: String): String {
 }
 
 private val json = Json { ignoreUnknownKeys = true }
-private val USER_AGENT = "SoundDrop/${BuildConfig.VERSION_NAME} (https://github.com/1f81-official/SoundDrop)"
+private val USER_AGENT = "LastWave/${BuildConfig.VERSION_NAME} (https://github.com/Clash-Projects/LastWave-Native)"
 private const val TAG = "ExtraScrobblers"
 
 private data class ApiResponse(val code: Int, val body: JsonObject?, val retryAfterMs: Long = 0L) {
