@@ -72,13 +72,7 @@ fun MusicRecognitionButton(key: String) {
 
     val mediaProjectionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
-            val mediaProjection = mediaProjectionManager?.getMediaProjection(result.resultCode, result.data!!)
-            if (mediaProjection != null) {
-                viewModel.start(mediaProjection)
-            } else {
-                viewModel.start()
-            }
+            viewModel.startWithProjectionResult(context, result.resultCode, result.data!!)
         } else {
             // User declined the capture prompt: fall back gracefully to microphone
             viewModel.start()
@@ -120,13 +114,13 @@ fun MusicRecognitionButton(key: String) {
         RecognitionSheet(
             state = state,
             onRetry = begin,
-            onDismiss = viewModel::dismiss,
+            onDismiss = { viewModel.dismiss(context) },
             onOpenSettings = {
                 context.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
-                viewModel.dismiss()
+                viewModel.dismiss(context)
             },
             onSearch = viewModel::searchFor,
         )

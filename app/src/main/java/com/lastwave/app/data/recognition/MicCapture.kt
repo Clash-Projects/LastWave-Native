@@ -11,6 +11,8 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +50,7 @@ object MicCapture {
     suspend fun record(
         durationMs: Long,
         mediaProjection: MediaProjection? = null,
+        context: Context? = null,
     ): Clip = withContext(Dispatchers.IO) {
         val minBuffer = AudioRecord.getMinBufferSize(
             CAPTURE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
@@ -80,9 +83,25 @@ object MicCapture {
             recorder.release()
             if (usedProjection) {
                 // Fall back gracefully to microphone
-                return@withContext record(durationMs, null)
+                return@withContext record(durationMs, null, context)
             }
             throw CaptureException("Microphone is busy or unavailable")
+        }
+
+        val projectionCallback = if (mediaProjection != null) {
+            object : MediaProjection.Callback() {
+                override fun onStop() {
+                    // Projection stopped by system or user
+                }
+            }
+        } else {
+            null
+        }
+
+        if (mediaProjection != null && projectionCallback != null) {
+            runCatching {
+                mediaProjection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+            }
         }
 
         val target = (CAPTURE_RATE * durationMs / 1000).toInt()
@@ -108,7 +127,13 @@ object MicCapture {
             runCatching { recorder.stop() }
             recorder.release()
             if (mediaProjection != null) {
+                if (projectionCallback != null) {
+                    runCatching { mediaProjection.unregisterCallback(projectionCallback) }
+                }
                 runCatching { mediaProjection.stop() }
+            }
+            if (context != null) {
+                AudioPlaybackCaptureService.stop(context)
             }
         }
         Clip(pcm, CAPTURE_RATE)
