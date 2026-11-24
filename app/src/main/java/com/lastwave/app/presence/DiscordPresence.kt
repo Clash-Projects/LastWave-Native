@@ -277,7 +277,7 @@ object DiscordPresence {
         val quality = qualityLine(state)
         // The desktop card keeps the subtitle for the artist and parks the
         // audio-format line in the brand badge's tooltip.
-        val smallText = clip(if (quality.isEmpty()) "SoundDrop" else "SoundDrop \u00B7 $quality")
+        val smallText = clip(if (quality.isEmpty()) "LastWave" else "LastWave \u00B7 $quality")
 
         return buildJsonObject {
             put("type", TYPE_LISTENING)
