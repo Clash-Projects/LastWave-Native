@@ -473,7 +473,7 @@
     <string name="menu_genre_value">类型：%1$s</string>
     <string name="menu_genre_unknown">未知</string>
     <string name="menu_start_mix">开始与这首歌混音</string>
-    <string name="menu_quick_play">玩</string>
+    <string name="menu_quick_play">播放</string>
     <string name="menu_quick_play_next">播放下一个</string>
     <string name="menu_quick_add_playlist">添加到播放列表</string>
     <string name="pl_sort_newest">最新的优先</string>
@@ -530,7 +530,7 @@
     <string name="pd_back_cd">返回</string>
     <string name="pd_shuffle_cd">随机播放</string>
     <string name="pd_locate_cd">找到正在播放的歌曲</string>
-    <string name="pd_play">玩</string>
+    <string name="pd_play">播放</string>
     <string name="pd_playing">演奏</string>
     <string name="pd_yt_subtitle">%1$s 歌曲 • YouTube Music</string>
     <string name="pd_yt_only">YouTube Music</string>
