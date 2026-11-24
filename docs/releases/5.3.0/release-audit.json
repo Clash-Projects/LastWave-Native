@@ -1,0 +1,1342 @@
+{
+  "schemaVersion": 2,
+  "version": "5.3.0",
+  "scope": "Merged pull requests and integration branch merges only. Individual/direct-main commit inventory excluded.",
+  "baselineTag": "5.2.1",
+  "baselineSha": "6db7b99bb2fdeb052f59e3cc1a5e284feac43ee0",
+  "sourceCutoff": "75e6bdcb8a5fc3d8898f6d26ae58728d8c104223",
+  "sourceDate": "2026-11-24",
+  "sourceTimezone": "Asia/Calcutta",
+  "compareUrl": "https://github.com/Clash-Projects/LastWave-Native/compare/5.2.1...75e6bdcb8a5fc3d8898f6d26ae58728d8c104223",
+  "pullRequests": [
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Prepare LastWave 5.2.1 (versionCode 33) from the merged fixes since 5.2.0. The short changelog covers restored downloads and premature-stop recovery, queue motion, addon recording checks, local scanning, likes/playlists, player/lyrics appearance, and audio crash fixes.\n\nCorrect MP4 FullBox timing-field offsets in movie, track and media headers for both versions. The reader previously treated modification times as timescales and could write duration over unrelated fields, breaking downloaded-audio duration and FLAC sample counts. Correct the FLAC seeking fixture and add regressions that verify duration conversion, track identity and preservation of all other header metadata.\n\nRetarget the existing four-variant signed asset workflow to this patch. It checks exact signing identity, package/version/minimum SDK and runs the relevant download, playback, lyrics, library and sync regression suites before collecting APKs and checksums.\n\nValidation: source audit reviewed all 99 intervening commits and 19 merged PRs through b31b382f. The additional timing correction passed independent review and whitespace checks. All four signed GitHub builds passed. All 122 selected regression tests passed across 18 suites, with zero failures, errors or skips. APK signatures match the full published 5.2.0 certificate; version, package, minimum SDK, SHA256 and archive checks passed. No device test performed.\n",
+      "mergeCommit": {
+        "oid": "b012f62cfa5d8d119ec74758fbfc389589fd624e"
+      },
+      "mergedAt": "2026-11-13T16:18:10Z",
+      "number": 611,
+      "title": "chore(release): LastWave 5.2.1 patch",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/611",
+      "category": "Maintenance / release preparation",
+      "claimNote": "5.2.1 preparation merge after the tag; excluded from 5.3.0 product claims."
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "conflict check",
+      "mergeCommit": {
+        "oid": "63f8d3983146aec5199c99d14353badf99a77672"
+      },
+      "mergedAt": "2026-11-14T02:06:53Z",
+      "number": 607,
+      "title": "Perf/playback cpu",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/607",
+      "category": "Performance",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Smoothness pass for low-end and high-end devices. Every change keeps existing features, audio output and UI identical. It only removes repeated or wasted work.\n\n## Found → fixed\n\n**Startup & playback**\n- An idle ticker read of `player.isPlaying` (its value was never used) built ExoPlayer and its media cache on Main at launch. → Read removed.\n- Diagnostics queried the system exit history and decoded tombstone/ANR traces in `attachBaseContext`, before the first frame. → Moved to a background thread. Logging and the crash handler still install first.\n- The log writer formatted each record twice and flushed after every record. → One append and one flush per batch.\n\n**Network**\n- One feed refresh downloaded and parsed `FEmusic_home` 3–4 times (mixes, songs, shelves, taste feed). → Callers share the request already in flight.\n- Autocomplete used a blocking `execute()`. A lookup cancelled by the next keystroke kept running and then tried the second endpoint. → Uses the shared cancellable call.\n- Synced-video alignment audio was fetched in 1 MiB ranges, over the 512 KB googlevideo limit. → Uses `YOUTUBE_RANGE_BYTES`.\n\n**Library & storage**\n- Every playlist change queued its own full-library recovery JSON write. → Conflated writer. Each pass re-reads Room, so the newest state is still written.\n- `getLikedSongs()` / `getLocalSongs()` decoded every playlist to return one row, on every like, local scan and search keystroke. → Single-row query. A failed read still falls back to the full path.\n- Playlist JSON was decoded on Main when a screen called `getAll()`. → Decoded on `Dispatchers.Default`.\n- The 8 s YouTube library refresh decoded every cached playlist file just to get a cover. → Disk is read only as the last fallback.\n\n**UI**\n- Five shared loaders (feed/shelf skeletons, preview shimmer, generation card, screen loader) ignored the visibility gate, so hidden tabs requested a frame every vsync. → `rememberAmbientFloat` holds them still while hidden.\n- Canvas copied a TextureView frame on Main (`getBitmap`) for a callback no caller passes. → Dead capture path removed.\n- Local Music and Downloads called `lowercase()` inside comparators (n·log n string copies per keystroke). → Keys computed once per item. Same stable order.\n- Local Music refiltered albums, artists and folders on every keystroke, though only one tab shows. → Only the open tab is computed.\n\n**Audio (bit-identical output)**\n- Exclusive USB output allocated a new PCM array for every chunk. → Arrays are reused after the native write, which copies and releases them in-call.\n- The DSD JNI bridge allocated vectors inside `GetPrimitiveArrayCritical`. → Per-thread scratch, sized before the critical section.\n\n## Verification\n- CI on this PR runs `:app:testDebugUnitTest` and `assembleRelease` (Kotlin + native).\n- Not run on a device. Frame-time, startup and allocation gains are not measured.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+      "mergeCommit": {
+        "oid": "cae77dbb27575e566d5d04f8d21b65f220f0ba48"
+      },
+      "mergedAt": "2026-11-14T08:05:27Z",
+      "number": 622,
+      "title": "perf: smoother app on low-end and high-end devices",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/622",
+      "category": "Performance",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "Since 3e683dce the landscape lyrics split showed two seek bars, two sets of prev/play/next and two back buttons: compact controls with their own back over the art pane, plus the lyrics panel's controls and the header back. The art pane also had hard top/bottom edges, so its corners showed.\n\n- Removed the compact controls and back button from the art pane. The lyrics panel's own controls and the header back stay.\n- The art pane fades at the top and bottom as well as the right, so there are no hard edges or corners (Now Playing and lyrics).\n\nTablet landscape only. Phones and portrait don't use these paths. Checked on a landscape tablet with a word-synced track and a No lyrics track.",
+      "mergeCommit": {
+        "oid": "cf36d3b476699f8b74c096e93b7459a7ec88e55b"
+      },
+      "mergedAt": "2026-11-14T09:13:26Z",
+      "number": 617,
+      "title": "fix(player): one set of controls in the tablet lyrics split",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/617",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "On the lyrics tab, swipe down only worked on the header strip (which auto-hides), and there it went back to Now Playing instead of closing the player.\n\n- Swipe down now closes the player from anywhere on the lyrics tab: art pane, header, controls, empty/No lyrics state.\n- The swipe reads moves in the Final pass and backs off when a child already consumed them, so the lyrics list keeps its own scrolling. With the old detectVerticalDragGestures the parent was taking drags from the list.\n- Now Playing (down closes, up opens queue) and queue (header swipe down back to Now Playing) behave as before.\n\nChecked on a landscape tablet: art pane swipe closes, swipe on lyrics text mid-song scrolls, Now Playing and queue swipes unchanged.",
+      "mergeCommit": {
+        "oid": "ce43f6b137efa1dd62f55bde7783c89e9b3e59c0"
+      },
+      "mergedAt": "2026-11-14T09:14:52Z",
+      "number": 618,
+      "title": "fix(player): swipe down closes the player from lyrics",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/618",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "On a track change the lyrics fetch waits until the new song is audible (up to 8 s) plus a 3 s settle delay. The previous song's lyrics stayed on screen for that whole time, and tapping a line seeked the new song to the old song's timestamp.\n\nNow the lyrics switch to loading as soon as the song changes. Refreshing the same song (provider change, word-by-word toggle) still holds the current lyrics, which is what the hold was for.\n\nChecked on a tablet: skip with lyrics open shows Finding lyrics within ~1.5 s, then the new song's lyrics.",
+      "mergeCommit": {
+        "oid": "6bec26eeed72cb0a5555128c8d0a962d186e00cc"
+      },
+      "mergedAt": "2026-11-14T09:15:46Z",
+      "number": 619,
+      "title": "fix(lyrics): don't keep the previous song's lyrics on track change",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/619",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "The Music Haptics card in the player's Audio & Playback sheet crowds focus, intensity, and routing choices into narrow chip rows. Restyle it with full-width focus rows, a connected Light/Medium/Strong control, compact engine routing, aligned switches, and shorter supporting text using the existing Material 3 colors and typography.\n\nOnly the card's presentation changes. The same config updates, enable/intensity preview pulses and their ordering, USB suspension warning, and hardware availability rules are preserved.\n\nValidation: reviewed the source and diff, including the existing handlers and Compose control APIs. No local build, tests, or device checks were run, as requested.\n\n",
+      "mergeCommit": {
+        "oid": "9c4232f047a2898022e9f4067e9d83c2285e547c"
+      },
+      "mergedAt": "2026-11-15T03:41:46Z",
+      "number": 633,
+      "title": "Redesign player Music Haptics controls",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/633",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What changed\n\n- **Picked colour now shows on the card.** `deriveTextColors` used to turn every swatch into one deep tone (saturation ≥ 0.65, brightness ~0.22). That's why most picks came out as the same few dark cards. The card now uses the exact colour you pick, and the text goes light or dark depending on which reads better, tinted with the card's own hue.\n- **Dark screen behind a faint card, like YouTube Music.** Each swatch has a faint shade (the card) and a dark shade (the screen behind it). The YouTube Music pairs are used exactly as given: White, Black, Deep teal, Navy blue, Maroon, Green, Lavender, Light purple. The back, close, mode toggle, save and share controls switch to black on light backgrounds (White's #B2B2B2, Green's #79AA72).\n- **First three swatches come from the cover:** a deep tone (the cream-on-brown look), the vibrant colour, and a pale tint. Then the presets, plus Peach, Sky, Wine and LastWave Lime. The default pick is the deep cover tone.\n- **Same font as the lyrics screen.** The card used `Typeface.create(base, weight)`, which only faked bold on the font's regular weight. It now uses the font's real weights with the lyrics screen's settings (lyrics 760 / opsz 40 / ROND 0, plus the +200 boost when \"Use Bold Font\" is on).\n- **LastWave wordmark:** heaviest weight (1000), slightly wider, bigger mark, text centred on the mark.\n- The card is one flat colour now. The old darkening gradient turned light colours grey at the bottom.\n\nOnly files in `ui/player/lyricsshare/` changed. The card layout, sharing, saving and the Cover background all work the same way as before. `ColorContrastHelperTest` is updated for the new swatch list. The 7:1 lyric contrast check is now 4.5:1 for mid-tone colours, because 7:1 can't be reached on colours like Maroon.\n\n## Not verified\n- Not built or run locally; waiting on the CI APK.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+      "mergeCommit": {
+        "oid": "de6c2eeca6506117fd0eab7a7f24a98eb8ab6b82"
+      },
+      "mergedAt": "2026-11-15T03:54:31Z",
+      "number": 634,
+      "title": "fix(lyrics-share): YouTube Music style colours, real lyric font, bolder wordmark",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/634",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODbPeeg",
+        "is_bot": false,
+        "login": "Nox-Wizard-py",
+        "name": "Nox Wizard"
+      },
+      "body": "## Problem Analysis\nCurrently, LastWave offers only a binary toggle in Appearance Settings to switch between the default Material You seekbar and the fluid wavy seekbar. Introducing a third seekbar style (One UI-inspired waveform) using another toggle would clutter the Experimental settings section and prevent users from previewing how each seekbar behaves before applying it.\n\n## Summary of Changes\n- **One UI Waveform Seekbar (`WaveformSlider.kt`):** Added a dual-layer flowing waveform progress slider restricted to the played track via hardware `Path` clipping, featuring smooth amplitude collapse when paused or scrubbing, zero per-frame allocations, and dynamic artwork tonal extraction (`shiftTonal` & `ensureLuminousForDarkBackground`).\n- **Interactive Seekbar Style Chooser (`SettingsDialogs.kt`):** Replaced the boolean **Wavy Seekbar** switch under **Appearance → Experimental** with a **Seekbar Style** selector dialog featuring a 2-row card grid (**Default**, **Wavy**, **Waveform**) with live, scrubbable previews and `Cancel` / `Apply` controls.\n- **Preference Migration & Player Wiring (`PlayerSeekBar.kt`, `FullPlayer.kt`):** Migrated the seekbar setting to a 3-option enum (`DEFAULT`, `WAVY`, `WAVEFORM`) while preserving backward compatibility for users who previously enabled the legacy `wavySeekbar` boolean (resolving to `WAVY`), and left both existing seekbar implementations untouched.\n\n## Screenshots\n\n| Seekbar Style Chooser | One UI Waveform (Playing) | One UI Waveform (Paused) |\n| :---: | :---: | :---: |\n| <img width=\"250\" alt=\"Seekbar Style Chooser\" src=\"https://github.com/user-attachments/assets/de8f4b86-19cf-4cbf-872f-628787e81f7a\" /> | <img width=\"250\" alt=\"One UI Waveform Playing\" src=\"https://github.com/user-attachments/assets/d2604456-8952-419f-b875-0729b624af3e\" /> | <img width=\"250\" alt=\"One UI Waveform Paused\" src=\"https://github.com/user-attachments/assets/8f1c389f-4137-4f5f-accc-795fafea353e\" /> |\n\n## Testing Steps\n1. Executed `./gradlew testDebugUnitTest` and `./gradlew :app:assembleDebug` with zero errors.\n2. Opened **Settings → Appearance → Experimental → Seekbar Style** on a physical Android device and verified live scrubbing across all three preview cards (**Default**, **Wavy**, **Waveform**).\n3. Verified **Apply** persists the selected style across app restarts and **Cancel** discards uncommitted selections.\n4. Tested playback, pause/resume amplitude collapse, tap-to-seek, and horizontal scrubbing across tracks with both dark and bright album artwork.",
+      "mergeCommit": {
+        "oid": "caf4e204f9b10575270930e820a0886c4bb6c409"
+      },
+      "mergedAt": "2026-11-15T07:30:18Z",
+      "number": 613,
+      "title": "feat: add One UI waveform seekbar and interactive seekbar style chooser",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/613",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDOCzt6lQ",
+        "is_bot": false,
+        "login": "Simone20031",
+        "name": ""
+      },
+      "body": "### Summary\nResolves track matching precision issues when converting Spotify recommendation candidates to playable YouTube Music tracks. Previously, tracks with multiple artists (e.g. Offset feat. Travis Scott) or matching common titles could resolve to unrelated tracks because featured artists were not combined into the search query and the target track duration was omitted during candidate resolution.\n\n### Technical Changes\n- **`InnerTubeMusicApi` / `InnerTubeMusicApiStreamResolver`**:\n  - Extended `findBestMatchOrNull` with an optional `expectedDurationMs: Long? = null` parameter forwarded to `findBestMatchImpl`.\n  - Enables `TextMatch.isSevereDurationMismatch` to reject candidate tracks with > 30s runtime drift and applies a +300 affinity score bonus for close duration matches (±3s).\n- **`RecommendationRepository`**:\n  - In `spotifyTracks`: extracts `expectedDurationMs` from `candidate.duration_ms ?: candidate.durationMs` and passes it to `findBestMatchOrNull`.\n  - Automatically appends featured artists (`<Primary> feat. <Secondary>`) when Spotify candidate tracks provide multiple artist entries and the title does not already contain a featuring clause.\n  - In `relatedFor`: returns Spotify tracks when $\\ge 3$ verified matches exist. When 1–2 tracks match, complements the queue up to `limit` with native YouTube Music related tracks (`relatedGraph.relatedFor`) with deduplication. Falls back completely to YouTube Music when 0 tracks match or when the Spotify endpoint is unreachable.\n- **Unit Tests**:\n  - Extended `RecommendationRepositoryTest` to verify duration forwarding, featured artist query generation, threshold queue sizing (direct vs complementary vs fallback), and deduplication.\n\n### Verification\n- Tested with Gradle unit test suite: `:app:testDebugUnitTest --tests com.lastwave.app.data.recommend.*` (10/10 tests passed).",
+      "mergeCommit": {
+        "oid": "3b536dfd2f58b48dd6f46c0835c9e6678eea8464"
+      },
+      "mergedAt": "2026-11-15T07:34:26Z",
+      "number": 629,
+      "title": "fix(recommend): enforce duration and featured-artist matching for Spotify tracks",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/629",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What\r\nAdds **Player Lyrics**: an inline, centred lyrics mode on the Now Playing screen.\r\n\r\n## Flow\r\nPlayer → (Lyrics button) **Player Lyrics** → (Full Screen) lyrics screen → (Full Screen) full-screen lyrics → (Full Screen) back to Player Lyrics. Back walks the chain in reverse: lyrics screen → Player Lyrics → plain player.\r\n\r\n- Lyrics replace the art area using the lyrics screen's own `SyncedLyricsProgressHost` (same word wipe, glow, motion and spacing). Loading, empty, error, instrumental and unsynced lyrics are all handled.\r\n- The options menu gains **Alignment: Auto / Center** (saved setting, shared by all lyrics views via `LocalLyricsAlignment`). Auto lays rows out exactly as before.\r\n- While Player Lyrics is open, Like + Lyrics beside the title become the lyrics screen's Full Screen + options pair, opening the same options menu, provider picker, share sheet, text size, translate/romanize and sync offset.\r\n- Backgrounds: cover art (the sleeve gives way), full-screen art (scrim), YouTube video (keeps playing, moves to the top, lyrics below it), Spotify Canvas (keeps playing: full-screen behind a scrim, sleeve canvas stays composed at 30% under the lyrics).\r\n- Back goes through the player's existing `PredictiveBackScreen`, with no extra handler. The flag survives rotation and resets when the player collapses. The tablet two-column landscape layout keeps its current behaviour.\r\n- The playhead is read through `derivedStateOf`, so a 60 ms tick recomposes nothing unless the sung line or word changes.\r\n\r\n## Deliberately not changed\r\nApart from the alignment hook in `ModernLyricsRows`/`ModernLyricsPlainViews` and the new menu row: the lyrics screen and full-screen lyrics (`ModernLyricsView`, `ModernLyricsControls`, rows, karaoke canvas, staging, fetching/parsing/sync, colours, motion), and every player control (seek bar, play/pause, prev/next, shuffle, repeat, queue, sleep timer). Player Lyrics only reads the existing lyrics state and helpers; new UI lives in `PlayerLyrics.kt`.\r\n\r\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\r\n\r\n",
+      "mergeCommit": {
+        "oid": "d2fa6e9961093dd89d85d3359084af4444ae4ee0"
+      },
+      "mergedAt": "2026-11-15T12:21:14Z",
+      "number": 639,
+      "title": "feat(player): inline Player Lyrics on Now Playing",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/639",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "Follow-up to #607. On a OnePlus Pad 2, #607 didn't change Now Playing: the rotating background steps at 15 Hz on its own, and every step made each glass control re-blur.\n\n- Rotating background sits outside the glass capture (it's already blurred, so it shows through the glass unchanged)\n- Background stops moving under the queue\n- Mini player progress line moves once a second (seeks still jump immediately)\n- BetterLyrics: stop retrying a song after a 401 (uncached songs 401 on every endpoint and title variant)\n\nSame song, same build type, 15 s each:\n\n| | main | this PR |\n|---|---|---|\n| Now Playing | 241 frames, 24.6 ms/frame, 63% CPU | 242 frames, 15.3 ms/frame, 52% CPU |\n| Queue | 190 frames, 58% CPU | 0 frames, 32% CPU |\n| Home, playing | 60 frames, 42% CPU | 15 frames, 36% CPU |\n| BetterLyrics requests per uncached track | 8 | 2 |\n\nFeed scroll and cold start unchanged. Checked dark theme, landscape tablet only.",
+      "mergeCommit": {
+        "oid": "ef3506224822d14678a02886c6f1a38c6632ba67"
+      },
+      "mergedAt": "2026-11-15T13:22:59Z",
+      "number": 616,
+      "title": "perf(player): cut full player redraw cost",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/616",
+      "category": "Performance",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What\nRedesigns the **Lyrics options** dialog (3-dot menu in Player Lyrics, the lyrics screen and full-screen lyrics). UI only.\n\n- Header: tonal lyrics icon, \"Lyrics options\" title, close button.\n- Provider and Share lyrics as one connected pill pair.\n- Text size: the percentage and Reset sit beside the label, with the same slider below.\n- Alignment: Auto / Center as a connected segmented pair with a check on the selected one.\n- Translate, romanize and sync offset as plain rows, no dividers.\n- Full-width Done. Slightly more compact than before, and it scrolls on short screens.\n\n## Not changed\nEvery action, callback, haptic and condition is the same: which rows show, what each one does, and dismiss-before-open for provider, share and offset. No other files were touched.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+      "mergeCommit": {
+        "oid": "9e82651452ffebe09cbff4c409e050f9e1eb0aa7"
+      },
+      "mergedAt": "2026-11-15T13:38:41Z",
+      "number": 641,
+      "title": "style(lyrics): redesign the Lyrics options dialog",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/641",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## Problem\nTapping **Add to playlist** on a song played from device storage didn't list the user's existing playlists. It opened an offline-only sheet that showed offline playlists or, if there were none, only asked to create a new one.\n\n## Cause\n`AddToPlaylistDialogHost` sent every device song (no `videoId`, local URL) to a separate offline sheet. Regular custom playlists do accept local files (`PlaylistRepository.addTrack` keeps them, and the host already hides YouTube playlists for local files), so the user's own playlists were hidden for no reason.\n\n## Fix\n- Every song gets the same sheet. For a device song it lists **your playlists** plus **offline playlists** as a second section.\n- The logic is the same: offline adds still go through `addToOfflinePlaylists`, creating from a device song still makes an offline playlist, and regular adds keep their duplicate check.\n- The old offline sheet is removed (it has no callers now).\n\n## UI (Material 3)\n- A title with the song as its subtitle, and a small tonal **New playlist** button.\n- Flat, selectable rows with a tonal selection, section labels when both kinds are shown, and Cancel / Add to N.\n\nNot built or run locally.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+      "mergeCommit": {
+        "oid": "8ee29a83bab417b03da3a289899f8b6b575a249b"
+      },
+      "mergedAt": "2026-11-15T13:56:29Z",
+      "number": 642,
+      "title": "fix(playlists): show your playlists when adding a device song",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/642",
+      "category": "Reverted / superseded claim",
+      "claimNote": "Add-to-existing-playlist change was reverted; excluded from final fixes."
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "The home feed could remain on a loading indicator while secondary requests finished, and sections shifted as results arrived or disappeared. Load the first shelves earlier, keep visible section positions stable, and show an unavailable state when the latest refresh no longer includes a section instead of presenting retained recommendations as fresh.\n\n- Build feed data off the UI thread, run album lookups in parallel, and cancel timed-out discovery work.\n- Keep refresh and pagination in sync with the stable section order; update retained shelves in place when a fresh continuation page returns them.\n- Preserve the latest response separately from the layout snapshot so playback and visible recommendations use current results.\n\n## Testing\n\n- `:app:testDebugUnitTest` — focused feed repository, ordering, pagination, and discovery tests (39 passed).\n- `:app:connectedDebugAndroidTest` — `StableFeedSectionTest` on an OPD2403 tablet running Android 16 (passed).",
+      "mergeCommit": {
+        "oid": "cfdd23dc0ca31e11aacc6b8dce09ac78148d377e"
+      },
+      "mergedAt": "2026-11-15T17:01:19Z",
+      "number": 643,
+      "title": "Fix home feed loading and refresh stability",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/643",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "## Problem\nA user reported the app freezing for 3–4 s on launch, plus stutter when the feed auto-refreshes.\n\nOn a CPH2649 (Snapdragon 8 Elite, release build), every cold start had 3 frames of 450–700 ms. Frame stats put all of that time before the frame starts (vsync → `HandleInputStart`), not in drawing. A scheduler trace shows the main thread running flat out for 439, 624 and 520 ms at those exact moments, in code that emits no trace sections. A method-sampling trace of the debuggable build attributes the work outside frames to `SettingsPreferences.settings` mapping (`map…emit` + `collect` + `Keys` init) and to BotGuard's WebView creation.\n\n## Changes\n1. **`SettingsPreferences.settings`**: this was a cold flow. Each of ~60 collectors, most on Main, re-ran the ~100-key mapping and the addons JSON parse on every write to the DataStore. It now maps once per change on `Dispatchers.Default`, skips unchanged values, and shares the latest one (`shareIn`, `replay = 1`). The type stays `Flow<MiscSettings>`, so callers are unchanged; `first()` and `drop(1)` behave as before.\n2. **`MainShell` pager**: Statistics and Playlists were composed on the launch frame and started their own loads. They are now composed once the user first leaves the Feed, then kept composed as before, so a dock jump back to Feed still never rebuilds it.\n\n## Measured\nChange 2, non-debuggable bench build, OnePlus Pad, 5 cold starts each:\n\n| | main-thread CPU (first 12 s) | frames ≥ 100 ms |\n|---|---|---|\n| main | 916 ms avg | 4.2 |\n| change 2 | 744 ms avg (−19%) | 3.2 |\n\nChange 1 compiles but has **not** been run on a device (local builds ran out of memory). Please check it on device before merging.\n\n## Not covered\n- **Player-open stutter.** On the CPH2649 every open has 2–4 frames of 30–45 ms while the app is still `verify`-compiled. After `cmd package compile -m speed-profile` there are 0 frames over 16 ms. So it comes from running without AOT after each sideloaded update, until Android's background dexopt applies the baseline profile. No code change here.\n- **Return after a few minutes.** `FeedViewModel.onVisible()` refreshes after 90 s and the feed is rebuilt for each of 3–4 progressive updates. Unchanged; a repro on the CPH2649 showed one 53 ms frame.\n- **Reported crashes.** No diagnostics file.\n",
+      "mergeCommit": {
+        "oid": "4d10c15e6791d62a0a301237effa0bab3ae01c24"
+      },
+      "mergedAt": "2026-11-15T17:01:37Z",
+      "number": 644,
+      "title": "perf: fix launch freeze (settings flow on main, off-screen tabs)",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/644",
+      "category": "Performance",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "## Problem\nFollow-up to #644, which was merged before this commit landed on its branch.\n\nOn a CPH2649 (Snapdragon 8 Elite, release build), every cold start had 3 frames of 450–700 ms. Frame stats put all of that time before the frame starts (vsync → `HandleInputStart`), not in drawing. A scheduler trace shows the main thread running flat out for 439, 624 and 520 ms at those moments, in code with no trace sections. A method-sampling trace of the debuggable build attributes the work outside frames to `SettingsPreferences.settings` mapping (`map…emit` + `collect` + `Keys` init). The same burst likely explains the freeze when opening the app after the phone sleeps: work held back while the app was frozen runs together on unlock.\n\n## Change\n`SettingsPreferences.settings` was a cold flow. Each of ~60 collectors, mostly on Main, re-ran the ~100-key mapping and the addons JSON parse on every write to the DataStore. It now maps once per change on `Dispatchers.Default`, skips unchanged values, and shares the latest one (`shareIn`, `replay = 1`). The type stays `Flow<MiscSettings>`, so callers are unchanged; `first()` and `drop(1)` behave as before.\n\n## Not verified\nCompiles (Kotlin step) but has **not** been built into an APK or run on a device: local builds ran out of memory. Please check on device before merging: cold start, then lock for 5 min and reopen.\n",
+      "mergeCommit": {
+        "oid": "7070bb2ea203e58b78ba8638caa77a5254c7cc9a"
+      },
+      "mergedAt": "2026-11-15T18:27:20Z",
+      "number": 645,
+      "title": "perf(settings): map settings once off the main thread",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/645",
+      "category": "Performance",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Adds a branded title card to the lyrics area: song, artist, a gold \"Lyrics by <provider>\" credit and a glowing LastWave wordmark.\n\n- **Intro:** fills the pre-lyrics zone (replacing the intro dots) whenever the first line starts at `LYRICS_INTRO_MIN_MS` (1.5 s) or later, then folds away as the first line starts. Skipped when less than 1.5 s of intro is left (lyrics arriving late, or a seek near the first line).\n- **Loading:** the same card, centred, with a rotating status line. When lyrics arrive, title, artist and wordmark glide and rescale into the intro zone (shared bounds) and the credit fades in.\n- **Not found:** the same card with a warm, rotating address (\"Couldn't find your lyrics, Captain\") and the retry button.\n- **Provider:** taken from `LyricsUiState.Success.source` via `providerForSource`. On-device files get no credit.\n- One shared `LyricsStateContent` / `LyricsSignatureCard` for the player screen, the lyrics screen and full-screen lyrics. The shine and halo run in draw/layer lambdas only and stop when system animations are off.\n\nFetching, sync timing and the existing line animations are unchanged.\n\nTests: `LyricsStagingTest`, `LyricsSignatureTest` (threshold, skip rule, provider label). Not yet checked on a device.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "4b8d0f482a04a5f11aa66f53c7633d2eff550d0f"
+      },
+      "mergedAt": "2026-11-16T05:49:47Z",
+      "number": 647,
+      "title": "feat(lyrics): LastWave signature intro card",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/647",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Follow-up to #647.\n\n- **Wordmark glow:** the halo no longer sits in a `graphicsLayer`, which clipped the blur into a faint rectangle. The glow now follows only the letters and is a little softer.\n- **Shine:** the wordmark body is tinted more and the sweep band is sharper, so the moving light is visible.\n- **Title:** the card shows only the main song name (drops `[...]`, `(feat. ...)`, ` - Remastered` tails).\n- **Scroll bug:** the intro row keeps its height after the card fades. Collapsing it during the follow scroll left the first line at the very top instead of the focus anchor.\n- **Loader:** the spinner is replaced with four bouncing equaliser bars (static with animations off).\n\nNot built or run locally.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "63eca9e7f3d1f33f407e4f796fcd0da10a1c5b88"
+      },
+      "mergedAt": "2026-11-16T09:58:02Z",
+      "number": 648,
+      "title": "fix(lyrics): signature intro polish",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/648",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "With full-screen art on, Player Lyrics draws over the unblurred cover or canvas, and busy art competes with the text.\n\n- Adds a 6 dp blur to the full-bleed cover and canvas only while Player Lyrics is showing on Now Playing. It fades in and out over 320 ms.\n- Applied as a layer `renderEffect` read in the layer lambda, so it doesn't recompose. API 31+ only; older devices keep the existing scrim.\n- The regular (non-full-screen) background and the lyrics tab are unchanged.\n\nNot built or run locally.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "f55380ced1451515111b95680af08418e8c826e4"
+      },
+      "mergedAt": "2026-11-16T09:59:52Z",
+      "number": 649,
+      "title": "fix(player): light blur on full-screen art behind Player Lyrics",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/649",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What\n- **Home:** long-press the Quick access header to open the same section menu (Hide section) as the other Home sections.\n- **Home visibility:** Quick access now respects the hidden-sections set (`HomeSection.QUICK_TILES`), which it previously ignored.\n- **Settings → Library → Home Layout & Sections:** Quick access is listed with a visibility toggle, so it can be restored after hiding.\n\n2 files, +7/−3.\n\n## Not verified\nNot built or run on a device, as requested. Quick access is still fixed at the top of Home, so the pin and drag controls do nothing for it.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "b4579521fa4dbea1b10022e2b31e8886fbe6d58e"
+      },
+      "mergedAt": "2026-11-16T12:26:32Z",
+      "number": 650,
+      "title": "feat(home): hide Quick access via long-press and settings toggle",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/650",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What\nThe light blur from #649 covered the whole full-screen art. It now blurs only the band the lyrics occupy (the artwork slot above the title), feathered 24 dp inside its top and bottom edges. The art under the title and controls stays sharp.\n\n- It's still one `graphicsLayer` render effect (blurred copy masked with `DST_IN`, then drawn over the sharp source), so canvas videos keep working.\n- It still applies only in full-screen art mode with Player Lyrics on, API 31+.\n\n1 file, `FullPlayer.kt`.\n\n## Not verified\nNot built or run on a device.",
+      "mergeCommit": {
+        "oid": "acf13baa92c70f90c071eb7e7114c77fabc52068"
+      },
+      "mergedAt": "2026-11-17T02:05:18Z",
+      "number": 653,
+      "title": "fix(player): limit the Player Lyrics art blur to the lyrics area",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/653",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What\nOn the Statistics screen the stats card stayed fixed over the top half, so only the list below it could scroll. The card now condenses into a compact row as you scroll and opens again when you come back up.\n\n## Behaviour\n- Scrolling the list up first shrinks the card into one Material 3 row: the headline count in its tonal pill, the Tracks / Artists / Albums counts, and the genres arrow. Then the list scrolls on.\n- Scrolling back to the top of the list opens the card again. A pull from the top opens it before pull-to-refresh starts. Tapping the compact row also opens it.\n- Dragging on the card or banner scrolls too, so the whole screen moves as one surface.\n\n## Motion\n- The header height follows the finger exactly.\n- The card lifts with a half-speed parallax, scales and fades while the row fades in at the bottom edge.\n- A gesture released half way springs to the nearer state.\n- Progress is read only in layout and draw, so scrolling doesn't recompose the card.\n\n## Files\n- `ui/home/StatsCollapse.kt` (new): collapse state, nested-scroll hookup and the two-layer layout\n- `ui/home/HomeScreenStats.kt`: the compact `StatsCompactRow`\n- `ui/home/HomeScreen.kt`: the list state is hoisted; the banner and card are wrapped in the collapsing header\n\nThe stats data, sort modes, list and full card are unchanged.\n",
+      "mergeCommit": {
+        "oid": "96bc91ab16a08dae2c13a7289395d556f7b412bf"
+      },
+      "mergedAt": "2026-11-17T02:09:05Z",
+      "number": 654,
+      "title": "feat(stats): condense the stats card into a row while the list scrolls",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/654",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDOBeMSdQ",
+        "is_bot": false,
+        "login": "xppenTC",
+        "name": ""
+      },
+      "body": "## Problem\n`SENSITIVE_PREFERENCE_NAMES` keeps `lw_addon_url` out of exported backups, because addon URLs carry an access token (`/a/<token>/`). The multi-addon list that replaced it, `lw_http_addons_json`, holds the same URLs but was not in that set. Every exported backup therefore contained the user's addon tokens in clear, and anyone given the file could use those addons as that user.\n\n## Fix\nAdd `lw_http_addons_json` to `SENSITIVE_PREFERENCE_NAMES`. One line.\n\nAs with `lw_addon_url`, restoring a new backup leaves the addon list empty, so the user adds their addons again. Older backups that still contain the list restore it as before.\n\n## Tests\n- Compiles. This is a one-line change to a constant set, so I added no new test.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "fc36f4ea1c06f072dd23a26e60df225bcf66bf76"
+      },
+      "mergedAt": "2026-11-17T02:14:33Z",
+      "number": 459,
+      "title": "fix(backup): keep addon access tokens out of backup files",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/459",
+      "category": "Reverted / superseded claim",
+      "claimNote": "Token-exclusion policy was superseded by the final complete-backup implementation; no security-hardening claim."
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## Problem\nA user reported that a 10-song playlist doesn't stop after song 10 and starts over.\n\n- **Repeat off:** when a song fails (unavailable, region-blocked, stream error), the skip path in `MusicPlayer` wrapped to `0 until failedIndex` and `nextQueueIndex` wrapped to `(0 until start)`, whatever the repeat mode. If the last song failed, the whole playlist played again. In shuffle mode the wrap could pick songs that had already played.\n- **Repeat all + shuffle:** every round reused the same shuffle order, so the \"loop\" was the same sequence each time.\n\nA normal end with repeat off was already correct: the player starts similar-songs radio (which skips every queued song) or stops.\n\n## Fix\n- The unavailable-skip wrap, and `nextQueueIndex(..., wrap = false)` on that path, now go past the end only on repeat-all. With repeat off, playback stops there. Manual next still wraps as before.\n- On repeat-all + shuffle, a new shuffle order is dealt when playback wraps to the first song: both on ExoPlayer's own AUTO transition and on the STATE_ENDED fallback. The shuffle toggle uses the same new `reshuffleFrom()` helper.\n\n2 files, +27/−9.\n\n## Not verified\nNot built or run on a device.",
+      "mergeCommit": {
+        "oid": "c794f02c323bed5eaeb9ff56e78a7228c278aec5"
+      },
+      "mergedAt": "2026-11-17T02:34:58Z",
+      "number": 655,
+      "title": "fix(playback): stop at playlist end; reshuffle each repeat-all round",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/655",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What changed\r\n\r\n**1. Video: clean frame after the controls time out** (`SyncedVideoPlayer.kt`)\r\n\"Choose video\" and ✕ were drawn twice: once in the top bar and once more in two `AnimatedVisibility(visible = !controlsVisible)` blocks. The second copy appeared exactly when the bar hid. I deleted the duplicates, so all of them now fade with Now playing and quality. Nothing else in the video player changed.\r\n\r\n**2. Home feed takes 10 s+ to load; \"Not in the latest refresh\" cards**\r\n- **Cause of the slow load: #643 (`cfdd23dc`).** `FeedScreen` marked every synthetic section (`feedSectionsAwaitingData`) as pending while `lastUpdatedMillis == 0`, and `readyFeedSections` stopped at the first pending key. The repository's early `onUpdate`s (home shelves, familiar quick picks) were ignored, so everything under *My genres* stayed behind a spinner until the slowest fetch in `loadFeed` returned (discovery timeout, artist/album/Last.fm round-trips). Each section now renders as soon as it has data, in its configured order, as it did before #643.\r\n- **The placeholder also came from #643.** `lastCompletedFeed` holds the raw final feed, and the `previous` fallbacks were removed from the repository. Any section that wasn't re-fetched therefore got a \"Not in the latest refresh\" overlay.\r\n- **`4d724aa1` only hid that overlay:** `hasFreshFeedSection` was stubbed to `true` and `StableFeedSection` became a plain `Box`. It did not touch the slow load, and it left `FeedSectionOrderTest` / `FeedViewModelChipsAndPaginationTest` asserting values the stub can no longer return. CI does not run those feed tests, so this went unnoticed. This PR deletes the dead plumbing (helper, composable, androidTest, string ×3 locales) and inlines `isUnavailable = false`. Rendering is identical.\r\n\r\n**3. Mixed card shapes in one shelf** (`FeedShelves.kt`)\r\n`HomeShelfCard` picked a card variant per item. *Forgotten favorites* mixed a 16:9 video, a tall community-playlist card and square songs, and one community item sent the whole row to `CommunityDiscoverShelf`. This left blank space under the shorter cards. A row whose items need different variants now renders them all as square cards; podcast episodes keep their own card. Rows of a single variant are unchanged.\r\n\r\n**4. Beat-synced fluid motion is opt-in again**\r\nIt shipped on by default. The default is now off in the settings model, the read fallback, the composable defaults and `FluidRhythmEngine.isEnabled`. The Settings toggle still turns it on, and anyone who turned it on themselves keeps it.\r\n\r\n## Not verified\r\n- Not built locally (per request); CI builds this PR.\r\n- Not run on a device.\r\n",
+      "mergeCommit": {
+        "oid": "443b00e93de69d70c06fd8d52eb01f496c1ec694"
+      },
+      "mergedAt": "2026-11-18T00:34:58Z",
+      "number": 666,
+      "title": "fix(feed,video,player): fast feed load, uniform shelf cards, clean video frame, beat sync opt-in",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/666",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## Why\n\nThe beat-synced fluid work (`ddf78084` … `5fce7549`, pushed straight to `main`) changed the shared player background for **everyone**, including users with beat sync off:\n\n- `5fce7549`: the blurred-cover fallback was always drawn under the fluid, so two different blurs mixed during fade-ins and track changes. Before, it showed only until the fluid appeared.\n- `f699c983`: `rememberIsForeground()` replaced `rememberPlayerWindowActive()` (#574), so the background kept animating under the notification shade.\n- `b34da217`: the graphics layer read `seconds` on every frame; the full-screen-art scrim was roughly halved for everyone.\n- `8ec2d947`: three radial gradient layers were always drawn under the player as a guard against beat sync's own black-screen bug.\n- `ddf78084` / `920fadef`: an `audiofx.Visualizer` was attached to **every** playback session at max capture rate, setting on or off.\n\n## What changed\n\n1. **`FluidArtworkBackground.kt` is back to its pre-`ddf78084` code byte for byte.** The only addition is a `fluidBeatSyncEnabled` switch that hands off to `BeatSyncFluidArtworkBackground`.\n2. **`BeatSyncFluidBackground.kt`** holds the beat-sync background **unchanged**. Only the names that would clash are renamed, and it reuses the shared shader and `isFluidSupported()`. With the setting on, it renders exactly as before.\n3. **`FullPlayer`**: the gradient layers and the lighter scrim apply only with beat sync on; otherwise the scrim is the original (including the 0.65 stop).\n4. **`FluidRhythmEngine`**: the Visualizer is created when beat sync turns on and released when it turns off or the session ends. The PCM analyser was already gated on `isEnabled`.\n\nBeat sync stays off by default (#666) and can be turned on in Settings.\n\n## Not verified\n- Not built locally; CI builds this PR.\n- Not run on a device: neither the default look against a pre-`ddf78084` build nor beat sync on/off switching.\n",
+      "mergeCommit": {
+        "oid": "27c4031edb23959f0ab62235192c4a2ca7c8b323"
+      },
+      "mergedAt": "2026-11-18T01:34:30Z",
+      "number": 667,
+      "title": "fix(player): isolate beat-synced fluid; default player back to its original background",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/667",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## What changed\n\n**1. Feed pages in more shelves while the rest of the feed loads** (`FeedViewModel`, `FeedScreen`)\n#643 blocked home pagination until the whole `loadFeed` finished (`isFeedUpdating`), including discovery, artist and album lookups and Last.fm. Scrolling down in the first seconds hit the end of the list, and the next shelves appeared all at once later. Paging now starts as soon as the first shelves are on screen, as it did before #643.\nA late feed update keeps the continuation token once paging has moved past page 1, so it doesn't rewind to page 2. A refresh still starts from the fresh token. `defaultPaginationWaitsForInitialFeedToFinish` asserted the old blocking, so it is rewritten to cover the new behaviour.\n\n**2. Quick picks rows are even** (`FeedTiles.kt`)\nA long title wrapped to two lines and made its row taller. Titles now stay on one line with an ellipsis. Artwork is 54 dp (was 48) with a 6 dp corner (was 12).\n\n**3. 16:9 videos keep their card in mixed rows** (`FeedShelves.kt`)\n#666 squared every card in a mixed row. Only the tall community-playlist card caused the blank space, so only that card is squared now.\n\n**4. Now Playing header label fades after 10 s** (`FullPlayer.kt`)\nThe NOW PLAYING title and source line fade out 10 s after a song starts on the Now Playing tab. A new song or tab shows them again, and the header buttons stay.\n\n## Not verified\n- Not built locally; CI builds this PR. CI runs only the download and playback test classes, so the feed tests here compile but don't run.\n- Not run on a device.\n",
+      "mergeCommit": {
+        "oid": "5f5f17a426f0df91def1e52b15a0f6aefcdc0f2f"
+      },
+      "mergedAt": "2026-11-18T01:35:48Z",
+      "number": 669,
+      "title": "fix(feed,player): page while loading, even Quick picks, 16:9 cards, fading header label",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/669",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDOBeYPSw",
+        "is_bot": false,
+        "login": "PedroFlores199",
+        "name": "Pedro Flores"
+      },
+      "body": "## Summary\nCompletes the Spanish (`values-es`) translation, which was missing 331 resources added to English (`values`) since the last Spanish update.\n\n**Added (329 strings + 2 string-arrays) to `values-es/strings.xml`:**\n- Wave home-screen widgets (names, descriptions, labels, preview content)\n- YouTube Music cookie login, VPN playback notice\n- Appearance: app icon chooser, LastWave signature theme, bold font, collapsing navigation bar, hidden navigation tabs, haptic feedback, seekbar style, beat-synced fluid motion, canvas gradient blur\n- Synced music video player and video quality\n- Storage screen (cache usage, cache limit, clearing cache, deleting downloads)\n- Home sections: greeting, infinite radio, discover, preview queues, podcasts\n- Local songs hub: tabs, sorting, auto-scan, permissions, offline likes and offline playlists, selection actions\n- Signal path: hardware direct pipeline, signal path dialog nodes, AutoEQ verdicts\n- Track menu: copy link, Jam, playlist rearranging, voice search, local/podcast search tabs\n- Lyrics signature intro (credit, not-found messages, `ly_signature_loading` and `ly_signature_address` arrays)\n- Artist release types, preferences-reset notice, remaining screen strings (generation, discover, Chromecast, YouTube import/login)\n- Podcasts (settings, browsing, episodes)\n- AutoEQ (profiles, targets, parametric filters, per-device profiles, search)\n- Spotify live-sync playlists and Liked Songs, music recognition\n\n**Added `values-es/moods_screen.xml`** (6 strings), matching `values/moods_screen.xml`.\n\n**Updated (10 stale strings) to match the current English source:** `dialog_clear_all_text`, `dl_empty_hint`, `signal_detail_gain_scaled`, `settings_amoled_sub`, `local_panel_hint`, `local_forget_folder`, `local_copying`, `local_report_space`, `local_report_failed`, `nr_more_fail`.\n\nNew entries are inserted next to their English neighbours, so the diff only adds lines apart from the 10 updates. The file keeps its existing encoding and line endings.\n\n## Testing\n- Verified key parity: `values/strings.xml` and `values-es/strings.xml` both contain 1,390 resources (strings, plurals and string-arrays), 0 missing on either side; `moods_screen.xml` 6/6\n- Verified all format placeholders (`%1$s`, `%1$d`, `%%`, …) preserved identically in translations\n- Verified apostrophes/quotes are escaped and both files parse as well-formed XML\n- Full `./gradlew testDebugUnitTest` not run locally (no Android SDK on this machine); relying on CI checks\n",
+      "mergeCommit": {
+        "oid": "b6278baed0260fda3be0d814cc8a6af1ae59c15d"
+      },
+      "mergedAt": "2026-11-18T18:16:55Z",
+      "number": 672,
+      "title": "feat(i18n): complete Spanish translations",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/672",
+      "category": "Localization",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODbPeeg",
+        "is_bot": false,
+        "login": "Nox-Wizard-py",
+        "name": "Nox Wizard"
+      },
+      "body": "## Problem Analysis\n\nCurrently, LastWave offers a single visual presentation for synced and unsung lyrics. Users cannot customize the visual depth, typography weight, or motion choreography of the lyrics screen—nor is there a visual progress indicator during instrumental intros and interlude gaps—without altering the existing default lyrics experience.\n\n## Summary of Changes\n\n- **Lyrics Style System (`LyricsTheme.kt`, `LyricsBlur.kt`)**:\n  - Introduced a declarative `LyricsStyle` enum (`DEFAULT`, `FLOW`, `HALO`) persisted via DataStore preferences, keeping LastWave's existing lyrics renderer 100% untouched as `DEFAULT`.\n  - Added hardware-accelerated Gaussian depth blur (`Modifier.lyricsBlurEffect` via `RenderEffect` on Android 12+ with graceful alpha fallback on older versions), automatically clearing blur when the user manually scrolls.\n- **Flow Style (`LyricsStyle.FLOW`)**:\n  - Implemented whole-line magnification (`1.0x` active line vs. `0.58x` inactive lines over `300ms`) with proportional vertical layout scaling so surrounding lines compactly frame the active verse without empty gaps.\n  - Added `650` display weight, selective soft white bloom on long active words, subtle `1750ms` horizontal micro-wobble, and `3000ms` breathing scale pulse on active instrumental breaks.\n- **Halo Style (`LyricsStyle.HALO`)**:\n  - Implemented heavy display typography (`FontWeight.ExtraBold` / `FontWeight.Bold`), 6-step progressive downward blur (`2px` to `9.5px`), lingering `900ms` dissolve on finished past lines, and smooth duration-coupled vertical word rise (`+3.dp` to `0.dp`) with zero bounce or glow.\n- **Karaoke Canvas & Scroll Choreography (`ModernLyricsKaraokeCanvas.kt`)**:\n  - Driven strictly by LastWave's native playback clock, sync offset, and syllable timestamps for zero timing drift.\n  - Mapped horizontal left-to-right white progress sweeps per word with midpoint gap boundaries (`clipLeft`/`clipRight` and `splitTop`/`splitBottom`) to eliminate vertical glyph slicing on bold overhangs and wrapped multi-line verses.\n  - Added `600ms` pre-emptive scroll lookahead with `400ms` ease-in-out transitions anchored at `45%` viewport height for fluid line progression.\n- **Music-Note Instrumental Break Loader (`InstrumentalBreakItem.kt`)**:\n  - Added a bottom-to-top filling music-note Canvas indicator for both opening instrumental intros (`0ms` to first vocal line) and mid-track interlude gaps.\n- **In-Player Lyrics Style Chooser**:\n  - Added a **Lyrics style** sub-menu row in the upper section of the player's **Lyrics options** modal (above the **Text size** slider) opening an instant-tick selection dialog (`Default`, `Flow`, `Halo`) with real-time updates and no extra confirmation step.\n\n## Screenshots\n\n| Lyrics Style Chooser | Flow Style | Halo Style |\n| :---: | :---: | :---: |\n| <img width=\"250\" alt=\"Lyrics Style Chooser\" src=\"https://github.com/user-attachments/assets/5166c780-a9d5-4419-9013-76fa48a9f8e4\" /> | <img width=\"250\" alt=\"Flow Lyrics Style\" src=\"https://github.com/user-attachments/assets/92754b88-bc02-41b2-b288-554e5769f290\" /> | <img width=\"250\" alt=\"Halo Lyrics Style\" src=\"https://github.com/user-attachments/assets/f8f7a730-96ad-4bf0-ba09-31cff6283cfd\" /> |",
+      "mergeCommit": {
+        "oid": "e706656cf1e89c391f719eabb4bed581c221bbc4"
+      },
+      "mergedAt": "2026-11-18T18:41:29Z",
+      "number": 673,
+      "title": "feat: add Flow and Halo lyrics styles with in-player style chooser",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/673",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Dragging a queue row could carry 1-2 neighbours with it: `moveDraggedItem` fired again before the queue state reflected the first move, so it moved whatever song now sat at the stale index.\n\n- Track the dragged index synchronously (`draggingIndex`) and only swap again once state and layout agree with it.\n- Re-sync that index when the queue changes so a rejected move cannot freeze the drag.\n\nUI-only change in `QueuePanel.kt`; no playback or queue logic touched.\n\nNot verified: not built, not run on a device.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "493c390f8754c38b1005d6b5a0d5a468b7b26a78"
+      },
+      "mergedAt": "2026-11-18T21:28:23Z",
+      "number": 674,
+      "title": "fix(queue): stop drag-reorder pulling neighbouring songs",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/674",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Redesign song options as a compact Material 3 sheet with the app font, outlined icons and smooth motion. Preserve existing playback, download, Cast and dialog actions.\r\n\r\nMake saved exclusions apply to YouTube Home and radio; retain authenticated Home feedback fallback when player lookup fails.\r\n\r\nNot built or tested locally, per request.\r\n",
+      "mergeCommit": {
+        "oid": "a84fec3e6730b9246b7f91887d81620f404cf549"
+      },
+      "mergedAt": "2026-11-18T21:51:46Z",
+      "number": 676,
+      "title": "Polish player song menu and honor YouTube recommendation exclusions",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/676",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "is_bot": true,
+        "login": "app/dependabot"
+      },
+      "body": "Bumps androidx.core:core-ktx from 1.13.1 to 1.19.1.\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=androidx.core:core-ktx&package-manager=gradle&previous-version=1.13.1&new-version=1.19.1)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+      "mergeCommit": {
+        "oid": "a74e396f5603a81363b056e125b060054f0c454f"
+      },
+      "mergedAt": "2026-11-18T21:55:43Z",
+      "number": 663,
+      "title": "deps: bump androidx.core:core-ktx from 1.13.1 to 1.19.1",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/663",
+      "category": "Maintenance / release preparation",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "is_bot": true,
+        "login": "app/dependabot"
+      },
+      "body": "Bumps [com.google.android.material:material](https://github.com/material-components/material-components-android) from 1.12.0 to 1.14.0.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/material-components/material-components-android/releases\">com.google.android.material:material's releases</a>.</em></p>\n<blockquote>\n<h2>1.14.0</h2>\n<h1>New in 1.14.0!</h1>\n<ul>\n<li>Expressive Themes (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/getting-started.md#material3expressive-themes\">doc</a>)</li>\n<li>Expressive Lists (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/List.md\">doc</a>)</li>\n<li>Expressive Button Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/CommonButton.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Icon Button Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/IconButton.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Button Group Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/ButtonGroup.md#m3-expressive\">doc</a>)</li>\n<li>Expressive FAB Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/FloatingActionButton.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Top App Bar Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/TopAppBar.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Navigation Bar (BottomNavigationView) Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/BottomNavigation.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Navigation Rail Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/NavigationRail.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Search Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/Search.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Progress Indicator Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/ProgressIndicator.md#m3-expressive\">doc</a>)</li>\n<li>Expressive Slider Styles (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/components/Slider.md#m3-expressive\">doc</a>)</li>\n<li>Emphasized Typescale (<a href=\"https://github.com/material-components/material-components-android/blob/master/docs/theming/Typography.md#emphasized-scale\">doc</a>)</li>\n</ul>\n<h2>Important</h2>\n<ul>\n<li>Required <code>minSdkVersion</code> is now 23 or higher, for Material and <a href=\"https://developer.android.com/jetpack/androidx/versions#version-table\">AndroidX</a>.</li>\n<li>Library is now built with Android Gradle Plugin (AGP) 8.11.1 and Gradle 8.13.</li>\n</ul>\n<h2>Dependency Updates</h2>\n<table>\n<thead>\n<tr>\n<th>Dependency</th>\n<th>Previous version</th>\n<th>New version</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>androidx.constraintlayout:constraintlayout</td>\n<td>2.1.0</td>\n<td>2.2.1</td>\n</tr>\n<tr>\n<td>androidx.core:core</td>\n<td>1.6.0</td>\n<td>1.16.0</td>\n</tr>\n<tr>\n<td>androidx.customview:customview</td>\n<td>N/A</td>\n<td>1.2.0</td>\n</tr>\n<tr>\n<td>com.android.tools.build:gradle</td>\n<td>8.7.3</td>\n<td>8.11.1</td>\n</tr>\n</tbody>\n</table>\n<h2>Library Updates</h2>\n<ul>\n<li><code>AppBar</code>\n<ul>\n<li>Fixed the bug that setBackground will reset the internal MaterialShapeDrawable for lift-on-scroll feature. (1adc50110ed6491661f89aa535355b1480fac73a)</li>\n<li>Add support for navigation button with circle background (015e0534e1a6205224097f258102f913832f99ed)</li>\n<li>Improve keyboard navigation in TopAppBar catalog demos (98a73a61d272d3e38ee87dd4b322f7787c374a9c)</li>\n<li>Removed special key shortcut and keyboard navigation cluster for top app bar for correct keyboard navigation a11y. (ee52adbf051f744f2345ec5b7f4ab4df3b101d4d)</li>\n<li>Updated ripple color on actions in M3 toolbar. (3b971c9fe9d6ae9a175d96a448a2e740fa97996f)</li>\n</ul>\n</li>\n<li><code>BottomAppBar</code>\n<ul>\n<li>Remove special key shortcut and keyboard navigation cluster for bottom app bar for correct keyboard navigation a11y. (5c73d7a9284fb8e8409452bb95751bf70912acfd)</li>\n</ul>\n</li>\n<li><code>BottomNavigationView</code>\n<ul>\n<li>Fix navigation item layout in non-compact windows (78189012dada1fae4516eaccab7b8f75c481aa73)</li>\n</ul>\n</li>\n<li><code>BottomSheet</code>\n<ul>\n<li>Deprecated enableEdgeToEdge for bottom sheet dialogs on API 35+. (603f1ef9d5223fc06fa432c4175473eda2138330)</li>\n<li>Prevent ACTION_DOWN events on the BottomSheetHandleDragView from setting touchingScrollChild to true. (af7f254bf660704368d46e630d34a81c479fa1c7)</li>\n<li>Fixed keyboard animation on Android 14 (a0b4dfa8769f98851efe97569c900f75eb0d5ef2)</li>\n<li>Fixed crash when protections are set before setContentView is called (d2119098489f6f6b55d77f2c7966b8ddf16c90ed)</li>\n<li>Added half-expanded state description for accessibility (95e7b452088d88005982a3f29ec212ef7ee8696d)</li>\n<li>Added support for androidx.core ProtectionLayout API and update dependency to 1.16 (e7f9f639d2f4a3b9f619ce704df82cbb14e49222)</li>\n<li>Make handle respond to keyboard input (1ee07687af2c4c84f515e45c1b809d65aeecbbf4)</li>\n<li>Delete duplicate &quot;Handling insets and fullscreen&quot; section (5e7e8238f7be448af6b4db4b2ad6128737c0bc50)</li>\n<li>Added support for Nested Scrolling with multiple nested scroll children. (4e4e8f3388beb7e82a87cb67142aa34444a79740)</li>\n<li>Make behavior_draggableOnNestedScroll public (a67afdff0d207239d0f427a37e44074936db3166)</li>\n</ul>\n</li>\n</ul>\n<!-- raw HTML omitted -->\n</blockquote>\n<p>... (truncated)</p>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/66c334b7946dabf33adfe1a2b7cad6bcaa4ea3ad\"><code>66c334b</code></a> [Release] Update library version to 1.14.0 stable</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/12e57b5143609a96de8516426336bcf3b3e321f7\"><code>12e57b5</code></a> [Focus Rings] Add setters and getters for stroke widths and inner inset</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/f4652d6af613395835b17ce329ceb03f43fc4a84\"><code>f4652d6</code></a> [NavigationView] Improve focus saving when opening NavigationView</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/14b9ac97b0863fa7fea6f59954441cea9f4e7e14\"><code>14b9ac9</code></a> [Focus Rings] Add setters for outer and inner stroke colors and for refreshin...</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/d6de1da0f5532090d8b7de697e13c180f56e11e1\"><code>d6de1da</code></a> [A11y][BottomSheet] Auto-expand when a focused view is off-screen in non-touc...</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/41cfb65e8393cd7ff0f9dc082b400c852405e9cc\"><code>41cfb65</code></a> [A11y][NavigationView] Request and restore focus when opened and closed in Dr...</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/8f63e9485bf6da5a9a0aaefa4bbf26c8ec1364a5\"><code>8f63e94</code></a> [Catalog] Fix lift on scroll glitchiness in All Components demo</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/80aa0cc0233af0e81a846271de0d5218beeceeaf\"><code>80aa0cc</code></a> [Release] Update library version to 1.14.0-rc01</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/fd44c9d58699e18de06ca5de8687fe79f390568b\"><code>fd44c9d</code></a> [Button] [SplitButton] Fix inset and optical centering issue for SplitButton ...</li>\n<li><a href=\"https://github.com/material-components/material-components-android/commit/e6ae416e7fc791d733eedde96ffea66d313ef231\"><code>e6ae416</code></a> [SearchView] Make sure IME is hidden when EditText loses focus</li>\n<li>Additional commits viewable in <a href=\"https://github.com/material-components/material-components-android/compare/1.12.0...1.14.0\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=com.google.android.material:material&package-manager=gradle&previous-version=1.12.0&new-version=1.14.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+      "mergeCommit": {
+        "oid": "2c74f20f6b58525423ee42d0cb793435cff93520"
+      },
+      "mergedAt": "2026-11-18T21:55:48Z",
+      "number": 662,
+      "title": "deps: bump com.google.android.material:material from 1.12.0 to 1.14.0",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/662",
+      "category": "Maintenance / release preparation",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "is_bot": true,
+        "login": "app/dependabot"
+      },
+      "body": "Bumps [org.robolectric:robolectric](https://github.com/robolectric/robolectric) from 4.12.2 to 4.18.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/robolectric/robolectric/releases\">org.robolectric:robolectric's releases</a>.</em></p>\n<blockquote>\n<p>Robolectric 4.18 adds Linux arm64 support to the native runtime, supports native resources on SDK 36 and above, and contains many performance improvements and bug fixes.</p>\n<p>If you have any issues, please file them <a href=\"https://github.com/robolectric/robolectric/issues\">here</a>.</p>\n<h2>Breaking Changes</h2>\n<ul>\n<li>Support for SDK 23 has been removed. The minimum supported SDK is now 24, matching AndroidX (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11604\">#11604</a>).</li>\n<li>The <code>shadows-httpclient</code> module has been removed. It was deprecated in 4.17, and <code>org.apache.http</code> is no longer instrumented (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11373\">#11373</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11544\">#11544</a>).</li>\n<li><code>@TextLayoutMode</code> has been removed. Realistic text layout, the default since 2019, is now always used (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11498\">#11498</a>).</li>\n<li><code>ShadowRemoteCallbackList</code> has been removed, as the real <code>RemoteCallbackList</code> works without it (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11368\">#11368</a>).</li>\n<li><code>HttpResponseCache.install()</code> now also sets <code>ResponseCache.getDefault()</code>, as it does on a device (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11493\">#11493</a>).</li>\n</ul>\n<h2>Linux arm64 support</h2>\n<p>Robolectric's native runtime now includes Linux arm64 (aarch64) native libraries, so tests that use native SQLite (the default) and native graphics (<code>@GraphicsMode(NATIVE)</code>) can run on Linux arm64 environments, such as GitHub's <code>ubuntu-24.04-arm</code> runners, AWS Graviton machines, and arm64 Docker containers on Apple silicon. No configuration is needed (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11625\">#11625</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11633\">#11633</a>). As on Apple silicon, the legacy SQLite mode (<code>SQLiteMode.Mode.LEGACY</code>) isn't supported on Linux arm64.</p>\n<h2>Other Highlights</h2>\n<ul>\n<li>Native resources (<code>ResourcesMode.NATIVE</code>) now work on SDK 36 and above, not only SDK 36 (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11578\">#11578</a>).</li>\n<li>Robolectric no longer prints the &quot;restricted method in java.lang.System has been called&quot; warnings on JDK 24+ (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11482\">#11482</a>).</li>\n<li>The shadow annotation processor now supports KSP (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/10996\">#10996</a>).</li>\n<li>Lots of performance improvements:\n<ul>\n<li>Resource values are shared between bags and themes instead of copied (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11726\">#11726</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11595\">#11595</a>)</li>\n<li>Faster shadow method lookups (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11723\">#11723</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11593\">#11593</a>)</li>\n<li>Cached resource reference resolution (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11586\">#11586</a>)</li>\n<li>Cached service and plugin lookups (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11451\">#11451</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11594\">#11594</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11631\">#11631</a>)</li>\n<li>Native runtime assets are extracted once and shared (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11453\">#11453</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11522\">#11522</a>)</li>\n<li>Faster class loading checks in the sandbox (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11662\">#11662</a>)</li>\n<li>Regexes compiled once instead of on every use (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11399\">#11399</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11400\">#11400</a>, <a href=\"https://redirect.github.com/robolectric/robolectric/issues/11401\">#11401</a>)</li>\n</ul>\n</li>\n<li>Conscrypt is now enabled by default on Mac arm64 (<a href=\"https://redirect.github.com/robolectric/robolectric/issues/11352\">#11352</a>).</li>\n</ul>\n<h2>What's Changed</h2>\n<ul>\n<li>Sign all  .module  metadata files. by <a href=\"https://github.com/brettchabot\"><code>@​brettchabot</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11327\">robolectric/robolectric#11327</a></li>\n<li>Fix Robolectric fontScale config being reset on SDK 24+. by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11336\">robolectric/robolectric#11336</a></li>\n<li>Add device-specific permission support to Robolectric shadows. by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11342\">robolectric/robolectric#11342</a></li>\n<li>Bump version to 4.18-SNAPSHOT. by <a href=\"https://github.com/brettchabot\"><code>@​brettchabot</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11340\">robolectric/robolectric#11340</a></li>\n<li>Fix aggregateDocs gradle task. by <a href=\"https://github.com/brettchabot\"><code>@​brettchabot</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11341\">robolectric/robolectric#11341</a></li>\n<li>Add missing <code>@Deprecated</code> annotation in <code>SQLiteMode</code> by <a href=\"https://github.com/MGaetan89\"><code>@​MGaetan89</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11329\">robolectric/robolectric#11329</a></li>\n<li>Update AGP internals copies by <a href=\"https://github.com/MGaetan89\"><code>@​MGaetan89</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11328\">robolectric/robolectric#11328</a></li>\n<li>Make <code>:shadows:framework:compileJava</code> compatible with Gradle's configuration cache by <a href=\"https://github.com/MGaetan89\"><code>@​MGaetan89</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11314\">robolectric/robolectric#11314</a></li>\n<li>Let shadows for the SafetyCenterManager check permissions correctly. by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11332\">robolectric/robolectric#11332</a></li>\n<li>Remove Conscrypt's XDH KeyPairGenerator to fix TLS issues by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11349\">robolectric/robolectric#11349</a></li>\n<li>Update tests to run on API 24+ by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11350\">robolectric/robolectric#11350</a></li>\n<li>Remove misleading comment from MavenArtifactFetcher by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11351\">robolectric/robolectric#11351</a></li>\n<li>Enable Conscrypt for Mac arm64 by default by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11352\">robolectric/robolectric#11352</a></li>\n<li>Halt resource_files.zip generation for Robolectric builds to enable skipping aapt2 convert. by <a href=\"https://github.com/copybara-service\"><code>@​copybara-service</code></a>[bot] in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11353\">robolectric/robolectric#11353</a></li>\n<li>feat: Support processor for KSP by <a href=\"https://github.com/utzcoz\"><code>@​utzcoz</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/10996\">robolectric/robolectric#10996</a></li>\n<li>fixed SIZEOF initial value in ResTable_package to avoid &quot;RES_TABLE_PA… by <a href=\"https://github.com/greyphoton\"><code>@​greyphoton</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11335\">robolectric/robolectric#11335</a></li>\n<li>ci: Increase emulator kill wait time by <a href=\"https://github.com/utzcoz\"><code>@​utzcoz</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11355\">robolectric/robolectric#11355</a></li>\n<li>Make <code>:prefetchSdks</code> and <code>:prefetchInstrumentedSdks</code> compatible with Gradle's Configuration Cache by <a href=\"https://github.com/MGaetan89\"><code>@​MGaetan89</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11347\">robolectric/robolectric#11347</a></li>\n<li>Make <code>:integration_tests:jacoco-offline:classes</code> compatible with Gradle's Configuration Cache by <a href=\"https://github.com/MGaetan89\"><code>@​MGaetan89</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11346\">robolectric/robolectric#11346</a></li>\n<li>Make <code>:preinstrumented:clean</code> compatible with Gradle's Configuration Cache by <a href=\"https://github.com/MGaetan89\"><code>@​MGaetan89</code></a> in <a href=\"https://redirect.github.com/robolectric/robolectric/pull/11343\">robolectric/robolectric#11343</a></li>\n</ul>\n<!-- raw HTML omitted -->\n</blockquote>\n<p>... (truncated)</p>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/276b95bb8d65f5258781eb9e746a5c754b515c17\"><code>276b95b</code></a> Bump version to 4.18.</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/1b0403299a15b0c1ed5f12a8860e5c733f102dbd\"><code>1b04032</code></a> Stop registering legacy vector drawable groups and paths</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/20207afa09c7fb2c6ea8d1ba79cb1ab0d997d099\"><code>20207af</code></a> Install manifest content providers at startup in the simulator</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/cc02277103c9860b97d64fe6e2917579709c2bf8\"><code>cc02277</code></a> Index shadow methods per shadow class instead of scanning them on every lookup</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/32094a132e68f6f6edb3db61cdc3827925bf6edf\"><code>32094a1</code></a> Notify matching callbacks when network capabilities change</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/698a3f4fc646bfa97fba57e5f1884125e907083c\"><code>698a3f4</code></a> Scope Maven download locks to the local repository</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/759fee2adf72f765a0b35139542395026af6922b\"><code>759fee2</code></a> Preserve resource IDs when cloning state list drawables</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/f94a14173010cad43fa1c5fe14e0bd81f5be4e32\"><code>f94a141</code></a> Remove configuration listeners at instrumentation teardown</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/06d8d939eaf50899dcc147efc669ee1bb0d772da\"><code>06d8d93</code></a> Map trusted and focus virtual display flags to display flags</li>\n<li><a href=\"https://github.com/robolectric/robolectric/commit/a48dbc9af4867269a9046767ad97fb829c7c6891\"><code>a48dbc9</code></a> Exit the simulator when building the sandbox fails</li>\n<li>Additional commits viewable in <a href=\"https://github.com/robolectric/robolectric/compare/robolectric-4.12.2...robolectric-4.18\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=org.robolectric:robolectric&package-manager=gradle&previous-version=4.12.2&new-version=4.18)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+      "mergeCommit": {
+        "oid": "df5fe8c3ca64a5465d93682153b2c832c062b35e"
+      },
+      "mergedAt": "2026-11-18T21:55:52Z",
+      "number": 660,
+      "title": "deps: bump org.robolectric:robolectric from 4.12.2 to 4.18",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/660",
+      "category": "Maintenance / release preparation",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "is_bot": true,
+        "login": "app/dependabot"
+      },
+      "body": "Bumps `room` from 2.7.1 to 2.8.5.\nUpdates `androidx.room:room-runtime` from 2.7.1 to 2.8.5\n\nUpdates `androidx.room:room-ktx` from 2.7.1 to 2.8.5\n\nUpdates `androidx.room:room-compiler` from 2.7.1 to 2.8.5\n\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+      "mergeCommit": {
+        "oid": "5a757753319573675dc392861d010fd05894664a"
+      },
+      "mergedAt": "2026-11-18T21:55:57Z",
+      "number": 659,
+      "title": "deps: bump room from 2.7.1 to 2.8.5",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/659",
+      "category": "Maintenance / release preparation",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "is_bot": true,
+        "login": "app/dependabot"
+      },
+      "body": "Bumps [actions/setup-java](https://github.com/actions/setup-java) from 6.2.0 to 6.3.0.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/actions/setup-java/releases\">actions/setup-java's releases</a>.</em></p>\n<blockquote>\n<h2>v6.3.0</h2>\n<h2>Behavior change: Java problem matcher is now opt-in</h2>\n<p>Starting with v6.3.0, <code>setup-java</code> no longer registers the Java problem matcher by default (<a href=\"https://redirect.github.com/actions/setup-java/issues/1326\">#1326</a>, fixes <a href=\"https://redirect.github.com/actions/setup-java/issues/1322\">#1322</a>). Java compiler warnings, compiler errors, and uncaught exceptions are no longer turned into annotations on pull request diffs unless you opt in.</p>\n<p>To keep annotations, set <code>problem-matcher: true</code>:</p>\n<pre lang=\"yaml\"><code>- uses: actions/setup-java@v6\n  with:\n    distribution: temurin\n    java-version: '25'\n    problem-matcher: true\n</code></pre>\n<p>Compiler output still appears in the build logs, and compilation errors still fail the build. Only annotations are affected.</p>\n<p><strong>Why:</strong> inline annotations cluttered pull request reviews, and GitHub Actions caps annotations at 10 errors, 10 warnings, and 10 notices per step, and 50 per job. Larger Java builds therefore showed only a truncated subset of their diagnostics as annotations. See <a href=\"https://github.com/actions/setup-java/blob/main/docs/advanced-usage.md#java-problem-matcher-compiler-annotations\">Java problem matcher (compiler annotations)</a>.</p>\n<h2>What's Changed</h2>\n<ul>\n<li>Architecture validation for JDK file installs by <a href=\"https://github.com/v-mahabaleshwars\"><code>@​v-mahabaleshwars</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1324\">actions/setup-java#1324</a></li>\n<li>chore(deps): bump fast-xml-parser from 5.11.2 to 5.12.0 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/actions/setup-java/pull/1323\">actions/setup-java#1323</a></li>\n<li>Add Microsoft OpenJDK 25.0.5.0.2 support by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> with <a href=\"https://github.com/Copilot\"><code>@​Copilot</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1320\">actions/setup-java#1320</a></li>\n<li>Fix JetBrains Runtime hotfix version selection by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> with <a href=\"https://github.com/Copilot\"><code>@​Copilot</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1321\">actions/setup-java#1321</a></li>\n<li>Make Java problem matcher opt-in (default problem-matcher to false) by <a href=\"https://github.com/brunoborges\"><code>@​brunoborges</code></a> in <a href=\"https://redirect.github.com/actions/setup-java/pull/1326\">actions/setup-java#1326</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/actions/setup-java/compare/v6.2.0...v6.3.0\">https://github.com/actions/setup-java/compare/v6.2.0...v6.3.0</a></p>\n</blockquote>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/actions/setup-java/commit/d1374f8ac74474200d16ef8ecee22c7ae7a51880\"><code>d1374f8</code></a> Make Java problem matcher opt-in (<a href=\"https://redirect.github.com/actions/setup-java/issues/1326\">#1326</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/5fb63c9bc97316aca87b7eae68a3404a62579dd7\"><code>5fb63c9</code></a> Fix JetBrains Runtime hotfix version selection (<a href=\"https://redirect.github.com/actions/setup-java/issues/1321\">#1321</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/a1bf0b5568e6a2d842b3426fa2d47b4cf0ad5d1b\"><code>a1bf0b5</code></a> Add Microsoft OpenJDK 25.0.5.0.2 support (<a href=\"https://redirect.github.com/actions/setup-java/issues/1320\">#1320</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/a3c80683014bc0e5a1aa6bf9fa3a1d2b32a593a0\"><code>a3c8068</code></a> chore(deps): bump fast-xml-parser from 5.11.2 to 5.12.0 (<a href=\"https://redirect.github.com/actions/setup-java/issues/1323\">#1323</a>)</li>\n<li><a href=\"https://github.com/actions/setup-java/commit/9ce5b12cb90c06fc1b0e3343c3e65bb977578591\"><code>9ce5b12</code></a> Architecture validation for JDK file installs (<a href=\"https://redirect.github.com/actions/setup-java/issues/1324\">#1324</a>)</li>\n<li>See full diff in <a href=\"https://github.com/actions/setup-java/compare/77dd5b2ce225ea11469928ac317850245a74ae78...d1374f8ac74474200d16ef8ecee22c7ae7a51880\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=actions/setup-java&package-manager=github_actions&previous-version=6.2.0&new-version=6.3.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+      "mergeCommit": {
+        "oid": "7dc348c96bf2f02a50b50b76e9b54c14278342ce"
+      },
+      "mergedAt": "2026-11-18T21:56:03Z",
+      "number": 658,
+      "title": "ci: bump actions/setup-java from 6.2.0 to 6.3.0",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/658",
+      "category": "Maintenance / release preparation",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Replace the large genre rows with a Material 3 spectrum, leading-genre card and compact ranked grid. Animate bar heights, spacing and ranking changes while preserving genre calculations and all existing actions.\n\nNot built or tested locally, per request.",
+      "mergeCommit": {
+        "oid": "4cd2dc769375680ab53975ade739c0a489246797"
+      },
+      "mergedAt": "2026-11-19T03:47:37Z",
+      "number": 678,
+      "title": "Redesign Your Genres with an animated Material 3 spectrum",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/678",
+      "category": "Reverted / superseded claim",
+      "claimNote": "Animated genre spectrum was restored to the prior design; excluded from final features."
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## Why\n\n#676 was merged with a red build. CI run #1669 (the PR) and every `main` build since (#1670 to #1674) fail in `:app:compileDebugKotlin` with three errors, all in `TrackContextMenuSheet.kt`:\n\n```\n:18:35  Cannot access 'interface MotionScheme': it is internal in file\n:381:5  Cannot access 'fun MaterialTheme(colorScheme, motionScheme, ...)': it is internal in file\n:940:40 Cannot access 'interface MotionScheme': it is internal in file\n```\n\n`0d1d3fae` wrapped the song menu in `MaterialTheme(motionScheme = TrackMenuMotionScheme)`. In the Material3 version the BOM resolves, that overload and the `MotionScheme` interface are internal. Nothing else in the repo uses `MotionScheme`.\n\n## What changed\n\n- Removed the `MaterialTheme(motionScheme = ...)` wrapper, the `TrackMenuMotionScheme` object and its import. The menu's own animations already call `ExpressiveMotion` directly.\n- The three early exits labelled `return@MaterialTheme` are plain `return`s now (the label no longer exists).\n\n## Not verified\n- Only the compile error is addressed. The later steps of the build (unit tests, release build) have not run on `main` since #676, so they may surface other problems.\n- Not run on a device. Components inside the sheet now use Material's default motion instead of the custom scheme.\n",
+      "mergeCommit": {
+        "oid": "b07852a396b21505cb77019e7f6dc5841b80ed21"
+      },
+      "mergedAt": "2026-11-19T04:58:45Z",
+      "number": 677,
+      "title": "fix(menu): remove the internal MotionScheme usage that broke main's build",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/677",
+      "category": "Maintenance / release preparation",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "- Delay BotGuard's WebView pre-warm by 4 s. It was built on the main thread 0.8 s after launch, during the feed's first frames.\n- Hoist the per-call regexes in `ArtistHelper` to constants (they ran per artist of every parsed song).\n- `isVideoUnavailableFor` skips its key building unless the video lookup failed.\n\nMeasured on OnePlus Pad (release build): main-thread work in the first 4 s down 35%, WebView no longer on the main thread at launch, `ArtistHelper` 11% → 3% of background CPU. Scroll, idle and memory unchanged; no activity leaks across recreations.",
+      "mergeCommit": {
+        "oid": "d7db379149e2fd40d83d74752a257e07846a8083"
+      },
+      "mergedAt": "2026-11-20T06:09:59Z",
+      "number": 670,
+      "title": "perf: keep BotGuard WebView and per-call regexes out of app launch",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/670",
+      "category": "Performance",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODbPeeg",
+        "is_bot": false,
+        "login": "Nox-Wizard-py",
+        "name": "Nox Wizard"
+      },
+      "body": "## Problem Analysis\r\n\r\nCurrently, lowering the device media volume to zero during active playback leaves the track running silently in the background, draining battery and losing the listener's place in the song or queue. Additionally, attempting to start or resume playback while media volume is muted offers no feedback, and stepping up from `0` volume starts at a barely audible `1%` increment.\r\n\r\ncloses #625 \r\n\r\n## Summary of Changes\r\n\r\n* **System Media Volume Observer (`ZeroVolumePlaybackObserver.kt`)**:\r\n  * Added an isolated observer monitoring `AudioManager.STREAM_MUSIC` volume and mute state via `ContentObserver` (`Settings.System.CONTENT_URI`) and `android.media.VOLUME_CHANGED_ACTION`.\r\n  * **Auto-Pause (`> 0` → `0` / Mute):** Automatically pauses playback when `pauseOnZeroVolume` is enabled and media volume reaches `0` while playing, tracking `pausedByZeroVolume = true`.\r\n  * **Smart Auto-Resume with 10% Volume Floor (`0` → `> 0`):** Automatically resumes playback when volume increases above `0` if and only if playback was paused by zero volume, raising `STREAM_MUSIC` to at least `10%` of `getStreamMaxVolume()` (`ceil(maxVolume * 0.10)`) when incremented from `0` while preserving higher manual slider jumps.\r\n  * **Manual & External Reset:** Clears `pausedByZeroVolume` immediately on manual transport actions (pause, play, skip, seek) or external interruptions (audio focus loss, headphone disconnect) so manually paused tracks never resume unexpectedly.\r\n  * **Muted Play Guard:** Blocks play/resume actions when volume is `0` and the preference is enabled, emitting a snackbar alert via `snackbarEvent`.\r\n* **Player & Snackbar Integration (`MusicPlayer.kt`, `PlayerViewModel.kt`, `PlayerHost.kt`)**:\r\n  * Registered `ZeroVolumePlaybackObserver` on player initialization and unregistered it in `release()`, distinguishing zero-volume auto-pause from manual or focus-driven pauses.\r\n  * Collected `viewModel.snackbarEvent` inside `PlayerHost` using `MiniPlayerAwareSnackbarHost` so alerts clear the mini-player cleanly.\r\n* **Settings Toggle & Search Indexing (`SettingsPreferences.kt`, `SettingsViewModel.kt`, `SettingsScreen.kt`, `SettingsSearchIndex.kt`, `strings.xml`)**:\r\n  * Added `pauseOnZeroVolume: Boolean = false` (`lw_pause_on_zero_volume`) to DataStore preferences so existing default behavior remains untouched out of the box.\r\n  * Added the **Pause Playback at Volume 0** toggle card inside **Audio & Playback → Audio & Streaming** (between **Stop Playback When Swiped Away** and **Download Synced Lyrics**) and registered `audio.pause_on_zero_volume` in settings search.\r\n* **Unit Tests (`ZeroVolumePlaybackObserverTest.kt`)**:\r\n  * Added unit tests covering `> 0` → `0` auto-pause, `0` → `> 0` auto-resume, `10%` minimum volume restoration, manual reset, muted stream detection, muted play blocking with snackbar emission, and pass-through behavior when disabled.\r\n\r\n## Verification\r\n\r\n* **Unit Tests (`./gradlew :app:testDebugUnitTest --tests '*ZeroVolume*'`)**: All unit tests passing.\r\n* **Debug Build (`./gradlew :app:assembleDebug`)**: Built cleanly with zero compilation errors or warnings.\r\n* **On-Device Hardware Verification**: Verified on physical Android hardware using the volume rocker, settings toggle, and transport controls.\r\n",
+      "mergeCommit": {
+        "oid": "5c4c7635fe34b19b1cd4192175ec74622c1253a8"
+      },
+      "mergedAt": "2026-11-20T09:45:11Z",
+      "number": 682,
+      "title": "feat: pause music playback automatically at zero volume (#625)",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/682",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "### Summary\nMake the lyrics options dialog (opened via the 3-dots button on the lyrics controls bar) more compact in vertical height by ~20–25%:\n- Reduced dialog column vertical padding from 20dp to 14dp.\n- Tightened inter-item vertical spacing from 14dp to 10dp.\n- Compacted header icon to 32dp (icon 18dp) and close button to 36dp.\n- Reduced option pill height from 48dp to 38dp for provider/share and alignment buttons.\n- Tighter alignment sub-spacing (8dp to 4dp).\n- Reduced row vertical padding from 4dp to 2dp.\n- Compacted Done button height from 48dp (+4dp top padding) to 38dp.\n\nZero logic, callback, or layout position changes.",
+      "mergeCommit": {
+        "oid": "de661b20c3dd656e6a48b6f36ed68af34b985065"
+      },
+      "mergedAt": "2026-11-21T03:49:10Z",
+      "number": 688,
+      "title": "style(lyrics): make lyrics options dialog more compact in height",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/688",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "### Summary\nReorder the Quick Actions modal bottom sheet cards in \\MainShell\\:\n1. **Settings** (\\GroupPosition.TOP\\)\n2. **Jam** (\\GroupPosition.MIDDLE\\)\n3. **Listening stats** (\\GroupPosition.MIDDLE\\)\n4. **Cast** (\\GroupPosition.MIDDLE\\)\n5. **Sleep timer** (\\GroupPosition.BOTTOM\\)\n\nOnly updates the visual list order and group corner shapes; zero logic, callback, or behavioral changes.",
+      "mergeCommit": {
+        "oid": "118e4b6579c31bd0856695af8a543a9f39a5a0e3"
+      },
+      "mergedAt": "2026-11-21T03:54:41Z",
+      "number": 689,
+      "title": "style(shell): reorder quick actions panel items",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/689",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "### Summary\nReorders the time range filter chips in Listening Stats to: [All Time] [Week] [Month] [Year].\n\nZero calculation, query, or logic changes.",
+      "mergeCommit": {
+        "oid": "622221ca35fa0b6e8b574659e6bc32c2dde5282c"
+      },
+      "mergedAt": "2026-11-21T04:02:58Z",
+      "number": 690,
+      "title": "style(stats): display All Time first in listening stats time range chips",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/690",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Backup only covered the main DataStore and dropped Float values (lyrics font scale, app volume). It also skipped the separate autoeq, loudness, automix, internal-direct and USB-exclusive DataStores. Schema bumped to 9 (older backups still restore; they just leave those stores untouched). Not built or tested.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "5413c7323da191a683da7d2b108a2d64bc5d9032"
+      },
+      "mergedAt": "2026-11-21T04:33:03Z",
+      "number": 691,
+      "title": "fix(backup): include float prefs and EQ/loudness/automix/USB datastores",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/691",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Each diagnostics share wrote lastwave-diagnostics-<millis>.txt into app Documents and never deleted it. Reports older than 24h are now removed on the next share. Backup exports are user-picked via SAF and the playlist mirror uses fixed filenames, so neither accumulates. Not built or tested.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "mergeCommit": {
+        "oid": "cd5f4c6cfb18adf9e77d72458b277a7766ab9afe"
+      },
+      "mergedAt": "2026-11-21T04:44:38Z",
+      "number": 692,
+      "title": "fix(export): prune old timestamped diagnostics reports",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/692",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "Beat-synced background now uses Lyra's flow shader and tuning. Bass hits zoom, push and spin it; colours and blur matched against Lyra on a tablet.",
+      "mergeCommit": {
+        "oid": "7db90f38291e282ae0be578c329a546e52043fb4"
+      },
+      "mergedAt": "2026-11-21T04:49:31Z",
+      "number": 687,
+      "title": "fix(player): make beat-synced background match Lyra's flow",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/687",
+      "category": "Fix / refinement",
+      "claimNote": "Lyra behavior was further refined by #710; report as one combined beat-sync improvement."
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Artist Spotlight now pages through up to 5 artists, taken from the same topArtists selection as the single spotlight (no new requests). Auto-slides every 5s with a forward-looping animated slide; paused while touching/dragging, when the app is not resumed, when the card leaves the lazy list, and when system animations are off. Fewer than 2 artists renders the single card as before. Card corner radius 28dp to 18dp. Not built or tested; CI builds the APK.",
+      "mergeCommit": {
+        "oid": "390542d79af23bdf9164a1ffff5d5e7db992c516"
+      },
+      "mergedAt": "2026-11-21T05:04:24Z",
+      "number": 693,
+      "title": "feat(feed): Artist Spotlight pager with 5s auto-slide",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/693",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "In Appearance > Experimental, the separate Lyrics provider, Lyrics sync offset, Lyrics text size and Hide lyrics buttons rows are replaced by one Lyrics settings row that opens a sheet with those four. UI only: the existing dialogs and setters are reused unchanged. Not built or tested.",
+      "mergeCommit": {
+        "oid": "5e37f6a8fdb9281dc17c3ff275efa4733cc086e7"
+      },
+      "mergedAt": "2026-11-21T05:04:34Z",
+      "number": 694,
+      "title": "feat(settings): single Lyrics settings entry",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/694",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDOCS-4iQ",
+        "is_bot": false,
+        "login": "JacksonJones2003",
+        "name": ""
+      },
+      "body": "## Summary\n\nFollow-up to the OriginOS music card lyrics (802b4d5). On a vivo phone, the lyrics showed on the music card in the notification shade, but often not on the Origin Island or the lock screen, and the card sometimes showed a different, worse version of the lyrics than LastWave's own lyrics screen. This change fixes both.\n\nThe same behaviour has been running on a vivo phone (OriginOS, `com.vivo.musicwidgetmix` 17.0.8.3) as a patch to LastWave 5.2.1, through several days of testing. This PR is that behaviour written into the app.\n\n## What was wrong\n\n1. **The island forgets the lyrics.** The island and the lock screen widget drop the lyrics whenever they are drawn again (the screen locks, the island collapses and expands), and the card never asks the app for them again. The card in the notification shade keeps its own copy, which is why lyrics showed there and not on the island. Resending every 25 s left the island empty for up to 25 s each time.\n2. **The card's lyrics differed from the lyrics screen.** The service fetched lyrics as soon as the track changed, usually before the duration was known, and sent the provider's lines as they came. Some providers then returned another cut of the song (one stopped halfway through *Bohemian Rhapsody*; another left a 40 s gap). The lyrics screen waits for the duration, and sanitizes and re-times the lines.\n3. **The lyrics restarted.** The lyrics screen publishes each provider's answer as it arrives (three versions within 5 s for one song). The card starts the lyrics over with every one it gets.\n\n## Changes\n\n- `OriginOsMusicCard.LYRICS_RESEND_INTERVAL_MS`: 25 s → 4 s.\n- `OriginOsMusicCard.playerLyrics`: the lines the lyrics screen shows, published from `PlayerViewModel.publishLyrics` for synced lyrics, keyed by the track (`trackKeyOf`, the identity `mediaIdOf` already used).\n- `publishOriginOsLyrics` now sends the lyrics screen's lines once they have not changed for 2 s (`PLAYER_LYRICS_SETTLE_MS`). Until then, or when no screen is open, it uses its own fetch.\n- The service's own fetch (`fetchOriginOsLrc`) waits up to 8 s for the track's duration, as the lyrics screen does, and prepares the lines with `LyricsSanitizer.sanitize` and `LyricsRepository.normalizeLyricTiming`. Instrumental results are skipped.\n- One new unit test for `trackKeyOf`.\n\n## Testing\n\n- `./gradlew :app:testDebugUnitTest --tests '*OriginOsMusicCardTest'`: 12 tests pass (on `main` at b457952 with this change).\n- **Not run on a device as this source change.** The same behaviour (4 s resend, preferring the lyrics screen's lines after they settle) was tested on the phone as a patch of LastWave 5.2.1.\n- Known limitation, not fixable from the app: after LastWave is reinstalled or updated while the card still lists it as the current app, the card does not reconnect to `MusicPlaybackService` until the card is opened (or one of its buttons is pressed), and the island shows no lyrics until then. Apple Music behaves the same way on this phone.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+      "mergeCommit": {
+        "oid": "6ac3d16db2aa109705123717dde473a13dd10c5c"
+      },
+      "mergedAt": "2026-11-21T05:08:11Z",
+      "number": 651,
+      "title": "fix(originos): keep lyrics on the Origin Island and match the lyrics screen",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/651",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "UI only, no logic changes.\n\n- The song options menu from #676 is the default again (copied from a84fec3e, helpers prefixed Modern* to avoid clashing with the current ones).\n- The existing 'Use classic song menu' toggle now shows the current sheet instead.\n- The old card-based Classic menu design is removed.\n- PlayerCastMenuRow gets a plain option so the #676 menu keeps its original cast row.\n\nNote: the toggle keeps its existing preference key, so users who had it on will now see the current sheet rather than the removed card menu. Not built or tested; CI builds the APK.",
+      "mergeCommit": {
+        "oid": "b2807fd0c619132dde9971a90e1bb1382539e67e"
+      },
+      "mergedAt": "2026-11-21T05:08:55Z",
+      "number": 695,
+      "title": "feat(menu): restore #676 song menu as default, current sheet behind the classic toggle",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/695",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "main fails compileDebugKotlin: TrackContextMenuSheet referenced capabilities.showCopyActions (removed upstream; Copy song row was dropped) and the new lyrics settings sheet used highlightedSettingId, which is not in scope there. Removes the dead copy row and passes isHighlighted = false. The earlier 'Build Release APK' failure on the spotlight branch run is only the missing release signing key on a fork push, not a code error. Not built locally; CI will confirm.",
+      "mergeCommit": {
+        "oid": "24cc6221648741d4879b238144db5e04bb10152e"
+      },
+      "mergedAt": "2026-11-21T05:22:26Z",
+      "number": 696,
+      "title": "fix(build): repair main compile errors from #694/#695",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/696",
+      "category": "Maintenance / release preparation",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "The bundled Google Sans Flex lyric cuts have no Hindi/CJK/Arabic glyphs, so Android fell back to a regular-weight system face (the typeface weight of the variable cut, not the requested bold), which looked thin. Lines containing such scripts now use FontFamily.Default with the same themed weights, which resolves to a real bold system weight. Latin/Cyrillic/Greek lines and themes with their own font are untouched. Styling only; no lyrics logic changed. Not built or tested.",
+      "mergeCommit": {
+        "oid": "5da892e47e436937e22ec086122eeaf025af5eaa"
+      },
+      "mergedAt": "2026-11-21T05:54:54Z",
+      "number": 697,
+      "title": "fix(lyrics): bold weight for Hindi, Chinese and other non-Latin lyric lines",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/697",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "The syllable lift in drawWithSyllableLift moved a whole word at once. In the default motion it now rolls letter by letter across the word's sung duration (each letter starts up to 65% into the word, same envelope and height as before), so the wave travels smoothly through the word. The bright karaoke wipe and its glow already interpolate by pixel across the syllable, so they follow the same letter-level progress without changes.\n\nLeft on whole-word motion: themes with the glide or wobble effects, and words in joined scripts (Hindi, Arabic, etc.) where cutting between letters would break the connecting stroke. Timing data, wipe, glow and layout logic are untouched. Not built or tested.",
+      "mergeCommit": {
+        "oid": "b1ee36d5c956c48f7bd6ae8d192d87e73b5d3c4f"
+      },
+      "mergedAt": "2026-11-21T06:14:13Z",
+      "number": 698,
+      "title": "feat(lyrics): letter-level lift animation for word-synced lyrics",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/698",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "c15a99c3 placed MusicRecognitionButton beside Search in the Feed and Stats top bars. 88e1389f (listening stats commit) dropped both calls while editing those headers; only the one inside the Search screen remained. This puts them back exactly as they were (same keys, recognition_feed and recognition_stats). Not built or tested.",
+      "mergeCommit": {
+        "oid": "b9b67840d5e9da7684ae5a587a47019807ae7319"
+      },
+      "mergedAt": "2026-11-21T06:41:30Z",
+      "number": 699,
+      "title": "fix(ui): restore the identify-music button beside search",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/699",
+      "category": "Reverted / superseded claim",
+      "claimNote": "Header recognition shortcut was removed again by #741; recognition remains available through Search."
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "When a cast song ends naturally the receiver is IDLE/FINISHED. CastPlayback.load() always called stop() first; on an idle receiver that request gets no reply and the load queued behind it could stay in loading=true forever (spinner, no watchdog), while the manual Next button works because the receiver is still playing then. stop() is now skipped when the player state is already IDLE. This is inferred from the code path (auto-advance and manual next share seekToQueueItem -> load); I could not reproduce on a Cast device, so it needs a real-device check. Not built or tested.",
+      "mergeCommit": {
+        "oid": "52681ddffc31a530ad4f2033a3b3b38810c48406"
+      },
+      "mergedAt": "2026-11-21T07:04:23Z",
+      "number": 701,
+      "title": "fix(cast): next track hangs on spinner after a song ends",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/701",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Fixes #684. ArtistHelper.splitArtists split on commas/&/and, so 'Earth, Wind & Fire' became Earth, Wind and Fire and tapping the artist opened only 'Earth'. Known band names containing a separator are now masked before splitting and restored afterwards, so they stay a single artist. Real multi-artist strings ('Drake & 21 Savage', 'A, B') split as before. Not built or tested.",
+      "mergeCommit": {
+        "oid": "89de954e21872bec520e0921140df90be7836c59"
+      },
+      "mergedAt": "2026-11-21T07:04:32Z",
+      "number": 700,
+      "title": "fix(artist): keep bands with separators in their name as one artist",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/700",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODbPeeg",
+        "is_bot": false,
+        "login": "Nox-Wizard-py",
+        "name": "Nox Wizard"
+      },
+      "body": "Closes #685\n\n## Problem Analysis\n\nThe system media notification currently surfaces a **Shuffle** action in the far-right control slot, requiring users to unlock their device and open the full player interface to toggle track or queue looping. Replacing this slot with a stateful **Repeat** control makes single-track and playlist looping directly accessible from the lock screen and notification shade without adding any settings clutter.\n\n## Summary of Changes\n\n* **Notification Custom Layout (`MediaSession` / `MusicService`)**:\n  * Replaced the far-right **Shuffle** `CommandButton` in the Media3 notification custom layout with a stateful **Repeat** `CommandButton` bound to a dedicated `SessionCommand` (`ACTION_TOGGLE_REPEAT`).\n  * Mapped button icons and accessibility labels dynamically across all three `Player.RepeatMode` states:\n    * `REPEAT_MODE_OFF` → Standard repeat-off icon (`Repeat Off`)\n    * `REPEAT_MODE_ALL` → Active repeat-all icon (`Repeat All`)\n    * `REPEAT_MODE_ONE` → Repeat-one icon with badge (`Repeat One`)\n* **Command Handling & Reactive State Synchronization**:\n  * Handled `ACTION_TOGGLE_REPEAT` inside `MediaSession.Callback.onCustomCommand(...)` to cycle repeat modes cleanly (`OFF → ALL → ONE → OFF`).\n  * Observed `Player.Listener.onRepeatModeChanged(repeatMode: Int)` to refresh `mediaSession.setCustomLayout(...)` in real time, keeping the notification icon synchronized whether toggled from the notification shade or inside the app.\n* **Unit Tests (`NotificationRepeatActionTest.kt`)**:\n  * Added unit tests verifying rightmost slot placement (confirming Shuffle is removed from the notification layout), full state cycling (`OFF → ALL → ONE → OFF`), and icon/label resolution per repeat mode.\n\n## Verification\n\n* **Unit Tests (`./gradlew :app:testDebugUnitTest --tests '*NotificationRepeat*'`)**: All unit tests passing.\n* **Debug Build (`./gradlew :app:assembleDebug`)**: Built cleanly with zero compilation errors.\n* **On-Device Verification**: Tested on physical Android hardware across the lock screen and notification shade, confirming live icon transitions and synchronization with the in-app player controls.\n\n",
+      "mergeCommit": {
+        "oid": "79939802356779a6138d255a6240f209828a777f"
+      },
+      "mergedAt": "2026-11-21T09:22:16Z",
+      "number": 704,
+      "title": "feat: replace shuffle button with stateful repeat button in media notification (#685)",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/704",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "## What\n\"Full Screen Artwork\" only worked in the single-column phone layout. In tablet landscape, the left artwork pane always drew edge-to-edge because `FullPlayer` hard-blocked full bleed for that layout and the pane never received the setting.\n\n## Fix\n- Pass the setting into `LandscapeArtworkPane` (Now Playing and the lyrics split).\n- **Off:** same rounded 22 dp sleeve as the phone layout, centred in the pane, with the canvas clipped inside it.\n- **On:** unchanged edge-to-edge pane, now using the tall canvas clip.\n- Synced video keeps its edge fades regardless of the artwork setting.\n\n## Verified\nOnePlus Pad (OPD2403), landscape: off shows the framed sleeve, on shows the previous edge-to-edge art. Portrait unchanged. `:app:compileDebugKotlin` and `:app:assembleDebug` pass.",
+      "mergeCommit": {
+        "oid": "a7c22e3d2a0763e58adb54ebff56b16b2361b7d0"
+      },
+      "mergedAt": "2026-11-21T15:10:39Z",
+      "number": 683,
+      "title": "fix(player): honour Full Screen Artwork in tablet landscape",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/683",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "UI-only polish; no logic or wiring changes.\n\n- **Spacing:** Home section outer gutter 16dp -> 8dp, inner padding 12dp -> 8dp, section gap 16dp -> 12dp (feed corner mask inset kept in sync).\n- **Quick picks:** 64dp art with 4dp corners, tighter rows and column gaps.\n- **Mini player:** art leading edge is a half circle nesting in the capsule curve.\n- **Search:** cover corners 10/14dp -> 4/6dp.\n- **Moods & genres:** saturated gradient tiles, bold labels. Pastel variant and its tests removed.\n- **AutoMix badge:** larger, bolder pill with a hue-cycling neon rim while mixing.\n- **Feed cards:** wide and square covers share one height (square covers shrank on narrow screens, making rows jump); a 16:9 flag with square album art renders as a square card instead of a cropped wide one. Test added.\n\nNot verified: not built or run on a device.",
+      "mergeCommit": {
+        "oid": "2f1deface2877c7c37edd3207ea178249df4f192"
+      },
+      "mergedAt": "2026-11-21T15:49:00Z",
+      "number": 705,
+      "title": "fix(ui): spacing, mini-player art, search covers, mood tiles, AutoMix badge, uniform feed cards",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/705",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Follow-up to #705, which tightened Home sections but not the screens in the reported screenshots. UI-only spacing values.\n\n- **Stats:** gap between cards 24dp -> 12dp; title-to-content 12dp -> 8dp.\n- **Settings:** gap between groups 24dp -> 14dp; group label to card 10dp -> 6dp.\n- **Home:** list top padding 16dp -> 8dp and greeting vertical padding 6dp -> 2dp.\n\nNot verified: not built or run on a device.",
+      "mergeCommit": {
+        "oid": "abd42344ed88d01afa8277347663e1bb9c98cb6e"
+      },
+      "mergedAt": "2026-11-22T03:29:18Z",
+      "number": 709,
+      "title": "fix(ui): cut the empty gaps between cards on Stats, Settings and Home",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/709",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Adds ListenBrainz and Libre.fm so playback can scrobble without a Last.fm account or API credentials. Settings → Services & Add-ons → **Scrobblers** lists ListenBrainz, Libre.fm, and the existing Last.fm integration, with independent connection state and optional compatible server addresses.\n\nPorts the provider behavior from [LastWave-Desktop #165](https://github.com/Clash-Projects/LastWave-Desktop/pull/165). Each provider has a bounded queue and deduplicates successful submissions; failed providers do not block others. Replay resets announcements, Now Playing respects its toggle, and background submissions retain the original playback timestamp. Libre.fm mobile authentication and duplicate responses were checked against GNU FM source.\n\nListenBrainz tokens, Libre.fm session credentials, server addresses, and Last.fm credentials are included in the existing shared-preference backup format and restored with it. A round-trip regression covers both restore session modes. Clear All waits for pending provider authentication before wiping credentials. Libre.fm passwords are used for authentication and are never stored.\n\nValidation:\n\n- Added provider delivery/authentication, disconnected Last.fm, credential backup/restore, and pending-authentication reset regressions to the GitHub APK workflow.\n- Source review and `git diff --check` passed. Local unit-test execution stopped before compilation because dependencies were unavailable in the offline cache.\n- No local APK assembled; GitHub Actions runs the tests and builds the release APK.\n- Live accounts and device layouts have not been tested. Offline queues are memory-only, matching the desktop implementation.\n",
+      "mergeCommit": {
+        "oid": "80ccc8547b66ba73e359677d93fa345b24306fc6"
+      },
+      "mergedAt": "2026-11-22T05:34:18Z",
+      "number": 711,
+      "title": "Add ListenBrainz and Libre.fm scrobblers",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/711",
+      "category": "New feature / enhancement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "Beat sync only moved on phonk, stayed still on kick-less intros, and stopped below ~0.55x speed.\n\n- Follow bass and mid above their valley floor, not the raw bass level\n- Check the lead cap in media time so slowed playback keeps its pulses",
+      "mergeCommit": {
+        "oid": "86bf366ec682e6841259b5b77d58a881bf86371b"
+      },
+      "mergedAt": "2026-11-22T06:09:01Z",
+      "number": 710,
+      "title": "fix(player): beat sync on every song and at any speed",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/710",
+      "category": "Fix / refinement",
+      "claimNote": "Final beat-sync refinements; the effect is opt-in and the Lyra shader requires Android 13+."
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Fixes #708\n\n### Cause\n1. \\FeedViewModel\\ and \\HomeScreen\\ never populated user avatar from \\YtConnection.photoUrl\\ (it was only updated from Last.fm profile stats, leaving YouTube Music users with the default placeholder).\n2. \\ProfileAvatar\\ called \\ArtworkImage(name = 'profile', artist = 'avatar')\\ which ran track artwork resolution instead of directly loading the avatar image.\n3. Fallback used \\Icons.Filled.AccountCircle\\ inside a circular Surface and circular border Box, creating an unsightly nested-circle appearance.\n\n### Solution\n- \\FeedViewModel\\ now exposes YouTube user's \\photoUrl\\ and lazily fetches account info if missing.\n- \\HomeScreen\\ receives \\ytConnection.photoUrl\\ from \\MainShell\\.\n- \\ProfileAvatar\\ uses \\SubcomposeAsyncImage\\ with \\CircleShape\\ crop.\n- Replaced \\Icons.Filled.AccountCircle\\ with \\Icons.Filled.Person\\ for fallbacks to remove the nested circle.",
+      "mergeCommit": {
+        "oid": "6e499b4bddf0a11f82e0325923f870556843cbed"
+      },
+      "mergedAt": "2026-11-22T11:22:42Z",
+      "number": 716,
+      "title": "fix(ui): load YouTube user avatar and clean up nested profile placeholder (#708)",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/716",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "Resolves #620 and implements #680.\n\n### Changes\n1. **Mini Player Progress Bar (#620)**:\n   - Wrapped mini player content in a Box and restored \\MiniPlayerProgress\\ indicator on the non-Liquid-Glass surface so progress is displayed when Liquid Glass is disabled.\n\n2. **AutoEQ Import / Export & Direct Inputs (#680)**:\n   - Added Export button to copy PEQ text to clipboard and launch system share sheet.\n   - Added Import dialog supporting direct text paste, clipboard paste, and system file picker.\n   - Added direct numeric input fields for Frequency (Hz), Gain (dB), and Q on expanded PEQ filter rows, with two-way sync with the sliders.",
+      "mergeCommit": {
+        "oid": "a3b8b14c2d8a4e60a358c8924fc02424e5ce3a73"
+      },
+      "mergedAt": "2026-11-22T11:44:07Z",
+      "number": 717,
+      "title": "fix(player): restore progress bar when Liquid Glass disabled; feat(autoeq): import/export and text inputs (#620, #680)",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/717",
+      "category": "New feature / enhancement",
+      "claimNote": "AutoEQ import/export and text inputs remain. The added non-glass mini-player progress bar was removed by #741."
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjU2MzgyMDg0",
+        "is_bot": false,
+        "login": "Pan-TheMechanic",
+        "name": "Pan"
+      },
+      "body": "- Explicitly release claimed USB AudioControl and AudioStreaming interfaces on exclusive release so kernel snd-usb-audio reclaims the DAC\n\n- Route spatial audio playback to active USB DAC AudioDeviceInfo instead of phone speaker\n\n- Add 150ms retry watchdog when leaving exclusive mode to latch onto re-enumerated USB DACs\n\n- Set Media3 AudioAttributes spatializationBehavior to AUTO for platform spatializer support\n\n- Guard CI-specific Java 17 test toolchain launcher in build.gradle.kts",
+      "mergeCommit": {
+        "oid": "dcaa5bdebde3571890e847c8745b7c706f7b0518"
+      },
+      "mergedAt": "2026-11-22T12:03:58Z",
+      "number": 715,
+      "title": "playback: route Dolby Atmos to USB DAC via system spatializer",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/715",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjU2MzgyMDg0",
+        "is_bot": false,
+        "login": "Pan-TheMechanic",
+        "name": "Pan"
+      },
+      "body": "Summary of What Changed: Direct Decoded Output to USB DAC, Engaged Exclusive USB for Atmos, Safe USB Cleanup & Driver Reattachment",
+      "mergeCommit": {
+        "oid": "827f6902f8cc54a324fe0631b80b10a06af27202"
+      },
+      "mergedAt": "2026-11-22T17:03:43Z",
+      "number": 720,
+      "title": "fix(audio): route decoded Dolby Atmos to Exclusive USB on USB DAC and attach kernel driver on close",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/720",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODRVy9w",
+        "is_bot": false,
+        "login": "NONDEADER",
+        "name": "NONDEADER"
+      },
+      "body": "### Problem\nWhen expanding the full player from the mini player while a text field was active (such as on the Search screen), the software keyboard remained open over the player controls. Additionally, the text selection/cursor handles leaked onto the player sheet, causing Android's text selection magnifier to glitch and appear over the \"NOW PLAYING\" header when touched.\n\n### Solution\n- Clear focus with `focusManager.clearFocus(force = true)` and hide the software keyboard via `keyboardController?.hide()` when expanding the player sheet in `PlayerHost.kt`.\n- Applied synchronously on mini-player click/swipe and declaratively via `LaunchedEffect(expanded)`.",
+      "mergeCommit": {
+        "oid": "c8953babec717a8b5c3e45c543bc83d54d58ce96"
+      },
+      "mergedAt": "2026-11-23T04:24:30Z",
+      "number": 724,
+      "title": "fix(player): dismiss keyboard and clear focus when expanding player sheet",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/724",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODF1s6w",
+        "is_bot": false,
+        "login": "Pyrexus",
+        "name": "𝗔𝘆𝘂𝘀𝗵 𝗞"
+      },
+      "body": "## Summary\n\nAutoMix was a two-player volume fade: the analyzer read compressed packets as PCM (fake 120 BPM / 8B), the planner never saw the outgoing song, and the native mixer was disconnected. This rebuilds it end to end on the existing two-ExoPlayer standby.\n\n```text\ntick (25% / <90s left)\n  analyze current outro + next intro      # MediaCodec via the player's cached, range-chunked source\n    TrackAnalyzer                         # tempo/beat/bar grid, key, silence, ending, phrases, 3-band waveform\n  TransitionPlanner\n    beatmix   if both grids confident, tempo within 6% (half/double ok), user speed 1x\n                cue on downbeats / phrase starts, 4-8-16 bars, shorter on key or vocal clash\n    fade      else, shaped by the real ending (fade-out / cold / natural), dead air trimmed\n    bypass    short tracks, podcasts, consecutive album tracks (gapless)\n  cue standby at the cue point, then blend\n    PhaseLock     live kick onsets on both decks (KickTap) -> seek + <=1.5% speed nudges\n    DeckEqStage   incoming enters on mids, highs open, bass swaps on the middle downbeat\n    MixCurve      bass owner stays at full level, summed gain capped\n    hand-over at 50%, complete or interrupt\n```\n\nOne owner for every interruption:\n\n```diff\n seekTo / skip / queue edit / speed / Cast / error / release\n   cancelCrossfade()\n+    autoMix.endTransition()   # commit after hand-over, revert before it\n```\n\nUI: tapping the quality badge opens a centered studio popup that expands from the badge's bounds without stretching its contents. The popup is capped at 520 dp, uses compact track headers and low-resolution covers from the shared artwork resolver, and keeps the normal Signal Path outside the final-25-second / three-second completion window. A fixed blue/orange/cream spectrum, cyan/yellow level envelopes and green playhead stay readable with monochrome app themes. Both waveform lanes run at full visibility to the chart edges; the closest real endpoint magnitude continues across context outside the available audio, without changing the timeline. The real overlap is centered with exactly three seconds of context before and after it; the cursor continues to the far edge during UI-only post-roll.\n\nWhen mix telemetry lacks waveform samples, a silent Media3 preview decoder captures real PCM around each cue using the player's existing byte cache, extractors, minting headers and bounded ranges. Cue windows begin preparing from the mini-player host before the popup is opened, persist through handover, and retry failed reads while the current plan remains active. PCM is cropped in media time after subtracting Media3's renderer offset; the decoder never acquires an audio output or audio focus. Source MIME and optional independent DRM sessions are retained. Both raw source waveforms remain visible independently of mix gain and EQ. The AutoMix/status labels are larger and bolder, and the original hue-cycling rainbow neon badge rim, inner glow, dark backdrop and fade timings from `57317616` are restored.\n\nThe only changes in MusicPlayer are exposing its existing cache and extractor factories to the UI; their implementations are unchanged. Playback decisions, cues, mix wiring, analysis storage and output routing remain unchanged.\n\n```text\napp/src/main/java/com/lastwave/app/playback/automix/\n├── analysis/   PcmWindowDecoder, TrackAnalyzer, AcousticSignatureExtractor/Store (disk cache, versioned)\n├── engine/     DualDeckTransportCoordinator, TransitionPlanner, DeckEqStage, KickTap, MixCurve\n└── api/        telemetry + MixView\nui/player/automix/AutoMixDeckView.kt\n```\n\nRemoved: disconnected native automix C++ (crossover/stretcher/LUFS), loop/spectral scaffolding, fake estimators, `LOOP_LOCKED`/`LOOP_DROP`, unused unit wrappers.\n\n## Evidence\n\n- **Before:** analysis returned 120 BPM / 8B for every song; `outgoingSignature = null`; seek after hand-over used outgoing timestamps; force-commit could swap back to the outgoing deck.\n  **After:** new unit tests on synthetic audio with known answers, run in CI (`com.lastwave.app.playback.automix.*` added to `build.yml`):\n  ```text\n  TrackAnalyzerTest     124 bpm +-1%, downbeat +-30 ms, noise not trusted, key 8A/8B,\n                        silence trimmed, fade-out/cold endings, phrase start at section change\n  TransitionPlannerTest beatmix on downbeats, half-time, speed/tempo/vocal/key guards,\n                        ending-shaped fades, manual length, phrase-aware cue, bypasses\n  DeckEqStageTest       idle bit-exact, 50 Hz -15 dB / 1 kHz untouched, treble cut, restore to bit-exact\n  KickTapTest           kicks found within 15 ms in playback time, grid offset median\n  AutoMixRenderTest     renders transitions to WAV: every beat within 20 ms, no clipping,\n                        no level dip > 4.5 dB (renders uploaded as CI artifact)\n  ```\n  The render test caught a real ~7 dB dip at the bass swap (blend cancellation + equal-power sag), fixed by the filter-sweep EQ and BASS_SWAP curve.\n- Waveform/neon follow-up (`71aebe36`): source/call-site review and `git diff --check` passed. Added CI protocol tests for real PCM window cropping with renderer offsets, float stereo buffer consumption/averaging, and flush/seek reset. Existing AutoMix regression CI includes these tests. No local Gradle build was run. [GitHub verification](https://github.com/Clash-Projects/LastWave-Native/actions/runs/45006175187) passed compilation, all three new waveform capture tests, existing download/playback/AutoMix regressions, release APK creation and signature verification; the signed APK artifact is uploaded. On-device waveform verification remains pending. GitHub currently reports merge conflicts with main.\n- Neon/waveform edge polish (`473e6014`): only two UI files changed; historical neon helper verified against `57317616`, spectral paths re-read and `git diff --check` passed. [GitHub verification](https://github.com/Clash-Projects/LastWave-Native/actions/runs/45012471905) passed compilation, regression tests, release APK creation and signature verification; the signed APK artifact is uploaded. No local Gradle build was run; device visual verification remains pending.\n- On-device listening: not done yet.\n\n## Merge Danger\n\n**Door:** two-way\n\nRevert restores the old fade. Analysis cache lives in `filesDir/automix` (versioned JSON, ignored on mismatch).\n\n**Blast Radius:** playback\n\nAutoMix is off by default; with it off, the only always-on changes are: `cancelCrossfade` calls `endTransition()` (no-op without a session), the sink's EQ/kick stages return immediately when idle (bit-exact), Jam state is forwarded, and the player listener ignores speed changes only while AutoMix owns a deck's tempo. With it on: standby is seeked to cue points, tempo is stretched up to 6% during beatmixes, and analysis reads the outro/intro of the current and next stream (bounded ranges, cached).\n",
+      "mergeCommit": {
+        "oid": "e2d8cbae2f243b573c049bd8370cc8ac2ba08067"
+      },
+      "mergedAt": "2026-11-23T04:34:00Z",
+      "number": 706,
+      "title": "feat(automix): real analysis, beat-locked mixing, DJ EQ and studio popup",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/706",
+      "category": "Major feature",
+      "claimNote": "AutoMix Pro replaces the older transition approach; final studio shows a transition-window waveform."
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "- Users with an enabled addon skip the YouTube login screen and sign-in prompt.\n- If YouTube fails, the addon gets up to 30 s to resolve before showing an error. Best Quality First timing is unchanged.\n\nTested on a tablet while signed out: the app opens to Home and Billie Jean plays from the addon (24-bit/96 kHz).",
+      "mergeCommit": {
+        "oid": "5091f37a49f5912782fdec1cd51633d89288d9d6"
+      },
+      "mergedAt": "2026-11-23T12:56:16Z",
+      "number": 725,
+      "title": "fix(addons): play from addons without YouTube sign-in",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/725",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "MDQ6VXNlcjgxNDI0MzU4",
+        "is_bot": false,
+        "login": "Sahank29",
+        "name": "Sahan C Poojari"
+      },
+      "body": "On tablets, fullscreen lyrics now keep the cover art on the left and centre the lyrics.",
+      "mergeCommit": {
+        "oid": "45cacaa77ed68436ed492ee320e28d3f7bf71282"
+      },
+      "mergedAt": "2026-11-23T12:56:40Z",
+      "number": 727,
+      "title": "fix(player): tablet fullscreen lyrics keep the cover art and centre lines",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/727",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    },
+    {
+      "author": {
+        "id": "U_kgDODbPeeg",
+        "is_bot": false,
+        "login": "Nox-Wizard-py",
+        "name": "Nox Wizard"
+      },
+      "body": "## Summary\n\n* **M3 Mini Player**: Removed the horizontal seekbar running across the middle of the Material 3 mini player while leaving the Liquid Glass mini player layout unchanged.\n* **Home Screen Top Bar**: Removed the redundant Music Recognition action button from the Home header and shifted the Search button adjacent to the Profile icon for cleaner spacing.\n* **Music Recognition Internal Audio Capture**:\n  * Added output-device routing (`AudioSourceDetector`) so connected wired headsets and Bluetooth audio outputs capture internal playback audio via `MediaProjection` and `AudioPlaybackCaptureConfiguration` (API 29+), while built-in speaker playback continues using the standard microphone path.\n  * Added `AudioPlaybackCaptureService` (`foregroundServiceType=\"mediaProjection\"`) and synchronized foreground readiness prior to calling `getMediaProjection()` to satisfy Android 10–16 lifecycle requirements.\n  * Registered `MediaProjection.Callback` for API 34+ compliance, ensured full resource teardown on completion or dismissal, and preserved graceful fallback to microphone capture when consent is declined or unsupported.",
+      "mergeCommit": {
+        "oid": "3de2e0dce305ad7c753333f4b75911d2f66e7e88"
+      },
+      "mergedAt": "2026-11-24T09:38:13Z",
+      "number": 741,
+      "title": "fix(ui,recognition): pre-release mini player cleanup, home header layout, and internal audio capture",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/741",
+      "category": "Fix / refinement",
+      "claimNote": "Internal audio capture and header/mini-player cleanup remain; API 29+ capture needs Android consent."
+    },
+    {
+      "author": {
+        "id": "U_kgDODbPeeg",
+        "is_bot": false,
+        "login": "Nox-Wizard-py",
+        "name": "Nox Wizard"
+      },
+      "body": "## Summary\n\n* **Now Playing Top Bar**: Removed the redundant Music Video icon button next to the overflow menu to declutter the player header while keeping the bottom control bar's video action intact.\n* **Appearance & Visuals Settings**: Removed the `\"Add button on Now Playing\"` toggle along with its preference wiring and search index entry, preserving the core Music Video feature toggle without unnecessary UI switches.",
+      "mergeCommit": {
+        "oid": "75e6bdcb8a5fc3d8898f6d26ae58728d8c104223"
+      },
+      "mergedAt": "2026-11-24T09:38:51Z",
+      "number": 742,
+      "title": "refactor: remove redundant top-bar video button and toggle from Now Playing top bar",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/pull/742",
+      "category": "Fix / refinement",
+      "claimNote": ""
+    }
+  ],
+  "integrationBranchMerges": [
+    {
+      "sha": "2818d42c189f926c2eb6c23fdd256c3b5937a7b0",
+      "title": "Merge branch 'feat/beat-synced-fluid-motion' into main",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/commit/2818d42c189f926c2eb6c23fdd256c3b5937a7b0",
+      "authorLogin": "duxtami"
+    },
+    {
+      "sha": "961835c56632ece634a1179ac274a97439f117c2",
+      "title": "Merge branch 'feat/legacy-colors-and-stats-v2' into main",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/commit/961835c56632ece634a1179ac274a97439f117c2",
+      "authorLogin": "duxtami"
+    },
+    {
+      "sha": "2b1e2b763c29226a9ebfb1fa57dacf412d77e683",
+      "title": "Merge branch 'feat/custom-ui-fixes-and-improvements' into main",
+      "url": "https://github.com/Clash-Projects/LastWave-Native/commit/2b1e2b763c29226a9ebfb1fa57dacf412d77e683",
+      "authorLogin": "duxtami"
+    }
+  ],
+  "verification": {
+    "sourceAudit": "Final-source review recorded in FEATURE_AUDIT.md and FIX_AUDIT.md",
+    "apkVerification": "See RELEASE_MANIFEST.json when the build completes",
+    "deviceTest": "Not performed"
+  }
+}
