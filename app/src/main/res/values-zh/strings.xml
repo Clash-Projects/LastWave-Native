@@ -241,7 +241,7 @@
     <string name="signal_detail_tempo_ok">1.00x — 无变速处理</string>
     <string name="signal_detail_tempo_active">%1$sx — 重采样活动中</string>
     <string name="signal_detail_gain_unity">0.0 dB — 单位增益</string>
-    <string name="signal_detail_gain_scaled">增益 %1$sx — 需要单位增益（闪避或淡入淡出活动中）</string>
+    <string name="signal_detail_gain_scaled">增益 %1$sx — 音量已调整</string>
     <string name="signal_detail_sysvol_hw">硬件音量 — 无数字缩放</string>
     <string name="signal_detail_sysvol_max">最大 — 无数字衰减</string>
     <string name="signal_detail_sysvol_scaled">%1$d/%2$d — DAC 前数字衰减</string>
@@ -295,7 +295,7 @@
     <string name="settings_canvas_full_bleed_sub">让静态封面和动态封面铺满整个屏幕</string>
     <string name="settings_canvas_cellular">蜂窝画布</string>
     <string name="settings_canvas_cellular_sub">通过移动数据下载动态图稿（第一次循环后缓存）</string>
-    <string name="settings_keep_lyrics_screen_awake">保持屏幕唤醒歌词</string>
+    <string name="settings_keep_lyrics_screen_awake">歌词界面保持亮屏</string>
     <string name="settings_keep_lyrics_screen_awake_desc">防止在查看歌词时关闭屏幕</string>
     <string name="common_delete">删除</string>
     <string name="common_create">创建</string>
@@ -311,14 +311,14 @@
     <string name="dl_location_unavailable_short">不可用 — 点击重新选择</string>
     <string name="dl_saved_custom">保存在 %1$s • %2$d 首歌曲中</string>
     <string name="dl_open_location">打开%1$s</string>
-    <string name="signal_resampled_dac">DAC 重新采样</string>
+    <string name="signal_resampled_dac">DAC 已重采样（48 kHz 硬件限制）</string>
     <string name="signal_direct_track">直接USB输出</string>
     <string name="signal_detail_resample_dac_unsupported">DAC 不支持 (%1$d Hz) → 重新采样至 %2$d Hz (libsoxr)</string>
     <string name="signal_detail_bit_perfect_unavailable">标称混频器速率 %1$d Hz — 未配置比特完美模式</string>
     <string name="signal_detail_bit_perfect_configured">Android 接受了完美的 USB 输出配置</string>
     <string name="signal_detail_usb_exclusive">USB 独占 — 混音器被绕过，DAC 拥有时钟</string>
     <string name="signal_detail_mixer_not_exclusive">Android 混音器路径 — 不独占 usbdevfs</string>
-    <string name="signal_detail_usb_exclusive_route">独家 usbdevfs — %1$s</string>
+    <string name="signal_detail_usb_exclusive_route">独占 usbdevfs — %1$s</string>
     <string name="signal_detail_usb_clock_ok">DAC 时钟与源速率匹配 (GET_CUR)</string>
     <string name="signal_detail_usb_clock_fallback">DAC 时钟回退（不支持 %1$d Hz → %2$d Hz）</string>
     <string name="signal_detail_usb_clock_mismatch">DAC时钟未确认源速率</string>
@@ -351,7 +351,7 @@
     <string name="local_storage_used">本地歌曲使用的空间：%1$s</string>
     <string name="signal_label_internal">内部直接输出</string>
     <string name="signal_detail_internal_resampled">输出固定为 %2$d Hz — %1$d Hz 在应用内重新采样 (libsoxr)</string>
-    <string name="signal_detail_internal_mixer_bypassed">绕过 — 独家 AAudio 流 (MMAP)，AudioFlinger 从不混合它</string>
+    <string name="signal_detail_internal_mixer_bypassed">已绕过 — 独占 AAudio 音频流 (MMAP)，AudioFlinger 不对其进行混音</string>
     <string name="signal_detail_internal_mixer_bypassed_nommap">已授予独占 AAudio 流（设备未确认 MMAP）</string>
     <string name="signal_detail_internal_route">%1$s — %2$d Hz • %3$s，样本不变地进入 HAL</string>
     <string name="signal_detail_internal_route_widened">%1$s — %2$d Hz • %3$s 无损传送为 %4$s</string>
@@ -359,19 +359,19 @@
     <string name="internal_reason_bluetooth">蓝牙：已尝试，但未授予直接输出</string>
     <string name="internal_reason_usb">USB DAC连接：由USB专用输出处理</string>
     <string name="internal_reason_exclusive_refused">此手机拒绝对此输出的独占 (MMAP) 访问 — 保留共享混音器</string>
-    <string name="internal_reason_no_aaudio">该线路无独家 AAudio 输出</string>
+    <string name="internal_reason_no_aaudio">当前音频路径不支持 AAudio 独占输出</string>
     <string name="internal_reason_android_old">需要 Android 9 或更高版本</string>
     <string name="internal_reason_native_missing">原生音频库不可用</string>
     <string name="internal_reason_checking">检查此输出接受什么...</string>
     <string name="internal_reason_available">在此输出上可用</string>
     <string name="internal_reason_active">活跃</string>
-    <string name="signal_direct_hal">直接 → 哈尔</string>
+    <string name="signal_direct_hal">直通 → HAL</string>
     <string name="signal_verdict_direct_hal">Android 混音器被绕过——样本进入 HAL 不变。 HAL 之后的供应商 DSP 无法从 Android 进行验证。</string>
-    <string name="signal_internal_track">独家 AAudio（内部）</string>
+    <string name="signal_internal_track">AAudio 独占模式（内部）</string>
     <string name="signal_internal_section">内部输出</string>
     <string name="signal_internal_route">路线</string>
     <string name="signal_internal_status">直接输出</string>
-    <string name="signal_internal_endpoint">专属端点</string>
+    <string name="signal_internal_endpoint">独占端点</string>
     <string name="signal_internal_endpoint_value">%1$d 赫兹 • %2$s</string>
     <string name="signal_internal_not_checked">未检查</string>
     <string name="signal_internal_underruns">欠载</string>
@@ -382,7 +382,7 @@
     <string name="route_usb">USB</string>
     <string name="route_other">其他</string>
     <string name="route_unknown">未知</string>
-    <string name="badge_mode_bit_perfect">位完美</string>
+    <string name="badge_mode_bit_perfect">Bit-perfect</string>
     <string name="badge_mode_direct">直接</string>
     <string name="badge_mode_mixer">混音器</string>
     <string name="settings_internal_direct">内部直接输出</string>
@@ -604,7 +604,7 @@
     <string name="feed_ago_min">%1$d分钟前</string>
     <string name="feed_ago_hour">%1$d 小时前</string>
     <string name="feed_ago_day">%1$d 天前</string>
-    <string name="feed_ago_week">%1$dw 前</string>
+    <string name="feed_ago_week">%1$d 周前</string>
     <string name="feed_ago_month">%1$d 个月前</string>
     <string name="feed_play_cd">播放</string>
     <string name="feed_start_radio_cd">启动电台</string>
@@ -632,10 +632,10 @@
     <string name="gen_mode_tag">按标签/类型</string>
     <string name="gen_mode_tag_desc">YouTube 优先选择的类型</string>
     <string name="gen_mode_mix">我的组合</string>
-    <string name="gen_mode_mix_desc">您的口味、混合菜品和当地人的最爱</string>
+    <string name="gen_mode_mix_desc">你的音乐偏好、Mix 和本地热门歌曲</string>
     <string name="gen_mode_reco">我的推荐</string>
     <string name="gen_mode_reco_desc">35 YouTube-first discoveries</string>
-    <string name="gen_mode_never">从未听说过</string>
+    <string name="gen_mode_never">从未听过</string>
     <string name="gen_mode_never_desc">您以前从未听过的新鲜发现</string>
     <string name="gen_mode_library">我的曲库</string>
     <string name="gen_mode_library_desc">重新发现你过去的声音</string>
@@ -654,11 +654,11 @@
     <string name="gen_track_count_fixed">曲目数：%1$d（固定）</string>
     <string name="gen_build_radio">创建歌曲电台</string>
     <string name="gen_generate">生成播放列表</string>
-    <string name="gen_dismiss">解雇</string>
+    <string name="gen_dismiss">关闭</string>
     <string name="gen_period_label">时间段</string>
     <string name="gen_tag_label">类型或标签</string>
-    <string name="gen_tag_hint">例如摇滚、洛菲、爵士……</string>
-    <string name="gen_seed_track">种子轨道</string>
+    <string name="gen_tag_hint">例如摇滚、Lo-fi、爵士……</string>
+    <string name="gen_seed_track">起始歌曲</string>
     <string name="gen_seed_track_desc">选择任意歌曲；系统会将无需登录的 YouTube 电台推荐与 Last.fm 相似歌曲结合起来。</string>
     <string name="gen_track_name_hint">曲目名称...</string>
     <string name="gen_search">搜索</string>
@@ -884,7 +884,7 @@
     <string name="set_lyrics_size_title">歌词文字大小</string>
     <string name="set_lyrics_autohide_title">隐藏歌词按钮</string>
     <string name="set_lyrics_autohide_never">从来没有</string>
-    <string name="set_lyrics_autohide_value">%1$d 后</string>
+    <string name="set_lyrics_autohide_value">%1$d 秒后</string>
     <string name="set_lyrics_autohide_seconds">%1$d 秒</string>
     <string name="set_lyrics_autohide_desc">在此空闲时间后，歌词屏幕上的浮动字体大小和全屏按钮会淡出。点击歌词即可将其恢复。</string>
     <string name="set_translation_language_title">翻译语言</string>
@@ -966,7 +966,7 @@
     <string name="fr_period_all">整体</string>
     <string name="fr_period_7d">7天</string>
     <string name="fr_period_30d">30天</string>
-    <string name="fr_badge_plays">%1$d 播放</string>
+    <string name="fr_badge_plays">播放 %1$d 次</string>
     <string name="fr_badge_lfm">Last.fm 朋友</string>
     <string name="fr_listen_along">一起听</string>
     <string name="fr_start_mix">生成歌单</string>
@@ -1444,10 +1444,10 @@
     <string name="pl_filter_spotify">Spotify</string>
     <string name="pl_filter_imported">已导入</string>
     <string name="pl_filter_pinned">已置顶</string>
-    <string name="song_copied">歌曲信息已复制到剪贴板</string>
+    <string name="song_copied">歌名已复制到剪贴板</string>
     <string name="menu_start_mix_short">开始混音</string>
     <string name="menu_audio_details">音频详情</string>
-    <string name="menu_cast_short">投放</string>
+    <string name="menu_cast_short">投屏</string>
 
     <!-- 听歌记录同步 -->
     <string name="set_cat_scrobblers">听歌记录同步</string>
