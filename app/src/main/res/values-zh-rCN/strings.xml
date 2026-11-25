@@ -1417,4 +1417,101 @@
     <string name="recognize_error_no_match">未能识别出这首歌曲。请靠近音乐后重试。</string>
     <string name="recognize_error_rate_limited">尝试过于频繁，请稍候再试。</string>
     <string name="recognize_error_network">无法连接识别服务，请检查网络连接后重试。</string>
+
+    <!-- 设置 -->
+    <string name="settings_legacy_colors">使用经典配色</string>
+    <string name="settings_legacy_colors_sub">采用原版 Material You 背景与表面色调，替代深色黑曜石界面</string>
+    <string name="settings_legacy_track_menu">使用经典歌曲菜单</string>
+    <string name="settings_legacy_track_menu_sub">改用经典卡片式歌曲选项菜单，而非重新设计的底部菜单</string>
+    <string name="settings_menu_blur">菜单背景模糊</string>
+    <string name="settings_menu_blur_sub">模糊歌曲选项和上下文菜单后方的背景</string>
+    <string name="settings_lyrics_settings">歌词设置</string>
+    <string name="settings_lyrics_settings_sub">歌词来源、同步偏移、文字大小和按钮显示</string>
+    <string name="settings_pause_on_zero_volume">音量为 0 时暂停播放</string>
+    <string name="settings_pause_on_zero_volume_desc">媒体音量降至 0 时自动暂停播放</string>
+
+    <!-- 曲目、艺人和歌单菜单 -->
+    <string name="menu_copy_song">复制歌曲信息</string>
+    <string name="menu_go_to_artist">艺人</string>
+    <string name="menu_go_to_album">专辑</string>
+    <string name="account_menu_title">快捷控制</string>
+    <string name="artist_sort_most_played">播放次数最多</string>
+    <string name="artist_sort_recent">最近播放</string>
+    <string name="artist_sort_known">我熟悉的歌曲</string>
+    <string name="pl_filter_all">全部</string>
+    <string name="pl_filter_generated">自动生成</string>
+    <string name="pl_filter_ytmusic">YouTube Music</string>
+    <string name="pl_filter_spotify">Spotify</string>
+    <string name="pl_filter_imported">已导入</string>
+    <string name="pl_filter_pinned">已置顶</string>
+    <string name="song_copied">歌曲信息已复制到剪贴板</string>
+    <string name="menu_start_mix_short">开始混音</string>
+    <string name="menu_audio_details">音频详情</string>
+    <string name="menu_cast_short">投放</string>
+
+    <!-- 听歌记录同步 -->
+    <string name="set_cat_scrobblers">听歌记录同步</string>
+    <string name="set_cat_scrobblers_sub">ListenBrainz、Libre.fm 和 Last.fm</string>
+    <string name="set_scrobbler_lb_desc">使用用户令牌同步听歌记录。对于 Maloja、Koito 等兼容服务，服务器地址可选。</string>
+    <string name="set_scrobbler_lf_desc">登录 Libre.fm 或 GNU FM 服务器。密码仅用于登录，不会保存。</string>
+    <string name="set_scrobbler_token">用户令牌</string>
+    <string name="set_scrobbler_username">用户名</string>
+    <string name="set_scrobbler_password">密码</string>
+    <string name="set_scrobbler_server">服务器地址（可选）</string>
+    <string name="set_scrobbler_get_token">获取 ListenBrainz 令牌</string>
+    <string name="set_scrobbler_connect">连接 %1$s</string>
+    <string name="set_scrobbler_connecting">正在更新 %1$s 的连接…</string>
+    <string name="set_scrobbler_connected">已以 %1$s 身份连接</string>
+    <string name="set_scrobbler_not_connected">未连接</string>
+    <string name="set_scrobbler_disconnect_title">要断开与 %1$s 的连接吗？</string>
+    <string name="set_scrobbler_disconnect_text">断开后，新的听歌记录将不再同步到此账号；已有记录仍保留在服务端。</string>
+    <string name="set_scrobbler_error">无法更新此连接，请重试。</string>
+    <string name="set_scrobbler_browser_error">没有可用于打开令牌页面的浏览器</string>
+
+    <!-- 歌词加载提示 -->
+    <string-array name="ly_signature_loading">
+        <item>正在寻找你的歌词…</item>
+        <item>正在逐字搜寻歌词…</item>
+        <item>正在为你准备歌词…</item>
+        <item>正在为歌词酝酿气氛…</item>
+        <item>正在跟随歌词调准频道…</item>
+        <item>正在对准第一句歌词…</item>
+        <item>正在礼貌地催促歌词提供方…</item>
+        <item>舞台正在预热…</item>
+    </string-array>
+    <string-array name="ly_signature_address">
+        <item>先生</item>
+        <item>同志</item>
+        <item>大师</item>
+        <item>阁下</item>
+        <item>船长</item>
+        <item>老大</item>
+        <item>指挥家</item>
+        <item>殿下</item>
+        <item>传奇人物</item>
+        <item>老板</item>
+    </string-array>
+
+    <!-- 流派统计 -->
+    <string name="ge_glance">快速了解你的音乐品味</string>
+    <string name="ge_leading_genre">最常听的流派</string>
+    <string name="ge_relative_strength">相对于你最常听流派的偏好强度</string>
+    <string name="ge_beyond_top">其他喜爱的流派</string>
+    <string name="ge_strength_percent">%1$d%%</string>
+    <string name="ge_updating">正在更新流派</string>
+
+    <!-- 参数均衡器 -->
+    <string name="autoeq_import">导入</string>
+    <string name="autoeq_export">导出</string>
+    <string name="autoeq_import_title">导入参数均衡器设置</string>
+    <string name="autoeq_import_hint">粘贴 Equalizer APO、AutoEQ 或 SquigLink 格式的文本</string>
+    <string name="autoeq_import_clipboard">从剪贴板粘贴</string>
+    <string name="autoeq_import_file">打开文件</string>
+    <string name="autoeq_import_apply">应用</string>
+    <string name="autoeq_import_error">均衡器格式无效。请使用 Equalizer APO 或 AutoEQ 的 ParametricEQ.txt 格式。</string>
+    <string name="autoeq_export_copied">参数均衡器设置已复制到剪贴板</string>
+    <string name="autoeq_export_share">分享参数均衡器设置</string>
+    <string name="autoeq_freq_label">频率 (Hz)</string>
+    <string name="autoeq_gain_label">增益 (dB)</string>
+    <string name="autoeq_q_label">Q 值</string>
 </resources>
