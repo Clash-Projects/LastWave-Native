@@ -42,12 +42,11 @@ import java.nio.ByteOrder
 
 /**
  * Media3 multiplies the AudioTrack buffer by 8 once AudioTrack playback params
- * are enabled, headroom for 8x speed. [speedHeadroom] replaces that factor for
- * the AudioTracks opened while it is set; null keeps Media3's sizing.
+ * are enabled, headroom for 8x speed: 2.6 s (6 s over Bluetooth). A normal
+ * AudioTrack stays silent until its buffer is full, so every start and skip
+ * waited that long. Sized for the speed in use, first audio comes ~0.6 s sooner.
  */
-class OutputBufferSizing : DefaultAudioSink.AudioTrackBufferSizeProvider {
-    @Volatile var speedHeadroom: Double? = null
-
+class OutputBufferSizing(private val speed: () -> Float) : DefaultAudioSink.AudioTrackBufferSizeProvider {
     override fun getBufferSizeInBytes(
         minBufferSizeInBytes: Int,
         encoding: Int,
@@ -58,7 +57,7 @@ class OutputBufferSizing : DefaultAudioSink.AudioTrackBufferSizeProvider {
         maxAudioTrackPlaybackSpeed: Double,
     ): Int = DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT.getBufferSizeInBytes(
         minBufferSizeInBytes, encoding, outputMode, pcmFrameSize, sampleRate, bitrate,
-        speedHeadroom ?: maxAudioTrackPlaybackSpeed,
+        speed().coerceAtLeast(1f).toDouble().coerceAtMost(maxAudioTrackPlaybackSpeed),
     )
 }
 
@@ -86,8 +85,6 @@ class NativeProcessingAudioSink(
     private val internalDirect: InternalDirectOutput? = null,
     /** Loudness normalization; only touches the processed (non-bit-perfect) output. */
     private val loudness: LoudnessStage? = null,
-    /** The provider both delegates were built with. */
-    val outputBufferSizing: OutputBufferSizing? = null,
 ) : AudioSink {
     private var activeDelegate: DefaultAudioSink = fallbackDelegate
     // Read on the main thread for the signal-path verdict, written on the

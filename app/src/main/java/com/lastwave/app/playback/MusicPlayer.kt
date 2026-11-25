@@ -1717,7 +1717,7 @@ class MusicPlayer @Inject constructor(
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): androidx.media3.exoplayer.audio.AudioSink {
-                val bufferSizing = OutputBufferSizing()
+                val bufferSizing = OutputBufferSizing { userPlaybackSpeed }
                 fun pcmSink(floatOutput: Boolean) = DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(floatOutput)
                     .setEnableAudioTrackPlaybackParams(true)
@@ -1747,7 +1747,6 @@ class MusicPlayer @Inject constructor(
                     enhancedDelegate = enhancedSink,
                     fallbackDelegate = fallbackSink,
                     processor = NativePcmAudioProcessor(processorEngine),
-                    outputBufferSizing = bufferSizing,
                     onPlatformEffectsRequired = effects::setFallbackRequired,
                     usbOutput = if (handleAudioFocus) UsbBitPerfectOutput(audioManager) else null,
                     // The crossfade standby must not share the DAC. Its
@@ -4030,6 +4029,7 @@ class MusicPlayer @Inject constructor(
             player.playbackParameters.speed < 2f -> 2f
             else -> 0.75f
         }
+        userPlaybackSpeed = next
         player.setPlaybackSpeed(next)
     }
 
@@ -8228,12 +8228,6 @@ class MusicPlayer @Inject constructor(
             // opened a 24/96 upgrade at 48 kHz. Null opens at the stream's own rate.
             val standbySink = playerToSink[standby]
             standbySink?.setOutputSampleRateOverride(null)
-            // Media3 sizes the AudioTrack for 8x speed (2.7 s here, 6 s over
-            // Bluetooth), and a skip only shows once that much has played out:
-            // two skips were 6.5 s of an 8.5 s line-up. Sized for the speed in
-            // use, the muted deck starts sooner and a skip lands in well under
-            // a second. The deck keeps this track's buffer after it goes live.
-            standbySink?.outputBufferSizing?.speedHeadroom = live.playbackParameters.speed.coerceAtLeast(1f).toDouble()
             standby.setMediaItems(queue, index, (live.currentPosition + lagMs + HOT_SWAP_SEEK_LEAD_MS).coerceAtLeast(0L))
             standby.prepare()
 
@@ -8402,8 +8396,6 @@ class MusicPlayer @Inject constructor(
             }
             return OverlapSwap.Swapped(roundsUsed, driftMs)
         } finally {
-            // Only this swap's AudioTrack: the deck's next track sizes as usual.
-            playerToSink[standby]?.outputBufferSizing?.speedHeadroom = null
             if (!committed) {
                 runCatching {
                     standby.stop()
