@@ -83,6 +83,7 @@ import com.lastwave.app.data.local.AdaptiveCacheEvictor
 import com.lastwave.app.data.local.EqualizerPreferences
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
+import com.lastwave.app.data.music.DeferredStreamProbe
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.ConfirmedUnplayableMediaException
 import com.lastwave.app.data.music.YouTubeAudioStream
@@ -214,7 +215,7 @@ class MusicPlayer @Inject constructor(
     internal val streamResolver = StreamResolveCoordinator(
         cacheDir = File(appContext.cacheDir, "playback_stream_cache"),
         scope = applicationScope,
-        extract = { videoId -> innerTube.resolveAudioStream(videoId) },
+        extract = { videoId -> withContext(DeferredStreamProbe) { innerTube.resolveAudioStream(videoId) } },
     )
     private val streamResolutionWakeLock by lazy {
         (appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.newWakeLock(
@@ -7009,7 +7010,7 @@ class MusicPlayer @Inject constructor(
         val token = if (claimPlayback) streamResolver.playback.claim(identity) else null
         if (claimPlayback) PlaybackStartupLog.extractStart()
         val candidate = try {
-            innerTube.resolveAudioStream(identity.youtubeVideoId, maxBitrateBps)
+            withContext(DeferredStreamProbe) { innerTube.resolveAudioStream(identity.youtubeVideoId, maxBitrateBps) }
         } finally {
             if (claimPlayback) PlaybackStartupLog.extractEnd()
         }
