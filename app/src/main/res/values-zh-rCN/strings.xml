@@ -571,9 +571,9 @@
     <string name="feed_your_sound">你的音乐品味</string>
     <string name="feed_your_sound_sub">选择一种音乐氛围，即刻开启电台播放。</string>
     <string name="feed_picked_you">为您挑选的</string>
-    <string name="feed_quick_picks">快速选择</string>
+    <string name="feed_quick_picks">快速推荐</string>
     <string name="feed_from_listening">来自您的聆听——为您耳目一新</string>
-    <string name="feed_matched_taste">符合您的口味</string>
+    <string name="feed_matched_taste">符合你的音乐偏好</string>
     <string name="feed_trending_worth">现在值得一听的热门歌曲</string>
     <string name="feed_play_all">播放全部</string>
     <string name="feed_see_all">查看全部</string>
@@ -581,7 +581,7 @@
     <string name="feed_discover_sub">精心挑选符合您口味的曲目</string>
     <string name="feed_fresh">新鲜发现</string>
     <string name="feed_fresh_sub">超出常规轮换范围的新曲目</string>
-    <string name="feed_jump">跳回</string>
+    <string name="feed_jump">继续收听</string>
     <string name="feed_jump_sub">从您的收听历史记录来看</string>
     <string name="feed_mixes">混合探索</string>
     <string name="feed_mixes_sub">熟悉的最爱，新鲜的组合</string>
@@ -589,11 +589,11 @@
     <string name="feed_endless_radio">源源不断的艺人电台</string>
     <string name="feed_artists">为你推荐的艺人</string>
     <string name="feed_artists_sub">值得再听一遍</string>
-    <string name="feed_favorites">最爱重温</string>
-    <string name="feed_favorites_sub">从您的收听个人资料中</string>
-    <string name="feed_albums">为你准备的专辑</string>
+    <string name="feed_favorites">重温最爱</string>
+    <string name="feed_favorites_sub">根据你的听歌偏好</string>
+    <string name="feed_albums">为你推荐的专辑</string>
     <string name="feed_albums_sub">与你的音乐品味相符的专辑 — Last.fm 热门 + YouTube Music 精选</string>
-    <string name="feed_trending">现在流行</string>
+    <string name="feed_trending">当前热门</string>
     <string name="feed_trending_sub">当前热门 • 点击榜单条目即可播放</string>
     <string name="feed_releases">新歌速递</string>
     <string name="feed_releases_sub">新单曲与新专辑</string>
@@ -639,7 +639,7 @@
     <string name="gen_mode_never_desc">您以前从未听过的新鲜发现</string>
     <string name="gen_mode_library">我的曲库</string>
     <string name="gen_mode_library_desc">重新发现你过去的声音</string>
-    <string name="gen_period_all">所有时间</string>
+    <string name="gen_period_all">不限时间</string>
     <string name="gen_period_12mo">12 个月</string>
     <string name="gen_period_6mo">6个月</string>
     <string name="gen_period_3mo">3个月</string>
@@ -788,7 +788,7 @@
     <string name="set_loud_album">专辑</string>
     <string name="set_loud_album_sub">保留专辑原有的动态范围（缺少专辑标签时使用单曲标签）</string>
     <string name="set_loud_off">关闭</string>
-    <string name="set_loud_off_sub">以原始级别播放曲目</string>
+    <string name="set_loud_off_sub">按原始响度播放</string>
     <string name="set_loud_row_track">曲目 • 将每个曲目匹配到 -14 LUFS</string>
     <string name="set_loud_row_album">专辑 • 保持有意的专辑动态</string>
     <string name="set_loud_row_off">关 • 以原始级别播放标记的曲目</string>
@@ -1494,11 +1494,11 @@
 
     <!-- 流派统计 -->
     <string name="ge_glance">快速了解你的音乐品味</string>
-    <string name="ge_leading_genre">最常听的流派</string>
-    <string name="ge_relative_strength">相对于你最常听流派的偏好强度</string>
-    <string name="ge_beyond_top">其他喜爱的流派</string>
+    <string name="ge_leading_genre">最常听的曲风</string>
+    <string name="ge_relative_strength">相对于最常听曲风的偏好强度</string>
+    <string name="ge_beyond_top">其他喜爱的曲风</string>
     <string name="ge_strength_percent">%1$d%%</string>
-    <string name="ge_updating">正在更新流派</string>
+    <string name="ge_updating">正在更新曲风</string>
 
     <!-- 参数均衡器 -->
     <string name="autoeq_import">导入</string>
