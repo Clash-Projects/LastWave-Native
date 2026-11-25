@@ -769,18 +769,22 @@ class ExclusiveUsbOutput @Inject constructor(
             clockMatched = rateSetBefore && usbAudio.lastRateWriteTrusted && !autoNegotiatedFallback
         }
         clockRechecked = true
+        val controlId = (0 until usbDevice.interfaceCount)
+            .map { usbDevice.getInterface(it) }
+            .firstOrNull {
+                it.interfaceClass == UsbConstants.USB_CLASS_AUDIO && it.interfaceSubclass == 1
+            }?.id ?: 0
+        val volumeControl = UacFeatureVolume(info.connection, controlId)
         if (!forceSoftwareVolume) {
-            val controlId = (0 until usbDevice.interfaceCount)
-                .map { usbDevice.getInterface(it) }
-                .firstOrNull {
-                    it.interfaceClass == UsbConstants.USB_CLASS_AUDIO && it.interfaceSubclass == 1
-                }?.id ?: 0
-            val volumeControl = UacFeatureVolume(info.connection, controlId)
             featureVolume = volumeControl
             val attached = volumeControl.attach()
             featureVolumeAttached = attached
             hardwareVolume = attached
+            if (!attached) {
+                runCatching { volumeControl.parkUnityAndUnmute() }
+            }
         } else {
+            runCatching { volumeControl.parkUnityAndUnmute() }
             featureVolume = null
             featureVolumeAttached = false
             hardwareVolume = false
