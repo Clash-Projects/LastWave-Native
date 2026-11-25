@@ -384,8 +384,10 @@ class LosslessMusicApi @Inject constructor(
 
         private val VERSION_WORDS = setOf(
             "remix", "remixes", "rmx", "refix", "flip", "bootleg", "mashup", "medley",
-            "live", "concert", "unplugged", "acoustic", "instrumental", "karaoke",
+            "live", "concert", "unplugged", "acoustic", "instrumental", "instrumentals", "karaoke",
             "vocals", "vocal", "acapella", "acappella", "backing", "stems", "stem",
+            "offvocal", "minus", "bgm", "tribute", "piano", "guitar", "violin", "cello",
+            "lullaby", "ringtone", "8bit", "8d",
             "cover", "demo", "reprise", "remake", "rework", "extended", "edit",
             "version", "mix", "dub", "vip", "session", "sessions",
             "sped", "slowed", "reverb", "nightcore", "lofi", "orchestral", "symphonic",
@@ -398,6 +400,8 @@ class LosslessMusicApi @Inject constructor(
 
         /** Markers for a singer's own cut of the same song ("Reprise - Female", "Female Version"). */
         private val SOFT_VERSION_WORDS = setOf("reprise", "version")
+        private val ALBUM_NEUTRAL_VERSION_WORDS = SOFT_VERSION_WORDS + LANGUAGE_TOKENS +
+            setOf("part", "pt", "chapter", "atmos", "dolby", "spatial")
         private const val SOFT_VERSION_MAX_DURATION_DIFF = 5
         private const val SOFT_VERSION_PENALTY = 400
 
@@ -688,7 +692,20 @@ class LosslessMusicApi @Inject constructor(
             "live" to Regex("\\blive\\b"),
             "acoustic" to Regex("\\bacoustic\\b"),
             "karaoke" to Regex("\\bkaraoke\\b"),
-            "instrumental" to Regex("\\binstrumental\\b"),
+            "instrumental" to Regex(
+                "\\binstrumentals?\\b|\\boff[\\s-]?vocals?\\b|\\bminus[\\s-]?(?:one|1)\\b|" +
+                    "\\b(?:no|without)\\s+(?:vocals?|lyrics|singing)\\b|\\bbgm\\b|" +
+                    "\\bbackground\\s+(?:music|score)\\b|\\btype\\s+beat\\b",
+            ),
+            "acapella" to Regex("\\ba\\s*capp?ella\\b|\\bvocals?\\s+only\\b"),
+            "backing" to Regex("\\bbacking(?:\\s+track)?\\b|\\bstems?\\b"),
+            "music-box" to Regex("\\bmusic\\s+box\\b|\\blullab(?:y|ies)\\b|\\b8[\\s-]?bit\\b|\\bringtone\\b"),
+            "8d" to Regex("\\b8d(?:\\s+audio)?\\b"),
+            "solo-instrument" to Regex(
+                "\\b(?:piano|guitar|violin|cello|saxophone|sax)\\s+(?:version|cover|instrumental|solo)\\b|" +
+                    "\\bsolo\\s+(?:piano|guitar|violin|cello)\\b",
+            ),
+            "orchestral" to Regex("\\borchestral\\b|\\bsymphonic\\b"),
             "tribute" to Regex("\\btribute\\b"),
             "cover" to Regex("\\bcover\\b"),
             "remix" to Regex("\\bremix(?:ed)?\\b"),
@@ -702,6 +719,11 @@ class LosslessMusicApi @Inject constructor(
             "extended" to Regex("\\bextended(?: version| mix)?\\b"),
             "atmos" to Regex("\\bdolby\\b|\\batmos\\b|\\bspatial\\b|360\\s*reality|sony\\s*360"),
         )
+        private val SEVERE_IDENTITY_VARIANTS = setOf(
+            "instrumental", "karaoke", "tribute", "cover", "acapella",
+            "backing", "music-box", "8d", "solo-instrument", "orchestral",
+        )
+        private val ALBUM_IDENTITY_VARIANTS = SEVERE_IDENTITY_VARIANTS - setOf("cover")
     }
 
     fun invalidateCredentialsCache() {
@@ -1451,9 +1473,10 @@ class LosslessMusicApi @Inject constructor(
         // And asking for remix must never land on original cut.
         val expectedAlbumLangs = albumVersionMarkers(expectedAlbum) intersect LANGUAGE_TOKENS
         val wantedVersions = wanted.versions + expectedAlbumLangs
-        val albumMarks = albumVersionMarkers(item.albumTitle) +
-            (extractLanguages(item.albumTitle) intersect wantedVersions)
-        val effectiveVersions = got.versions + (albumMarks intersect wantedVersions)
+        val rawAlbumMarks = albumVersionMarkers(item.albumTitle)
+        val albumMarks = rawAlbumMarks + (extractLanguages(item.albumTitle) intersect wantedVersions)
+        val extraAlbumVariants = rawAlbumMarks - ALBUM_NEUTRAL_VERSION_WORDS
+        val effectiveVersions = got.versions + (albumMarks intersect wantedVersions) + extraAlbumVariants
         // A singer's own cut is often catalogued as "Saiyaara Reprise - Female"
         // while the player shows just "Saiyaara" by Shreya Ghoshal. Extra
         // soft markers (reprise/female/male/version) are tolerated, but only
@@ -1470,13 +1493,15 @@ class LosslessMusicApi @Inject constructor(
             }
         }
 
-        // Severe mismatches (karaoke, instrumental, tribute, cover)
-        val targetVariants = identityVariants(title, matchArtist)
-        val candidateVariants = identityVariants(item.title, matchArtist)
-        val severeMismatch = (!targetVariants.contains("instrumental") && candidateVariants.contains("instrumental")) ||
-            (!targetVariants.contains("karaoke") && candidateVariants.contains("karaoke")) ||
-            (!targetVariants.contains("tribute") && candidateVariants.contains("tribute")) ||
-            (!targetVariants.contains("cover") && candidateVariants.contains("cover"))
+        // Severe mismatches (instrumental, karaoke, acapella, backing, tribute, cover, etc.)
+        val targetVariants = identityVariants(title, matchArtist) +
+            (identityVariants(expectedAlbum.orEmpty(), "") intersect ALBUM_IDENTITY_VARIANTS)
+        val candidateVariants = identityVariants(item.title, matchArtist) +
+            (identityVariants(item.albumTitle, "") intersect ALBUM_IDENTITY_VARIANTS) +
+            (identityVariants("${item.performerName} ${item.albumArtistName}", "") intersect ALBUM_IDENTITY_VARIANTS)
+        val severeMismatch = SEVERE_IDENTITY_VARIANTS.any { variant ->
+            variant !in targetVariants && variant in candidateVariants
+        }
         if (severeMismatch) {
             Log.d(TAG, "reject candidate id=${item.id}: severe variant mismatch target=$targetVariants candidate=$candidateVariants for '$title'")
             return null
