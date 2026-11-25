@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -94,6 +95,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -102,6 +104,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lastwave.app.R
 import com.lastwave.app.data.download.DownloadProgress
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
 import com.lastwave.app.ui.common.ArtworkImage
@@ -129,6 +132,7 @@ enum class DownloadTab(val label: String) {
 
 sealed interface DownloadSubView {
     data object Root : DownloadSubView
+    data object SmartDownloads : DownloadSubView
     data class ArtistDetail(val artistName: String) : DownloadSubView
     data class AlbumDetail(val albumTitle: String, val artistName: String) : DownloadSubView
 }
@@ -153,6 +157,9 @@ fun DownloadsScreen(
     val useAlbumArtistForFolders by viewModel.useAlbumArtistForFolders.collectAsStateWithLifecycle()
     val primaryArtistOnly by viewModel.primaryArtistOnly.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+    val smartSettings by viewModel.smartDownloadsSettings.collectAsStateWithLifecycle()
+    val youtubeAccount by viewModel.youtubeConnection.collectAsStateWithLifecycle()
+    val smartTracks = remember(tracks) { tracks.filter { it.smartDownloadVideoId != null } }
     val activeDownloads = activeDownloadsMap.values.filter { !it.isFinished && it.error == null }
 
     val haptic = LocalHapticFeedback.current
@@ -176,6 +183,7 @@ fun DownloadsScreen(
     var showClearHistoryConfirm by remember { mutableStateOf(false) }
     var trackToDelete by remember { mutableStateOf<DownloadedTrackEntity?>(null) }
     var showOptionsMenu by remember { mutableStateOf(false) }
+    var showSmartSettings by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var showOrganizationDialog by remember { mutableStateOf(false) }
     var showLocationDialog by remember { mutableStateOf(false) }
@@ -244,7 +252,20 @@ fun DownloadsScreen(
         }
     }
 
+    if (showSmartSettings) {
+        SmartDownloadsDialog(
+            settings = smartSettings,
+            signedIn = youtubeAccount.isConnected,
+            onEnabled = viewModel::setSmartDownloadsEnabled,
+            onSongLimit = viewModel::setSmartDownloadLimit,
+            onStorageLimit = viewModel::setSmartDownloadStorageLimit,
+            onWifiOnly = viewModel::setSmartDownloadsWifiOnly,
+            onDismiss = { showSmartSettings = false },
+        )
+    }
+
     val totalSizeText = formatBytes(totalBytes ?: 0L)
+    val smartSizeText = formatBytes(smartTracks.sumOf { it.fileSizeBytes })
 
     PredictiveBackScreen(
         enabled = subViewStack.size > 1,
@@ -266,12 +287,16 @@ fun DownloadsScreen(
 
             val headerTitle = when (currentSubView) {
                 is DownloadSubView.Root -> "Downloads"
+                is DownloadSubView.SmartDownloads -> stringResource(R.string.dl_smart_downloads)
                 is DownloadSubView.ArtistDetail -> currentSubView.artistName
                 is DownloadSubView.AlbumDetail -> currentSubView.albumTitle
             }
 
             val headerSubtitle = when (currentSubView) {
                 is DownloadSubView.Root -> "${tracks.size} songs \u2022 ${artists.size} artists \u2022 $totalSizeText"
+                is DownloadSubView.SmartDownloads -> pluralStringResource(
+                    R.plurals.dl_smart_summary, smartTracks.size, smartTracks.size, smartSizeText,
+                )
                 is DownloadSubView.ArtistDetail -> {
                     val aTracks = tracks.filter {
                         it.artist.equals(currentSubView.artistName, ignoreCase = true) ||
@@ -296,7 +321,13 @@ fun DownloadsScreen(
                 title = headerTitle,
                 subtitle = headerSubtitle,
                 onBack = headerBack,
-                actions = {
+                actions = actions@{
+                    if (currentSubView == DownloadSubView.SmartDownloads) {
+                        IconButton(onClick = { showSmartSettings = true }) {
+                            Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.dl_smart_settings))
+                        }
+                        return@actions
+                    }
                     if (activeDownloads.isNotEmpty()) {
                         FilledTonalButton(
                             onClick = {
@@ -496,6 +527,14 @@ fun DownloadsScreen(
             // Route content depending on subViewStack depth
             when (currentSubView) {
                 is DownloadSubView.Root -> {
+                    TextButton(
+                        onClick = { navigateTo(DownloadSubView.SmartDownloads) },
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                    ) {
+                        Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.dl_smart_downloads))
+                    }
                     if (tracks.isEmpty() && activeDownloads.isEmpty()) {
                         EmptyDownloadsState()
                     } else {
@@ -620,6 +659,51 @@ fun DownloadsScreen(
                                 )
                             }
                         }
+                    }
+                }
+                is DownloadSubView.SmartDownloads -> {
+                    if (smartTracks.isEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                stringResource(
+                                    when {
+                                        !youtubeAccount.isConnected -> R.string.dl_smart_sign_in
+                                        !smartSettings.enabled -> R.string.dl_smart_disabled
+                                        else -> R.string.dl_smart_waiting
+                                    },
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
+                            if (!smartSettings.enabled) {
+                                TextButton(onClick = { showSmartSettings = true }) {
+                                    Text(stringResource(R.string.dl_smart_settings))
+                                }
+                            }
+                        }
+                    } else {
+                        DownloadedSongsList(
+                            tracks = smartTracks,
+                            activeDownloads = emptyList(),
+                            playbackState = playbackState,
+                            totalSizeText = smartSizeText,
+                            downloadFolder = downloadFolder,
+                            downloadStructure = downloadStructure,
+                            onPlayTrack = { viewModel.playTrack(it, smartTracks) },
+                            onPlayNext = viewModel::playNext,
+                            onAddToQueue = viewModel::addToQueue,
+                            onPlayAll = { viewModel.playTracks(smartTracks, startShuffled = it) },
+                            onSelectArtist = { navigateTo(DownloadSubView.ArtistDetail(it)) },
+                            onSelectAlbum = { album, artist -> navigateTo(DownloadSubView.AlbumDetail(album, artist)) },
+                            onDeleteTrack = { trackToDelete = it },
+                            onCancelDownload = viewModel::cancelDownload,
+                            onOpenFileManager = viewModel::openInFileManager,
+                            onChangeFolder = { showFolderDialog = true },
+                        )
                     }
                 }
                 is DownloadSubView.ArtistDetail -> {

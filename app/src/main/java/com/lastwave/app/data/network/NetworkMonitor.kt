@@ -28,6 +28,8 @@ class NetworkMonitor @Inject constructor(
         val isCellular: Boolean = false,
         val downstreamBandwidthKbps: Int? = null,
         val isUnmetered: Boolean = false,
+        val isWifi: Boolean = false,
+        val isValidated: Boolean = false,
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -65,6 +67,8 @@ class NetworkMonitor @Inject constructor(
         network = network,
         isCellular = hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
         downstreamBandwidthKbps = linkDownstreamBandwidthKbps.takeIf { it > 0 },
+        isWifi = hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+        isValidated = hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
         isUnmetered = hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
             hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
     )

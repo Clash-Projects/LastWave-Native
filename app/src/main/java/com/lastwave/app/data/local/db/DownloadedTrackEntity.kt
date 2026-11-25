@@ -31,5 +31,6 @@ data class DownloadedTrackEntity(
     val plainLyrics: String? = null,
     val lrcFilePath: String? = null,
     val downloadedAtMillis: Long = System.currentTimeMillis(),
+    val smartDownloadVideoId: String? = null,
 )
 

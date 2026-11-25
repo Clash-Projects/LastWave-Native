@@ -15,7 +15,7 @@ import com.lastwave.app.data.podcast.PodcastProgressEntity
         RelatedGraphEdgeEntity::class,
         PodcastProgressEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -15,6 +15,10 @@ import com.lastwave.app.playback.PlayableTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import com.lastwave.app.data.download.smart.SmartDownloadsPreferences
+import com.lastwave.app.data.download.smart.SmartDownloadsSettings
+import com.lastwave.app.data.ytmusic.YtMusicAuthManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -53,6 +57,7 @@ fun DownloadedTrackEntity.toPlayableTrack(): PlayableTrack {
         artist = artist,
         album = album.takeIf { it.isNotBlank() },
         artworkUrl = artworkUrl,
+        videoId = smartDownloadVideoId,
         playbackUrl = bestUrl,
         playbackMimeType = mime,
         durationMs = durationMs.takeIf { it > 0L },
@@ -117,9 +122,32 @@ class DownloadsViewModel @Inject constructor(
     private val musicPlayer: MusicPlayer,
     private val settingsPreferences: com.lastwave.app.data.local.SettingsPreferences,
     private val networkMonitor: NetworkMonitor,
+    private val smartDownloadsPreferences: SmartDownloadsPreferences,
+    private val applicationScope: CoroutineScope,
+    ytMusicAuth: YtMusicAuthManager,
 ) : ViewModel() {
 
     val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
+    val youtubeConnection = ytMusicAuth.connection
+    val smartDownloadsSettings = smartDownloadsPreferences.settings.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5_000), SmartDownloadsSettings(),
+    )
+
+    fun setSmartDownloadsEnabled(enabled: Boolean) {
+        applicationScope.launch { smartDownloadsPreferences.setEnabled(enabled) }
+    }
+
+    fun setSmartDownloadLimit(limit: Int) {
+        applicationScope.launch { smartDownloadsPreferences.setSongLimit(limit) }
+    }
+
+    fun setSmartDownloadStorageLimit(limitGiB: Int) {
+        applicationScope.launch { smartDownloadsPreferences.setStorageLimitGiB(limitGiB) }
+    }
+
+    fun setSmartDownloadsWifiOnly(wifiOnly: Boolean) {
+        applicationScope.launch { smartDownloadsPreferences.setWifiOnly(wifiOnly) }
+    }
 
     sealed interface DeleteEvent {
         /** Android needs the user to approve deleting a file the app doesn't own. */

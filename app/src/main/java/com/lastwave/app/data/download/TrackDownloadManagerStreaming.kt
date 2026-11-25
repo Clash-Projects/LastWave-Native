@@ -550,7 +550,7 @@ internal data class DashFetchResult(
 
 internal suspend fun TrackDownloadManager.downloadDashSegmentsToTempFile(
         downloadKey: String,
-        notificationId: Int,
+        notificationId: Int?,
         title: String,
         artist: String,
         formatBadge: String,

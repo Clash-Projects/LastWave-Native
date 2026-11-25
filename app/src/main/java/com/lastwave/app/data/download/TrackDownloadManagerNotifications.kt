@@ -99,7 +99,7 @@ import kotlin.coroutines.resumeWithException
 
 
 internal fun TrackDownloadManager.showDownloadNotification(
-        notificationId: Int,
+        notificationId: Int?,
         downloadKey: String,
         title: String,
         artist: String,
@@ -108,6 +108,7 @@ internal fun TrackDownloadManager.showDownloadNotification(
         badgeText: String,
         isWaitingForConnection: Boolean = false,
     ) {
+        if (notificationId == null) return
         val cancelIntent = Intent(context, DownloadCancelReceiver::class.java).apply {
             action = ACTION_CANCEL_DOWNLOAD
             putExtra(EXTRA_DOWNLOAD_KEY, downloadKey)
@@ -146,11 +147,12 @@ internal fun TrackDownloadManager.showDownloadNotification(
     }
 
 internal fun TrackDownloadManager.showCompletedNotification(
-        notificationId: Int,
+        notificationId: Int?,
         title: String,
         artist: String,
         badgeText: String,
     ) {
+        if (notificationId == null) return
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("Download Complete")
@@ -164,12 +166,13 @@ internal fun TrackDownloadManager.showCompletedNotification(
     }
 
 internal fun TrackDownloadManager.showErrorNotification(
-        notificationId: Int,
+        notificationId: Int?,
         downloadKey: String,
         title: String,
         artist: String,
         error: String,
     ) {
+        if (notificationId == null) return
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_error)
             .setContentTitle("Download Failed")

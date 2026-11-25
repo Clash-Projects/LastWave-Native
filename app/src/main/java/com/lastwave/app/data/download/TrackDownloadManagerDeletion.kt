@@ -197,7 +197,9 @@ internal suspend fun TrackDownloadManager.finishConsentedDeleteImpl(track: Downl
 
     /** DRM module downloads keep a descriptor sidecar; drop it with the audio. */
 internal fun TrackDownloadManager.forgetOfflineSidecar(track: DownloadedTrackEntity) {
-        runCatching { moduleManager.deleteOfflineSidecar(track.title, track.artist) }
+        if (track.smartDownloadVideoId == null) {
+            runCatching { moduleManager.deleteOfflineSidecar(track.title, track.artist) }
+        }
     }
 
     /**
