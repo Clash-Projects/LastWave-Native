@@ -85,7 +85,8 @@ object LyricsTranslation {
     private const val CONCURRENT_BATCHES = 2
     private const val CLIENT_HEADER = "LastWave/1.0"
 
-    private val slotDividerPattern = Regex("\\uE000[^\\uE001]*\\uE001")
+    private val slotDividerPattern =
+        Regex("\\[\\s*#\\s*\\p{Nd}+\\s*#\\s*]|\\uE000[^\\uE001\\uE000\\r\\n]*[\\uE001\\uE000]")
     private val multiSpacePattern = Regex("\\s+")
     private val jsonParser = Json { ignoreUnknownKeys = true }
     private val fileLock = Mutex()
@@ -240,7 +241,7 @@ object LyricsTranslation {
         var charCount = 0
 
         for (slot in slots) {
-            val delta = slot.text.length + if (pending.isEmpty()) 0 else 8
+            val delta = slot.text.length + if (pending.isEmpty()) 0 else 10
             if (pending.isNotEmpty() && charCount + delta > BATCH_CHAR_LIMIT) {
                 output.add(Batch(pending.toList(), assemblePayload(pending)))
                 pending.clear()
@@ -367,9 +368,9 @@ object LyricsTranslation {
         for (i in slots.indices) {
             if (i > 0) {
                 sb.append('\n')
-                    .append('\uE000')
+                    .append("[#")
                     .append(i.toString().padStart(4, '0'))
-                    .append('\uE001')
+                    .append("#]")
                     .append('\n')
             }
             sb.append(slots[i].text)
