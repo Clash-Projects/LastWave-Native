@@ -701,11 +701,7 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
             // wake/wifi locks immediately.
             musicPlayer.stopAndClear(clearSession = false)
             if (::discordPresenceManager.isInitialized) {
-                discordPresenceManager.onTaskRemoved(keepWhilePlaying = false)
-            }
-        } else {
-            if (::discordPresenceManager.isInitialized) {
-                discordPresenceManager.onTaskRemoved(keepWhilePlaying = true)
+                discordPresenceManager.clearOnRemoval()
             }
         }
         super.onTaskRemoved(rootIntent)

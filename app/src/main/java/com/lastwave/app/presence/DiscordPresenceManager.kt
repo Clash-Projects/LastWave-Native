@@ -79,13 +79,10 @@ class DiscordPresenceManager @Inject constructor(
     private var started = false
 
     @Volatile private var enabled = true
-    // Only publish after playback actually runs in this process, so a background
-    // cold start restoring a saved session never broadcasts a stale paused track.
-    @Volatile private var hasActiveSession = false
-    @Volatile private var taskRemoved = false
     private var lastAttemptMs = 0L
     @Volatile private var lastKey = ""
     private var lastPushMs = 0L
+    private var lastEndMs = 0L
     private val deferredArtwork = DeferredArtworkLookup(
         scope = applicationScope,
         source = "discord",
@@ -126,7 +123,6 @@ class DiscordPresenceManager @Inject constructor(
         heartbeat = applicationScope.launch(Dispatchers.Default) {
             while (isActive) {
                 delay(DiscordPresence.PUSH_INTERVAL_MS)
-                if (!hasActiveSession) continue
                 val snapshot = musicPlayer.state.value
                 evaluate(snapshot, artworkRepository.resolved.value)
             }
@@ -140,34 +136,12 @@ class DiscordPresenceManager @Inject constructor(
         }
     }
 
-    /** Called when the UI returns to the foreground after a prior task removal. */
-    fun onAppForegrounded() {
-        taskRemoved = false
-    }
-
-    /**
-     * Called when the app is swiped away from Recents.
-     *
-     * When [keepWhilePlaying] is false (paused/stopped or stopping with task),
-     * clears Discord presence and closes the IPC binding immediately so a
-     * removed app never leaves a lingering card behind. When true, keeps
-     * presence alive only while audio continues playing and clears it as soon
-     * as playback pauses or stops.
-     */
-    fun onTaskRemoved(keepWhilePlaying: Boolean) {
-        taskRemoved = true
-        if (!keepWhilePlaying) {
-            clearOnRemoval()
-        }
-    }
-
     /**
      * Synchronous best-effort clear + disconnect for process/service teardown
      * (`onTaskRemoved` / `onDestroy`), where launching a coroutine may race
      * with process death.
      */
     fun clearOnRemoval() {
-        hasActiveSession = false
         lastKey = ""
         deferredArtwork.cancel()
         val active = transport
@@ -183,26 +157,14 @@ class DiscordPresenceManager @Inject constructor(
     private suspend fun evaluate(state: MusicPlayerState, resolvedArt: Map<String, String>) {
         val now = SystemClock.elapsedRealtime()
         lock.withLock {
-            // Disabled or unconfigured: hide anything still on the profile.
-            if (!enabled || !DiscordPresence.isConfigured()) {
-                hasActiveSession = false
-                deferredArtwork.cancel()
-                clearAndDisconnectQuiet()
-                return
-            }
             val track = state.current
-            if (track == null || track.title.isBlank()) {
-                hasActiveSession = false
-                deferredArtwork.cancel()
-                clearAndDisconnectQuiet()
-                return
-            }
-            val playing = DiscordPresence.isPlayingForPresence(state)
-            if (playing) {
-                hasActiveSession = true
-            }
-            if (!hasActiveSession || (taskRemoved && !playing)) {
-                hasActiveSession = false
+            // Only a playing track has a card. Discord keeps the last activity
+            // even after LastWave's process dies, and OEMs kill or freeze a
+            // paused app within minutes, so a paused card stayed on profiles
+            // for hours. This also keeps a restored session from publishing.
+            if (!enabled || !DiscordPresence.isConfigured() || track == null ||
+                track.title.isBlank() || !DiscordPresence.isPlayingForPresence(state)
+            ) {
                 deferredArtwork.cancel()
                 clearAndDisconnectQuiet()
                 return
@@ -228,16 +190,17 @@ class DiscordPresenceManager @Inject constructor(
                     state
                 }
             val key = DiscordPresence.signature(effectiveState)
-            if (key == lastKey && now - lastPushMs < DiscordPresence.PUSH_INTERVAL_MS) {
-                return // Position ticks must not become frames.
+            // Remaining time on the elapsed clock: constant while playing, so it
+            // only moves on a seek, which must repush or the bar stays wrong.
+            val endMs = now + DiscordPresence.durationMs(effectiveState) - effectiveState.positionMs
+            val seeked = kotlin.math.abs(endMs - lastEndMs) > SEEK_TOLERANCE_MS
+            // Position ticks must not become frames.
+            if (key == lastKey && !seeked && now - lastPushMs < DiscordPresence.PUSH_INTERVAL_MS) {
+                return
             }
             val active = ensureConnected(now)
             if (active == null) {
                 // ensureConnected already logged why (throttled vs missing).
-                return
-            }
-            if (!hasActiveSession || (taskRemoved && !playing)) {
-                clearAndDisconnectQuiet()
                 return
             }
             val sent = runCatching {
@@ -256,6 +219,7 @@ class DiscordPresenceManager @Inject constructor(
             }
             lastKey = key
             lastPushMs = now
+            lastEndMs = endMs
             // One line per frame actually handed to Discord: a card that never
             // appears is then diagnosable as "no pushes at all" (observer /
             // heartbeat dead), "pushes but refused" (WARN above), or "pushes
@@ -293,26 +257,17 @@ class DiscordPresenceManager @Inject constructor(
         lastKey = ""
         val active = transport ?: return
         transport = null
+        // A deliberate disconnect is not a failed attempt: resuming right
+        // after a pause must reconnect now, not after the retry throttle.
+        lastAttemptMs = 0L
         runCatching { active.clearActivity() }
             .onFailure { Log.d(TAG, "Discord presence clear ignored", it) }
         runCatching { active.close() }
             .onFailure { Log.d(TAG, "Discord transport close ignored", it) }
     }
 
-    /** Best-effort clear + release. Never throws. */
-    suspend fun shutdown() {
-        heartbeat?.cancel()
-        heartbeat = null
-        observer?.cancel()
-        observer = null
-        hasActiveSession = false
-        lock.withLock {
-            clearAndDisconnectQuiet()
-        }
-        started = false
-    }
-
     private companion object {
         const val TAG = "DiscordPresence"
+        const val SEEK_TOLERANCE_MS = 3_000L
     }
 }
