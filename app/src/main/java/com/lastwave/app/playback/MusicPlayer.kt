@@ -2223,8 +2223,13 @@ class MusicPlayer @Inject constructor(
                             val stream = nextItem?.localConfiguration?.customCacheKey?.let(preparedStreams::get)
                                 ?: preparedStreams.values.firstOrNull { it.url == nextItem?.localConfiguration?.uri?.toString() }
 
-                            val transitionActive = crossfadeEnabled || autoMixCoordinator.get().isEnabled
-                            if (transitionActive && upcomingIdx != C.INDEX_UNSET && nextItem != null) {
+                            val repeatOne = player.repeatMode == Player.REPEAT_MODE_ONE ||
+                                _state.value.repeatMode == Player.REPEAT_MODE_ONE
+                            val transitionActive = !bitPerfectEnabled &&
+                                (crossfadeEnabled || autoMixCoordinator.get().isEnabled)
+                            if (transitionActive && !repeatOne && upcomingIdx != C.INDEX_UNSET &&
+                                upcomingIdx != player.currentMediaItemIndex && nextItem != null
+                            ) {
                                 val remainingMs = dur - pos
                                 if (dur > 0L && (pos > dur * 0.25f || remainingMs < 90_000L)) {
                                     val isNextNonPlaceholder = nextItem.localConfiguration?.uri?.scheme?.let { it != "lastwave" } == true
@@ -2545,8 +2550,11 @@ class MusicPlayer @Inject constructor(
                 }
                 if (playerDelegate.isInitialized()) {
                     onMain {
-                        // Any settings write (even the volume) lands here: an AutoMix blend has its own gates.
-                        if (!crossfadeEnabled || bitPerfectEnabled) cancelCrossfade(endAutoMix = false)
+                        // Any settings write (even the volume) lands here: an AutoMix arm/blend has its own gates.
+                        val autoMixActive = autoMixCoordinator.get().isEnabled
+                        if (bitPerfectEnabled || (!crossfadeEnabled && (!autoMixActive || _state.value.isCrossfading))) {
+                            cancelCrossfade(endAutoMix = false)
+                        }
                         if (bitPerfectEnabled) {
                             // Tempo stretch resamples, which defeats bit-perfect.
                             // Volume is left alone: the direct sinks scale it in

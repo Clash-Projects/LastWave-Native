@@ -155,7 +155,13 @@ import kotlin.random.Random
      */
     @MainThread
 internal fun MusicPlayer.cancelCrossfade(endAutoMix: Boolean = true) {
-        if (endAutoMix) autoMixCoordinator.get().endTransition()
+        if (endAutoMix) {
+            autoMixCoordinator.get().endTransition()
+        } else if (autoMixCoordinator.get().isBlending) {
+            // Caller explicitly preserved AutoMix (e.g. settings write);
+            // do not stop its outgoingPlayer or snap incoming volume mid-blend.
+            return
+        }
         crossfadeStandbyArmed = false
         crossfadeStandbyPreparing = false
         lastCrossfadeLogKey = null
