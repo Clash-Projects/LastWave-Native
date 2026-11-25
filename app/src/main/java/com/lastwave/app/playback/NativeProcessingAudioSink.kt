@@ -240,6 +240,9 @@ class NativeProcessingAudioSink(
             activeDelegate.getCurrentPositionUs(sourceEnded)
         }
 
+    override fun getAudioTrackBufferSizeUs(): Long =
+        if (usbExclusive || internalActive) C.TIME_UNSET else activeDelegate.audioTrackBufferSizeUs
+
     private fun canReuseNativeProcessing(format: Format, outputChannels: IntArray?): Boolean {
         if (!processingActive || nativePathDisabled || !processor.isAvailable || bitPerfectRequested || exclusiveWanted || internalWanted) {
             return false
