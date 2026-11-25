@@ -863,30 +863,7 @@ internal fun TrackDownloadManager.hasExpectedContainer(file: File, extension: St
         }
     }.getOrDefault(false)
 
-    /**
-     * Mirrors playback's spatial check (`MusicPlayer.isSpatialAudioSupportedOnDevice`):
-     * hardware decoder, bundled FFmpeg decoder, or Android S_V2+ Spatializer.
-     */
-internal fun TrackDownloadManager.isAtmosCapableDevice(): Boolean = runCatching {
-        val decoder = MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any { info ->
-            !info.isEncoder && info.supportedTypes.any { type ->
-                type.equals("audio/eac3-joc", ignoreCase = true) ||
-                    type.equals("audio/eac3", ignoreCase = true) ||
-                    type.equals("audio/ac3", ignoreCase = true)
-            }
-        }
-        val ffmpeg = com.lastwave.app.playback.FfmpegCompat.isUsable && runCatching {
-            androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() &&
-                androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(androidx.media3.common.MimeTypes.AUDIO_E_AC3)
-        }.getOrDefault(false)
-        if (decoder || ffmpeg) return@runCatching true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
-            val am = context.getSystemService(AudioManager::class.java)
-            val spatializer = am?.spatializer
-            if (spatializer != null && (spatializer.isAvailable || spatializer.isEnabled)) {
-                return@runCatching true
-            }
-        }
-        false
-    }.getOrDefault(false)
+    /** Mirrors playback's spatial check (`MusicPlayer.isSpatialAudioSupportedOnDevice`). */
+internal fun TrackDownloadManager.isAtmosCapableDevice(): Boolean =
+        com.lastwave.app.playback.FfmpegCompat.isAtmosCapable()
 

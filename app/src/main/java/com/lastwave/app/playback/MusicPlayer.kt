@@ -1815,83 +1815,30 @@ class MusicPlayer @Inject constructor(
                 eventListener: AudioRendererEventListener,
                 out: ArrayList<Renderer>,
             ) {
-                // Hardware/platform Dolby Atmos & Spatial audio MediaCodec renderer:
-                // Placed ahead of FFmpeg so Android's native Dolby Atmos HAL and Spatializer
-                // decode E-AC-3 JOC with hardware dialogue normalization, full volume
-                // (no -8 dB FFmpeg downmix attenuation), and system spatial virtualization.
-                // Standard codecs (FLAC, Opus, AAC, MP3, Vorbis) return FORMAT_UNSUPPORTED_TYPE
-                // here so FFmpeg retains priority for them.
-                val dolbySpatialRenderer = object : MediaCodecAudioRenderer(
-                    context,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    eventHandler,
-                    eventListener,
-                    audioSink,
+                FfmpegCompat.appendAudioRenderers(
+                    context = context,
+                    mediaCodecSelector = mediaCodecSelector,
+                    enableDecoderFallback = enableDecoderFallback,
+                    audioSink = audioSink,
+                    eventHandler = eventHandler,
+                    eventListener = eventListener,
+                    out = out,
+                    onConfigureSpatialMediaFormat = ::configureDolbySpatialMediaFormat,
                 ) {
-                    override fun supportsFormat(
-                        mediaCodecSelector: MediaCodecSelector,
-                        format: androidx.media3.common.Format,
-                    ): Int {
-                        val mime = format.sampleMimeType?.lowercase().orEmpty()
-                        val isDolbyOrSpatial = mime.contains("eac3") || mime.contains("ec-3") ||
-                            mime.contains("ac-3") || mime.contains("ac3") || mime.contains("ac4") ||
-                            mime.contains("mha1") || mime.contains("mhm1")
-                        if (!isDolbyOrSpatial) {
-                            return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
-                        }
-                        return super.supportsFormat(mediaCodecSelector, format)
-                    }
-
-                    override fun getMediaFormat(
-                        format: androidx.media3.common.Format,
-                        codecMimeType: String,
-                        codecMaxInputSize: Int,
-                        codecOperatingRate: Float,
-                    ): MediaFormat {
-                        val mediaFormat = super.getMediaFormat(
-                            format,
-                            codecMimeType,
-                            codecMaxInputSize,
-                            codecOperatingRate,
-                        )
-                        configureDolbySpatialMediaFormat(mediaFormat, format)
-                        return mediaFormat
-                    }
-                }
-                out.add(dolbySpatialRenderer)
-
-                super.buildAudioRenderers(
-                    context,
-                    extensionRendererMode,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    audioSink,
-                    eventHandler,
-                    eventListener,
-                    out,
-                )
-                // Explicit software decoder fallback for MediaTek / ColorOS
-                if (FfmpegCompat.isUsable) try {
-                    // Direct dependency (org.jellyfin.media3:media3-ffmpeg-decoder):
-                    // construct it typed instead of via reflection.
-                    out.add(
-                        androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer(eventHandler, eventListener, audioSink),
+                    super.buildAudioRenderers(
+                        context,
+                        extensionRendererMode,
+                        mediaCodecSelector,
+                        enableDecoderFallback,
+                        audioSink,
+                        eventHandler,
+                        eventListener,
+                        out,
                     )
-                } catch (_: Throwable) {
                 }
             }
         }.apply {
-            // FFmpeg-first decoding, the Poweramp/VLC model: every codec the
-            // bundled GPL build supports (FLAC 24/96-192, Opus, AAC, MP3,
-            // Vorbis) decodes through the same battle-tested software path on
-            // every device, eliminating per-OEM platform codec bugs that
-            // surface as noise/distortion. setEnableDecoderFallback keeps the
-            // platform decoder for anything FFmpeg rejects.
-            setExtensionRendererMode(
-                if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
-            )
+            setExtensionRendererMode(FfmpegCompat.recommendedExtensionRendererMode())
             setEnableDecoderFallback(true)
             setEnableAudioTrackPlaybackParams(false)
             setMediaCodecSelector(accurateAudioMediaCodecSelector)
@@ -8003,61 +7950,30 @@ class MusicPlayer @Inject constructor(
                 eventListener: AudioRendererEventListener,
                 out: ArrayList<Renderer>,
             ) {
-                val immersiveRenderer = object : MediaCodecAudioRenderer(
-                    context,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    eventHandler,
-                    eventListener,
-                    audioSink,
+                FfmpegCompat.appendAudioRenderers(
+                    context = context,
+                    mediaCodecSelector = mediaCodecSelector,
+                    enableDecoderFallback = enableDecoderFallback,
+                    audioSink = audioSink,
+                    eventHandler = eventHandler,
+                    eventListener = eventListener,
+                    out = out,
+                    onConfigureSpatialMediaFormat = ::configureDolbySpatialMediaFormat,
                 ) {
-                    override fun supportsFormat(
-                        mediaCodecSelector: MediaCodecSelector,
-                        format: androidx.media3.common.Format,
-                    ): Int {
-                        val mime = format.sampleMimeType?.lowercase().orEmpty()
-                        val isImmersive = mime.contains("eac3") || mime.contains("ec-3") ||
-                            mime.contains("ac-3") || mime.contains("ac3") || mime.contains("ac4") ||
-                            mime.contains("mha1") || mime.contains("mhm1")
-                        if (!isImmersive) {
-                            return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
-                        }
-                        return super.supportsFormat(mediaCodecSelector, format)
-                    }
-
-                    override fun getMediaFormat(
-                        format: androidx.media3.common.Format,
-                        codecMimeType: String,
-                        codecMaxInputSize: Int,
-                        codecOperatingRate: Float,
-                    ): MediaFormat {
-                        val mediaFormat = super.getMediaFormat(
-                            format,
-                            codecMimeType,
-                            codecMaxInputSize,
-                            codecOperatingRate,
-                        )
-                        configureDolbySpatialMediaFormat(mediaFormat, format)
-                        return mediaFormat
-                    }
+                    super.buildAudioRenderers(
+                        context,
+                        extensionRendererMode,
+                        mediaCodecSelector,
+                        enableDecoderFallback,
+                        audioSink,
+                        eventHandler,
+                        eventListener,
+                        out,
+                    )
                 }
-                out.add(immersiveRenderer)
-                super.buildAudioRenderers(
-                    context,
-                    extensionRendererMode,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    audioSink,
-                    eventHandler,
-                    eventListener,
-                    out,
-                )
             }
         }.apply {
-            setExtensionRendererMode(
-                if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
-            )
+            setExtensionRendererMode(FfmpegCompat.recommendedExtensionRendererMode())
             setEnableDecoderFallback(true)
             setMediaCodecSelector(accurateAudioMediaCodecSelector)
         }

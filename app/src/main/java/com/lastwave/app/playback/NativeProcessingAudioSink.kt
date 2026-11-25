@@ -1339,11 +1339,12 @@ class NativeProcessingAudioSink(
         val session = exclusiveUsb ?: return false
         if (format.sampleMimeType != MimeTypes.AUDIO_RAW ||
             format.sampleRate <= 0 ||
-            format.channelCount !in 1..2 ||
+            format.channelCount !in 1..8 ||
             format.pcmEncoding !in SUPPORTED_ENCODINGS
         ) {
             return false
         }
+        if (!session.canOpen()) return false
         // Release AudioTrack before claiming the USB interface. While the
         // mixer still owns the DAC, libusb cannot detach snd-usb-audio and
         // exclusive start fails closed onto the shared 48 kHz track.

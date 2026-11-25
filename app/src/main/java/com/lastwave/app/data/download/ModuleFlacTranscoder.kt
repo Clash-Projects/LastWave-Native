@@ -129,6 +129,41 @@ class ModuleFlacTranscoder @Inject constructor(
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): androidx.media3.exoplayer.audio.AudioSink = sink
+
+            override fun buildAudioRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                audioSink: androidx.media3.exoplayer.audio.AudioSink,
+                eventHandler: android.os.Handler,
+                eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener,
+                out: ArrayList<androidx.media3.exoplayer.Renderer>,
+            ) {
+                com.lastwave.app.playback.FfmpegCompat.appendAudioRenderers(
+                    context = context,
+                    mediaCodecSelector = mediaCodecSelector,
+                    enableDecoderFallback = enableDecoderFallback,
+                    audioSink = audioSink,
+                    eventHandler = eventHandler,
+                    eventListener = eventListener,
+                    out = out,
+                ) {
+                    super.buildAudioRenderers(
+                        context,
+                        extensionRendererMode,
+                        mediaCodecSelector,
+                        enableDecoderFallback,
+                        audioSink,
+                        eventHandler,
+                        eventListener,
+                        out,
+                    )
+                }
+            }
+        }.apply {
+            setExtensionRendererMode(com.lastwave.app.playback.FfmpegCompat.recommendedExtensionRendererMode())
+            setEnableDecoderFallback(true)
         }
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDrmSessionManagerProvider { drmFactory.sessionManagerFor(descriptor) }

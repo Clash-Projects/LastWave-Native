@@ -268,42 +268,14 @@ internal fun MusicPlayer.recomputeUsbExclusivePref() {
         usbExclusivePrefEnabled = bitPerfectEnabled && usbExclusiveRawPref
     }
 
-    /** True only for genuine Atmos decode: an E-AC-3 JOC decoder. A plain
-     *  `audio/eac3`/`ac3` decoder (common, video-passthrough silicon) cannot
-     *  render an Atmos music stream â€” treating it as capable used to request
-     *  spatial manifests that ExoPlayer then choked on (3003 â†’ retry loop â†’
-     *  "Playback interrupted") instead of dropping to stereo. */
     private val isAtmosDecoderAvailable: Boolean by lazy {
-        val platform = runCatching {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { type ->
-                    type.equals("audio/eac3-joc", ignoreCase = true) ||
-                        type.equals("audio/eac3", ignoreCase = true) ||
-                        type.equals("audio/ac3", ignoreCase = true)
-                }
-            }
-        }.getOrDefault(false)
-        // Bundled FFmpeg decodes the E-AC-3 core of JOC streams on any device.
-        val ffmpeg = FfmpegCompat.isUsable && runCatching {
-            androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() &&
-                androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(MimeTypes.AUDIO_E_AC3)
-        }.getOrDefault(false)
+        val platform = FfmpegCompat.hasPlatformAtmosDecoder()
+        val ffmpeg = FfmpegCompat.supportsMime(MimeTypes.AUDIO_E_AC3)
         android.util.Log.i("MusicPlayer", "[ATMOS] decoder availability platform=$platform ffmpeg=$ffmpeg")
         platform || ffmpeg
     }
 
-fun MusicPlayer.isSpatialAudioSupportedOnDevice(): Boolean {
-        if (isAtmosDecoderAvailable) return true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
-            val am = audioManager ?: return false
-            val spatializer = am.spatializer
-            if (spatializer.isAvailable || spatializer.isEnabled) {
-                return true
-            }
-        }
-        return false
-    }
+fun MusicPlayer.isSpatialAudioSupportedOnDevice(): Boolean = isAtmosDecoderAvailable
 
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.S_V2)
 internal object SpatializerHelper {

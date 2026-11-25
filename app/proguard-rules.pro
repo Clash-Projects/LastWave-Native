@@ -94,6 +94,10 @@
 -keepclassmembers class com.lastwave.app.data.podcast.** { *; }
 
 
+# Keep Media3 FFmpeg extension classes constructed directly or via reflection.
+-keep class androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer { *; }
+-keep class androidx.media3.decoder.ffmpeg.FfmpegLibrary { *; }
+
 # Shrink and optimize, but do not rename classes/members. LastWave is open
 # source, so renaming hides nothing, and the scrambled single-letter names
 # (a.b.c) are what Huorong's static TrojanDropper/Android.Agent heuristic
