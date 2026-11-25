@@ -2,6 +2,7 @@ package com.lastwave.app.data.canvas
 
 import android.util.Log
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -11,474 +12,445 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.Base64
+import java.util.Date
 import java.util.Locale
 
-/**
- * Apple Music's motion artwork — animated sleeves exposed on the catalog API as `editorialVideo`.
- *
- * Scrapes an anonymous guest JWT from Apple Music Web Player bundles, queries
- * the AMP catalog search with `extend=editorialVideo`, ranks and validates results
- * against artist/title/album, and returns square/portrait HLS video streams.
- */
 object AppleMusicCanvas {
 
-    private const val TAG = "AppleMusicCanvas"
-    private const val AMP = "https://amp-api.music.apple.com/v1/catalog"
-    private const val WEB_PLAYER = "https://music.apple.com/us/new"
+    private const val LOG_TAG = "AppleMusicCanvas"
+    private const val CATALOG_BASE = "https://amp-api.music.apple.com/v1/catalog"
+    private const val PLAYER_ENTRY_URL = "https://music.apple.com/us/new"
+    private const val SCORE_THRESHOLD = 12
+    private const val RETRY_COOLDOWN_MS = 30L * 60 * 1000
 
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
-
-    val storefront: String by lazy {
-        Locale.getDefault().country.takeIf { it.length == 2 }?.lowercase(Locale.ROOT) ?: "us"
+    private val decoder = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
     }
 
-    fun search(client: OkHttpClient, title: String, artist: String, album: String?): CanvasArtwork? {
-        val bearer = token(client) ?: return null
+    private val releaseTags = arrayOf(
+        "deluxe", "expanded", "remastered", "remix", "version", "edit", "mix", "bonus",
+    )
 
-        val term = buildString {
-            if (!title.contains(artist, ignoreCase = true)) append(artist).append(' ')
-            append(title)
-            if (!album.isNullOrBlank() && !title.contains(album, ignoreCase = true)) {
-                append(' ').append(album)
-            }
-        }
-
-        val url = "$AMP/$storefront/search".toHttpUrl().newBuilder()
-            .addQueryParameter("term", term)
-            .addQueryParameter("types", "songs")
-            .addQueryParameter("limit", "10")
-            .addQueryParameter("extend", "editorialVideo")
-            .addQueryParameter("include", "albums")
-            .build()
-            .toString()
-
-        val body = get(client, url, bearer) ?: return null
-        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
-        val hits = root["results"]?.jsonObject
-            ?.get("songs")?.jsonObject
-            ?.get("data")?.jsonArray
-            ?: return null
-
-        val ranked = hits.mapNotNull { hit ->
-            val song = hit as? JsonObject ?: return@mapNotNull null
-            val score = score(song, title, artist, album) ?: return@mapNotNull null
-            score to song
-        }.sortedByDescending { it.first }
-
-        for ((score, song) in ranked) {
-            if (score < MIN_SCORE) {
-                Log.d(TAG, "No hit scored above $MIN_SCORE for '$title' (best was $score)")
-                break
-            }
-            val attributes = song["attributes"]?.jsonObject ?: continue
-            val songName = attributes["name"]?.jsonPrimitive?.contentOrNull
-            val songArtist = attributes["artistName"]?.jsonPrimitive?.contentOrNull
-            val albumName = attributes["albumName"]?.jsonPrimitive?.contentOrNull
-
-            attributes["editorialVideo"]?.jsonObject?.let { video ->
-                motionUrls(video)?.let { assets ->
-                    Log.d(TAG, "Inline motion artwork found for '$songName'")
-                    return CanvasArtwork(
-                        url = assets.primary,
-                        fallbackUrl = assets.alternate,
-                        tallUrl = assets.tall,
-                        wideUrl = assets.wide,
-                        title = songName,
-                        artist = songArtist,
-                        album = albumName,
-                        source = CanvasSource.APPLE,
-                    )
-                }
-            }
-
-            val albumId = albumId(song) ?: continue
-            fetchAlbum(client, albumId, bearer, songName, songArtist)?.let { return it }
-        }
-        return null
-    }
-
-    fun searchAlbum(client: OkHttpClient, album: String, artist: String): CanvasArtwork? {
-        val bearer = token(client) ?: return null
-        val term = if (album.contains(artist, ignoreCase = true)) album else "$artist $album"
-
-        val url = "$AMP/$storefront/search".toHttpUrl().newBuilder()
-            .addQueryParameter("term", term)
-            .addQueryParameter("types", "albums")
-            .addQueryParameter("limit", "10")
-            .addQueryParameter("extend", "editorialVideo")
-            .build()
-            .toString()
-
-        val body = get(client, url, bearer) ?: return null
-        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
-        val hits = root["results"]?.jsonObject
-            ?.get("albums")?.jsonObject
-            ?.get("data")?.jsonArray
-            ?: return null
-
-        val ranked = hits.mapNotNull { hit ->
-            val record = hit as? JsonObject ?: return@mapNotNull null
-            val score = score(record, album, artist, album, albumIsSelf = true) ?: return@mapNotNull null
-            score to record
-        }.sortedByDescending { it.first }
-
-        for ((score, record) in ranked) {
-            if (score < MIN_SCORE) break
-            val attributes = record["attributes"]?.jsonObject ?: continue
-            val name = attributes["name"]?.jsonPrimitive?.contentOrNull
-            if (name != null && isCompilation(name)) continue
-            val video = attributes["editorialVideo"]?.jsonObject ?: continue
-            val assets = motionUrls(video) ?: continue
-
-            Log.d(TAG, "Motion artwork found for album '$name'")
-            return CanvasArtwork(
-                url = assets.primary,
-                fallbackUrl = assets.alternate,
-                tallUrl = assets.tall,
-                wideUrl = assets.wide,
-                title = name,
-                artist = attributes["artistName"]?.jsonPrimitive?.contentOrNull,
-                album = name,
-                source = CanvasSource.APPLE,
-            )
-        }
-        return null
-    }
-
-    /**
-     * Searches Apple Music catalog for an artist's official editorial motion artwork video.
-     */
-    fun searchArtist(client: OkHttpClient, artist: String): CanvasArtwork? {
-        val bearer = token(client) ?: return null
-        val term = artist.trim()
-        if (term.isBlank()) return null
-
-        val url = "$AMP/$storefront/search".toHttpUrl().newBuilder()
-            .addQueryParameter("term", term)
-            .addQueryParameter("types", "artists")
-            .addQueryParameter("limit", "5")
-            .addQueryParameter("extend", "editorialVideo")
-            .build()
-            .toString()
-
-        val body = get(client, url, bearer) ?: return null
-        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
-        val hits = root["results"]?.jsonObject
-            ?.get("artists")?.jsonObject
-            ?.get("data")?.jsonArray
-            ?: return null
-
-        val wantNorm = artist.normalizeForMatch()
-
-        for (hit in hits) {
-            val artistObj = hit as? JsonObject ?: continue
-            val attributes = artistObj["attributes"]?.jsonObject ?: continue
-            val name = attributes["name"]?.jsonPrimitive?.contentOrNull ?: continue
-            val hitNorm = name.normalizeForMatch()
-            if (hitNorm != wantNorm && !hitNorm.contains(wantNorm) && !wantNorm.contains(hitNorm)) {
-                continue
-            }
-
-            // 1. Direct editorialVideo on artist object in search results
-            attributes["editorialVideo"]?.jsonObject?.let { video ->
-                motionUrls(video)?.let { assets ->
-                    Log.d(TAG, "Motion artwork found for artist '$name'")
-                    return CanvasArtwork(
-                        url = assets.wide ?: assets.tall ?: assets.primary,
-                        fallbackUrl = assets.alternate,
-                        tallUrl = assets.tall,
-                        wideUrl = assets.wide,
-                        title = name,
-                        artist = name,
-                        source = CanvasSource.APPLE,
-                    )
-                }
-            }
-
-            // 2. Query artist detail endpoint if editorialVideo wasn't returned in search summary
-            val artistId = artistObj["id"]?.jsonPrimitive?.contentOrNull ?: continue
-            fetchArtistDetail(client, artistId, bearer, name)?.let { return it }
-        }
-        return null
-    }
-
-    private fun fetchArtistDetail(
-        client: OkHttpClient,
-        artistId: String,
-        bearer: String,
-        artistName: String,
-    ): CanvasArtwork? {
-        val url = "$AMP/$storefront/artists/$artistId".toHttpUrl().newBuilder()
-            .addQueryParameter("include", "albums")
-            .addQueryParameter("extend", "editorialVideo")
-            .build()
-            .toString()
-
-        val body = get(client, url, bearer) ?: return null
-        val artistObj = runCatching {
-            json.parseToJsonElement(body).jsonObject["data"]?.jsonArray?.firstOrNull()?.jsonObject
-        }.getOrNull() ?: return null
-
-        val attributes = artistObj["attributes"]?.jsonObject
-        val video = attributes?.get("editorialVideo")?.jsonObject
-        val directAssets = video?.let(::motionUrls)
-        if (directAssets != null) {
-            Log.d(TAG, "Motion artwork found on artist detail '$artistName' ($artistId)")
-            return CanvasArtwork(
-                url = directAssets.wide ?: directAssets.tall ?: directAssets.primary,
-                fallbackUrl = directAssets.alternate,
-                tallUrl = directAssets.tall,
-                wideUrl = directAssets.wide,
-                title = artistName,
-                artist = artistName,
-                source = CanvasSource.APPLE,
-            )
-        }
-
-        // Check the artist's primary/featured albums if no direct artist video exists
-        val albums = artistObj["relationships"]?.jsonObject
-            ?.get("albums")?.jsonObject
-            ?.get("data")?.jsonArray
-        if (albums != null) {
-            for (hit in albums) {
-                val albumObj = hit as? JsonObject ?: continue
-                val albumAttrs = albumObj["attributes"]?.jsonObject ?: continue
-                val albumName = albumAttrs["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                if (isCompilation(albumName)) continue
-                val albumVideo = albumAttrs["editorialVideo"]?.jsonObject ?: continue
-                val albumAssets = motionUrls(albumVideo) ?: continue
-
-                Log.d(TAG, "Motion artwork found on album '$albumName' for artist '$artistName'")
-                return CanvasArtwork(
-                    url = albumAssets.wide ?: albumAssets.tall ?: albumAssets.primary,
-                    fallbackUrl = albumAssets.alternate,
-                    tallUrl = albumAssets.tall,
-                    wideUrl = albumAssets.wide,
-                    title = artistName,
-                    artist = artistName,
-                    album = albumName,
-                    source = CanvasSource.APPLE,
-                )
-            }
-        }
-        return null
-    }
-
-    private const val MIN_SCORE = 12
-
-    private fun score(
-        song: JsonObject,
-        title: String,
-        artist: String,
-        album: String?,
-        albumIsSelf: Boolean = false,
-    ): Int? {
-        val attributes = song["attributes"]?.jsonObject ?: return null
-        val hitName = attributes["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val hitArtist = attributes["artistName"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val hitAlbum = if (albumIsSelf) {
-            hitName
-        } else {
-            attributes["albumName"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        }
-
-        if (isCompilation(hitName) || isCompilation(hitAlbum)) return null
-
-        val wanted = splitArtists(artist)
-        val credited = splitArtists(hitArtist)
-        if (wanted.isEmpty() || credited.isEmpty()) return null
-        if (!wanted.all { want -> credited.any { it == want || it.contains(want) || want.contains(it) } }) return null
-
-        var score = 10
-
-        val wantTitle = title.normalizeForMatch()
-        val hitTitle = hitName.normalizeForMatch()
-        score += when {
-            hitTitle == wantTitle -> 15
-            hitTitle.contains(wantTitle) || wantTitle.contains(hitTitle) -> 7
-            else -> -10
-        }
-
-        if (!album.isNullOrBlank() && hitAlbum.isNotBlank()) {
-            val wantAlbum = album.normalizeForMatch()
-            val gotAlbum = hitAlbum.normalizeForMatch()
-            score += when {
-                gotAlbum == wantAlbum -> 20
-                gotAlbum.contains(wantAlbum) || wantAlbum.contains(gotAlbum) -> 10
-                else -> 0
-            }
-        }
-
-        for (word in EDITION_WORDS) {
-            val inWanted = title.contains(word, ignoreCase = true)
-            val inHit = hitName.contains(word, ignoreCase = true)
-            if (inWanted && inHit) score += 5 else if (inHit) score -= 3
-        }
-
-        return score
-    }
-
-    private val EDITION_WORDS =
-        listOf("deluxe", "expanded", "remastered", "remix", "version", "edit", "mix", "bonus")
-
-    private fun isCompilation(name: String): Boolean {
-        val lower = name.lowercase(Locale.ROOT)
-        return COMPILATION_MARKERS.any { lower.contains(it) }
-    }
-
-    private val COMPILATION_MARKERS = listOf(
+    private val compilationKeywords = arrayOf(
         "playlist", "set list", "essentials", "dj mix", "mixed",
         "apple music", "today's hits", "session",
     )
 
-    private fun albumId(song: JsonObject): String? {
-        val fromRelationship = song["relationships"]?.jsonObject
-            ?.get("albums")?.jsonObject
-            ?.get("data")?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
-        if (fromRelationship != null) return fromRelationship.takeUnless { it.startsWith("pl.") }
+    private val bundleScriptRegex = Regex(
+        """/assets/(?:index|app)(?:-legacy)?[~-][A-Za-z0-9_-]+\.js|/assets/index[~-][A-Za-z0-9_-]+\.js""",
+    )
+    private val bearerJwtRegex = Regex("""ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
+    private val expFieldRegex = Regex("\"exp\"\\s*:\\s*(\\d+)")
 
-        val url = song["attributes"]?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull ?: return null
-        return url.substringAfter("/album/", "")
-            .substringBefore("?")
-            .substringAfterLast("/")
-            .takeIf { it.isNotBlank() && it.all(Char::isDigit) }
-    }
-
-    private fun fetchAlbum(
-        client: OkHttpClient,
-        albumId: String,
-        bearer: String,
-        songTitle: String?,
-        songArtist: String?,
-    ): CanvasArtwork? {
-        val url = "$AMP/$storefront/albums/$albumId".toHttpUrl().newBuilder()
-            .addQueryParameter("extend", "editorialVideo")
-            .build()
-            .toString()
-
-        val body = get(client, url, bearer) ?: return null
-        val album = runCatching {
-            json.parseToJsonElement(body).jsonObject["data"]?.jsonArray?.firstOrNull()?.jsonObject
-        }.getOrNull() ?: return null
-
-        val attributes = album["attributes"]?.jsonObject ?: return null
-        val albumName = attributes["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        if (isCompilation(albumName)) return null
-
-        val video = attributes["editorialVideo"]?.jsonObject ?: return null
-        val assets = motionUrls(video) ?: return null
-
-        Log.d(TAG, "Motion artwork found on album '$albumName' ($albumId)")
-        return CanvasArtwork(
-            url = assets.primary,
-            fallbackUrl = assets.alternate,
-            tallUrl = assets.tall,
-            wideUrl = assets.wide,
-            title = songTitle,
-            artist = songArtist ?: attributes["artistName"]?.jsonPrimitive?.contentOrNull,
-            album = albumName,
-            source = CanvasSource.APPLE,
-        )
-    }
-
-    private data class MotionUrls(
+    private data class VideoAssets(
         val primary: String,
         val alternate: String?,
         val tall: String?,
         val wide: String?,
     )
 
-    private fun motionUrls(video: JsonObject): MotionUrls? {
-        fun link(key: String): String? = video[key]?.jsonObject?.let { asset ->
-            asset["video"]?.jsonPrimitive?.contentOrNull
-                ?: asset["videoUrl"]?.jsonPrimitive?.contentOrNull
-                ?: asset["hlsUrl"]?.jsonPrimitive?.contentOrNull
-                ?: asset["url"]?.jsonPrimitive?.contentOrNull
-        }?.takeIf { it.isNotBlank() }
-
-        val square = link("motionDetailSquare")
-            ?: link("motionSquareVideo1x1")
-            ?: link("motionArtistSquare1x1")
-            ?: link("motionArtistSquare")
-        val raw = link("motionDetailRaw")
-        val tall = link("motionDetailTall")
-            ?: link("motionTallVideo3x4")
-            ?: link("motionArtistFullscreen16x9")
-            ?: link("motionArtistTall")
-            ?: link("motionArtistFullscreen")
-        val wide = link("motionWideVideo")
-            ?: link("motionWideVideo16x9")
-            ?: link("motionDetailWide")
-            ?: link("motionArtistWide16x9")
-            ?: link("motionArtistWide")
-        val fallback = video.keys.firstNotNullOfOrNull { link(it) }
-        val primary = square ?: raw ?: tall ?: wide ?: fallback ?: return null
-        val alternate = listOfNotNull(square, raw, tall, wide).firstOrNull { it != primary }
-        return MotionUrls(primary, alternate, tall, wide)
+    val storefront: String by lazy {
+        val region = Locale.getDefault().country
+        if (region.length == 2) region.lowercase(Locale.ROOT) else "us"
     }
 
-    @Volatile private var cachedToken: String? = null
-    @Volatile private var tokenExpiresAtMs = 0L
-    @Volatile private var retryTokenAfterMs = 0L
-    private val rejected = mutableSetOf<String>()
+    @Volatile
+    private var activeBearer: String? = null
 
-    @Synchronized
-    private fun token(client: OkHttpClient): String? {
-        val now = System.currentTimeMillis()
-        cachedToken?.let { if (now < tokenExpiresAtMs - 60_000) return it }
-        if (now < retryTokenAfterMs) return null
+    @Volatile
+    private var bearerExpiryMs = 0L
 
-        val html = canvasGet(client, WEB_PLAYER, mapOf("User-Agent" to CANVAS_UA))
-            ?: canvasGet(client, "https://music.apple.com/us/browse", mapOf("User-Agent" to CANVAS_UA))
-        val scripts = html?.let {
-            Regex("""/assets/(?:index|app)(?:-legacy)?[~-][A-Za-z0-9_-]+\.js|/assets/index[~-][A-Za-z0-9_-]+\.js""")
-                .findAll(it).map(MatchResult::value).distinct().toList()
-        }.orEmpty()
+    @Volatile
+    private var nextAttemptAfterMs = 0L
 
-        for (path in scripts) {
-            val script = canvasGet(client, "https://music.apple.com$path", mapOf("User-Agent" to CANVAS_UA))
-                ?: continue
-            val candidates = Regex("""ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
-                .findAll(script)
-                .map(MatchResult::value)
-                .distinct()
-                .filter { it !in rejected }
-                .mapNotNull { jwt -> expiry(jwt)?.let { jwt to it } }
-                .filter { it.second > now }
-                .toList()
-            if (candidates.isEmpty()) continue
+    private val invalidatedTokens = HashSet<String>()
 
-            val (jwt, expiresAt) = candidates.firstOrNull { isWebPlayerToken(it.first) }
-                ?: candidates.first()
-            cachedToken = jwt
-            tokenExpiresAtMs = expiresAt
-            Log.d(TAG, "Apple Music web player token good until ${java.util.Date(expiresAt)}")
-            return jwt
+    fun search(client: OkHttpClient, title: String, artist: String, album: String?): CanvasArtwork? {
+        val jwt = resolveToken(client) ?: return null
+        val queryTerm = buildSongQuery(title, artist, album)
+        val songHits = queryCatalog(client, jwt, queryTerm, "songs", limit = 10, include = "albums")
+            ?: return null
+
+        val candidates = ArrayList<Pair<Int, JsonObject>>()
+        for (element in songHits) {
+            val obj = element as? JsonObject ?: continue
+            val points = scoreCandidate(obj, title, artist, album, treatAsAlbum = false) ?: continue
+            candidates.add(points to obj)
         }
+        candidates.sortByDescending { it.first }
 
-        Log.w(TAG, "No usable web player token in ${scripts.size} bundle(s); backing off")
-        retryTokenAfterMs = now + TOKEN_RETRY_MS
+        for ((points, songNode) in candidates) {
+            if (points < SCORE_THRESHOLD) {
+                Log.d(LOG_TAG, "No hit scored above $SCORE_THRESHOLD for '$title' (best was $points)")
+                break
+            }
+
+            val attrs = songNode["attributes"]?.jsonObject ?: continue
+            val trackName = attrs.stringOrNull("name")
+            val artistName = attrs.stringOrNull("artistName")
+            val albumName = attrs.stringOrNull("albumName")
+
+            val inlineAssets = attrs["editorialVideo"]?.jsonObject?.let(::extractVideoAssets)
+            if (inlineAssets != null) {
+                Log.d(LOG_TAG, "Inline motion artwork found for '$trackName'")
+                return buildArtwork(inlineAssets, inlineAssets.primary, trackName, artistName, albumName)
+            }
+
+            val albumId = extractAlbumId(songNode) ?: continue
+            loadAlbumVideo(client, albumId, jwt, trackName, artistName)?.let { return it }
+        }
         return null
     }
 
-    private const val TOKEN_RETRY_MS = 30L * 60 * 1000
+    fun searchAlbum(client: OkHttpClient, album: String, artist: String): CanvasArtwork? {
+        val jwt = resolveToken(client) ?: return null
+        val queryTerm = if (album.contains(artist, ignoreCase = true)) album else "$artist $album"
+        val albumHits = queryCatalog(client, jwt, queryTerm, "albums", limit = 10) ?: return null
 
-    private fun get(client: OkHttpClient, url: String, bearer: String): String? {
-        val request = Request.Builder().url(url).apply {
-            authHeaders(bearer).forEach { (name, value) -> header(name, value) }
-        }.build()
-        return runCatching {
-            client.newCall(request).execute().use { response ->
+        val candidates = ArrayList<Pair<Int, JsonObject>>()
+        for (element in albumHits) {
+            val obj = element as? JsonObject ?: continue
+            val points = scoreCandidate(obj, album, artist, album, treatAsAlbum = true) ?: continue
+            candidates.add(points to obj)
+        }
+        candidates.sortByDescending { it.first }
+
+        for ((points, albumNode) in candidates) {
+            if (points < SCORE_THRESHOLD) break
+
+            val attrs = albumNode["attributes"]?.jsonObject ?: continue
+            val albumTitle = attrs.stringOrNull("name")
+            if (albumTitle != null && looksLikeCompilation(albumTitle)) continue
+
+            val assets = attrs["editorialVideo"]?.jsonObject?.let(::extractVideoAssets) ?: continue
+            Log.d(LOG_TAG, "Motion artwork found for album '$albumTitle'")
+            return buildArtwork(
+                assets = assets,
+                chosenUrl = assets.primary,
+                title = albumTitle,
+                artist = attrs.stringOrNull("artistName"),
+                album = albumTitle,
+            )
+        }
+        return null
+    }
+
+    fun searchArtist(client: OkHttpClient, artist: String): CanvasArtwork? {
+        val jwt = resolveToken(client) ?: return null
+        val cleanedArtist = artist.trim()
+        if (cleanedArtist.isEmpty()) return null
+
+        val artistHits = queryCatalog(client, jwt, cleanedArtist, "artists", limit = 5) ?: return null
+        val wantedNorm = artist.normalizeForMatch()
+
+        for (element in artistHits) {
+            val artistNode = element as? JsonObject ?: continue
+            val attrs = artistNode["attributes"]?.jsonObject ?: continue
+            val name = attrs.stringOrNull("name") ?: continue
+            val hitNorm = name.normalizeForMatch()
+            val matches = hitNorm == wantedNorm || hitNorm.contains(wantedNorm) || wantedNorm.contains(hitNorm)
+            if (!matches) continue
+
+            val directAssets = attrs["editorialVideo"]?.jsonObject?.let(::extractVideoAssets)
+            if (directAssets != null) {
+                Log.d(LOG_TAG, "Motion artwork found for artist '$name'")
+                val chosen = directAssets.wide ?: directAssets.tall ?: directAssets.primary
+                return buildArtwork(directAssets, chosen, title = name, artist = name, album = null)
+            }
+
+            val artistId = artistNode.stringOrNull("id") ?: continue
+            loadArtistVideo(client, artistId, jwt, name)?.let { return it }
+        }
+        return null
+    }
+
+    private fun buildSongQuery(title: String, artist: String, album: String?): String = buildString {
+        if (!title.contains(artist, ignoreCase = true)) {
+            append(artist).append(' ')
+        }
+        append(title)
+        if (!album.isNullOrBlank() && !title.contains(album, ignoreCase = true)) {
+            append(' ').append(album)
+        }
+    }
+
+    private fun queryCatalog(
+        client: OkHttpClient,
+        jwt: String,
+        term: String,
+        type: String,
+        limit: Int,
+        include: String? = null,
+    ): JsonArray? {
+        val urlBuilder = "$CATALOG_BASE/$storefront/search".toHttpUrl().newBuilder()
+            .addQueryParameter("term", term)
+            .addQueryParameter("types", type)
+            .addQueryParameter("limit", limit.toString())
+            .addQueryParameter("extend", "editorialVideo")
+        if (include != null) {
+            urlBuilder.addQueryParameter("include", include)
+        }
+
+        val payload = authorizedRequest(client, urlBuilder.build().toString(), jwt) ?: return null
+        val root = parseJsonObject(payload) ?: return null
+        return root["results"]?.jsonObject?.get(type)?.jsonObject?.get("data")?.jsonArray
+    }
+
+    private fun loadArtistVideo(
+        client: OkHttpClient,
+        artistId: String,
+        jwt: String,
+        artistName: String,
+    ): CanvasArtwork? {
+        val endpoint = "$CATALOG_BASE/$storefront/artists/$artistId".toHttpUrl().newBuilder()
+            .addQueryParameter("include", "albums")
+            .addQueryParameter("extend", "editorialVideo")
+            .build()
+            .toString()
+
+        val payload = authorizedRequest(client, endpoint, jwt) ?: return null
+        val artistNode = parseJsonObject(payload)
+            ?.get("data")?.jsonArray?.firstOrNull()?.jsonObject ?: return null
+
+        val directAssets = artistNode["attributes"]?.jsonObject
+            ?.get("editorialVideo")?.jsonObject
+            ?.let(::extractVideoAssets)
+        if (directAssets != null) {
+            Log.d(LOG_TAG, "Motion artwork found on artist detail '$artistName' ($artistId)")
+            val chosen = directAssets.wide ?: directAssets.tall ?: directAssets.primary
+            return buildArtwork(directAssets, chosen, title = artistName, artist = artistName, album = null)
+        }
+
+        val albumList = artistNode["relationships"]?.jsonObject
+            ?.get("albums")?.jsonObject
+            ?.get("data")?.jsonArray ?: return null
+
+        for (element in albumList) {
+            val attrs = (element as? JsonObject)?.get("attributes")?.jsonObject ?: continue
+            val albumTitle = attrs.stringOrNull("name").orEmpty()
+            if (looksLikeCompilation(albumTitle)) continue
+
+            val albumAssets = attrs["editorialVideo"]?.jsonObject?.let(::extractVideoAssets) ?: continue
+            Log.d(LOG_TAG, "Motion artwork found on album '$albumTitle' for artist '$artistName'")
+            val chosen = albumAssets.wide ?: albumAssets.tall ?: albumAssets.primary
+            return buildArtwork(albumAssets, chosen, title = artistName, artist = artistName, album = albumTitle)
+        }
+        return null
+    }
+
+    private fun loadAlbumVideo(
+        client: OkHttpClient,
+        albumId: String,
+        jwt: String,
+        songTitle: String?,
+        songArtist: String?,
+    ): CanvasArtwork? {
+        val endpoint = "$CATALOG_BASE/$storefront/albums/$albumId".toHttpUrl().newBuilder()
+            .addQueryParameter("extend", "editorialVideo")
+            .build()
+            .toString()
+
+        val payload = authorizedRequest(client, endpoint, jwt) ?: return null
+        val albumNode = parseJsonObject(payload)
+            ?.get("data")?.jsonArray?.firstOrNull()?.jsonObject ?: return null
+
+        val attrs = albumNode["attributes"]?.jsonObject ?: return null
+        val albumTitle = attrs.stringOrNull("name").orEmpty()
+        if (looksLikeCompilation(albumTitle)) return null
+
+        val assets = attrs["editorialVideo"]?.jsonObject?.let(::extractVideoAssets) ?: return null
+        Log.d(LOG_TAG, "Motion artwork found on album '$albumTitle' ($albumId)")
+        return buildArtwork(
+            assets = assets,
+            chosenUrl = assets.primary,
+            title = songTitle,
+            artist = songArtist ?: attrs.stringOrNull("artistName"),
+            album = albumTitle,
+        )
+    }
+
+    private fun scoreCandidate(
+        node: JsonObject,
+        wantedTitle: String,
+        wantedArtist: String,
+        wantedAlbum: String?,
+        treatAsAlbum: Boolean,
+    ): Int? {
+        val attrs = node["attributes"]?.jsonObject ?: return null
+        val hitTitle = attrs.stringOrNull("name").orEmpty()
+        val hitArtist = attrs.stringOrNull("artistName").orEmpty()
+        val hitAlbum = if (treatAsAlbum) hitTitle else attrs.stringOrNull("albumName").orEmpty()
+
+        if (looksLikeCompilation(hitTitle) || looksLikeCompilation(hitAlbum)) return null
+
+        val wantedArtists = splitArtists(wantedArtist)
+        val creditedArtists = splitArtists(hitArtist)
+        if (wantedArtists.isEmpty() || creditedArtists.isEmpty()) return null
+        val allArtistsMatched = wantedArtists.all { expected ->
+            creditedArtists.any { candidate ->
+                candidate == expected || candidate.contains(expected) || expected.contains(candidate)
+            }
+        }
+        if (!allArtistsMatched) return null
+
+        var points = 10
+
+        val normWantedTitle = wantedTitle.normalizeForMatch()
+        val normHitTitle = hitTitle.normalizeForMatch()
+        points += when {
+            normHitTitle == normWantedTitle -> 15
+            normHitTitle.contains(normWantedTitle) || normWantedTitle.contains(normHitTitle) -> 7
+            else -> -10
+        }
+
+        if (!wantedAlbum.isNullOrBlank() && hitAlbum.isNotBlank()) {
+            val normWantedAlbum = wantedAlbum.normalizeForMatch()
+            val normHitAlbum = hitAlbum.normalizeForMatch()
+            points += when {
+                normHitAlbum == normWantedAlbum -> 20
+                normHitAlbum.contains(normWantedAlbum) || normWantedAlbum.contains(normHitAlbum) -> 10
+                else -> 0
+            }
+        }
+
+        for (tag in releaseTags) {
+            val expectedHas = wantedTitle.contains(tag, ignoreCase = true)
+            val hitHas = hitTitle.contains(tag, ignoreCase = true)
+            if (expectedHas && hitHas) {
+                points += 5
+            } else if (hitHas) {
+                points -= 3
+            }
+        }
+        return points
+    }
+
+    private fun looksLikeCompilation(text: String): Boolean {
+        val lower = text.lowercase(Locale.ROOT)
+        return compilationKeywords.any { marker -> lower.contains(marker) }
+    }
+
+    private fun extractAlbumId(songNode: JsonObject): String? {
+        val relId = songNode["relationships"]?.jsonObject
+            ?.get("albums")?.jsonObject
+            ?.get("data")?.jsonArray?.firstOrNull()
+            ?.jsonObject?.stringOrNull("id")
+        if (relId != null) return relId.takeUnless { it.startsWith("pl.") }
+
+        val webUrl = songNode["attributes"]?.jsonObject?.stringOrNull("url") ?: return null
+        val slug = webUrl.substringAfter("/album/", "").substringBefore("?").substringAfterLast("/")
+        return slug.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
+    }
+
+    private fun extractVideoAssets(videoNode: JsonObject): VideoAssets? {
+        fun pickUrl(field: String): String? {
+            val asset = videoNode[field]?.jsonObject ?: return null
+            val raw = asset.stringOrNull("video")
+                ?: asset.stringOrNull("videoUrl")
+                ?: asset.stringOrNull("hlsUrl")
+                ?: asset.stringOrNull("url")
+            return raw?.takeIf { it.isNotBlank() }
+        }
+
+        val square = pickUrl("motionDetailSquare")
+            ?: pickUrl("motionSquareVideo1x1")
+            ?: pickUrl("motionArtistSquare1x1")
+            ?: pickUrl("motionArtistSquare")
+        val raw = pickUrl("motionDetailRaw")
+        val tall = pickUrl("motionDetailTall")
+            ?: pickUrl("motionTallVideo3x4")
+            ?: pickUrl("motionArtistFullscreen16x9")
+            ?: pickUrl("motionArtistTall")
+            ?: pickUrl("motionArtistFullscreen")
+        val wide = pickUrl("motionWideVideo")
+            ?: pickUrl("motionWideVideo16x9")
+            ?: pickUrl("motionDetailWide")
+            ?: pickUrl("motionArtistWide16x9")
+            ?: pickUrl("motionArtistWide")
+
+        val anyAvailable = videoNode.keys.firstNotNullOfOrNull(::pickUrl)
+        val primary = square ?: raw ?: tall ?: wide ?: anyAvailable ?: return null
+        val alternate = listOfNotNull(square, raw, tall, wide).firstOrNull { it != primary }
+        return VideoAssets(primary, alternate, tall, wide)
+    }
+
+    private fun buildArtwork(
+        assets: VideoAssets,
+        chosenUrl: String,
+        title: String?,
+        artist: String?,
+        album: String?,
+    ): CanvasArtwork = CanvasArtwork(
+        url = chosenUrl,
+        fallbackUrl = assets.alternate,
+        tallUrl = assets.tall,
+        wideUrl = assets.wide,
+        title = title,
+        artist = artist,
+        album = album,
+        source = CanvasSource.APPLE,
+    )
+
+    @Synchronized
+    private fun resolveToken(client: OkHttpClient): String? {
+        val now = System.currentTimeMillis()
+        activeBearer?.let { current ->
+            if (now < bearerExpiryMs - 60_000L) return current
+        }
+        if (now < nextAttemptAfterMs) return null
+
+        val pageHtml = canvasGet(client, PLAYER_ENTRY_URL, mapOf("User-Agent" to CANVAS_UA))
+            ?: canvasGet(client, "https://music.apple.com/us/browse", mapOf("User-Agent" to CANVAS_UA))
+        val scriptPaths = pageHtml?.let { html ->
+            bundleScriptRegex.findAll(html).map(MatchResult::value).distinct().toList()
+        }.orEmpty()
+
+        for (scriptPath in scriptPaths) {
+            val jsSource = canvasGet(client, "https://music.apple.com$scriptPath", mapOf("User-Agent" to CANVAS_UA))
+                ?: continue
+            val validTokens = bearerJwtRegex.findAll(jsSource)
+                .map(MatchResult::value)
+                .distinct()
+                .filter { it !in invalidatedTokens }
+                .mapNotNull { jwt -> parseExpiryMillis(jwt)?.let { exp -> jwt to exp } }
+                .filter { (_, exp) -> exp > now }
+                .toList()
+            if (validTokens.isEmpty()) continue
+
+            val (chosenJwt, expiresAt) = validTokens.firstOrNull { (jwt, _) -> isWebPlayerJwt(jwt) }
+                ?: validTokens[0]
+            activeBearer = chosenJwt
+            bearerExpiryMs = expiresAt
+            Log.d(LOG_TAG, "Apple Music web player token good until ${Date(expiresAt)}")
+            return chosenJwt
+        }
+
+        Log.w(LOG_TAG, "No usable web player token in ${scriptPaths.size} bundle(s); backing off")
+        nextAttemptAfterMs = now + RETRY_COOLDOWN_MS
+        return null
+    }
+
+    private fun authorizedRequest(client: OkHttpClient, url: String, jwt: String): String? {
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $jwt")
+            .header("Origin", "https://music.apple.com")
+            .header("Referer", "https://music.apple.com/")
+            .header("User-Agent", CANVAS_UA)
+            .build()
+
+        return try {
+            client.newCall(req).execute().use { res ->
                 when {
-                    response.isSuccessful -> response.body?.string()
-                    response.code == 401 -> {
-                        Log.w(TAG, "Apple Music token rejected (401); will re-scrape")
+                    res.isSuccessful -> res.body?.string()
+                    res.code == 401 -> {
+                        Log.w(LOG_TAG, "Apple Music token rejected (401); will re-scrape")
                         synchronized(this) {
-                            rejected += bearer
-                            if (cachedToken == bearer) {
-                                cachedToken = null
-                                tokenExpiresAtMs = 0L
+                            invalidatedTokens.add(jwt)
+                            if (activeBearer == jwt) {
+                                activeBearer = null
+                                bearerExpiryMs = 0L
                             }
                         }
                         null
@@ -486,29 +458,34 @@ object AppleMusicCanvas {
                     else -> null
                 }
             }
-        }.getOrNull()
+        } catch (_: Exception) {
+            null
+        }
     }
 
-    private fun isWebPlayerToken(jwt: String): Boolean = runCatching {
-        val parts = jwt.split(".")
-        val header = String(Base64.getUrlDecoder().decode(parts[0]), Charsets.UTF_8)
-        val payload = String(Base64.getUrlDecoder().decode(parts[1]), Charsets.UTF_8)
+    private fun isWebPlayerJwt(jwt: String): Boolean = try {
+        val segments = jwt.split('.')
+        val header = String(Base64.getUrlDecoder().decode(segments[0]), Charsets.UTF_8)
+        val payload = String(Base64.getUrlDecoder().decode(segments[1]), Charsets.UTF_8)
         header.contains("WebPlayKid") || payload.contains("AMPWebPlay")
-    }.getOrDefault(false)
+    } catch (_: Exception) {
+        false
+    }
 
-    private fun expiry(jwt: String): Long? = runCatching {
-        val payload = String(
-            Base64.getUrlDecoder().decode(jwt.split(".")[1]),
-            Charsets.UTF_8,
-        )
-        val seconds = Regex("\"exp\"\\s*:\\s*(\\d+)").find(payload)?.groupValues?.get(1)
-        seconds?.toLong()?.times(1000)
-    }.getOrDefault(null)
+    private fun parseExpiryMillis(jwt: String): Long? = try {
+        val payloadSegment = jwt.split('.')[1]
+        val payloadJson = String(Base64.getUrlDecoder().decode(payloadSegment), Charsets.UTF_8)
+        expFieldRegex.find(payloadJson)?.groupValues?.get(1)?.toLong()?.times(1000L)
+    } catch (_: Exception) {
+        null
+    }
 
-    private fun authHeaders(bearer: String) = mapOf(
-        "Authorization" to "Bearer $bearer",
-        "Origin" to "https://music.apple.com",
-        "Referer" to "https://music.apple.com/",
-        "User-Agent" to CANVAS_UA,
-    )
+    private fun parseJsonObject(raw: String): JsonObject? = try {
+        decoder.parseToJsonElement(raw).jsonObject
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun JsonObject.stringOrNull(key: String): String? =
+        this[key]?.jsonPrimitive?.contentOrNull
 }

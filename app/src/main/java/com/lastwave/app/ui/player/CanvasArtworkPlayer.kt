@@ -3,6 +3,7 @@ package com.lastwave.app.ui.player
 import android.content.Context
 import android.graphics.BlendMode
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -53,28 +54,15 @@ import com.lastwave.app.data.canvas.CanvasCache
 import kotlinx.coroutines.delay
 import java.util.Locale
 
-private const val TAG = "CanvasArtworkPlayer"
-private const val REPAINT_TIMEOUT_MS = 700L
+private const val LOG_TAG = "CanvasArtworkPlayer"
+private const val SURFACE_REPAINT_WAIT_MS = 700L
+private const val FADE_IN_DURATION_MS = 320
 
-/**
- * How a motion artwork clip fills its container bounds.
- */
 enum class CanvasContentMode {
     CROP,
     FIT_PORTRAIT,
 }
 
-/**
- * A looping video player that renders animated album artwork over a still sleeve or background.
- *
- * Dedicated, silent ExoPlayer:
- * - Audio tracks disabled entirely (no network bandwidth spent on audio streams).
- * - Zero volume, no audio focus requested (zero ducking or interference with the main music player).
- * - Loops via REPEAT_MODE_ONE.
- * - Cached via [CanvasCache] so repeated loops stream purely from disk.
- * - Smooth 320ms crossfade over still artwork once the first frame arrives.
- * - Pauses decoding when the screen is off or app is backgrounded ([rememberIsForeground]).
- */
 @OptIn(UnstableApi::class)
 @Composable
 fun CanvasArtworkPlayer(
@@ -92,331 +80,342 @@ fun CanvasArtworkPlayer(
     bottomFadeEndPx: Float? = null,
     pausedForTransition: Boolean = false,
 ) {
-    val context = LocalContext.current
+    val appContext = LocalContext.current
 
-    var url by remember(canvas) { mutableStateOf(canvas.url) }
-    var rendered by remember(canvas) { mutableStateOf(false) }
-    var clipAspect by remember(canvas) { mutableFloatStateOf(0f) }
-    var bounds by remember { mutableStateOf(IntSize.Zero) }
-    var textureView by remember(canvas) { mutableStateOf<TextureView?>(null) }
-    var frameTick by remember(canvas) { mutableIntStateOf(0) }
-    var surfaceGeneration by remember(canvas) { mutableIntStateOf(0) }
+    var activeUrl by remember(canvas) { mutableStateOf(canvas.url) }
+    var frameRendered by remember(canvas) { mutableStateOf(false) }
+    var videoAspect by remember(canvas) { mutableFloatStateOf(0f) }
+    var containerBounds by remember { mutableStateOf(IntSize.Zero) }
+    var videoSurfaceView by remember(canvas) { mutableStateOf<TextureView?>(null) }
+    var frameCounter by remember(canvas) { mutableIntStateOf(0) }
+    var surfaceEpoch by remember(canvas) { mutableIntStateOf(0) }
 
-    val currentContentMode by rememberUpdatedState(contentMode)
-    val currentAlignPortraitTop by rememberUpdatedState(alignPortraitTop)
-    val currentPortraitRevealBounds by rememberUpdatedState(portraitRevealBounds)
-    val currentPresentationAlpha by rememberUpdatedState(presentationAlpha)
-    val reportAspect by rememberUpdatedState(onAspectRatioChanged)
+    val latestMode by rememberUpdatedState(contentMode)
+    val latestPinTop by rememberUpdatedState(alignPortraitTop)
+    val latestRevealSize by rememberUpdatedState(portraitRevealBounds)
+    val latestPresentationAlpha by rememberUpdatedState(presentationAlpha)
+    val notifyAspect by rememberUpdatedState(onAspectRatioChanged)
+    val notifyRendered by rememberUpdatedState(onRenderedChanged)
+    val notifyCover by rememberUpdatedState(onCoverChanged)
 
-    val player = remember {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(CANVAS_UA)
-            .setAllowCrossProtocolRedirects(true)
-        val upstream = DefaultDataSource.Factory(context, httpFactory)
-        val cachedFactory = CanvasCache.dataSourceFactory(context, upstream)
+    val exoPlayer = remember { buildCanvasExoPlayer(appContext) }
 
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(cachedFactory))
-            .build()
-            .apply {
-                volume = 0f
-                repeatMode = Player.REPEAT_MODE_ONE
-                // Motion art is adaptive (HLS) with several resolutions: the default starts low and
-                // a short loop rarely climbs, so clips looked soft. Take the sharpest variant the
-                // display can show (the viewport size cap still applies).
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .setForceHighestSupportedBitrate(true)
-                    // No 4K: sharp on any phone screen without straining the decoder.
-                    .setMaxVideoSize(2048, 2048)
-                    .build()
-            }
-    }
-
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                val width = videoSize.width * videoSize.pixelWidthHeightRatio
-                val aspect = if (width.isFinite() && width > 0f && videoSize.height > 0) {
-                    width / videoSize.height
-                } else 0f
-                if (aspect != clipAspect) rendered = false
-                clipAspect = aspect
-                reportAspect(aspect)
-                textureView?.applyContentTransform(clipAspect, currentContentMode, currentAlignPortraitTop)
+    DisposableEffect(exoPlayer) {
+        val playbackListener = object : Player.Listener {
+            override fun onVideoSizeChanged(size: VideoSize) {
+                val effectiveWidth = size.width * size.pixelWidthHeightRatio
+                val ratio = if (effectiveWidth.isFinite() && effectiveWidth > 0f && size.height > 0) {
+                    effectiveWidth / size.height
+                } else {
+                    0f
+                }
+                if (ratio != videoAspect) {
+                    frameRendered = false
+                }
+                videoAspect = ratio
+                notifyAspect(ratio)
+                videoSurfaceView?.updateScaleMatrix(ratio, latestMode, latestPinTop)
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val alternate = canvas.fallbackUrl
-                if (alternate != null && alternate != url) {
-                    Log.d(TAG, "Primary canvas error, falling back to: $alternate")
-                    url = alternate
+                val backupUrl = canvas.fallbackUrl
+                if (backupUrl != null && backupUrl != activeUrl) {
+                    Log.d(LOG_TAG, "Primary canvas error, falling back to: $backupUrl")
+                    activeUrl = backupUrl
                 } else {
-                    Log.w(TAG, "Canvas playback error: ${error.message}")
-                    rendered = false
+                    Log.w(LOG_TAG, "Canvas playback error: ${error.message}")
+                    frameRendered = false
                 }
             }
         }
-        player.addListener(listener)
+        exoPlayer.addListener(playbackListener)
         onDispose {
-            player.removeListener(listener)
-            player.release()
+            exoPlayer.removeListener(playbackListener)
+            exoPlayer.release()
         }
     }
 
-    LaunchedEffect(url) {
-        rendered = false
-        clipAspect = 0f
-        reportAspect(0f)
-        val item = MediaItem.Builder().setUri(url)
-        mimeTypeOf(url)?.let { item.setMimeType(it) }
-        player.setMediaItem(item.build())
-        player.prepare()
+    LaunchedEffect(activeUrl) {
+        frameRendered = false
+        videoAspect = 0f
+        notifyAspect(0f)
+
+        val mediaBuilder = MediaItem.Builder().setUri(activeUrl)
+        detectMimeType(activeUrl)?.let { mime -> mediaBuilder.setMimeType(mime) }
+        exoPlayer.setMediaItem(mediaBuilder.build())
+        exoPlayer.prepare()
     }
 
-    val foreground = rememberIsForeground()
-    LaunchedEffect(foreground, pausedForTransition) {
-        player.playWhenReady = foreground && !pausedForTransition
+    val isForeground = rememberIsForeground()
+    LaunchedEffect(isForeground, pausedForTransition) {
+        exoPlayer.playWhenReady = isForeground && !pausedForTransition
     }
 
-    LaunchedEffect(surfaceGeneration) {
-        if (surfaceGeneration == 0) return@LaunchedEffect
-        rendered = false
-        val before = frameTick
-        if (player.playbackState != Player.STATE_IDLE) {
-            player.seekTo(player.currentPosition)
+    LaunchedEffect(surfaceEpoch) {
+        if (surfaceEpoch == 0) return@LaunchedEffect
+        frameRendered = false
+        val snapshotTick = frameCounter
+        if (exoPlayer.playbackState != Player.STATE_IDLE) {
+            exoPlayer.seekTo(exoPlayer.currentPosition)
         }
-        delay(REPAINT_TIMEOUT_MS)
-        if (frameTick == before) {
-            rendered = false
+        delay(SURFACE_REPAINT_WAIT_MS)
+        if (frameCounter == snapshotTick) {
+            frameRendered = false
         }
     }
 
-    val reportRendered by rememberUpdatedState(onRenderedChanged)
-    LaunchedEffect(rendered) { reportRendered(rendered) }
+    LaunchedEffect(frameRendered) {
+        notifyRendered(frameRendered)
+    }
 
-    val alpha by animateFloatAsState(
-        targetValue = if (rendered) 1f else 0f,
-        animationSpec = tween(durationMillis = 320),
+    val revealAlpha by animateFloatAsState(
+        targetValue = if (frameRendered) 1f else 0f,
+        animationSpec = tween(durationMillis = FADE_IN_DURATION_MS),
         label = "canvasAlpha",
     )
 
-    val reportCover by rememberUpdatedState(onCoverChanged)
     LaunchedEffect(Unit) {
-        snapshotFlow { alpha * currentPresentationAlpha() }.collect { reportCover(it) }
+        snapshotFlow { revealAlpha * latestPresentationAlpha() }
+            .collect { effectiveAlpha -> notifyCover(effectiveAlpha) }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            reportRendered(false)
-            reportCover(0f)
-            reportAspect(0f)
+            notifyRendered(false)
+            notifyCover(0f)
+            notifyAspect(0f)
         }
     }
 
     AndroidView(
-        factory = { viewContext ->
-            val texture = TextureView(viewContext).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                isOpaque = false
-                this.alpha = 0f
-                player.setVideoTextureView(this)
+        modifier = modifier.onSizeChanged { newSize -> containerBounds = newSize },
+        factory = { viewCtx ->
+            val surfaceView = TextureView(viewCtx)
+            surfaceView.layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            surfaceView.isOpaque = false
+            surfaceView.alpha = 0f
+            exoPlayer.setVideoTextureView(surfaceView)
 
-                val delegate = surfaceTextureListener
-                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                    private var replacing = false
+            val wrappedListener = surfaceView.surfaceTextureListener
+            surfaceView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                private var awaitingNewSurface = false
 
-                    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-                        delegate?.onSurfaceTextureAvailable(surface, width, height)
-                        if (!replacing) return
-                        replacing = false
-                        surfaceGeneration++
+                override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+                    wrappedListener?.onSurfaceTextureAvailable(surface, width, height)
+                    if (awaitingNewSurface) {
+                        awaitingNewSurface = false
+                        surfaceEpoch++
                     }
+                }
 
-                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
-                        delegate?.onSurfaceTextureSizeChanged(surface, width, height)
-                        if (currentContentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect in 0f..1f) {
-                            rendered = false
-                        }
+                override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+                    wrappedListener?.onSurfaceTextureSizeChanged(surface, width, height)
+                    if (latestMode == CanvasContentMode.FIT_PORTRAIT && videoAspect in 0f..1f) {
+                        frameRendered = false
                     }
+                }
 
-                    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-                        replacing = true
-                        rendered = false
-                        return delegate?.onSurfaceTextureDestroyed(surface) ?: true
-                    }
+                override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                    awaitingNewSurface = true
+                    frameRendered = false
+                    return wrappedListener?.onSurfaceTextureDestroyed(surface) ?: true
+                }
 
-                    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
-                        delegate?.onSurfaceTextureUpdated(surface)
-                        if (!rendered) {
-                            val transformed = textureView?.applyContentTransform(
-                                clipAspect, currentContentMode, currentAlignPortraitTop,
-                            ) == true
-                            val portrait = currentContentMode == CanvasContentMode.FIT_PORTRAIT &&
-                                clipAspect > 0f && clipAspect < 1f
-                            val expected = currentPortraitRevealBounds
-                            val view = textureView
-                            val layoutReady = !portrait ||
-                                (expected != IntSize.Zero && view?.width == expected.width &&
-                                    view?.height == expected.height)
-                            if ((currentContentMode == CanvasContentMode.CROP || transformed) && layoutReady) {
-                                rendered = true
-                                frameTick++
-                            }
-                        }
+                override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+                    wrappedListener?.onSurfaceTextureUpdated(surface)
+                    if (frameRendered) return
+
+                    val matrixApplied = videoSurfaceView?.updateScaleMatrix(
+                        videoAspect,
+                        latestMode,
+                        latestPinTop,
+                    ) == true
+                    val isPortraitFit = latestMode == CanvasContentMode.FIT_PORTRAIT &&
+                        videoAspect > 0f && videoAspect < 1f
+                    val targetBounds = latestRevealSize
+                    val view = videoSurfaceView
+                    val boundsMatched = !isPortraitFit || (
+                        targetBounds != IntSize.Zero &&
+                            view?.width == targetBounds.width &&
+                            view.height == targetBounds.height
+                        )
+
+                    if ((latestMode == CanvasContentMode.CROP || matrixApplied) && boundsMatched) {
+                        frameRendered = true
+                        frameCounter++
                     }
                 }
             }
-            textureView = texture
-            FadingBottomFrame(viewContext).apply {
+
+            videoSurfaceView = surfaceView
+            MaskContainerView(viewCtx).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
-                addView(texture)
+                addView(surfaceView)
             }
         },
-        update = { frame ->
-            val view = frame.getChildAt(0) as TextureView
-            view.alpha = if (contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect <= 0f) {
+        update = { container ->
+            val surfaceView = container.getChildAt(0) as TextureView
+            surfaceView.alpha = if (contentMode == CanvasContentMode.FIT_PORTRAIT && videoAspect <= 0f) {
                 0f
             } else {
-                alpha * presentationAlpha()
+                revealAlpha * presentationAlpha()
             }
-            view.applyContentTransform(clipAspect, contentMode, alignPortraitTop)
+            surfaceView.updateScaleMatrix(videoAspect, contentMode, alignPortraitTop)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                view.setBottomFade(bottomFade, bounds, bottomFadeEndPx)
+                surfaceView.applyApi31BottomFade(bottomFade, containerBounds, bottomFadeEndPx)
             } else {
-                frame.fadeFraction = bottomFade
-                frame.fadeEndPx = bottomFadeEndPx
+                container.fadeRatio = bottomFade
+                container.fadeLimitPx = bottomFadeEndPx
             }
         },
-        modifier = modifier.onSizeChanged { bounds = it },
     )
 }
 
-private fun TextureView.applyContentTransform(
+@OptIn(UnstableApi::class)
+private fun buildCanvasExoPlayer(context: Context): ExoPlayer {
+    val httpSource = DefaultHttpDataSource.Factory()
+        .setUserAgent(CANVAS_UA)
+        .setAllowCrossProtocolRedirects(true)
+    val upstream = DefaultDataSource.Factory(context, httpSource)
+    val cachedSource = CanvasCache.dataSourceFactory(context, upstream)
+
+    val player = ExoPlayer.Builder(context)
+        .setMediaSourceFactory(DefaultMediaSourceFactory(cachedSource))
+        .build()
+
+    player.volume = 0f
+    player.repeatMode = Player.REPEAT_MODE_ONE
+    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+        .setForceHighestSupportedBitrate(true)
+        .setMaxVideoSize(2048, 2048)
+        .build()
+    return player
+}
+
+private fun TextureView.updateScaleMatrix(
     clipAspect: Float,
-    contentMode: CanvasContentMode,
-    alignPortraitTop: Boolean,
+    mode: CanvasContentMode,
+    pinPortraitTop: Boolean,
 ): Boolean {
-    val bounds = IntSize(width, height)
-    if (bounds.width <= 0 || bounds.height <= 0 || !clipAspect.isFinite() || clipAspect <= 0f) {
+    if (width <= 0 || height <= 0 || !clipAspect.isFinite() || clipAspect <= 0f) {
         setTransform(Matrix())
         return false
     }
-    val viewAspect = bounds.width.toFloat() / bounds.height
-    val pivotX = bounds.width / 2f
-    val pivotY = if (alignPortraitTop && clipAspect < 1f) {
-        0f
-    } else bounds.height / 2f
-    val matrix = Matrix().apply {
-        val fit = contentMode == CanvasContentMode.FIT_PORTRAIT && clipAspect < 1f
-        if (fit && clipAspect > viewAspect) {
-            setScale(1f, viewAspect / clipAspect, pivotX, pivotY)
-        } else if (fit) {
-            setScale(clipAspect / viewAspect, 1f, pivotX, pivotY)
-        } else if (clipAspect > viewAspect) {
-            setScale(clipAspect / viewAspect, 1f, pivotX, pivotY)
-        } else {
-            setScale(1f, viewAspect / clipAspect, pivotX, pivotY)
-        }
+
+    val containerAspect = width.toFloat() / height.toFloat()
+    val anchorX = width / 2f
+    val anchorY = if (pinPortraitTop && clipAspect < 1f) 0f else height / 2f
+    val fitInside = mode == CanvasContentMode.FIT_PORTRAIT && clipAspect < 1f
+    val scaleHorizontal = if (fitInside) clipAspect <= containerAspect else clipAspect > containerAspect
+
+    val transform = Matrix()
+    if (scaleHorizontal) {
+        transform.setScale(clipAspect / containerAspect, 1f, anchorX, anchorY)
+    } else {
+        transform.setScale(1f, containerAspect / clipAspect, anchorX, anchorY)
     }
-    setTransform(matrix)
+    setTransform(transform)
     return true
 }
 
 @RequiresApi(Build.VERSION_CODES.S)
-private fun TextureView.setBottomFade(fraction: Float, bounds: IntSize, endPx: Float?) {
-    val endY = endPx?.coerceIn(0f, bounds.height.toFloat()) ?: bounds.height.toFloat()
-    if (fraction <= 0.001f || endY <= 0f) {
+private fun TextureView.applyApi31BottomFade(
+    ratio: Float,
+    bounds: IntSize,
+    limitPx: Float?,
+) {
+    val endY = limitPx?.coerceIn(0f, bounds.height.toFloat()) ?: bounds.height.toFloat()
+    if (ratio <= 0.001f || endY <= 0f) {
         setRenderEffect(null)
         return
     }
-    val gradient = LinearGradient(
-        0f,
-        endY * (1f - fraction.coerceAtMost(1f)),
-        0f,
-        endY,
-        android.graphics.Color.BLACK,
-        android.graphics.Color.TRANSPARENT,
-        Shader.TileMode.CLAMP,
-    )
-    // A haunted GPU driver must cost us the fade, never the process.
-    runCatching {
-        setRenderEffect(
-            RenderEffect.createBlendModeEffect(
-                RenderEffect.createOffsetEffect(0f, 0f),
-                RenderEffect.createShaderEffect(gradient),
-                BlendMode.DST_IN,
-            ),
+    val shader = buildFadeGradient(endY, ratio.coerceAtMost(1f))
+    try {
+        val effect = RenderEffect.createBlendModeEffect(
+            RenderEffect.createOffsetEffect(0f, 0f),
+            RenderEffect.createShaderEffect(shader),
+            BlendMode.DST_IN,
         )
+        setRenderEffect(effect)
+    } catch (_: Throwable) {
     }
 }
 
-private class FadingBottomFrame(context: Context) : FrameLayout(context) {
-    var fadeFraction: Float = 0f
+private class MaskContainerView(context: Context) : FrameLayout(context) {
+    var fadeRatio: Float = 0f
         set(value) {
-            val clamped = value.coerceIn(0f, 1f)
-            if (clamped == field) return
-            field = clamped
-            gradient = null
+            val normalized = value.coerceIn(0f, 1f)
+            if (normalized == field) return
+            field = normalized
+            cachedShader = null
             invalidate()
         }
-    var fadeEndPx: Float? = null
+
+    var fadeLimitPx: Float? = null
         set(value) {
             if (value == field) return
             field = value
-            gradient = null
+            cachedShader = null
             invalidate()
         }
 
-    private val maskPaint = Paint().apply {
+    private val alphaMaskPaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
     }
-    private var gradient: LinearGradient? = null
-    private var gradientHeight = 0
+    private var cachedShader: LinearGradient? = null
+    private var shaderForHeight = 0
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        gradient = null
+        cachedShader = null
     }
 
     override fun dispatchDraw(canvas: Canvas) {
-        val fade = fadeFraction
-        val endY = fadeEndPx?.coerceIn(0f, height.toFloat()) ?: height.toFloat()
-        if (fade <= 0.001f || endY <= 0f) {
+        val ratio = fadeRatio
+        val endY = fadeLimitPx?.coerceIn(0f, height.toFloat()) ?: height.toFloat()
+        if (ratio <= 0.001f || endY <= 0f) {
             super.dispatchDraw(canvas)
             return
         }
-        val shader = gradient?.takeIf { gradientHeight == height } ?: LinearGradient(
-            0f,
-            endY * (1f - fade),
-            0f,
-            endY,
-            android.graphics.Color.BLACK,
-            android.graphics.Color.TRANSPARENT,
-            Shader.TileMode.CLAMP,
-        ).also {
-            gradient = it
-            gradientHeight = height
+
+        var shader = cachedShader
+        if (shader == null || shaderForHeight != height) {
+            shader = buildFadeGradient(endY, ratio)
+            cachedShader = shader
+            shaderForHeight = height
         }
-        maskPaint.shader = shader
-        val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+        alphaMaskPaint.shader = shader
+
+        val saveId = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
         super.dispatchDraw(canvas)
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), maskPaint)
-        canvas.restoreToCount(layer)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), alphaMaskPaint)
+        canvas.restoreToCount(saveId)
     }
 }
 
-private fun mimeTypeOf(url: String): String? {
-    val path = url.substringBefore('?').lowercase(Locale.ROOT)
+private fun buildFadeGradient(endY: Float, ratio: Float): LinearGradient =
+    LinearGradient(
+        0f,
+        endY * (1f - ratio),
+        0f,
+        endY,
+        Color.BLACK,
+        Color.TRANSPARENT,
+        Shader.TileMode.CLAMP,
+    )
+
+private fun detectMimeType(url: String): String? {
+    val cleanPath = url.substringBefore('?').lowercase(Locale.ROOT)
     return when {
-        path.endsWith(".m3u8") -> MimeTypes.APPLICATION_M3U8
-        path.endsWith(".mp4") -> MimeTypes.VIDEO_MP4
+        cleanPath.endsWith(".m3u8") -> MimeTypes.APPLICATION_M3U8
+        cleanPath.endsWith(".mp4") -> MimeTypes.VIDEO_MP4
         else -> null
     }
 }

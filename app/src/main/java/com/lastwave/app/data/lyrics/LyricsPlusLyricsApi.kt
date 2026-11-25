@@ -2,6 +2,7 @@ package com.lastwave.app.data.lyrics
 
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -16,6 +17,17 @@ import okhttp3.Request
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val LYRICS_PLUS_UA = "LastWave-Android/1.0 (https://github.com/clash-projects/lastwave)"
+
+private val BACKEND_HOSTS = listOf(
+    "https://lyricsplus.prjktla.my.id",
+    "https://lyricsplus.atomix.one",
+    "https://lyricsplus.binimum.org",
+    "https://lyricsplus.prjktla.workers.dev",
+    "https://lyricsplus-seven.vercel.app",
+    "https://lyrics-plus-backend.vercel.app",
+)
 
 @Serializable
 internal data class LyricsPlusResponse(
@@ -38,26 +50,16 @@ internal data class LyricsPlusSyllable(
     val text: String? = null,
 )
 
-/**
- * Syllable-timed lyrics from LyricsPlus, the open backend behind the YouLy+
- * extension (Apple/QQ/Musixmatch aggregation).
- *
- * Hosting is the catch: it runs on volunteer mirrors and at any moment most
- * are rate-limited or gone, so all mirrors are asked at once and the first
- * real answer wins. The winner is remembered so the next track goes straight
- * to a host that was up a minute ago.
- */
 @Singleton
 class LyricsPlusLyricsApi @Inject constructor(
-    private val okHttpClient: OkHttpClient,
+    private val http: OkHttpClient,
 ) {
-    private val json = Json {
+    private val decoder = Json {
         ignoreUnknownKeys = true
         isLenient = true
         coerceInputValues = true
     }
-
-    private val lastGood = AtomicReference<String?>(null)
+    private val preferredHost = AtomicReference<String?>(null)
 
     suspend fun fetchLyrics(
         title: String,
@@ -67,35 +69,131 @@ class LyricsPlusLyricsApi @Inject constructor(
         isrc: String? = null,
     ): List<LyricLine>? = withContext(Dispatchers.IO) {
         if (title.isBlank() || artist.isBlank()) return@withContext null
-        val hosts = lastGood.get()
-            ?.let { remembered -> listOf(remembered) + MIRRORS.filterNot { it == remembered } }
-            ?: MIRRORS
+
+        val orderedHosts = orderedMirrors()
         coroutineScope {
-            val pending = hosts.map { host ->
-                host to async(Dispatchers.IO) { fetch(host, title, artist, durationSeconds, album, isrc) }
-            }.toMutableList()
-            try {
-                // First mirror to answer with something usable, not the first
-                // to answer at all: a mirror that 404s this track must not
-                // beat one that has it.
-                while (pending.isNotEmpty()) {
-                    val (host, lines) = select {
-                        pending.forEach { (candidate, job) -> job.onAwait { candidate to it } }
+            val activeCalls = orderedHosts
+                .associateWith { host ->
+                    async(Dispatchers.IO) {
+                        queryHost(host, title, artist, durationSeconds, album, isrc)
                     }
-                    pending.removeAll { it.first == host }
-                    if (!lines.isNullOrEmpty()) {
-                        lastGood.set(host)
-                        return@coroutineScope lines
+                }
+                .toMutableMap()
+
+            try {
+                while (activeCalls.isNotEmpty()) {
+                    val (winnerHost, result) = awaitFirst(activeCalls)
+                    activeCalls.remove(winnerHost)
+                    if (!result.isNullOrEmpty()) {
+                        preferredHost.set(winnerHost)
+                        return@coroutineScope result
                     }
                 }
                 null
             } finally {
-                pending.forEach { it.second.cancel() }
+                for (job in activeCalls.values) {
+                    job.cancel()
+                }
             }
         }
     }
 
-    private suspend fun fetch(
+    internal fun parse(response: LyricsPlusResponse): List<LyricLine> {
+        val rawLines = response.lyrics ?: return emptyList()
+        val parsed = ArrayList<LyricLine>(rawLines.size)
+
+        for (entry in rawLines) {
+            val startMs = entry.time ?: continue
+            val durationMs = entry.duration?.takeIf { it > 0L } ?: 0L
+            val words = mergeSyllables(entry.syllabus.orEmpty())
+
+            if (words.isNotEmpty()) {
+                parsed.add(
+                    LyricLine(
+                        timeMs = minOf(startMs, words[0].timeMs),
+                        durationMs = durationMs,
+                        text = words.joinToString(" ") { word -> word.text },
+                        syllables = words,
+                    ),
+                )
+            } else if (!entry.text.isNullOrBlank()) {
+                parsed.add(
+                    LyricLine(
+                        timeMs = startMs,
+                        durationMs = durationMs,
+                        text = entry.text.trim(),
+                    ),
+                )
+            }
+        }
+        parsed.sortBy(LyricLine::timeMs)
+        return parsed
+    }
+
+    internal fun mergeSyllables(syllables: List<LyricsPlusSyllable>): List<LyricSyllable> {
+        val merged = mutableListOf<LyricSyllable>()
+        val wordBuffer = StringBuilder()
+        var wordStartMs = 0L
+        var wordEndMs = 0L
+
+        fun commitWord() {
+            if (wordBuffer.isEmpty()) return
+            val span = (maxOf(wordStartMs, wordEndMs) - wordStartMs).coerceAtLeast(0L)
+            merged.add(LyricSyllable(timeMs = wordStartMs, durationMs = span, text = wordBuffer.toString()))
+            wordBuffer.setLength(0)
+        }
+
+        for (piece in syllables) {
+            val rawText = piece.text ?: continue
+            val trimmed = rawText.trim()
+            if (trimmed.isEmpty()) {
+                commitWord()
+                continue
+            }
+
+            val timestamp = piece.time ?: continue
+            val attachToCurrent = wordBuffer.isNotEmpty() &&
+                !rawText.first().isWhitespace() &&
+                !wordBuffer.last().isCjkOrThai() &&
+                !trimmed.first().isCjkOrThai()
+
+            if (!attachToCurrent) {
+                commitWord()
+            }
+            if (wordBuffer.isEmpty()) {
+                wordStartMs = timestamp
+                wordEndMs = timestamp
+            }
+
+            wordBuffer.append(trimmed)
+            wordEndMs = maxOf(wordEndMs, timestamp + (piece.duration ?: 0L))
+            if (rawText.last().isWhitespace()) {
+                commitWord()
+            }
+        }
+        commitWord()
+        return merged
+    }
+
+    private fun orderedMirrors(): List<String> {
+        val recent = preferredHost.get() ?: return BACKEND_HOSTS
+        return buildList(BACKEND_HOSTS.size) {
+            add(recent)
+            for (mirror in BACKEND_HOSTS) {
+                if (mirror != recent) add(mirror)
+            }
+        }
+    }
+
+    private suspend fun awaitFirst(
+        pending: Map<String, Deferred<List<LyricLine>?>>,
+    ): Pair<String, List<LyricLine>?> = select {
+        for ((host, job) in pending) {
+            job.onAwait { lines -> host to lines }
+        }
+    }
+
+    private suspend fun queryHost(
         host: String,
         title: String,
         artist: String,
@@ -103,121 +201,40 @@ class LyricsPlusLyricsApi @Inject constructor(
         album: String?,
         isrc: String?,
     ): List<LyricLine>? {
-        val builder = "$host/v2/lyrics/get".toHttpUrlOrNull()?.newBuilder() ?: return null
-        builder.addQueryParameter("title", title.trim())
-        builder.addQueryParameter("artist", artist.trim())
-        val seconds = durationSeconds?.takeIf { it > 0 }
-        if (seconds != null) builder.addQueryParameter("duration", seconds.toString())
-        if (!album.isNullOrBlank()) builder.addQueryParameter("album", album.trim())
-        // Sent alongside the name rather than instead of it: the backend
-        // aggregates several catalogues and not all of them index an ISRC.
-        if (!isrc.isNullOrBlank()) builder.addQueryParameter("isrc", isrc.trim())
-        val request = Request.Builder()
-            .url(builder.build())
-            .header("User-Agent", USER_AGENT)
+        val endpoint = "$host/v2/lyrics/get".toHttpUrlOrNull()?.newBuilder() ?: return null
+        endpoint.addQueryParameter("title", title.trim())
+        endpoint.addQueryParameter("artist", artist.trim())
+        if (durationSeconds != null && durationSeconds > 0) {
+            endpoint.addQueryParameter("duration", durationSeconds.toString())
+        }
+        if (!album.isNullOrBlank()) endpoint.addQueryParameter("album", album.trim())
+        if (!isrc.isNullOrBlank()) endpoint.addQueryParameter("isrc", isrc.trim())
+
+        val req = Request.Builder()
+            .url(endpoint.build())
+            .header("User-Agent", LYRICS_PLUS_UA)
             .header("Accept", "application/json")
             .get()
             .build()
+
         return try {
-            val body = okHttpClient.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
-            val response = runCatching { json.decodeFromString<LyricsPlusResponse>(body) }.getOrNull()
-                ?: return null
-            parse(response).takeIf { it.isNotEmpty() }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
+            val payload = http.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
+            val decoded = decoder.decodeFromString<LyricsPlusResponse>(payload)
+            parse(decoded).takeIf { it.isNotEmpty() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         }
     }
-
-    internal fun parse(response: LyricsPlusResponse): List<LyricLine> {
-        return response.lyrics.orEmpty().mapNotNull { line ->
-            val start = line.time ?: return@mapNotNull null
-            val words = mergeSyllables(line.syllabus.orEmpty())
-            when {
-                words.isNotEmpty() -> LyricLine(
-                    timeMs = minOf(start, words.first().timeMs),
-                    durationMs = line.duration?.takeIf { it > 0 } ?: 0L,
-                    text = words.joinToString(" ") { it.text },
-                    syllables = words,
-                )
-                // Some sources are only line-synced; still worth showing.
-                !line.text.isNullOrBlank() -> LyricLine(
-                    timeMs = start,
-                    durationMs = line.duration?.takeIf { it > 0 } ?: 0L,
-                    text = line.text.trim(),
-                )
-                else -> null
-            }
-        }.sortedBy { it.timeMs }
-    }
-
-    /**
-     * Glues syllables back into words: the API's own spacing is the word
-     * boundary — it emits "e" then "nough ", and the trailing space is the
-     * only thing saying those are one word. Each merged word keeps its own
-     * span so the karaoke sweep still follows the timing.
-     */
-    internal fun mergeSyllables(syllables: List<LyricsPlusSyllable>): List<LyricSyllable> {
-        val words = mutableListOf<LyricSyllable>()
-        val current = StringBuilder()
-        var start = 0L
-        var end = 0L
-        fun flush() {
-            if (current.isNotEmpty()) {
-                words += LyricSyllable(
-                    timeMs = start,
-                    durationMs = (maxOf(start, end) - start).coerceAtLeast(0L),
-                    text = current.toString(),
-                )
-            }
-            current.setLength(0)
-        }
-        for (syllable in syllables) {
-            val raw = syllable.text ?: continue
-            val content = raw.trim()
-            if (content.isEmpty()) {
-                flush()
-                continue
-            }
-            val time = syllable.time ?: continue
-            // A run that neither ends in whitespace nor is followed by one is
-            // the front of a word that carries on. Scripts written without
-            // spaces (Han, kana, Thai) are not stating word boundaries, so
-            // each run there stays a word of its own.
-            val joins = current.isNotEmpty() && !raw.first().isWhitespace() &&
-                !current.last().isUnspacedScript() && !content.first().isUnspacedScript()
-            if (!joins) flush()
-            if (current.isEmpty()) {
-                start = time
-                end = time
-            }
-            current.append(content)
-            end = maxOf(end, time + (syllable.duration ?: 0L))
-            if (raw.last().isWhitespace()) flush()
-        }
-        flush()
-        return words
-    }
-
-    companion object {
-        private const val USER_AGENT = "LastWave-Android/1.0 (https://github.com/clash-projects/lastwave)"
-
-        private val MIRRORS = listOf(
-            "https://lyricsplus.prjktla.my.id",
-            "https://lyricsplus.atomix.one",
-            "https://lyricsplus.binimum.org",
-            "https://lyricsplus.prjktla.workers.dev",
-            "https://lyricsplus-seven.vercel.app",
-            "https://lyrics-plus-backend.vercel.app",
-        )
-    }
 }
 
-/** Scripts written without spaces between words. */
-private fun Char.isUnspacedScript(): Boolean =
-    this in '\u3400'..'\u9FFF' || // Han
-        this in '\u3040'..'\u30FF' || // hiragana and katakana
-        this in '\u3000'..'\u303F' || // CJK punctuation
-        this in '\uFF00'..'\uFFEF' || // full-width forms
-        this in '\u0E00'..'\u0E7F' // Thai
+private fun Char.isCjkOrThai(): Boolean = when (this) {
+    in '\u3400'..'\u9FFF',
+    in '\u3040'..'\u30FF',
+    in '\u3000'..'\u303F',
+    in '\uFF00'..'\uFFEF',
+    in '\u0E00'..'\u0E7F',
+    -> true
+    else -> false
+}

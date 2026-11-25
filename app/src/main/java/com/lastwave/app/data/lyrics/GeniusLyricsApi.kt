@@ -18,243 +18,259 @@ import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Web scraper for Genius.com lyrics, used strictly as a last resort when
- * none of the time-synced providers have lyrics for a track. Genius has no
- * timestamps but an immense catalogue.
- *
- * The flow: search the open multi-search endpoint (no API key), match the
- * best candidate, fetch its page and pull the text out of the
- * `data-lyrics-container` blocks — section headers ("[Verse 1]") kept.
- */
+private const val GENIUS_UA = "LastWave"
+private const val SKIP_SELECTOR =
+    "[data-exclude-from-selection=true], .LyricsHeader__Container, .SongBioPreview__Container, .InreadAd__Container, button, script, style"
+
+private val splitSeparatorRegex = Regex("""\s*[-–—:]\s*""")
+private val symbolNoiseRegex = Regex("""[♪♫★☆【】《》「」~_]""")
+private val prodSuffixRegex = Regex("""(?i)\b(?:prod(?:uced)?\.?(?:\s+by)?)\s+.*$""")
+private val tagNoiseRegex = Regex(
+    """\s*[(\[]\s*(?:from|feat\.?|ft\.?|featuring|with|prod\.?|produced by|official|lyrical|video|audio|remix|music video|visualizer|mv|hd|4k|hq|full song)[^)\]]*[)\]]|""" +
+        """\s*\b(?:official\s+(?:music\s+)?(?:video|audio)|lyrical(?:\s+video)?|full\s+song|4k\s+video|hd\s+video|music\s+video)\b""",
+    RegexOption.IGNORE_CASE,
+)
+private val parensRegex = Regex("""\s*[\(\[].*?[\)\]]""")
+private val nonWordRegex = Regex("[^\\p{L}\\p{N}\\s]")
+private val multiSpaceRegex = Regex("""\s+""")
+private val recommendedRegex = Regex("""\d*You might also like""", RegexOption.IGNORE_CASE)
+private val embedFooterRegex = Regex("""\d*Embed\s*$""", RegexOption.IGNORE_CASE)
+
 @Singleton
 class GeniusLyricsApi @Inject constructor(
-    private val okHttpClient: OkHttpClient,
+    private val http: OkHttpClient,
 ) {
-    private val json = Json {
+    private val decoder = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
 
+    private data class QueryCandidate(
+        val queryText: String,
+        val expectedTitle: String,
+        val expectedArtist: String,
+    )
+
     suspend fun fetchLyrics(title: String, artist: String): String? = withContext(Dispatchers.IO) {
         try {
-            scrape(title, artist)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
+            loadSongLyrics(title, artist)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         }
     }
 
-    private suspend fun scrape(title: String, artist: String): String? {
-        val cleanTitle = cleanQuery(title)
-        val cleanArtist = cleanQuery(artist)
+    internal fun parseText(html: String): String? = try {
+        val document = Jsoup.parse(html)
+        val blocks = document.select("div[data-lyrics-container=true]")
+            .takeIf { it.isNotEmpty() }
+            ?: document.select("div.lyrics")
 
-        // If the title is in "Artist - Title" format, take both parts apart.
-        val titleParts = if (cleanTitle.contains(TITLE_SEPARATOR)) {
-            cleanTitle.split(TITLE_SEPARATOR, limit = 2)
-        } else null
-
-        val extractedTitle = when {
-            titleParts != null && titleParts[0].trim().equals(cleanArtist, ignoreCase = true) -> titleParts[1].trim()
-            titleParts != null && titleParts[1].trim().equals(cleanArtist, ignoreCase = true) -> titleParts[0].trim()
-            titleParts != null && titleParts[0].isNotBlank() && titleParts[1].isNotBlank() -> titleParts[1].trim()
-            else -> cleanTitle
-        }
-
-        val extractedArtist = when {
-            titleParts != null && titleParts[0].trim().equals(cleanArtist, ignoreCase = true) -> cleanArtist
-            titleParts != null && titleParts[1].trim().equals(cleanArtist, ignoreCase = true) -> cleanArtist
-            titleParts != null && cleanArtist.isBlank() -> titleParts[0].trim()
-            else -> cleanArtist
-        }
-
-        val titleWithoutBrackets = extractedTitle
-            .replace(BRACKETED_CONTENT, " ")
-            .replace(NON_ALPHANUMERIC, " ")
-            .replace(WHITESPACE, " ")
-            .trim()
-
-        val attempts = buildList {
-            if (extractedArtist.isNotBlank() && extractedTitle.isNotBlank()) {
-                add(SearchAttempt("$extractedArtist $extractedTitle".trim(), extractedTitle, extractedArtist))
-            }
-            if (extractedArtist.isNotBlank() && titleWithoutBrackets.isNotBlank() && titleWithoutBrackets != extractedTitle) {
-                add(SearchAttempt("$extractedArtist $titleWithoutBrackets".trim(), titleWithoutBrackets, extractedArtist))
-            }
-            if (cleanTitle != extractedTitle) {
-                add(SearchAttempt("$cleanArtist $cleanTitle".trim(), cleanTitle, cleanArtist))
-                add(SearchAttempt(cleanTitle, extractedTitle, extractedArtist))
-            }
-            if (titleWithoutBrackets.isNotBlank()) {
-                add(SearchAttempt(titleWithoutBrackets, titleWithoutBrackets, extractedArtist))
-            } else if (extractedTitle.isNotBlank()) {
-                add(SearchAttempt(extractedTitle, extractedTitle, extractedArtist))
-            }
-        }.distinctBy { it.query }
-
-        val songUrl = attempts.firstNotNullOfOrNull { attempt ->
-            searchSongUrl(attempt.query, attempt.title, attempt.artist)
-        } ?: return null
-
-        val html = httpGet(songUrl)?.takeIf { it.isNotBlank() } ?: return null
-        return parseText(html)?.takeIf { it.isNotBlank() }
-    }
-
-    private suspend fun searchSongUrl(query: String, targetTitle: String, targetArtist: String): String? {
-        val url = "https://genius.com/api/search/multi?q=${URLEncoder.encode(query, "UTF-8")}"
-        val body = httpGet(url) ?: return null
-        return runCatching {
-            val root = json.parseToJsonElement(body).jsonObject
-            val response = root["response"]?.jsonObject ?: return null
-            val sections = response["sections"]?.jsonArray ?: return null
-            val songSection = sections.firstOrNull {
-                (it as? JsonObject)?.get("type")?.jsonPrimitive?.contentOrNull == "song"
-            }?.jsonObject ?: return null
-            val hits = songSection["hits"]?.jsonArray ?: return null
-            val candidates = hits.mapNotNull { (it as? JsonObject)?.get("result")?.jsonObject }
-            bestMatch(candidates, targetTitle, targetArtist)?.get("url")?.jsonPrimitive?.contentOrNull
-        }.getOrNull()
-    }
-
-    private fun bestMatch(
-        candidates: List<JsonObject>,
-        targetTitle: String,
-        targetArtist: String,
-    ): JsonObject? {
-        if (candidates.isEmpty()) return null
-        val normTitle = targetTitle.lowercase()
-        val normArtist = targetArtist.lowercase()
-        return candidates.mapNotNull { item ->
-            val title = item["title"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: ""
-            val artist = item["artist_names"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: ""
-            var score = 0
-
-            val titleMatches = normTitle.isNotBlank() &&
-                (title == normTitle || title.contains(normTitle) || normTitle.contains(title))
-            val artistMatches = normArtist.isNotBlank() &&
-                (artist == normArtist || artist.contains(normArtist) || normArtist.contains(artist))
-            if (!titleMatches && !artistMatches) return@mapNotNull null
-
-            if (title == normTitle) score += 50 else if (titleMatches) score += 25
-            if (artistMatches) score += if (artist == normArtist) 40 else 20
-
-            // Threads and translations of the song, not the song itself.
-            val path = item["path"]?.jsonPrimitive?.contentOrNull ?: ""
-            if (path.contains("translation", ignoreCase = true) && !normTitle.contains("translation")) score -= 30
-            if (path.contains("türkçe", ignoreCase = true) || path.contains("polskie-tlumaczenie", ignoreCase = true)) {
-                score -= 40
-            }
-            if (path.contains("tracklist", ignoreCase = true) || path.contains("album-art", ignoreCase = true)) {
-                score -= 50
-            }
-
-            if (score <= 0) return@mapNotNull null
-            item to score
-        }.maxByOrNull { it.second }?.first
-    }
-
-    /**
-     * Extracts the lyrics text while preserving stanzas and section headers.
-     */
-    internal fun parseText(html: String): String? {
-        return try {
-            val doc = Jsoup.parse(html)
-            // Modern Genius uses data-lyrics-container="true", older pages div.lyrics.
-            var containers = doc.select("div[data-lyrics-container=true]")
-            if (containers.isEmpty()) containers = doc.select("div.lyrics")
-            if (containers.isEmpty()) {
-                null
-            } else {
-                val builder = StringBuilder()
-                for (container in containers) {
-                    container.select(
-                        "[data-exclude-from-selection=true], " +
-                            ".LyricsHeader__Container, " +
-                            ".SongBioPreview__Container, " +
-                            ".InreadAd__Container, " +
-                            "button, " +
-                            "script, " +
-                            "style",
-                    ).remove()
-                    // Turn <br> into explicit newlines before extracting text.
-                    container.select("br").forEach { it.replaceWith(TextNode("\n")) }
-                    container.select("p").forEach { it.prepend("\n") }
-                    val text = container.wholeText()
-                    if (text.isNotBlank()) builder.append(text).append("\n")
+        if (blocks.isEmpty()) {
+            null
+        } else {
+            val collected = StringBuilder()
+            for (block in blocks) {
+                block.select(SKIP_SELECTOR).remove()
+                for (br in block.select("br")) {
+                    br.replaceWith(TextNode("\n"))
                 }
-                stripArtifacts(builder.toString()).takeIf { it.isNotBlank() }
+                for (paragraph in block.select("p")) {
+                    paragraph.prepend("\n")
+                }
+                val content = block.wholeText()
+                if (content.isNotBlank()) {
+                    collected.append(content).append('\n')
+                }
             }
-        } catch (_: Exception) {
-            null
+            stripArtifacts(collected.toString()).takeIf { it.isNotBlank() }
         }
+    } catch (_: Exception) {
+        null
     }
 
-    /** Cleans the artifacts a scraped page carries: recommendation inserts,
-     *  a trailing "Embed", unicode spaces. Section headers stay. */
-    internal fun stripArtifacts(raw: String): String =
-        raw.replace('\u00A0', ' ')
+    internal fun stripArtifacts(raw: String): String {
+        val normalizedSpaces = raw
+            .replace('\u00A0', ' ')
             .replace('\u200B', ' ')
             .replace('\uFEFF', ' ')
-            .replace(YOU_MIGHT_ALSO_LIKE, "")
+        return normalizedSpaces
+            .replace(recommendedRegex, "")
             .trim()
-            .replace(TRAILING_EMBED, "")
+            .replace(embedFooterRegex, "")
             .trim()
-
-    private fun cleanQuery(text: String): String {
-        val cleaned = text
-            .replace(DECORATIVE_CHARS, " ")
-            .replace(NOISE, " ")
-            .replace(PRODUCER_TAGS, " ")
-            .substringBefore(" | ")
-            .replace(WHITESPACE, " ")
-            .trim()
-        return cleaned.ifBlank { text.trim() }
     }
 
-    private suspend fun httpGet(url: String): String? {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
+    private suspend fun loadSongLyrics(rawTitle: String, rawArtist: String): String? {
+        val sanitizedTitle = sanitize(rawTitle)
+        val sanitizedArtist = sanitize(rawArtist)
+        val (songTitle, songArtist) = extractPair(sanitizedTitle, sanitizedArtist)
+
+        var matchedUrl: String? = null
+        for (candidate in candidateQueries(sanitizedTitle, sanitizedArtist, songTitle, songArtist)) {
+            matchedUrl = findTrackPage(candidate.queryText, candidate.expectedTitle, candidate.expectedArtist)
+            if (matchedUrl != null) break
+        }
+        if (matchedUrl == null) return null
+
+        val pageHtml = downloadText(matchedUrl)
+        if (pageHtml.isNullOrBlank()) return null
+
+        return parseText(pageHtml)?.takeIf { it.isNotBlank() }
+    }
+
+    private fun extractPair(cleanTitle: String, cleanArtist: String): Pair<String, String> {
+        if (!cleanTitle.contains(splitSeparatorRegex)) return cleanTitle to cleanArtist
+
+        val segments = cleanTitle.split(splitSeparatorRegex, limit = 2)
+        val left = segments[0].trim()
+        val right = segments[1].trim()
+
+        val title = when {
+            left.equals(cleanArtist, ignoreCase = true) -> right
+            right.equals(cleanArtist, ignoreCase = true) -> left
+            left.isNotEmpty() && right.isNotEmpty() -> right
+            else -> cleanTitle
+        }
+        val artist = when {
+            left.equals(cleanArtist, ignoreCase = true) -> cleanArtist
+            right.equals(cleanArtist, ignoreCase = true) -> cleanArtist
+            cleanArtist.isEmpty() -> left
+            else -> cleanArtist
+        }
+        return title to artist
+    }
+
+    private fun candidateQueries(
+        cleanTitle: String,
+        cleanArtist: String,
+        songTitle: String,
+        songArtist: String,
+    ): List<QueryCandidate> {
+        val strippedTitle = songTitle
+            .replace(parensRegex, " ")
+            .replace(nonWordRegex, " ")
+            .replace(multiSpaceRegex, " ")
+            .trim()
+
+        val list = ArrayList<QueryCandidate>(6)
+        if (songArtist.isNotEmpty() && songTitle.isNotEmpty()) {
+            list.add(QueryCandidate("$songArtist $songTitle".trim(), songTitle, songArtist))
+        }
+        if (songArtist.isNotEmpty() && strippedTitle.isNotEmpty() && strippedTitle != songTitle) {
+            list.add(QueryCandidate("$songArtist $strippedTitle".trim(), strippedTitle, songArtist))
+        }
+        if (cleanTitle != songTitle) {
+            list.add(QueryCandidate("$cleanArtist $cleanTitle".trim(), cleanTitle, cleanArtist))
+            list.add(QueryCandidate(cleanTitle, songTitle, songArtist))
+        }
+        if (strippedTitle.isNotEmpty()) {
+            list.add(QueryCandidate(strippedTitle, strippedTitle, songArtist))
+        } else if (songTitle.isNotEmpty()) {
+            list.add(QueryCandidate(songTitle, songTitle, songArtist))
+        }
+        return list.distinctBy(QueryCandidate::queryText)
+    }
+
+    private suspend fun findTrackPage(query: String, wantTitle: String, wantArtist: String): String? {
+        val searchUrl = "https://genius.com/api/search/multi?q=${URLEncoder.encode(query, "UTF-8")}"
+        val payload = downloadText(searchUrl) ?: return null
+
+        return try {
+            val root = decoder.parseToJsonElement(payload).jsonObject
+            val sections = root["response"]?.jsonObject?.get("sections")?.jsonArray ?: return null
+            val songBlock = sections
+                .mapNotNull { it as? JsonObject }
+                .firstOrNull { it["type"]?.jsonPrimitive?.contentOrNull == "song" }
+                ?: return null
+
+            val results = songBlock["hits"]?.jsonArray
+                ?.mapNotNull { (it as? JsonObject)?.get("result")?.jsonObject }
+                ?: return null
+
+            pickTopHit(results, wantTitle, wantArtist)?.get("url")?.jsonPrimitive?.contentOrNull
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun pickTopHit(
+        items: List<JsonObject>,
+        wantTitle: String,
+        wantArtist: String,
+    ): JsonObject? {
+        if (items.isEmpty()) return null
+
+        val targetTitle = wantTitle.lowercase()
+        val targetArtist = wantArtist.lowercase()
+        var chosen: JsonObject? = null
+        var highestScore = 0
+
+        for (entry in items) {
+            val hitTitle = entry["title"]?.jsonPrimitive?.contentOrNull?.lowercase().orEmpty()
+            val hitArtist = entry["artist_names"]?.jsonPrimitive?.contentOrNull?.lowercase().orEmpty()
+
+            val titleMatch = targetTitle.isNotEmpty() &&
+                (hitTitle == targetTitle || hitTitle.contains(targetTitle) || targetTitle.contains(hitTitle))
+            val artistMatch = targetArtist.isNotEmpty() &&
+                (hitArtist == targetArtist || hitArtist.contains(targetArtist) || targetArtist.contains(hitArtist))
+            if (!titleMatch && !artistMatch) continue
+
+            var points = 0
+            if (hitTitle == targetTitle) {
+                points += 50
+            } else if (titleMatch) {
+                points += 25
+            }
+            if (artistMatch) {
+                points += if (hitArtist == targetArtist) 40 else 20
+            }
+
+            val slug = entry["path"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            if (slug.contains("translation", ignoreCase = true) && !targetTitle.contains("translation")) {
+                points -= 30
+            }
+            if (slug.contains("türkçe", ignoreCase = true) || slug.contains("polskie-tlumaczenie", ignoreCase = true)) {
+                points -= 40
+            }
+            if (slug.contains("tracklist", ignoreCase = true) || slug.contains("album-art", ignoreCase = true)) {
+                points -= 50
+            }
+
+            if (points > highestScore) {
+                highestScore = points
+                chosen = entry
+            }
+        }
+        return chosen
+    }
+
+    private fun sanitize(input: String): String {
+        val stripped = input
+            .replace(symbolNoiseRegex, " ")
+            .replace(tagNoiseRegex, " ")
+            .replace(prodSuffixRegex, " ")
+            .substringBefore(" | ")
+            .replace(multiSpaceRegex, " ")
+            .trim()
+        return stripped.ifEmpty { input.trim() }
+    }
+
+    private suspend fun downloadText(targetUrl: String): String? {
+        val req = Request.Builder()
+            .url(targetUrl)
+            .header("User-Agent", GENIUS_UA)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8")
             .header("Accept-Language", "en-US,en;q=0.9")
             .get()
             .build()
         return try {
-            okHttpClient.newCall(request).awaitSuccessfulBodyOrNull()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
+            http.newCall(req).awaitSuccessfulBodyOrNull()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         }
-    }
-
-    private data class SearchAttempt(
-        val query: String,
-        val title: String,
-        val artist: String,
-    )
-
-    companion object {
-        /**
-         * Deliberately not a browser. Genius sits behind Cloudflare, which
-         * challenges a browser-claiming User-Agent whose TLS fingerprint does
-         * not back the claim; a plain one is answered normally.
-         */
-        private const val USER_AGENT = "LastWave"
-
-        private val TITLE_SEPARATOR = Regex("""\s*[-–—:]\s*""")
-        private val DECORATIVE_CHARS = Regex("""[♪♫★☆【】《》「」~_]""")
-        private val PRODUCER_TAGS = Regex("""(?i)\b(?:prod(?:uced)?\.?(?:\s+by)?)\s+.*$""")
-        private val NOISE = Regex(
-            """\s*[(\[]\s*(?:from|feat\.?|ft\.?|featuring|with|prod\.?|produced by|official|lyrical|video|audio|remix|music video|visualizer|mv|hd|4k|hq|full song)[^)\]]*[)\]]|""" +
-                """\s*\b(?:official\s+(?:music\s+)?(?:video|audio)|lyrical(?:\s+video)?|full\s+song|4k\s+video|hd\s+video|music\s+video)\b""",
-            RegexOption.IGNORE_CASE,
-        )
-        private val BRACKETED_CONTENT = Regex("""\s*[\(\[].*?[\)\]]""")
-        private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{N}\\s]")
-        private val WHITESPACE = Regex("""\s+""")
-        private val YOU_MIGHT_ALSO_LIKE = Regex("""\d*You might also like""", RegexOption.IGNORE_CASE)
-        private val TRAILING_EMBED = Regex("""\d*Embed\s*$""", RegexOption.IGNORE_CASE)
     }
 }
