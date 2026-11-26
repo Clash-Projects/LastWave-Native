@@ -255,7 +255,9 @@ class PlaylistViewModel @Inject constructor(
             loadSpotifyPlaylists()
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            // Only the empty list shows a loader. Flipping it on every tab resume re-emitted
+            // the state twice and rebuilt every visible card each time Home came back.
+            if (_uiState.value.playlists.isEmpty()) _uiState.update { it.copy(isLoading = true) }
             val readVersions = trackMoveVersions.toMap()
             val local = try {
                 // The built-in "Local songs" playlist is always present.
