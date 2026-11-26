@@ -229,11 +229,13 @@ private fun KeptShell(
     visibleEntries: State<List<NavBackStackEntry>>,
 ) {
     Box(
-        // Read in layout, not composition: a flip must only re-place Home.
+        // Still measured while covered, so coming back only re-places it; the read sits in
+        // placement so a flip never recomposes Home.
         Modifier.fillMaxSize().layout { measurable, constraints ->
-            if (visibleEntries.value.none { it.id == entry.id }) return@layout layout(0, 0) {}
             val placeable = measurable.measure(constraints)
-            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+            layout(placeable.width, placeable.height) {
+                if (visibleEntries.value.any { it.id == entry.id }) placeable.place(0, 0)
+            }
         },
     ) {
         entry.LocalOwnersProvider(stateHolder) {

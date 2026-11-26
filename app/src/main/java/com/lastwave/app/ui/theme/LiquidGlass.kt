@@ -85,7 +85,8 @@ val LocalLiquidGlass = staticCompositionLocalOf { false }
 val LocalMd3NavBar = staticCompositionLocalOf { false }
 
 /** Background-only source for surfaces inside the captured scrolling content. */
-val LocalLiquidGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
+// Dynamic: switched per route and per player state; static recomposed the whole subtree.
+val LocalLiquidGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
 /** Separate source for overlays; kept for call-site compat, same type as backdrop. */
 val LocalLiquidGlassOverlayBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
