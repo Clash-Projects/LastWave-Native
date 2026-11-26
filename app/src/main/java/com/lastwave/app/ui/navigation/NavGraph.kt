@@ -240,6 +240,7 @@ private fun KeptShell(
     ) {
         entry.LocalOwnersProvider(stateHolder) {
             MainShell(
+                isCurrent = { visibleEntries.value.singleOrNull()?.id == entry.id },
                 onOpenSettings = {
                     navController.navigate(Screen.Settings.route) { launchSingleTop = true }
                 },
