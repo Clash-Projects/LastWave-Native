@@ -782,6 +782,19 @@ internal fun ExpandedPlayer(
     onDragStatusChange: (Boolean) -> Unit = {},
     isOpen: Boolean = true,
 ) {
+    // Settings › Experimental: the new player owns Now Playing; Lyrics and Queue stay classic.
+    val newPlayer = com.lastwave.app.ui.player.nowplaying.rememberNowPlayingRedesignEnabled()
+    if (newPlayer && currentTab == FullPlayerTab.NOW_PLAYING) {
+        com.lastwave.app.ui.player.nowplaying.NowPlayingScreen(
+            viewModel = viewModel,
+            onTabChange = onTabChange,
+            onCollapse = onCollapse,
+            onOpenArtist = onOpenArtist,
+            onDragStatusChange = onDragStatusChange,
+            isOpen = isOpen,
+        )
+        return
+    }
     val state by viewModel.fullPlayerState.collectAsStateWithLifecycle()
     val lyricsState by viewModel.lyricsState.collectAsStateWithLifecycle()
     val lyricsProviderStatuses by viewModel.lyricsProviderStatuses.collectAsStateWithLifecycle()

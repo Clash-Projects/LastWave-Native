@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- New Now Playing player. Kept out of strings.xml so the preview merges cleanly. -->
+<resources>
+    <string name="now_playing_redesign_title">New player</string>
+    <string name="now_playing_redesign_sub">Redesigned Now Playing, coloured by each song. Glass when Liquid Glass is on, Material when it is off.</string>
+    <string name="now_playing_playing_from">PLAYING FROM</string>
+    <string name="now_playing_minimize">Minimize player</string>
+    <string name="now_playing_more">More options</string>
+    <string name="now_playing_action_queue">Queue</string>
+    <string name="now_playing_action_lyrics">Lyrics</string>
+    <string name="now_playing_action_audio">Audio</string>
+    <string name="now_playing_previous">Previous</string>
+    <string name="now_playing_next">Next</string>
+    <string name="now_playing_shuffle_on">Shuffle on</string>
+    <string name="now_playing_shuffle_off">Shuffle off</string>
+    <string name="now_playing_repeat_off">Repeat off</string>
+    <string name="now_playing_repeat_all">Repeat all</string>
+    <string name="now_playing_repeat_one">Repeat one</string>
+    <string name="now_playing_tap_to_retry">Tap to retry</string>
+    <string name="now_playing_dismiss_error">Dismiss error</string>
+</resources>

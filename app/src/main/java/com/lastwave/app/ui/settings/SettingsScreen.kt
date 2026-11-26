@@ -1520,6 +1520,7 @@ fun SettingsScreen(
                             )
                         }
                     }
+                    com.lastwave.app.ui.player.nowplaying.NowPlayingRedesignSettingsGroup()
                     SettingsGroup(rowCount = 3) { index, position ->
                         when (index) {
                             0 -> SettingsActionCard(
