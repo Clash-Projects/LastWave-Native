@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -722,10 +723,18 @@ fun PlayerHost(
                 }
             }
 
-            if (hasBottomNavigation && showBottomNav) {
+            if (showBottomNav) {
                 Box(
                     Modifier
                         .fillMaxSize()
+                        // Kept composed off Home and only left unplaced: rebuilding the bar was
+                        // most of the work in the first frame back.
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, placeable.height) {
+                                if (hasBottomNavigation) placeable.place(0, 0)
+                            }
+                        }
                         .graphicsLayer {
                             val p = if (state.current == null) 1f else (1f - playerExpansion.value * 1.6f).coerceIn(0f, 1f)
                             val e = if (state.current == null) 0f else playerExpansion.value.coerceIn(0f, 1f)
