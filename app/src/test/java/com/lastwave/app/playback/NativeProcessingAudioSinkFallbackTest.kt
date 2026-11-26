@@ -177,4 +177,84 @@ class NativeProcessingAudioSinkFallbackTest {
         assertThat(sink.handleBuffer(pcmFloat, 0L, 1)).isTrue()
         assertThat(configuredRates).contains(48_000)
     }
+
+    @Test
+    fun `routed 96 kHz DAC skips raw 192 kHz direct track and resamples to 96 kHz`() {
+        val engine = mockk<NativeAudioEngine>(relaxed = true) {
+            every { isAvailable } returns true
+            every { configureMediaProcessor(any(), any(), any()) } returns true
+        }
+        val processor = NativePcmAudioProcessor(engine)
+        val enhanced = mockk<DefaultAudioSink>(relaxed = true)
+        val fallback = mockk<DefaultAudioSink>(relaxed = true)
+        val configuredRates = mutableListOf<Int>()
+        every { enhanced.getFormatSupport(any()) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+        every { enhanced.configure(any(), any(), any()) } answers {
+            configuredRates += firstArg<Format>().sampleRate
+        }
+        every { fallback.configure(any(), any(), any()) } answers {
+            configuredRates += firstArg<Format>().sampleRate
+        }
+
+        val sink = NativeProcessingAudioSink(enhanced, fallback, processor)
+        sink.setBitPerfectRequested(true)
+        sink.setPreferredDeviceSupportedRates(listOf(44_100, 48_000, 96_000))
+        sink.setOutputSampleRateOverride(96_000)
+        sink.configure(rawFormat(channels = 2, encoding = C.ENCODING_PCM_24BIT, sampleRate = 192_000), 0, null)
+
+        assertThat(configuredRates).containsExactly(96_000)
+    }
+
+    @Test
+    fun `undisclosed DAC rejecting 192 kHz steps down to 96 kHz before 48 kHz`() {
+        val engine = mockk<NativeAudioEngine>(relaxed = true) {
+            every { isAvailable } returns true
+            every { configureMediaProcessor(any(), any(), any()) } returns true
+            every { processMediaPcm(any(), any(), any(), any(), any(), any(), any()) } answers {
+                arg<Int>(4)
+            }
+        }
+        val processor = NativePcmAudioProcessor(engine)
+        val enhanced = mockk<DefaultAudioSink>(relaxed = true)
+        val fallback = mockk<DefaultAudioSink>(relaxed = true)
+        val hiResFlac = rawFormat(channels = 2, encoding = C.ENCODING_PCM_FLOAT, sampleRate = 192_000)
+
+        val configuredRates = mutableListOf<Int>()
+        every { enhanced.getFormatSupport(any()) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+        every { enhanced.handleBuffer(any(), any(), any()) } throws AudioSink.InitializationException(
+            "192k float rejected",
+            0,
+            hiResFlac,
+            false,
+            IllegalStateException("192k float rejected"),
+        )
+        every { fallback.configure(any(), any(), any()) } answers {
+            configuredRates += firstArg<Format>().sampleRate
+        }
+        every { fallback.handleBuffer(any(), any(), any()) } answers {
+            val rate = configuredRates.last()
+            if (rate > 96_000) {
+                throw AudioSink.InitializationException(
+                    ">96k rejected",
+                    0,
+                    hiResFlac,
+                    false,
+                    IllegalStateException(">96k rejected"),
+                )
+            }
+            val buf = firstArg<ByteBuffer>()
+            buf.position(buf.limit())
+            true
+        }
+
+        val sink = NativeProcessingAudioSink(enhanced, fallback, processor)
+        sink.configure(hiResFlac, 0, null)
+
+        val pcmFloat = ByteBuffer.allocateDirect(2 * 2 * 4).order(ByteOrder.LITTLE_ENDIAN)
+        repeat(4) { pcmFloat.putFloat(0.25f) }
+        pcmFloat.flip()
+
+        assertThat(sink.handleBuffer(pcmFloat, 0L, 1)).isTrue()
+        assertThat(configuredRates).containsExactly(96_000)
+    }
 }

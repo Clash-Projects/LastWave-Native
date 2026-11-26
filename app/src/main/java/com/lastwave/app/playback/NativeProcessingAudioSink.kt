@@ -179,7 +179,8 @@ class NativeProcessingAudioSink(
     @Volatile private var downmixToStereo = false
     private var downmixCopySource: ByteBuffer? = null
     private var downmixCopy: ByteBuffer? = null
-    @Volatile private var rateFallback48kActive = false
+    @Volatile private var rateFallbackTargetHz = 0
+    @Volatile private var preferredDeviceSupportedRates: List<Int> = emptyList()
 
     /**
      * Music-haptics analyser. Fed here, before any routing, because this is the
@@ -307,8 +308,8 @@ class NativeProcessingAudioSink(
         clearEndOfStream()
         downmixToStereo = false
         downmixCopySource = null
-        if (rateFallback48kActive) {
-            rateFallback48kActive = false
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
             runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
         }
         processingActive = false
@@ -399,6 +400,10 @@ class NativeProcessingAudioSink(
             format.channelCount !in 1..2 ||
             format.pcmEncoding !in SUPPORTED_ENCODINGS
         ) {
+            return false
+        }
+        val routedRates = preferredDeviceSupportedRates
+        if (!usbExclusive && routedRates.isNotEmpty() && format.sampleRate !in routedRates) {
             return false
         }
         return try {
@@ -548,8 +553,8 @@ class NativeProcessingAudioSink(
         downmixToStereo = false
         downmixCopySource = null
         downmixCopy = null
-        if (rateFallback48kActive) {
-            rateFallback48kActive = false
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
             runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
         }
         processedFormat = null
@@ -565,7 +570,7 @@ class NativeProcessingAudioSink(
             fallbackDelegate.configure(format, specifiedBufferSize, outputChannels)
         } catch (error: Exception) {
             if (canFoldMultichannel && activateStereoDownmix(format)) return
-            if (recoverSampleRateTo48k(error)) return
+            if (recoverUnsupportedSampleRate(error)) return
             throw error
         }
         if (activeDelegate !== fallbackDelegate) safeFlush(enhancedDelegate)
@@ -731,18 +736,21 @@ class NativeProcessingAudioSink(
         // route or the EQ changes meanwhile: the delegate requires the same
         // object on every retry.
         var activeRouted = prepareRoutedBuffer(buffer)
-        val consumed = try {
-            handleRoutedBuffer(activeRouted, presentationTimeUs, encodedAccessUnitCount)
-        } catch (error: Exception) {
-            val fmt = configuredFormat
-            if (fmt != null && !downmixToStereo && activateStereoDownmix(fmt)) {
-                activeRouted = prepareRoutedBuffer(buffer)
-                handleRoutedBuffer(activeRouted, presentationTimeUs, encodedAccessUnitCount)
-            } else if (fmt != null && recoverSampleRateTo48k(error)) {
-                activeRouted = prepareRoutedBuffer(buffer)
-                handleRoutedBuffer(activeRouted, presentationTimeUs, encodedAccessUnitCount)
-            } else {
-                throw error
+        var consumed = false
+        var rateRetries = 0
+        while (true) {
+            try {
+                consumed = handleRoutedBuffer(activeRouted, presentationTimeUs, encodedAccessUnitCount)
+                break
+            } catch (error: Exception) {
+                val fmt = configuredFormat
+                if (fmt != null && !downmixToStereo && activateStereoDownmix(fmt)) {
+                    activeRouted = prepareRoutedBuffer(buffer)
+                } else if (fmt != null && rateRetries++ < 2 && recoverUnsupportedSampleRate(error)) {
+                    activeRouted = prepareRoutedBuffer(buffer)
+                } else {
+                    throw error
+                }
             }
         }
         mirrorConsumedPosition(buffer, activeRouted)
@@ -897,13 +905,13 @@ class NativeProcessingAudioSink(
         }
         return try {
             handleProcessedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
-        } catch (retryError: Exception) {
-            if (recoverSampleRateTo48k(retryError)) {
+        } catch (error: Exception) {
+            if (recoverUnsupportedSampleRate(error)) {
                 return handleProcessedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
             }
-            if (!switchToPlatformFallback("Processed PCM16 retry failed", retryError)) throw retryError
+            if (!switchToPlatformFallback("Processed PCM16 retry failed", error)) throw error
             fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
-        } catch (retryError: LinkageError) {
+        } catch (error: LinkageError) {
             if (!switchToPlatformFallback("Processed PCM16 retry linkage failed", retryError)) throw retryError
             fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
         }
@@ -1189,6 +1197,11 @@ class NativeProcessingAudioSink(
         fallbackDelegate.setPreferredDevice(audioDeviceInfo)
     }
 
+    /** Supported rates advertised by the routed USB DAC (`AudioDeviceInfo.sampleRates`). */
+    fun setPreferredDeviceSupportedRates(rates: List<Int>) {
+        preferredDeviceSupportedRates = rates.filter { it > 0 }.distinct()
+    }
+
     /**
      * USB-DAC mode: request the track's native rate so the sink opens its
      * AudioTrack without app-side resampling. Null restores default
@@ -1297,6 +1310,10 @@ class NativeProcessingAudioSink(
             format.channelCount !in 1..2 ||
             format.pcmEncoding !in SUPPORTED_ENCODINGS
         ) {
+            return false
+        }
+        val routedRates = preferredDeviceSupportedRates
+        if (!usbExclusive && routedRates.isNotEmpty() && format.sampleRate !in routedRates) {
             return false
         }
         // Tempo/pitch lives in Media3's Sonic stage inside DefaultAudioSink,
@@ -1910,8 +1927,8 @@ class NativeProcessingAudioSink(
         downmixToStereo = false
         downmixCopySource = null
         downmixCopy = null
-        if (rateFallback48kActive) {
-            rateFallback48kActive = false
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
             runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
         }
         hapticsBuffer = null
@@ -1968,8 +1985,8 @@ class NativeProcessingAudioSink(
         downmixToStereo = false
         downmixCopySource = null
         downmixCopy = null
-        if (rateFallback48kActive) {
-            rateFallback48kActive = false
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
             runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
         }
         processedFormat = null
@@ -2065,37 +2082,53 @@ class NativeProcessingAudioSink(
 
     /**
      * Last-resort recovery when the active AudioTrack rejects the stream's
-     * sample rate (e.g. 96/192/384 kHz Hi-Res FLAC over Bluetooth or speaker HAL):
-     * resamples to 48 kHz PCM16 through the native resampler for this item.
+     * sample rate (e.g. 176.4/192/384 kHz on a 96 kHz-max DAC, or 96 kHz over
+     * Bluetooth/speaker HAL): steps down to 96 kHz first (if above 96 kHz),
+     * then 48 kHz through the native resampler for this item.
      */
-    private fun recoverSampleRateTo48k(error: Throwable): Boolean {
+    private fun recoverUnsupportedSampleRate(error: Throwable): Boolean {
         val isSinkReject = error is AudioSink.InitializationException ||
             error is AudioSink.ConfigurationException ||
             error is AudioSink.WriteException ||
             error is IllegalStateException ||
             error is IllegalArgumentException
-        if (!isSinkReject || rateFallback48kActive || nativePathDisabled || !processor.isAvailable) {
+        if (!isSinkReject || nativePathDisabled || !processor.isAvailable) {
             return false
         }
         val effective = effectiveFallbackFormat() ?: return false
         if (effective.sampleRate == SAFE_FALLBACK_SAMPLE_RATE_HZ || !canProcess(effective)) {
             return false
         }
-        rateFallback48kActive = true
+        val nextRate = when {
+            rateFallbackTargetHz == 0 && effective.sampleRate > HI_RES_96K_SAMPLE_RATE_HZ ->
+                HI_RES_96K_SAMPLE_RATE_HZ
+            rateFallbackTargetHz != SAFE_FALLBACK_SAMPLE_RATE_HZ ->
+                SAFE_FALLBACK_SAMPLE_RATE_HZ
+            else -> return false
+        }
+        rateFallbackTargetHz = nextRate
         floatOutputDisabled = true
         bitPerfectAtConfigure = false
         clearPending()
         clearEndOfStream()
         safeFlush(enhancedDelegate)
         safeFlush(fallbackDelegate)
-        processor.setOutputSampleRateOverride(SAFE_FALLBACK_SAMPLE_RATE_HZ)
+        processor.setOutputSampleRateOverride(nextRate)
         val outChannels = if (downmixToStereo) null else configuredOutputChannels
         if (!tryConfigureNativePath(effective, outChannels)) {
-            rateFallback48kActive = false
+            if (nextRate == HI_RES_96K_SAMPLE_RATE_HZ) {
+                rateFallbackTargetHz = SAFE_FALLBACK_SAMPLE_RATE_HZ
+                processor.setOutputSampleRateOverride(SAFE_FALLBACK_SAMPLE_RATE_HZ)
+                if (tryConfigureNativePath(effective, outChannels)) {
+                    Log.w(TAG, "AudioTrack rejected ${effective.sampleRate} Hz; resampled to $SAFE_FALLBACK_SAMPLE_RATE_HZ Hz PCM16", error)
+                    return true
+                }
+            }
+            rateFallbackTargetHz = 0
             runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
             return false
         }
-        Log.w(TAG, "AudioTrack rejected ${effective.sampleRate} Hz; resampled to $SAFE_FALLBACK_SAMPLE_RATE_HZ Hz PCM16", error)
+        Log.w(TAG, "AudioTrack rejected ${effective.sampleRate} Hz; resampled to $nextRate Hz PCM16", error)
         return true
     }
 
@@ -2201,6 +2234,7 @@ class NativeProcessingAudioSink(
     private companion object {
         const val TAG = "NativeAudioSink"
         const val MICROS_PER_SECOND = 1_000_000L
+        const val HI_RES_96K_SAMPLE_RATE_HZ = 96_000
         const val SAFE_FALLBACK_SAMPLE_RATE_HZ = 48_000
         val SUPPORTED_ENCODINGS = setOf(
             C.ENCODING_PCM_16BIT,

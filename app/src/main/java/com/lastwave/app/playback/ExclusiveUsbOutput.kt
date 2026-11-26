@@ -226,36 +226,11 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun supportedHardwareRatesHz(): List<Int> = usbAudio.querySupportedSampleRates()
 
-    private fun pickPlayableHardwareRate(sourceHz: Int, supportedHz: List<Int>): Int? {
-        val supported = supportedHz.filter { it > 0 }.toSet()
-        if (supported.isEmpty()) return null
-        if (sourceHz in supported) return sourceHz
-        // When a DAC lacks a high-rate 44.1 kHz crystal (88.2 / 176.4 / 352.8 / 705.6 kHz),
-        // prefer its native 48 kHz-family hardware crystal (96 / 192 / 384 / 48 kHz) where
-        // USB High-Speed 125us microframes have exact integer frame counts (12 / 24 / 48 / 6).
-        if (sourceHz > 44100 && sourceHz % 44100 == 0) {
-            val family48 = supported.filter { it % 48000 == 0 }
-            if (family48.isNotEmpty()) {
-                val hiRes48 = family48.filter { it >= sourceHz }.minOrNull()
-                    ?: family48.maxOrNull()
-                if (hiRes48 != null) return hiRes48
-            }
-        }
-        // 1. Highest supported integer divisor in the same clock family (e.g. 192 -> 96 -> 48 kHz)
-        val divisors = supported.filter { it < sourceHz && sourceHz % it == 0 }
-        divisors.maxOrNull()?.let { return it }
-        // 2. Lowest supported integer multiple in the same clock family (e.g. 44.1 -> 88.2 kHz)
-        val multiples = supported.filter { it > sourceHz && it % sourceHz == 0 }
-        multiples.minOrNull()?.let { return it }
-        // 3. Same clock family (44.1k vs 48k), closest to source
-        val is441 = sourceHz % 44100 == 0
-        val is48 = sourceHz % 48000 == 0
-        val sameFamily = supported.filter { (is441 && it % 44100 == 0) || (is48 && it % 48000 == 0) }
-        sameFamily.minByOrNull { kotlin.math.abs(it - sourceHz) }?.let { return it }
-        // 4. Highest high-res rate <= sourceHz (e.g. 96 kHz or 48 kHz)
-        val belowOrEqual = supported.filter { it <= sourceHz }
-        belowOrEqual.maxOrNull()?.let { return it }
-        return supported.minByOrNull { kotlin.math.abs(it - sourceHz) }
+    @Volatile private var platformRatesHz: List<Int> = emptyList()
+
+    /** Platform-reported USB DAC rates (`AudioDeviceInfo.sampleRates`), used when descriptor queries are empty. */
+    fun setPlatformSupportedRatesHz(rates: List<Int>) {
+        platformRatesHz = rates.filter { it > 0 }.distinct()
     }
 
     fun framesWritten(): Long = stream?.framesWritten ?: 0L
@@ -602,6 +577,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val info = usbAudio.openDevice(usbDevice)
             ?: return failLocked("openDevice failed" + (usbAudio.lastOpenError?.let { ": $it" } ?: ""))
         val hwRates = usbAudio.querySupportedSampleRates()
+        val knownRates = hwRates.ifEmpty { platformRatesHz }
 
         var effectiveRate = sampleRate
         var effectiveBits = bits
@@ -609,15 +585,15 @@ class ExclusiveUsbOutput @Inject constructor(
         var effectiveEncoding = pcmEncoding
         var autoNegotiatedFallback = rateOverrideHz != null
 
-        // If the USB Clock Source / Format descriptors explicitly report the
-        // DAC's supported rates and the requested rate (e.g. 88.2 / 176.4 / 352.8 kHz)
-        // is not in that hardware table, immediately select the best supported rate.
-        if (rateOverrideHz == null && hwRates.isNotEmpty() && effectiveRate !in hwRates) {
-            val fallback = pickPlayableHardwareRate(effectiveRate, hwRates)
+        // If the USB Clock Source / Format descriptors (or platform AudioDeviceInfo
+        // fallback) report supported rates and the requested rate (e.g. 88.2 / 176.4 /
+        // 192 / 384 kHz on a 96 kHz-max DAC) is missing, switch before opening the stream.
+        if (rateOverrideHz == null && knownRates.isNotEmpty() && effectiveRate !in knownRates) {
+            val fallback = selectExclusiveRateFallback(effectiveRate, knownRates)
             if (fallback != null && fallback != effectiveRate) {
                 Log.i(
                     TAG,
-                    "DAC hardware descriptor lacks ${effectiveRate}Hz (supports $hwRates); " +
+                    "DAC hardware descriptor lacks ${effectiveRate}Hz (supports $knownRates); " +
                         "switching exclusive clock to ${fallback}Hz for soxr resampling",
                 )
                 effectiveRate = fallback
@@ -658,11 +634,11 @@ class ExclusiveUsbOutput @Inject constructor(
         }
 
         // If the DAC's internal clock still rejected or clamped the requested rate
-        // (e.g. reported 44.1 / 48 / 96 kHz when asked for 88.2 / 176.4 / 352.8 kHz),
+        // (e.g. reported 44.1 / 48 / 96 kHz when asked for 88.2 / 176.4 / 192 kHz),
         // fall back to a rate the DAC's internal clock actually locks to.
         if (reported > 0 && reported != effectiveRate) {
-            val candidates = (hwRates + reported).distinct()
-            val candidateRate = pickPlayableHardwareRate(sampleRate, candidates) ?: reported
+            val candidates = (knownRates + reported).distinct()
+            val candidateRate = selectExclusiveRateFallback(sampleRate, candidates) ?: reported
             Log.w(
                 TAG,
                 "DAC internal clock reported ${reported}Hz instead of ${effectiveRate}Hz; " +
@@ -691,27 +667,121 @@ class ExclusiveUsbOutput @Inject constructor(
                 }
             }
             reported = usbAudio.readSampleRate()
+        } else if (!rateSetBefore && reported <= 0 && effectiveRate > 96_000) {
+            // DAC rejected SET_CUR and does not answer GET_CUR: step down through
+            // lower playable rates so a 96 kHz-max DAC never gets an unclocked 192/384k stream.
+            val lowerPool = (knownRates + listOf(96_000, 48_000, 44_100))
+                .filter { it in 1 until effectiveRate }
+                .distinct()
+            var remaining = lowerPool
+            while (remaining.isNotEmpty()) {
+                val candidate = selectExclusiveRateFallback(effectiveRate, remaining) ?: break
+                if (usbAudio.setSampleRate(candidate)) {
+                    Log.w(
+                        TAG,
+                        "DAC rejected ${effectiveRate}Hz without GET_CUR; stepped clock down to ${candidate}Hz",
+                    )
+                    effectiveRate = candidate
+                    effectiveBits = 24
+                    effectiveFloatSource = true
+                    effectiveEncoding = C.ENCODING_PCM_FLOAT
+                    autoNegotiatedFallback = true
+                    rateSetBefore = true
+                    val updatedAlt = usbAudio.findAltSetting(effectiveBits, effectiveRate, channelCount)
+                    if (updatedAlt.first != alt && usbAudio.setAltSetting(updatedAlt.first)) {
+                        alt = updatedAlt.first
+                        wireBits = updatedAlt.second
+                    }
+                    break
+                }
+                remaining = remaining.filter { it != candidate }
+            }
         }
 
+        val usbSpeed = UsbAudioStream.nativeUsbSpeed(info.fd)
+        var selectedOut = findIsoOutEndpoint(usbDevice, info.interfaceId, alt)
+            ?: return failLocked("alt $alt has no isochronous OUT endpoint", definitive = true)
+        var maxPacket = isoPacketBytes(selectedOut.maxPacketSize)
+        var dataInterval = selectedOut.interval.coerceAtLeast(1)
+
+        // Never start a stream whose endpoint wMaxPacketSize is smaller than one
+        // nominal packet at (effectiveRate, wireBits): native submitPcmToUrbs
+        // stops immediately (mute) when b > maxPacketSize.
+        if (maxPacket > 0 && requiredIsoPacketBytes(effectiveRate, channelCount, wireBits, dataInterval, usbSpeed) > maxPacket) {
+            val narrowerAlt = usbAudio.findAltSetting(16, effectiveRate, channelCount)
+            val narrowerOut = if (narrowerAlt.first != alt) {
+                findIsoOutEndpoint(usbDevice, info.interfaceId, narrowerAlt.first)
+            } else {
+                null
+            }
+            val narrowerMax = narrowerOut?.let { isoPacketBytes(it.maxPacketSize) } ?: 0
+            val narrowerInterval = narrowerOut?.interval?.coerceAtLeast(1) ?: dataInterval
+            if (narrowerOut != null &&
+                (narrowerMax == 0 || requiredIsoPacketBytes(effectiveRate, channelCount, narrowerAlt.second, narrowerInterval, usbSpeed) <= narrowerMax) &&
+                usbAudio.setAltSetting(narrowerAlt.first)
+            ) {
+                alt = narrowerAlt.first
+                wireBits = narrowerAlt.second
+                selectedOut = narrowerOut
+                maxPacket = narrowerMax
+                dataInterval = narrowerInterval
+            } else {
+                var ratePool = (knownRates + listOf(96_000, 48_000, 44_100))
+                    .filter { it in 1 until effectiveRate }
+                    .distinct()
+                while (ratePool.isNotEmpty()) {
+                    val candidate = selectExclusiveRateFallback(effectiveRate, ratePool) ?: break
+                    val candAlt = usbAudio.findAltSetting(24, candidate, channelCount)
+                    val candOut = findIsoOutEndpoint(usbDevice, info.interfaceId, candAlt.first)
+                    val candMax = candOut?.let { isoPacketBytes(it.maxPacketSize) } ?: 0
+                    val candInterval = candOut?.interval?.coerceAtLeast(1) ?: 1
+                    val fits24 = candOut != null &&
+                        (candMax == 0 || requiredIsoPacketBytes(candidate, channelCount, candAlt.second, candInterval, usbSpeed) <= candMax)
+                    val alt16 = if (!fits24) usbAudio.findAltSetting(16, candidate, channelCount) else candAlt
+                    val out16 = if (!fits24) findIsoOutEndpoint(usbDevice, info.interfaceId, alt16.first) else candOut
+                    val max16 = out16?.let { isoPacketBytes(it.maxPacketSize) } ?: 0
+                    val int16 = out16?.interval?.coerceAtLeast(1) ?: 1
+                    val fits16 = !fits24 && out16 != null &&
+                        (max16 == 0 || requiredIsoPacketBytes(candidate, channelCount, alt16.second, int16, usbSpeed) <= max16)
+                    val pickedAlt = if (fits24) candAlt else alt16
+                    val pickedOut = if (fits24) candOut else out16
+                    val pickedMax = if (fits24) candMax else max16
+                    val pickedInt = if (fits24) candInterval else int16
+                    if ((fits24 || fits16) && pickedOut != null) {
+                        rateSetBefore = usbAudio.setSampleRate(candidate)
+                        if (usbAudio.setAltSetting(pickedAlt.first)) {
+                            reported = usbAudio.readSampleRate()
+                            Log.w(
+                                TAG,
+                                "Endpoint maxPacket=$maxPacket too small for ${effectiveRate}Hz/${wireBits}bit; " +
+                                    "stepping down to ${candidate}Hz/${pickedAlt.second}bit",
+                            )
+                            effectiveRate = candidate
+                            effectiveBits = 24
+                            effectiveFloatSource = true
+                            effectiveEncoding = C.ENCODING_PCM_FLOAT
+                            autoNegotiatedFallback = true
+                            alt = pickedAlt.first
+                            wireBits = pickedAlt.second
+                            selectedOut = pickedOut
+                            maxPacket = pickedMax
+                            dataInterval = pickedInt
+                            break
+                        }
+                    }
+                    ratePool = ratePool.filter { it != candidate }
+                }
+            }
+        }
         val selected = (0 until usbDevice.interfaceCount)
             .map { usbDevice.getInterface(it) }
             .firstOrNull {
                 it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
                     it.interfaceSubclass == 2 &&
-                    // Playback interface only: headset dongles also expose a
-                    // microphone AS interface with the same alt numbers.
                     it.id == info.interfaceId &&
                     it.alternateSetting == alt &&
                     it.endpointCount > 0
             }
-        val selectedOut = selected?.let { iface ->
-            (0 until iface.endpointCount).map { iface.getEndpoint(it) }
-                .firstOrNull {
-                    it.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
-                        it.direction == UsbConstants.USB_DIR_OUT
-                }
-        }
-        if (selectedOut == null) return failLocked("alt $alt has no isochronous OUT endpoint", definitive = true)
         val selectedFeedback = selected?.let { iface ->
             (0 until iface.endpointCount).map { iface.getEndpoint(it) }
                 .firstOrNull {
@@ -719,8 +789,6 @@ class ExclusiveUsbOutput @Inject constructor(
                         it.direction == UsbConstants.USB_DIR_IN
                 }
         }
-        val maxPacket = isoPacketBytes(selectedOut.maxPacketSize)
-        val dataInterval = selectedOut.interval.coerceAtLeast(1)
         val feedbackPacketSize = selectedFeedback?.maxPacketSize?.let { isoPacketBytes(it) }
             ?: info.feedbackPacketSize
         val feedbackInterval = selectedFeedback?.interval?.coerceAtLeast(1) ?: dataInterval
@@ -1144,7 +1212,7 @@ class ExclusiveUsbOutput @Inject constructor(
         return false
     }
 
-    private companion object {
+    internal companion object {
         const val TAG = "ExclusiveUsb"
         const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
         const val EXTRA_VOLUME_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE"
@@ -1172,10 +1240,40 @@ class ExclusiveUsbOutput @Inject constructor(
             return if (extra > 0) size * (1 + extra) else raw
         }
 
-        fun minIsoPacketBytes(rateHz: Int, channels: Int, bitDepth: Int, interval: Int = 1): Int {
+        fun findIsoOutEndpoint(usbDevice: android.hardware.usb.UsbDevice, interfaceId: Int, alt: Int): android.hardware.usb.UsbEndpoint? {
+            val selected = (0 until usbDevice.interfaceCount)
+                .map { usbDevice.getInterface(it) }
+                .firstOrNull {
+                    it.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                        it.interfaceSubclass == 2 &&
+                        it.id == interfaceId &&
+                        it.alternateSetting == alt &&
+                        it.endpointCount > 0
+                } ?: return null
+            return (0 until selected.endpointCount)
+                .map { selected.getEndpoint(it) }
+                .firstOrNull {
+                    it.type == UsbConstants.USB_ENDPOINT_XFER_ISOC &&
+                        it.direction == UsbConstants.USB_DIR_OUT
+                }
+        }
+
+        internal fun requiredIsoPacketBytes(
+            rateHz: Int,
+            channels: Int,
+            bitDepth: Int,
+            interval: Int = 1,
+            usbSpeed: Int = 3,
+        ): Int {
             val bpf = ((bitDepth + 7) / 8).coerceAtLeast(1) * channels.coerceIn(1, 8)
-            val microframes = if (interval > 1) 1 shl (interval - 1).coerceAtMost(4) else 1
-            val frames = ((rateHz + 7999) / 8000) * microframes + 1
+            val safeInterval = interval.coerceAtLeast(1)
+            val nominalPerPacket = if (usbSpeed == 2) {
+                rateHz.toDouble() * safeInterval / 1000.0
+            } else {
+                val microframes = 1 shl (safeInterval - 1).coerceAtMost(15)
+                rateHz.toDouble() * microframes / 8000.0
+            }
+            val frames = kotlin.math.ceil(nominalPerPacket).toInt().coerceAtLeast(1)
             return frames * bpf
         }
 

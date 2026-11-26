@@ -358,10 +358,13 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         // The signal path stays honest automatically â€” the resampler check
         // fails, so a converted track can never report gold.
         val usbRates = exclusiveUsbOutput.supportedHardwareRatesHz()
+        val platformRates = dac?.sampleRatesHz.orEmpty()
+        exclusiveUsbOutput.setPlatformSupportedRatesHz(platformRates)
         // Android AudioDeviceInfo rates describe the mixer route and may be
-        // incomplete for usbdevfs exclusive access. Only an open USB descriptor
-        // query may pre-select an exclusive fallback; otherwise let configure()
-        // attempt the source clock and verify it with the DAC handshake.
+        // incomplete for usbdevfs exclusive access (e.g. capping at 192 kHz on
+        // a 384 kHz DAC). Only an open USB descriptor query may pre-select an
+        // exclusive fallback; configureLocked still falls back to platformRates
+        // if the USB descriptor query itself returns empty.
         val fallbackHz = if (exclusiveWanted && dac != null && usbRates.isNotEmpty()) {
             selectExclusiveRateFallback(effectiveRateHz, usbRates)
         } else {
@@ -374,10 +377,19 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         } else {
             null
         }
+        val routedRates = if (dac != null) platformRates else emptyList()
+        val androidRateOverride = if (isSpatial) {
+            null
+        } else if (routedRates.isNotEmpty() && effectiveRateHz != null && effectiveRateHz !in routedRates) {
+            selectExclusiveRateFallback(effectiveRateHz, routedRates) ?: effectiveRateHz
+        } else {
+            effectiveRateHz
+        }
         routedDacDeviceId = device?.id
         audioSinks.forEach { sink ->
             runCatching { sink.setPreferredDevice(if (exclusive) null else device) }
-            runCatching { sink.setOutputSampleRateOverride(if (isSpatial) null else effectiveRateHz) }
+            runCatching { sink.setPreferredDeviceSupportedRates(routedRates) }
+            runCatching { sink.setOutputSampleRateOverride(androidRateOverride) }
             runCatching { sink.setExclusiveFallbackRateHz(fallbackHz, effectiveRateHz) }
         }
         if (isSpatial && device == null && dac != null) {
