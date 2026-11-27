@@ -912,7 +912,7 @@ class NativeProcessingAudioSink(
             if (!switchToPlatformFallback("Processed PCM16 retry failed", error)) throw error
             fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
         } catch (error: LinkageError) {
-            if (!switchToPlatformFallback("Processed PCM16 retry linkage failed", retryError)) throw retryError
+            if (!switchToPlatformFallback("Processed PCM16 retry linkage failed", error)) throw error
             fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
         }
     }

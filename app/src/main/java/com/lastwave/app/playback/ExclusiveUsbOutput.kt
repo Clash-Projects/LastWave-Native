@@ -1230,8 +1230,8 @@ class ExclusiveUsbOutput @Inject constructor(
         const val MAX_QUEUED_BYTES = 512 * 1024
         const val MAX_CHANNELS = 8
         const val MAX_SPARE_CHUNKS = 4
-        val FLUSH_MARKER = QueuedPcm(null, null, -1, 0)
-        val IDLE_MARKER = QueuedPcm(null, null, -2, 0)
+        private val FLUSH_MARKER = QueuedPcm(null, null, -1, 0)
+        private val IDLE_MARKER = QueuedPcm(null, null, -2, 0)
 
         fun isoPacketBytes(raw: Int): Int {
             if (raw <= 0) return 0
