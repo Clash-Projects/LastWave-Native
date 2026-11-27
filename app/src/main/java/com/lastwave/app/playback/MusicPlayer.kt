@@ -235,7 +235,10 @@ class MusicPlayer @Inject constructor(
             )
         object : ExtractorsFactory {
             override fun createExtractors(): Array<Extractor> = arrayOf(
-                com.lastwave.app.playback.dsd.DsdMedia3Extractor(),
+                com.lastwave.app.playback.dsd.DsdMedia3Extractor(
+                    modeProvider = { latestPlaybackSettings.dsdOutputMode },
+                    usbDacActiveProvider = { exclusiveUsbWanted() || exclusiveUsbOutput.isActive() },
+                ),
                 AiffMedia3Extractor(),
                 *defaults.createExtractors(),
             )
@@ -244,7 +247,10 @@ class MusicPlayer @Inject constructor(
                 uri: Uri,
                 responseHeaders: Map<String, List<String>>,
             ): Array<Extractor> = arrayOf(
-                com.lastwave.app.playback.dsd.DsdMedia3Extractor(),
+                com.lastwave.app.playback.dsd.DsdMedia3Extractor(
+                    modeProvider = { latestPlaybackSettings.dsdOutputMode },
+                    usbDacActiveProvider = { exclusiveUsbWanted() || exclusiveUsbOutput.isActive() },
+                ),
                 AiffMedia3Extractor(),
                 *defaults.createExtractors(uri, responseHeaders),
             )
@@ -1890,7 +1896,16 @@ class MusicPlayer @Inject constructor(
                         if (eventTime.windowIndex != currentMediaItemIndex) return
                         val rateHz = format.sampleRate
                         val sampleMime = format.sampleMimeType?.lowercase().orEmpty()
+                        val dsdLabel = format.label?.trim()?.uppercase()?.takeIf { it.startsWith("DSD") }
                         val detectedCodec = when {
+                            dsdLabel != null -> dsdLabel
+                            format.codecs.equals("dsd", ignoreCase = true) ||
+                                sampleMime.contains("dsd") || sampleMime.contains("dsf") || sampleMime.contains("dff") -> when (rateHz) {
+                                1_411_200 -> "DSD512"
+                                705_600 -> "DSD256"
+                                352_800 -> "DSD128"
+                                else -> "DSD64"
+                            }
                             sampleMime.contains("eac3") || sampleMime.contains("ec-3") ||
                                 sampleMime.contains("ac-3") || sampleMime.contains("ac3") -> "DOLBY ATMOS"
                             sampleMime.contains("mha1") || sampleMime.contains("mhm1") -> "SPATIAL AUDIO"
@@ -1943,12 +1958,15 @@ class MusicPlayer @Inject constructor(
                                         ((sourceDepth ?: 0) > 16 || rateHz > 48_000) -> "HI-RES FLAC"
                                     else -> detectedCodec
                                 }
+                                val isDsdCodec = detectedCodec.startsWith("DSD")
                                 val finalCodec = if (detectedCodec == "FLAC") {
                                     if (detectedBadge == "FLAC" && currentIsExplicit && updated.audioCodec?.contains("/") == true) {
                                         updated.audioCodec
                                     } else {
                                         detectedBadge
                                     }
+                                } else if (isDsdCodec) {
+                                    detectedCodec
                                 } else if (currentIsExplicit && updated.audioCodec != "FLAC" && updated.audioCodec != "HI-RES FLAC" && updated.audioCodec != "LOSSLESS") {
                                     updated.audioCodec
                                 } else {
@@ -1956,9 +1974,9 @@ class MusicPlayer @Inject constructor(
                                 }
                                 updated = updated.copy(
                                     audioCodec = finalCodec,
-                                    bitDepth = manifestDepth ?: updated.bitDepth ?: sourceDepth,
-                                    bitrateKbps = if (detectedCodec == "FLAC") (updated.bitrateKbps ?: bitrate) else (updated.bitrateKbps ?: bitrate ?: if (detectedCodec == "OPUS") 160 else null),
-                                    isLossless = detectedCodec == "FLAC",
+                                    bitDepth = if (isDsdCodec) 1 else (manifestDepth ?: updated.bitDepth ?: sourceDepth),
+                                    bitrateKbps = if (detectedCodec == "FLAC" || isDsdCodec) (updated.bitrateKbps ?: bitrate) else (updated.bitrateKbps ?: bitrate ?: if (detectedCodec == "OPUS") 160 else null),
+                                    isLossless = detectedCodec == "FLAC" || isDsdCodec,
                                 )
                             }
                             android.util.Log.i("MusicPlayer", "AudioInputFormatChanged: mime=${format.sampleMimeType}, rate=${rateHz}Hz, bitrate=${format.bitrate}, detectedCodec=$detectedCodec -> qualityPill=[codec=${updated.audioCodec}, depth=${updated.bitDepth}, bitrate=${updated.bitrateKbps}kbps, rate=${updated.samplingRateKHz}kHz]")

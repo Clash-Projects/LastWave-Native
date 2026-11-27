@@ -69,6 +69,7 @@ class ExclusiveUsbOutput @Inject constructor(
     @Volatile private var listeningGain = 1f
     @Volatile private var softwareGainValue = 1f
     @Volatile private var lastHardwareRate = 0
+    @Volatile private var isDsdStream = false
 
     private val usbAudio = UsbAudioDevice.getInstance(appContext)
     private var stream: UsbAudioStream? = null
@@ -216,7 +217,7 @@ class ExclusiveUsbOutput @Inject constructor(
      * PCM software gain for exclusive output: the Media3 volume, times the
      * curved STREAM_MUSIC level when no Feature Unit carries it.
      */
-    fun softwareGain(): Float = if (!active) 1f else softwareGainValue
+    fun softwareGain(): Float = if (isDsdStream) 1f else if (!active) 1f else softwareGainValue
 
     fun currentRateHz(): Int = if (active) configuredRateHz else 0
 
@@ -323,6 +324,7 @@ class ExclusiveUsbOutput @Inject constructor(
         format: Format,
         rateOverrideHz: Int? = null,
         bitDepthHint: Int? = null,
+        isDsd: Boolean = false,
     ): Boolean {
         if (!wanted) return false
         if (format.sampleMimeType != MimeTypes.AUDIO_RAW ||
@@ -357,6 +359,7 @@ class ExclusiveUsbOutput @Inject constructor(
                     floatSource,
                     if (rateOverrideHz != null) C.ENCODING_PCM_FLOAT else format.pcmEncoding,
                     rateOverrideHz,
+                    isDsd,
                 )
             }.onFailure { error ->
                 Log.w(TAG, "Exclusive USB configure failed", error)
@@ -523,6 +526,7 @@ class ExclusiveUsbOutput @Inject constructor(
         floatSource: Boolean,
         pcmEncoding: Int,
         rateOverrideHz: Int? = null,
+        isDsd: Boolean = false,
     ): Boolean {
         val manager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
         val usbDevice = manager.deviceList.values.firstOrNull { dev ->
@@ -557,6 +561,7 @@ class ExclusiveUsbOutput @Inject constructor(
                     clockMatched = rateOverrideHz == null
                 }
                 currentFallbackNegotiated = rateOverrideHz != null
+                isDsdStream = isDsd
                 lastClockWatchdogMs = SystemClock.elapsedRealtime()
                 synchronized(stateLock) {
                     paused = false
@@ -576,7 +581,11 @@ class ExclusiveUsbOutput @Inject constructor(
         currentDeviceKey = deviceKey
         val info = usbAudio.openDevice(usbDevice)
             ?: return failLocked("openDevice failed" + (usbAudio.lastOpenError?.let { ": $it" } ?: ""))
-        val hwRates = usbAudio.querySupportedSampleRates()
+        val hwRates = if (isDsd) {
+            usbAudio.queryRawSupportedSampleRates()
+        } else {
+            usbAudio.querySupportedSampleRates()
+        }
         val knownRates = hwRates.ifEmpty { platformRatesHz }
 
         var effectiveRate = sampleRate
@@ -585,10 +594,19 @@ class ExclusiveUsbOutput @Inject constructor(
         var effectiveEncoding = pcmEncoding
         var autoNegotiatedFallback = rateOverrideHz != null
 
+        // DoP (DSD over PCM) streams MUST NOT be sample-rate converted: resampling corrupts the
+        // 0x05/0xFA marker bytes and 1-bit DSD payload.
+        if (isDsd && knownRates.isNotEmpty() && effectiveRate !in knownRates) {
+            return failLocked(
+                "DAC hardware descriptor lacks ${effectiveRate}Hz for DoP (supports $knownRates)",
+                definitive = true,
+            )
+        }
+
         // If the USB Clock Source / Format descriptors (or platform AudioDeviceInfo
         // fallback) report supported rates and the requested rate (e.g. 88.2 / 176.4 /
         // 192 / 384 kHz on a 96 kHz-max DAC) is missing, switch before opening the stream.
-        if (rateOverrideHz == null && knownRates.isNotEmpty() && effectiveRate !in knownRates) {
+        if (!isDsd && rateOverrideHz == null && knownRates.isNotEmpty() && effectiveRate !in knownRates) {
             val fallback = selectExclusiveRateFallback(effectiveRate, knownRates)
             if (fallback != null && fallback != effectiveRate) {
                 Log.i(
@@ -637,6 +655,12 @@ class ExclusiveUsbOutput @Inject constructor(
         // (e.g. reported 44.1 / 48 / 96 kHz when asked for 88.2 / 176.4 / 192 kHz),
         // fall back to a rate the DAC's internal clock actually locks to.
         if (reported > 0 && reported != effectiveRate) {
+            if (isDsd) {
+                return failLocked(
+                    "DAC internal clock rejected DoP ${effectiveRate}Hz (reported ${reported}Hz)",
+                    definitive = true,
+                )
+            }
             val candidates = (knownRates + reported).distinct()
             val candidateRate = selectExclusiveRateFallback(sampleRate, candidates) ?: reported
             Log.w(
@@ -667,7 +691,7 @@ class ExclusiveUsbOutput @Inject constructor(
                 }
             }
             reported = usbAudio.readSampleRate()
-        } else if (!rateSetBefore && reported <= 0 && effectiveRate > 96_000) {
+        } else if (!isDsd && !rateSetBefore && reported <= 0 && effectiveRate > 96_000) {
             // DAC rejected SET_CUR and does not answer GET_CUR: step down through
             // lower playable rates so a 96 kHz-max DAC never gets an unclocked 192/384k stream.
             val lowerPool = (knownRates + listOf(96_000, 48_000, 44_100))
@@ -822,6 +846,7 @@ class ExclusiveUsbOutput @Inject constructor(
         useFloatWrite = effectiveFloatSource
         configuredRateHz = effectiveRate
         currentFallbackNegotiated = autoNegotiatedFallback
+        isDsdStream = isDsd
         active = true
         lastFailureReason = null
         lastFailureDefinitive = false
@@ -1104,6 +1129,11 @@ class ExclusiveUsbOutput @Inject constructor(
 
     /** Writer thread only: applies the current software gain, then hands the chunk to USB. */
     private fun writeScaled(target: UsbAudioStream, chunk: QueuedPcm) {
+        val rawBytes = chunk.raw
+        if (isDsdStream && rawBytes != null) {
+            target.writeRaw(rawBytes, chunk.encoding)
+            return
+        }
         val gain = softwareGain()
         val fromGain = lastPcmGain
         lastPcmGain = gain
@@ -1116,7 +1146,7 @@ class ExclusiveUsbOutput @Inject constructor(
             target.write(floats)
             return
         }
-        val bytes = chunk.raw ?: return
+        val bytes = rawBytes ?: return
         val attenuate = gain >= 0f && (gain < 1f - 1e-6f || fromGain < 1f - 1e-6f)
         if (attenuate && chunk.encoding == RAW_PCM16 && activeWireBits > 16) {
             // Scale into 24 bits instead of back into 16: same level, no
@@ -1145,6 +1175,7 @@ class ExclusiveUsbOutput @Inject constructor(
             runCatching { running.release() }
         }
         stream = null
+        isDsdStream = false
         synchronized(stateLock) {
             active = false
         }
@@ -1230,8 +1261,8 @@ class ExclusiveUsbOutput @Inject constructor(
         const val MAX_QUEUED_BYTES = 512 * 1024
         const val MAX_CHANNELS = 8
         const val MAX_SPARE_CHUNKS = 4
-        val FLUSH_MARKER = QueuedPcm(null, null, -1, 0)
-        val IDLE_MARKER = QueuedPcm(null, null, -2, 0)
+        private val FLUSH_MARKER = QueuedPcm(null, null, -1, 0)
+        private val IDLE_MARKER = QueuedPcm(null, null, -2, 0)
 
         fun isoPacketBytes(raw: Int): Int {
             if (raw <= 0) return 0

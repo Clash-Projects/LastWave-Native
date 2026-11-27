@@ -321,7 +321,7 @@ open class MainShellActivity : androidx.fragment.app.FragmentActivity() {
             androidx.core.content.ContextCompat.startForegroundService(this, playbackIntent)
             return
         }
-        val uri = intent?.data
+        val uri = intent?.data ?: intent?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
         val scheme = uri?.scheme.orEmpty().lowercase()
         val host = uri?.host.orEmpty().lowercase()
         val isSupportedMusicLink = intent?.action == Intent.ACTION_VIEW &&
