@@ -158,6 +158,7 @@ data class UniversalSectionItem(
 )
 
 val ALL_DEFAULT_UNIVERSAL_SECTIONS: List<UniversalSectionItem> = listOf(
+    UniversalSectionItem("infinite_radio", titleRes = R.string.home_section_infinite_radio_title, subtitleRes = R.string.home_section_infinite_radio_sub, isYouTube = false, icon = Icons.Filled.Radio),
     UniversalSectionItem("quick_tiles", titleRes = R.string.home_section_quick_tiles_title, subtitleRes = R.string.home_section_quick_tiles_sub, isYouTube = false, icon = Icons.Filled.Dashboard),
     UniversalSectionItem("taste_strip", titleRes = R.string.home_section_taste_strip_title, subtitleRes = R.string.home_section_taste_strip_sub, isYouTube = false, icon = Icons.Filled.Sell),
     UniversalSectionItem("discover_new_music", titleRes = R.string.home_section_discover_title, subtitleRes = R.string.home_section_discover_sub, isYouTube = false, icon = Icons.Filled.Explore),
@@ -237,7 +238,7 @@ class HomeSectionsViewModel @Inject constructor(
             } else {
                 val itemMap = defaultList.associateBy { it.id }
                 val list = storedOrder
-                    .filter { it != "hero_greeting" && it != "infinite_radio" }
+                    .filter { it != "hero_greeting" }
                     .mapNotNull { itemMap[it] }
                     .toMutableList()
                 for (defaultItem in defaultList) {
