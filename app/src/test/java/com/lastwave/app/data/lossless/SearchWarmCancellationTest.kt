@@ -3,6 +3,7 @@ package com.lastwave.app.data.lossless
 import com.lastwave.app.data.addon.HybridMediaServer
 import com.lastwave.app.data.addon.LoopbackHttpServer
 import com.lastwave.app.data.local.HttpAddonConfig
+import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.plugin.ModuleManager
 import io.mockk.every
@@ -10,6 +11,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -36,9 +38,9 @@ class SearchWarmCancellationTest {
         val http = OkHttpClient()
         try {
             val settings = mockk<SettingsPreferences>()
-            every { settings.httpAddons } returns MutableStateFlow(listOf(HttpAddonConfig(
-                url = "${server.url}/a/test-token", enabled = true,
-            )))
+            val addons = listOf(HttpAddonConfig(url = "${server.url}/a/test-token", enabled = true))
+            every { settings.httpAddons } returns MutableStateFlow(addons)
+            every { settings.settings } returns flowOf(MiscSettings(httpAddons = addons))
             val native = mockk<NativeSecrets>()
             every { native.signAddonRequest(any(), any()) } returns null
             val api = LosslessMusicApi(http, mockk<ModuleManager>(), native, settings, mockk<HybridMediaServer>(relaxUnitFun = true))
