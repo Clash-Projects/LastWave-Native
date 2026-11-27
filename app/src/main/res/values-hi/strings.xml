@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">LastWave प्लेयर</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">SoundDrop प्लेयर</string>
     <string name="widget_description">सभी मीडिया ऐप्स के लिए कवर, गाने की जानकारी और प्लेबैक नियंत्रण</string>
 
     <string name="nav_feed">फ़ीड</string>
@@ -11,7 +11,7 @@
     <string name="update_available">अपडेट उपलब्ध</string>
     <string name="update">अपडेट करें</string>
     <string name="dismiss_update">अपडेट हटाएँ</string>
-    <string name="update_ready_to_install">LastWave v%1$s इंस्टॉल के लिए तैयार</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s इंस्टॉल के लिए तैयार</string>
 
     <string name="settings">सेटिंग्स</string>
     <string name="settings_section_language">भाषा</string>
@@ -35,7 +35,7 @@
     <string name="settings_downloads_title">डाउनलोड और ऑफ़लाइन संगीत</string>
 
     <string name="settings_section_appearance">दिखावट</string>
-    <string name="settings_lastwave_theme">लास्टवेव सिग्नेचर थीम</string>
+    <string name="settings_lastwave_theme">SoundDrop सिग्नेचर थीम</string>
     <string name="settings_lastwave_theme_sub">लोगो आइकन के रंगों पर आधारित स्पेशल थीम • इलेक्ट्रिक लाइम और टील</string>
     <string name="settings_amoled">AMOLED मोड</string>
     <string name="settings_amoled_sub">शुद्ध काली पृष्ठभूमि</string>
@@ -118,7 +118,7 @@
     <string name="dialog_clear_all_text">इससे क्रेडेंशियल, प्लेलिस्ट और कैश डेटा हट जाएगा। पूर्ववत नहीं होगा।</string>
     <string name="dialog_clear_all_confirm">सब मिटाएँ</string>
     <string name="dialog_disconnect_yt_title">YouTube Music डिस्कनेक्ट करें?</string>
-    <string name="dialog_disconnect_yt_text">खाते में प्रतिबिंबित प्लेलिस्ट वहीं रहेंगी, पर LastWave सिंक बंद कर देगा और कनेक्शन भूल जाएगा।</string>
+    <string name="dialog_disconnect_yt_text">खाते में प्रतिबिंबित प्लेलिस्ट वहीं रहेंगी, पर SoundDrop सिंक बंद कर देगा और कनेक्शन भूल जाएगा।</string>
     <string name="dialog_logout_title">Last.fm से लॉग आउट करें?</string>
     <string name="dialog_logout_text">आपकी प्लेलिस्ट और कैश डेटा रखा जाएगा।</string>
     <string name="common_save">सहेजें</string>
@@ -261,7 +261,7 @@
     <string name="desc_repeat">दोहराएँ</string>
     <string name="desc_play_pause">चलाएँ या रोकें</string>
 
-    <string name="widget_obsidian_name">LastWave ओब्सीडियन ग्लास</string>
+    <string name="widget_obsidian_name">SoundDrop ओब्सीडियन ग्लास</string>
     <string name="widget_obsidian_description">पारभासी गहराई और क्रिस्टल रिम के साथ फ्रॉस्टेड ओब्सीडियन ग्लास प्लेयर</string>
     <string name="nav_generator">जेनरेटर</string>
     <string name="settings_downloads_sub_custom">%1$d गीत • %2$s • %3$s</string>
@@ -766,7 +766,7 @@
     <string name="set_lfm_disc_title">Last.fm को डिस्कनेक्ट करें?</string>
     <string name="set_lfm_disc_text">वैश्विक स्क्रैबल्स रुक गए। आपके आँकड़े स्थानीय श्रवण इतिहास पर स्विच हो जाते हैं - कुछ भी नहीं हटाया जाता है।</string>
     <string name="set_lfm_disc_btn">डिस्कनेक्ट करें</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">कस्टम रंग</string>
     <string name="set_hue">रंग</string>
     <string name="set_sat">संतृप्ति</string>
@@ -775,7 +775,7 @@
     <string name="set_eq_enable">तुल्यकारक सक्षम करें</string>
     <string name="set_eq_custom">कस्टम</string>
     <string name="set_yt_channel">यूट्यूब चैनल</string>
-    <string name="set_yt_channel_sub">चुनें कि LastWave किस चैनल की लाइब्रेरी, पसंद और इतिहास का उपयोग करता है</string>
+    <string name="set_yt_channel_sub">चुनें कि SoundDrop किस चैनल की लाइब्रेरी, पसंद और इतिहास का उपयोग करता है</string>
     <string name="set_yt_loading">चैनल लोड हो रहे हैं...</string>
     <string name="set_yt_empty_title">कोई चैनल नहीं मिला</string>
     <string name="set_yt_empty_sub">अपना कनेक्शन जांचें, फिर पुनः प्रयास करें।</string>
@@ -813,11 +813,11 @@
     <string name="set_usb_old">Android 10 या नए संस्करण की आवश्यकता है</string>
     <string name="set_usb_on">usbdevfs को DAC पर निर्देशित करें • Bit-Perfect इसे स्वचालित रूप से संलग्न करता है</string>
     <string name="set_usb_off">बंद • USB DAC और Bit-Perfect (या यह टॉगल) की आवश्यकता है</string>
-    <string name="set_yt_hist_on">LastWave में आपके द्वारा सुने जाने वाले • गाने, दोषरहित और डाउनलोड सहित, आपके YouTube Music इतिहास में दिखाई देते हैं</string>
-    <string name="set_yt_hist_off">बंद • LastWave में सुनना आपके YouTube Music इतिहास से बाहर रहता है</string>
+    <string name="set_yt_hist_on">SoundDrop में आपके द्वारा सुने जाने वाले • गाने, दोषरहित और डाउनलोड सहित, आपके YouTube Music इतिहास में दिखाई देते हैं</string>
+    <string name="set_yt_hist_off">बंद • SoundDrop में सुनना आपके YouTube Music इतिहास से बाहर रहता है</string>
     <string name="set_discord_title">कलह समृद्ध उपस्थिति</string>
     <string name="set_discord_on">• आपका ट्रैक, गुणवत्ता और कवर आपके डिस्कॉर्ड प्रोफ़ाइल पर दिखाई देता है</string>
-    <string name="set_discord_off">बंद • LastWave आपकी डिस्कॉर्ड प्रोफ़ाइल से दूर रहता है</string>
+    <string name="set_discord_off">बंद • SoundDrop आपकी डिस्कॉर्ड प्रोफ़ाइल से दूर रहता है</string>
     <string name="set_tg_sub">टेलीग्राम पर @clashprojects से जुड़ें</string>
     <string name="set_discord_support">कलह समर्थन</string>
     <string name="set_discord_support_sub">हमारे डिस्कोर्ड समुदाय में शामिल हों</string>
@@ -843,9 +843,9 @@
     <string name="toast_sync_fail">प्लेलिस्ट सिंक विफल: %1$s</string>
     <string name="toast_synced">स्थानीय JSON से %1$d प्लेलिस्ट को सिंक किया गया</string>
     <string name="toast_restored">पुनर्स्थापित किया गया %1$d प्लेलिस्ट(ओं)%2$s</string>
-    <string name="toast_newer_backup">यह बैकअप LastWave के नए संस्करण के साथ बनाया गया था</string>
-    <string name="toast_not_backup">वह फ़ाइल LastWave बैकअप की तरह नहीं दिखती</string>
-    <string name="toast_not_json">वह LastWave बैकअप या प्लेलिस्ट JSON नहीं है</string>
+    <string name="toast_newer_backup">यह बैकअप SoundDrop के नए संस्करण के साथ बनाया गया था</string>
+    <string name="toast_not_backup">वह फ़ाइल SoundDrop बैकअप की तरह नहीं दिखती</string>
+    <string name="toast_not_json">वह SoundDrop बैकअप या प्लेलिस्ट JSON नहीं है</string>
     <string name="toast_empty_file">चयनित फ़ाइल खाली या अपठनीय है</string>
     <string name="toast_restore_fail">पुनर्स्थापना विफल: %1$s</string>
     <string name="toast_restore_read">पढ़ी गई त्रुटि पुनर्स्थापित करें: %1$s</string>
@@ -1057,7 +1057,7 @@
     <string name="lyshare_mode_lyrics">बोल</string>
     <string name="lyshare_action_share">साझा करें</string>
     <string name="lyshare_action_save">सहेजें</string>
-    <string name="lyshare_saved_to_gallery">Pictures/LastWave में सहेजा गया</string>
+    <string name="lyshare_saved_to_gallery">Pictures/SoundDrop में सहेजा गया</string>
     <string name="lyshare_save_failed">छवि सहेजी नहीं जा सकी</string>
     <string name="lyshare_share_failed">छवि साझा नहीं की जा सकी</string>
     <string name="lyshare_button_cd">बोल साझा करें</string>
@@ -1072,7 +1072,7 @@
     <string name="lyshare_color_white">सफ़ेद</string>
     <string name="lyshare_color_black">काला</string>
     <string name="lyshare_color_accent">एक्सेंट</string>
-    <string name="lyshare_color_brand">लास्टवेव लाइम</string>
+    <string name="lyshare_color_brand">SoundDrop लाइम</string>
     <string name="lyshare_accessibility_line_selected">चयनित, पंक्ति %1$d / %2$d</string>
     <string name="lyshare_accessibility_line_unselected">पंक्ति %1$d / %2$d</string>
 

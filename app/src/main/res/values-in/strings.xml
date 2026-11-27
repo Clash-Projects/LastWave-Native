@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">Pemutar LastWave</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">Pemutar SoundDrop</string>
     <string name="widget_description">Sampul, detail lagu, dan kontrol pemutaran untuk semua aplikasi media</string>
 
     <string name="nav_feed">Beranda</string>
@@ -11,7 +11,7 @@
     <string name="update_available">Pembaruan tersedia</string>
     <string name="update">Perbarui</string>
     <string name="dismiss_update">Abaikan pembaruan</string>
-    <string name="update_ready_to_install">LastWave v%1$s siap dipasang</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s siap dipasang</string>
 
     <string name="settings">Pengaturan</string>
     <string name="settings_section_language">Bahasa</string>
@@ -116,7 +116,7 @@
     <string name="dialog_clear_all_text">Ini menghapus kredensial, playlist, dan data cache. Tidak dapat dibatalkan.</string>
     <string name="dialog_clear_all_confirm">Hapus semua</string>
     <string name="dialog_disconnect_yt_title">Putuskan YouTube Music?</string>
-    <string name="dialog_disconnect_yt_text">Playlist yang sudah dicerminkan ke akun tetap ada, tetapi LastWave berhenti menyinkronkan dan melupakan koneksi.</string>
+    <string name="dialog_disconnect_yt_text">Playlist yang sudah dicerminkan ke akun tetap ada, tetapi SoundDrop berhenti menyinkronkan dan melupakan koneksi.</string>
     <string name="dialog_logout_title">Keluar dari Last.fm?</string>
     <string name="dialog_logout_text">Playlist dan data cache Anda tetap disimpan.</string>
     <string name="common_save">Simpan</string>
@@ -259,7 +259,7 @@
     <string name="desc_repeat">Ulangi</string>
     <string name="desc_play_pause">Putar atau jeda</string>
 
-    <string name="widget_obsidian_name">LastWave Kaca Obsidian</string>
+    <string name="widget_obsidian_name">SoundDrop Kaca Obsidian</string>
     <string name="widget_obsidian_description">Pemutar kaca obsidian buram dengan kedalaman tembus pandang dan tepi kristal</string>
     <string name="nav_generator">Pembangkit</string>
     <string name="settings_downloads_sub_custom">%1$d lagu • %2$s • %3$s</string>
@@ -762,7 +762,7 @@
     <string name="set_lfm_disc_title">Putuskan sambungan Last.fm?</string>
     <string name="set_lfm_disc_text">Permasalahan global terhenti. Statistik Anda beralih ke riwayat mendengarkan lokal — tidak ada yang dihapus.</string>
     <string name="set_lfm_disc_btn">Putuskan sambungan</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">Warna Khusus</string>
     <string name="set_hue">Warna</string>
     <string name="set_sat">Saturasi</string>
@@ -771,7 +771,7 @@
     <string name="set_eq_enable">Aktifkan Ekualiser</string>
     <string name="set_eq_custom">Adat</string>
     <string name="set_yt_channel">Saluran YouTube</string>
-    <string name="set_yt_channel_sub">Pilih perpustakaan, suka &amp; riwayat saluran mana yang digunakan LastWave</string>
+    <string name="set_yt_channel_sub">Pilih perpustakaan, suka &amp; riwayat saluran mana yang digunakan SoundDrop</string>
     <string name="set_yt_loading">Memuat saluran…</string>
     <string name="set_yt_empty_title">Tidak ada saluran yang ditemukan</string>
     <string name="set_yt_empty_sub">Periksa koneksi Anda, lalu coba lagi.</string>
@@ -809,11 +809,11 @@
     <string name="set_usb_old">Membutuhkan Android 10 atau lebih baru</string>
     <string name="set_usb_on">Arahkan usbdevfs ke DAC • Bit-Perfect mengaktifkan ini secara otomatis</string>
     <string name="set_usb_off">Mati • Membutuhkan USB DAC dan Bit-Perfect (atau tombol ini)</string>
-    <string name="set_yt_hist_on">Pada • lagu yang Anda dengarkan di LastWave, termasuk lossless &amp; unduhan, muncul di riwayat YouTube Music Anda</string>
-    <string name="set_yt_hist_off">Nonaktif • mendengarkan di LastWave tetap berada di luar riwayat YouTube Music Anda</string>
+    <string name="set_yt_hist_on">Pada • lagu yang Anda dengarkan di SoundDrop, termasuk lossless &amp; unduhan, muncul di riwayat YouTube Music Anda</string>
+    <string name="set_yt_hist_off">Nonaktif • mendengarkan di SoundDrop tetap berada di luar riwayat YouTube Music Anda</string>
     <string name="set_discord_title">Kehadiran Kaya Perselisihan</string>
     <string name="set_discord_on">Di • trek, kualitas, dan sampul Anda ditampilkan di profil Discord Anda</string>
-    <string name="set_discord_off">Nonaktif • LastWave tetap berada di luar profil Discord Anda</string>
+    <string name="set_discord_off">Nonaktif • SoundDrop tetap berada di luar profil Discord Anda</string>
     <string name="set_tg_sub">Bergabunglah dengan @clashprojects di Telegram</string>
     <string name="set_discord_support">Dukungan Perselisihan</string>
     <string name="set_discord_support_sub">Bergabunglah dengan komunitas Perselisihan kami</string>
@@ -839,9 +839,9 @@
     <string name="toast_sync_fail">Sinkronisasi daftar putar gagal: %1$s</string>
     <string name="toast_synced">Daftar putar %1$d yang disinkronkan dari JSON lokal</string>
     <string name="toast_restored">Daftar putar %1$d yang dipulihkan%2$s</string>
-    <string name="toast_newer_backup">Cadangan ini dibuat dengan versi LastWave yang lebih baru</string>
-    <string name="toast_not_backup">File itu tidak terlihat seperti cadangan LastWave</string>
-    <string name="toast_not_json">Itu bukan JSON cadangan atau playlist LastWave</string>
+    <string name="toast_newer_backup">Cadangan ini dibuat dengan versi SoundDrop yang lebih baru</string>
+    <string name="toast_not_backup">File itu tidak terlihat seperti cadangan SoundDrop</string>
+    <string name="toast_not_json">Itu bukan JSON cadangan atau playlist SoundDrop</string>
     <string name="toast_empty_file">File yang dipilih kosong atau tidak dapat dibaca</string>
     <string name="toast_restore_fail">Pemulihan gagal: %1$s</string>
     <string name="toast_restore_read">Pulihkan kesalahan baca: %1$s</string>
@@ -1053,7 +1053,7 @@
     <string name="lyshare_mode_lyrics">Lirik</string>
     <string name="lyshare_action_share">Bagikan</string>
     <string name="lyshare_action_save">Simpan</string>
-    <string name="lyshare_saved_to_gallery">Disimpan ke Pictures/LastWave</string>
+    <string name="lyshare_saved_to_gallery">Disimpan ke Pictures/SoundDrop</string>
     <string name="lyshare_save_failed">Gagal menyimpan gambar</string>
     <string name="lyshare_share_failed">Gagal membagikan gambar</string>
     <string name="lyshare_button_cd">Bagikan lirik</string>
@@ -1068,7 +1068,7 @@
     <string name="lyshare_color_white">Putih</string>
     <string name="lyshare_color_black">Hitam</string>
     <string name="lyshare_color_accent">Aksen</string>
-    <string name="lyshare_color_brand">LastWave Lime</string>
+    <string name="lyshare_color_brand">SoundDrop Lime</string>
     <string name="lyshare_accessibility_line_selected">Dipilih, baris %1$d dari %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Baris %1$d dari %2$d</string>
 

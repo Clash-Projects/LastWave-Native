@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">مشغّل LastWave</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">مشغّل SoundDrop</string>
     <string name="widget_description">الغلاف وتفاصيل المقطوعة وعناصر التحكم بالتشغيل لجميع تطبيقات الوسائط</string>
 
     <string name="nav_feed">الموجز</string>
@@ -11,7 +11,7 @@
     <string name="update_available">يتوفر تحديث</string>
     <string name="update">تحديث</string>
     <string name="dismiss_update">إغلاق التحديث</string>
-    <string name="update_ready_to_install">LastWave v%1$s جاهز للتثبيت</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s جاهز للتثبيت</string>
 
     <string name="settings">الإعدادات</string>
     <string name="settings_section_language">اللغة</string>
@@ -116,7 +116,7 @@
     <string name="dialog_clear_all_text">سيؤدي هذا إلى إزالة بيانات الاعتماد والقوائم والبيانات المخزنة. لا يمكن التراجع.</string>
     <string name="dialog_clear_all_confirm">مسح الكل</string>
     <string name="dialog_disconnect_yt_title">قطع اتصال YouTube Music؟</string>
-    <string name="dialog_disconnect_yt_text">القوائم المنعكسة في حسابك تبقى، لكن LastWave يتوقف عن المزامنة وينسى الاتصال.</string>
+    <string name="dialog_disconnect_yt_text">القوائم المنعكسة في حسابك تبقى، لكن SoundDrop يتوقف عن المزامنة وينسى الاتصال.</string>
     <string name="dialog_logout_title">تسجيل الخروج من Last.fm؟</string>
     <string name="dialog_logout_text">ستبقى قوائمك وبياناتك المخزنة.</string>
     <string name="common_save">حفظ</string>
@@ -259,7 +259,7 @@
     <string name="desc_repeat">تكرار</string>
     <string name="desc_play_pause">تشغيل أو إيقاف</string>
 
-    <string name="widget_obsidian_name">LastWave زجاج السج</string>
+    <string name="widget_obsidian_name">SoundDrop زجاج السج</string>
     <string name="widget_obsidian_description">مشغل زجاج سبج بلوري بعمق شفاف وحافة كريستالية</string>
     <string name="nav_generator">مولد</string>
     <string name="settings_downloads_sub_custom">%1$d الأغنية (الأغاني) • %2$s • %3$s</string>
@@ -762,7 +762,7 @@
     <string name="set_lfm_disc_title">هل تريد قطع الاتصال بـ Last.fm؟</string>
     <string name="set_lfm_disc_text">توقف الخربشات العالمية. تتحول إحصائياتك إلى سجل الاستماع المحلي - ولا يتم حذف أي شيء.</string>
     <string name="set_lfm_disc_btn">قطع الاتصال</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">لون مخصص</string>
     <string name="set_hue">هوى</string>
     <string name="set_sat">التشبع</string>
@@ -771,7 +771,7 @@
     <string name="set_eq_enable">تمكين المعادل</string>
     <string name="set_eq_custom">مخصص</string>
     <string name="set_yt_channel">قناة يوتيوب</string>
-    <string name="set_yt_channel_sub">اختر مكتبة القناة والإعجابات والسجل الذي يستخدمه LastWave</string>
+    <string name="set_yt_channel_sub">اختر مكتبة القناة والإعجابات والسجل الذي يستخدمه SoundDrop</string>
     <string name="set_yt_loading">جارٍ تحميل القنوات…</string>
     <string name="set_yt_empty_title">لم يتم العثور على قنوات</string>
     <string name="set_yt_empty_sub">تحقق من اتصالك، ثم حاول مرة أخرى.</string>
@@ -809,11 +809,11 @@
     <string name="set_usb_old">يتطلب أندرويد 10 أو أحدث</string>
     <string name="set_usb_on">قم بتوجيه usbdevfs إلى DAC • يقوم Bit-Perfect بتشغيل هذا تلقائيًا</string>
     <string name="set_usb_off">متوقف • يحتاج إلى USB DAC وBit-Perfect (أو هذا التبديل)</string>
-    <string name="set_yt_hist_on">في • الأغاني التي تستمع إليها في LastWave، بما في ذلك الأغاني التي لا تفقد البيانات والتنزيلات، تظهر في سجل YouTube Music الخاص بك</string>
-    <string name="set_yt_hist_off">متوقف • يبقى الاستماع في LastWave خارج سجل YouTube Music الخاص بك</string>
+    <string name="set_yt_hist_on">في • الأغاني التي تستمع إليها في SoundDrop، بما في ذلك الأغاني التي لا تفقد البيانات والتنزيلات، تظهر في سجل YouTube Music الخاص بك</string>
+    <string name="set_yt_hist_off">متوقف • يبقى الاستماع في SoundDrop خارج سجل YouTube Music الخاص بك</string>
     <string name="set_discord_title">وجود الخلاف الغني</string>
     <string name="set_discord_on">على • عرض المسار والجودة والغلاف الخاص بك على ملف تعريف Discord الخاص بك</string>
-    <string name="set_discord_off">متوقف • يظل LastWave خارج ملفك الشخصي على Discord</string>
+    <string name="set_discord_off">متوقف • يظل SoundDrop خارج ملفك الشخصي على Discord</string>
     <string name="set_tg_sub">انضم إلى @clashprojects على Telegram</string>
     <string name="set_discord_support">دعم الخلاف</string>
     <string name="set_discord_support_sub">انضم إلى مجتمع Discord الخاص بنا</string>
@@ -839,9 +839,9 @@
     <string name="toast_sync_fail">فشلت مزامنة قائمة التشغيل: %1$s</string>
     <string name="toast_synced">قائمة (قوائم) التشغيل %1$d التي تمت مزامنتها من JSON المحلي</string>
     <string name="toast_restored">تمت استعادة %1$d قائمة (قوائم) التشغيل%2$s</string>
-    <string name="toast_newer_backup">تم إنشاء هذه النسخة الاحتياطية باستخدام إصدار أحدث من LastWave</string>
-    <string name="toast_not_backup">لا يبدو هذا الملف كنسخة احتياطية LastWave</string>
-    <string name="toast_not_json">هذه ليست نسخة احتياطية LastWave أو قائمة تشغيل JSON</string>
+    <string name="toast_newer_backup">تم إنشاء هذه النسخة الاحتياطية باستخدام إصدار أحدث من SoundDrop</string>
+    <string name="toast_not_backup">لا يبدو هذا الملف كنسخة احتياطية SoundDrop</string>
+    <string name="toast_not_json">هذه ليست نسخة احتياطية SoundDrop أو قائمة تشغيل JSON</string>
     <string name="toast_empty_file">الملف المحدد فارغ أو غير قابل للقراءة</string>
     <string name="toast_restore_fail">فشلت الاستعادة: %1$s</string>
     <string name="toast_restore_read">خطأ في استعادة القراءة: %1$s</string>
@@ -1053,7 +1053,7 @@
     <string name="lyshare_mode_lyrics">كلمات</string>
     <string name="lyshare_action_share">مشاركة</string>
     <string name="lyshare_action_save">حفظ</string>
-    <string name="lyshare_saved_to_gallery">تم الحفظ في Pictures/LastWave</string>
+    <string name="lyshare_saved_to_gallery">تم الحفظ في Pictures/SoundDrop</string>
     <string name="lyshare_save_failed">تعذر حفظ الصورة</string>
     <string name="lyshare_share_failed">تعذر مشاركة الصورة</string>
     <string name="lyshare_button_cd">مشاركة الكلمات</string>
@@ -1068,7 +1068,7 @@
     <string name="lyshare_color_white">أبيض</string>
     <string name="lyshare_color_black">أسود</string>
     <string name="lyshare_color_accent">لون مميز</string>
-    <string name="lyshare_color_brand">ليموني LastWave</string>
+    <string name="lyshare_color_brand">ليموني SoundDrop</string>
     <string name="lyshare_accessibility_line_selected">محدد، السطر %1$d من %2$d</string>
     <string name="lyshare_accessibility_line_unselected">السطر %1$d من %2$d</string>
 
