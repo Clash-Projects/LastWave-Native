@@ -1,14 +1,6 @@
 package com.lastwave.app.data.lyrics
 
 import com.lastwave.app.data.artwork.awaitSuccessfulBodyOrNull
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.security.MessageDigest
-import java.util.Locale
-import java.util.concurrent.TimeUnit
-import java.util.zip.GZIPInputStream
-import java.util.zip.GZIPOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -26,23 +18,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.security.MessageDigest
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
-/**
- * Lightweight, on-demand lyric translation and romanization.
- *
- * Translation models are deliberately not installed on the device. A model for
- * every language would cost tens of megabytes each; translated lyric text is
- * normally only a few kilobytes. Requests are batched and the compact result is
- * kept in a bounded cache under the app's cache directory, so Android may
- * reclaim it and the feature can never grow without limit.
- *
- * Results are returned as *sub-lines*: one entry per input line, aligned by
- * index, with `null` wherever there is nothing worth drawing (blank lines, and
- * lines whose transformed text is identical to the original). The player draws
- * each non-null entry underneath its line instead of replacing anything, so
- * timing, karaoke sweeps and word highlights keep working untouched.
- */
 object LyricsTranslation {
+
     sealed interface Result {
         data class Translated(
             val subLines: List<String?>,
@@ -65,48 +51,9 @@ object LyricsTranslation {
         data object Unavailable : RomanizationResult
     }
 
-    private const val ENDPOINT = "https://translate.googleapis.com/translate_a/single"
-    private const val INPUT_TOOLS_ENDPOINT = "https://inputtools.google.com/request"
-    private const val CACHE_VERSION = 1
-    private const val CACHE_DIRECTORY = "lyrics_translation_v1"
-    private const val MAX_CACHE_BYTES = 2L * 1024L * 1024L
-    private const val MAX_BATCH_CHARS = 3_500
-    private const val MAX_PARALLEL_REQUESTS = 2
-    private const val USER_AGENT = "LastWave/1.0"
-    // Input Tools changes ASCII digits to the destination script, so match the
-    // private-use wrapper rather than assuming the counter remains ASCII.
-    private val markerRegex = Regex("\\uE000[^\\uE001]*\\uE001")
-    private val json = Json { ignoreUnknownKeys = true }
-    private val diskMutex = Mutex()
-    private val memory = object {
-        private val entries = object : LinkedHashMap<String, CachedTranslation>(16, 0.75f, true) {
-            override fun removeEldestEntry(eldest: Map.Entry<String, CachedTranslation>) = size > 12
-        }
-
-        @Synchronized fun get(key: String): CachedTranslation? = entries[key]
-
-        @Synchronized fun put(key: String, value: CachedTranslation) {
-            entries[key] = value
-        }
-    }
-
-    /**
-     * Where translated lyrics are kept between runs — the app's cache
-     * directory. Null keeps them in memory only.
-     */
-    @Volatile
-    var cacheDir: File? = null
-
-    private val client by lazy {
-        OkHttpClient.Builder()
-            .callTimeout(12, TimeUnit.SECONDS)
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .build()
-    }
-
     @Serializable
     internal data class CachedTranslation(
-        val version: Int = CACHE_VERSION,
+        val version: Int = CACHE_FORMAT_VERSION,
         val sourceLanguage: String,
         val targetLanguage: String,
         val texts: List<String>,
@@ -129,441 +76,496 @@ object LyricsTranslation {
         val sourceWeight: Int,
     )
 
+    private const val TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
+    private const val INPUT_TOOLS_URL = "https://inputtools.google.com/request"
+    private const val CACHE_FORMAT_VERSION = 1
+    private const val DISK_CACHE_DIR = "lyrics_translation_v1"
+    private const val DISK_CACHE_LIMIT_BYTES = 2L * 1024L * 1024L
+    private const val BATCH_CHAR_LIMIT = 3_500
+    private const val CONCURRENT_BATCHES = 2
+    private const val CLIENT_HEADER = "LastWave/1.0"
+
+    private val slotDividerPattern =
+        Regex("\\[\\s*#\\s*\\p{Nd}+\\s*#\\s*]|\\uE000[^\\uE001\\uE000\\r\\n]*[\\uE001\\uE000]")
+    private val multiSpacePattern = Regex("\\s+")
+    private val jsonParser = Json { ignoreUnknownKeys = true }
+    private val fileLock = Mutex()
+    private val lruLock = Any()
+    private val recentTranslations = object : LinkedHashMap<String, CachedTranslation>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedTranslation>): Boolean =
+            size > 12
+    }
+
+    @Volatile
+    var cacheDir: File? = null
+
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(12, TimeUnit.SECONDS)
+            .build()
+    }
+
     suspend fun translate(
         trackId: String,
         lines: List<LyricLine>,
         targetLanguageTag: String,
     ): Result {
-        // Sent as given rather than reduced to a base language: zh-CN and
-        // zh-TW are the same language in two scripts, and canonicalising either
-        // to "zh" hands back Simplified whichever one was asked for. The
-        // narrowing is still done, but only where it belongs — in
-        // [sameLanguage], which is asking a different question.
-        val target = targetLanguageTag.trim()
-        if (target.isBlank() || lines.isEmpty()) return Result.Unavailable
+        val targetTag = targetLanguageTag.trim()
+        if (targetTag.isEmpty() || lines.isEmpty()) return Result.Unavailable
 
         val slots = flatten(lines)
         if (slots.isEmpty()) return Result.Unavailable
-        val cacheKey = cacheKey(trackId, target, slots)
-        val cached = memory.get(cacheKey) ?: readCache(cacheKey)?.also {
-            memory.put(cacheKey, it)
-        }
-        if (cached != null && cached.version == CACHE_VERSION && cached.texts.size == slots.size) {
-            return if (sameLanguage(cached.sourceLanguage, target)) {
+
+        val key = cacheKey(trackId, targetTag, slots)
+        val cached = loadFromCache(key)
+        if (cached != null && cached.version == CACHE_FORMAT_VERSION && cached.texts.size == slots.size) {
+            return if (languagesMatch(cached.sourceLanguage, targetTag)) {
                 Result.SameLanguage(cached.sourceLanguage)
             } else {
                 Result.Translated(
-                    subLines = rebuild(lines, slots, cached.texts),
-                    sourceLanguage = cached.sourceLanguage,
-                    fromCache = true,
+                    rebuild(lines, slots, cached.texts),
+                    cached.sourceLanguage,
+                    true,
                 )
             }
         }
 
-        val batches = batches(slots)
-        val answers = coroutineScope {
-            // Two short requests at a time keeps a long lyric fast without
-            // competing with playback for every connection in the pool.
-            batches.chunked(MAX_PARALLEL_REQUESTS).flatMap { group ->
-                group.map { batch -> async { requestBatch(batch, target) } }.awaitAll()
-            }
-        }
-        if (answers.any { it == null }) return Result.Unavailable
-        val complete = answers.filterNotNull()
-        val source = complete
-            .groupBy { canonicalLanguage(it.sourceLanguage) }
-            .maxByOrNull { (_, values) -> values.sumOf { it.sourceWeight } }
-            ?.key
-            .orEmpty()
-        if (source.isBlank()) return Result.Unavailable
+        val chunked = batches(slots)
+        val answers = executeInGroups(chunked) { chunk -> fetchTranslation(chunk, targetTag) }
+            ?: return Result.Unavailable
 
-        var translated = complete.flatMap { it.translations }
-        if (translated.size != slots.size) return Result.Unavailable
+        val detectedSource = dominantSource(answers)
+        if (detectedSource.isEmpty()) return Result.Unavailable
 
-        // The endpoint's auto-detection understands many Latin-script
-        // Hindi/Urdu/Punjabi lyrics, but its NMT occasionally returns whole
-        // phrases unchanged. If a sizeable part of a Latin-script source
-        // survived untouched, use Input Tools to restore the detected
-        // language's native script and translate that instead. Keep the first
-        // answer unless the retry actually transforms more of the song, so
-        // names and genuinely bilingual lyrics do not get worse merely
-        // because they contain Latin text.
+        var output = answers.flatMap(BatchAnswer::translations)
+        if (output.size != slots.size) return Result.Unavailable
+
+        val totalChars = slots.sumOf { slot -> slot.text.length }
         if (
-            !sameLanguage(source, target) &&
-            predominantlyLatin(slots) &&
-            unchangedWeight(slots, translated) * 3 >= slots.sumOf { it.text.length }
+            !languagesMatch(detectedSource, targetTag) &&
+            isMostlyLatin(slots) &&
+            unchangedWeight(slots, output) * 3 >= totalChars
         ) {
-            val retried = retryRomanizedTranslation(batches, source, target)
+            val nativeRetry = translateViaNativeScript(chunked, detectedSource, targetTag)
             if (
-                retried != null &&
-                retried.size == slots.size &&
-                unchangedWeight(slots, retried) < unchangedWeight(slots, translated)
+                nativeRetry != null &&
+                nativeRetry.size == slots.size &&
+                unchangedWeight(slots, nativeRetry) < unchangedWeight(slots, output)
             ) {
-                translated = retried
+                output = nativeRetry
             }
         }
-        val entry = CachedTranslation(
-            sourceLanguage = source,
-            targetLanguage = target,
-            texts = translated,
-        )
-        memory.put(cacheKey, entry)
-        writeCache(cacheKey, entry)
 
-        return if (sameLanguage(source, target)) {
-            Result.SameLanguage(source)
+        val record = CachedTranslation(
+            sourceLanguage = detectedSource,
+            targetLanguage = targetTag,
+            texts = output,
+        )
+        saveToMemory(key, record)
+        writeCache(key, record)
+
+        return if (languagesMatch(detectedSource, targetTag)) {
+            Result.SameLanguage(detectedSource)
         } else {
             Result.Translated(
-                subLines = rebuild(lines, slots, translated),
-                sourceLanguage = source,
-                fromCache = false,
+                rebuild(lines, slots, output),
+                detectedSource,
+                false,
             )
         }
     }
 
     suspend fun romanize(trackId: String, lines: List<LyricLine>): RomanizationResult {
         if (lines.isEmpty()) return RomanizationResult.Unavailable
+
         val slots = flatten(lines)
         if (slots.isEmpty()) return RomanizationResult.Unavailable
-        if (!hasNonLatinLetters(slots)) return RomanizationResult.AlreadyRomanized
+        if (!containsNonLatinText(slots)) return RomanizationResult.AlreadyRomanized
 
-        // Romanization always ends in Latin script. The endpoint still wants a
-        // non-blank `tl` but nothing about the output depends on its value, so
-        // "en" is sent and the target is deliberately excluded from the cache
-        // key: changing "translate to" cannot change how a language is
-        // pronounced.
-        val cacheKey = cacheKey(trackId, "romanize", slots)
-        val cached = memory.get(cacheKey) ?: readCache(cacheKey)?.also {
-            memory.put(cacheKey, it)
-        }
-        if (cached != null && cached.version == CACHE_VERSION && cached.texts.size == slots.size) {
+        val key = cacheKey(trackId, "romanize", slots)
+        val cached = loadFromCache(key)
+        if (cached != null && cached.version == CACHE_FORMAT_VERSION && cached.texts.size == slots.size) {
             return RomanizationResult.Romanized(
-                subLines = rebuild(lines, slots, cached.texts),
-                sourceLanguage = cached.sourceLanguage,
-                fromCache = true,
+                rebuild(lines, slots, cached.texts),
+                cached.sourceLanguage,
+                true,
             )
         }
 
-        val batches = batches(slots)
-        val answers = coroutineScope {
-            batches.chunked(MAX_PARALLEL_REQUESTS).flatMap { group ->
-                group.map { batch -> async { requestRomanizationBatch(batch) } }.awaitAll()
-            }
+        val chunked = batches(slots)
+        val answers = executeInGroups(chunked) { chunk -> fetchRomanization(chunk) }
+            ?: return RomanizationResult.Unavailable
+
+        val detectedSource = dominantSource(answers)
+        val romanized = answers.flatMap(BatchAnswer::translations)
+        if (detectedSource.isEmpty() || romanized.size != slots.size) {
+            return RomanizationResult.Unavailable
         }
-        if (answers.any { it == null }) return RomanizationResult.Unavailable
-        val complete = answers.filterNotNull()
-        val source = complete
-            .groupBy { canonicalLanguage(it.sourceLanguage) }
-            .maxByOrNull { (_, values) -> values.sumOf { it.sourceWeight } }
-            ?.key
-            .orEmpty()
-        val romanized = complete.flatMap { it.translations }
-        if (source.isBlank() || romanized.size != slots.size) return RomanizationResult.Unavailable
         if (unchangedWeight(slots, romanized) == slots.sumOf { it.text.length }) {
-            // Non-Latin input reached this point, so an unchanged response is
-            // an unsupported/failed romanization rather than an already-Latin
-            // lyric. The fast all-Latin check above handles the real no-op case.
             return RomanizationResult.Unavailable
         }
 
-        val entry = CachedTranslation(
-            sourceLanguage = source,
+        val record = CachedTranslation(
+            sourceLanguage = detectedSource,
             targetLanguage = "Latn",
             texts = romanized,
         )
-        memory.put(cacheKey, entry)
-        writeCache(cacheKey, entry)
+        saveToMemory(key, record)
+        writeCache(key, record)
+
         return RomanizationResult.Romanized(
-            subLines = rebuild(lines, slots, romanized),
-            sourceLanguage = source,
-            fromCache = false,
+            rebuild(lines, slots, romanized),
+            detectedSource,
+            false,
         )
     }
 
-    internal fun flatten(lines: List<LyricLine>): List<TextSlot> = buildList {
-        lines.forEachIndexed { index, line ->
-            val header = isSectionHeader(line.text)
-            val text = if (header) line.text.trim().removePrefix("[").removeSuffix("]").trim() else line.text
-            if (text.isNotBlank()) {
-                add(TextSlot(lineIndex = index, text = text, sectionHeader = header))
+    internal fun flatten(lines: List<LyricLine>): List<TextSlot> {
+        val slots = ArrayList<TextSlot>(lines.size)
+        for (idx in lines.indices) {
+            val raw = lines[idx].text
+            val trimmed = raw.trim()
+            val isHeader = trimmed.length >= 3 && trimmed.first() == '[' && trimmed.last() == ']'
+            val cleanText = if (isHeader) trimmed.substring(1, trimmed.length - 1).trim() else raw
+            if (cleanText.isNotBlank()) {
+                slots.add(TextSlot(idx, cleanText, isHeader))
             }
         }
-    }
-
-    /** A whole line wrapped in brackets is a structure label ("[Chorus]"), not
-     *  lyric text; the wrapper is stripped for the request and restored on the
-     *  way back so the label survives translation as structure. */
-    private fun isSectionHeader(text: String): Boolean {
-        val trimmed = text.trim()
-        return trimmed.length >= 3 && trimmed.startsWith("[") && trimmed.endsWith("]")
+        return slots
     }
 
     internal fun batches(slots: List<TextSlot>): List<Batch> {
-        val result = mutableListOf<Batch>()
-        var current = mutableListOf<TextSlot>()
-        var length = 0
+        val output = mutableListOf<Batch>()
+        val pending = mutableListOf<TextSlot>()
+        var charCount = 0
 
-        fun flush() {
-            if (current.isEmpty()) return
-            result += Batch(current.toList(), payload(current))
-            current = mutableListOf()
-            length = 0
+        for (slot in slots) {
+            val delta = slot.text.length + if (pending.isEmpty()) 0 else 10
+            if (pending.isNotEmpty() && charCount + delta > BATCH_CHAR_LIMIT) {
+                output.add(Batch(pending.toList(), assemblePayload(pending)))
+                pending.clear()
+                charCount = 0
+            }
+            pending.add(slot)
+            charCount += delta
         }
-
-        slots.forEach { slot ->
-            val added = slot.text.length + if (current.isEmpty()) 0 else 8
-            if (current.isNotEmpty() && length + added > MAX_BATCH_CHARS) flush()
-            current += slot
-            length += added
+        if (pending.isNotEmpty()) {
+            output.add(Batch(pending.toList(), assemblePayload(pending)))
         }
-        flush()
-        return result
-    }
-
-    private fun payload(slots: List<TextSlot>): String = buildString {
-        slots.forEachIndexed { index, slot ->
-            if (index > 0) append('\n').append(marker(index)).append('\n')
-            append(slot.text)
-        }
-    }
-
-    private fun marker(index: Int): String = "\uE000${index.toString().padStart(4, '0')}\uE001"
-
-    private suspend fun requestBatch(
-        batch: Batch,
-        target: String,
-        sourceLanguage: String = "auto",
-    ): BatchAnswer? {
-        val body = FormBody.Builder()
-            .add("client", "dict-chrome-ex")
-            .add("sl", sourceLanguage)
-            .add("tl", target)
-            .add("dt", "t")
-            .add("q", batch.payload)
-            .build()
-        val request = Request.Builder()
-            .url(ENDPOINT)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/json")
-            .post(body)
-            .build()
-        val response = client.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
-        return parseTranslatedAnswer(response, batch.slots.size, batch.payload.length)
-    }
-
-    private suspend fun requestRomanizationBatch(batch: Batch): BatchAnswer? {
-        val body = FormBody.Builder()
-            .add("client", "dict-chrome-ex")
-            .add("sl", "auto")
-            .add("tl", "en")
-            .add("dt", "rm")
-            .add("q", batch.payload)
-            .build()
-        val request = Request.Builder()
-            .url(ENDPOINT)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/json")
-            .post(body)
-            .build()
-        val response = client.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
-        return parseRomanizedAnswer(response, batch.slots.size, batch.payload.length)
+        return output
     }
 
     internal fun parseTranslatedAnswer(
         response: String,
         slotCount: Int,
         payloadLength: Int,
-    ): BatchAnswer? = runCatching {
-        val root = json.parseToJsonElement(response).jsonArray
-        val translatedBody = root[0].jsonArray.joinToString(separator = "") { segment ->
-            segment.jsonArray.getOrNull(0)?.jsonPrimitive?.contentOrNull.orEmpty()
-        }
-        val source = root.getOrNull(2)?.jsonPrimitive?.contentOrNull.orEmpty()
-        val parts = translatedBody.split(markerRegex).map(String::trim)
-        if (parts.size != slotCount || parts.any { it.isBlank() }) return@runCatching null
-        BatchAnswer(parts, source, payloadLength)
-    }.getOrNull()
+    ): BatchAnswer? = decodeResponse(response, slotCount, payloadLength, cellIndex = 0, requireDetectedSource = false)
 
     internal fun parseRomanizedAnswer(
         response: String,
         slotCount: Int,
         payloadLength: Int,
-    ): BatchAnswer? = runCatching {
-        val root = json.parseToJsonElement(response).jsonArray
-        val romanizedBody = root[0].jsonArray.joinToString(separator = "") { segment ->
-            segment.jsonArray.getOrNull(3)?.jsonPrimitive?.contentOrNull.orEmpty()
-        }
-        val source = root.getOrNull(2)?.jsonPrimitive?.contentOrNull.orEmpty()
-        val parts = romanizedBody.split(markerRegex).map(String::trim)
-        if (source.isBlank() || parts.size != slotCount || parts.any { it.isBlank() }) {
-            return@runCatching null
-        }
-        BatchAnswer(parts, source, payloadLength)
-    }.getOrNull()
+    ): BatchAnswer? = decodeResponse(response, slotCount, payloadLength, cellIndex = 3, requireDetectedSource = true)
 
-    private suspend fun retryRomanizedTranslation(
-        batches: List<Batch>,
-        sourceLanguage: String,
-        target: String,
-    ): List<String>? = coroutineScope {
-        val source = canonicalLanguage(sourceLanguage)
-        if (source.isBlank() || source == "en") return@coroutineScope null
-        val answers = batches.chunked(MAX_PARALLEL_REQUESTS).flatMap { group ->
-            group.map { batch ->
-                async {
-                    val nativePayload = requestNativeScript(batch.payload, source) ?: return@async null
-                    requestBatch(batch.copy(payload = nativePayload), target, source)
-                }
-            }.awaitAll()
+    internal fun unchangedWeight(slots: List<TextSlot>, transformed: List<String>): Int {
+        var total = 0
+        val count = minOf(slots.size, transformed.size)
+        for (i in 0 until count) {
+            if (normalizeComparable(slots[i].text) == normalizeComparable(transformed[i])) {
+                total += slots[i].text.length
+            }
         }
-        if (answers.any { it == null }) null else answers.filterNotNull().flatMap { it.translations }
+        return total
     }
 
-    private suspend fun requestNativeScript(text: String, sourceLanguage: String): String? {
-        val body = FormBody.Builder()
+    internal fun rebuild(
+        lines: List<LyricLine>,
+        slots: List<TextSlot>,
+        transformed: List<String>,
+    ): List<String?> {
+        val mapped = HashMap<Int, String>(slots.size)
+        for (i in 0 until minOf(slots.size, transformed.size)) {
+            val slot = slots[i]
+            val value = transformed[i]
+            mapped[slot.lineIndex] = if (slot.sectionHeader) "[$value]" else value
+        }
+        return lines.mapIndexed { idx, original ->
+            val candidate = mapped[idx] ?: return@mapIndexed null
+            if (normalizeComparable(candidate) != normalizeComparable(original.text)) candidate else null
+        }
+    }
+
+    internal fun canonicalLanguage(tag: String): String {
+        val normalized = Locale.forLanguageTag(tag.replace('_', '-')).language.lowercase(Locale.ROOT)
+        return when (normalized) {
+            "iw" -> "he"
+            "in" -> "id"
+            "ji" -> "yi"
+            else -> normalized
+        }
+    }
+
+    internal fun cacheKey(trackId: String, target: String, slots: List<TextSlot>): String {
+        val sb = StringBuilder(trackId.length + target.length + slots.size * 16)
+        sb.append(trackId).append('\u0000').append(target)
+        for (slot in slots) {
+            sb.append('\u0000').append(slot.text)
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(sb.toString().toByteArray(Charsets.UTF_8))
+        return buildString(digest.size * 2) {
+            for (b in digest) {
+                append("%02x".format(b))
+            }
+        }
+    }
+
+    internal suspend fun readCache(key: String): CachedTranslation? = withContext(Dispatchers.IO) {
+        fileLock.withLock {
+            val base = cacheDir ?: return@withLock null
+            val targetFile = File(File(base, DISK_CACHE_DIR), "$key.json.gz")
+            if (!targetFile.isFile) return@withLock null
+            try {
+                val decoded = GZIPInputStream(FileInputStream(targetFile)).bufferedReader().use { reader ->
+                    jsonParser.decodeFromString<CachedTranslation>(reader.readText())
+                }
+                targetFile.setLastModified(System.currentTimeMillis())
+                if (decoded.version == CACHE_FORMAT_VERSION) decoded else null
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    internal suspend fun writeCache(key: String, value: CachedTranslation) {
+        withContext(Dispatchers.IO) {
+            fileLock.withLock {
+                val base = cacheDir ?: return@withLock
+                val cacheFolder = File(base, DISK_CACHE_DIR)
+                if (!cacheFolder.exists() && !cacheFolder.mkdirs()) return@withLock
+
+                val finalFile = File(cacheFolder, "$key.json.gz")
+                val stagingFile = File(cacheFolder, "$key.tmp")
+                try {
+                    GZIPOutputStream(FileOutputStream(stagingFile)).bufferedWriter().use { writer ->
+                        writer.write(jsonParser.encodeToString(value))
+                    }
+                    if (!stagingFile.renameTo(finalFile)) {
+                        stagingFile.copyTo(finalFile, overwrite = true)
+                        stagingFile.delete()
+                    }
+                    pruneDiskCache(cacheFolder)
+                } catch (_: Exception) {
+                    stagingFile.delete()
+                }
+            }
+        }
+    }
+
+    private fun assemblePayload(slots: List<TextSlot>): String {
+        val sb = StringBuilder()
+        for (i in slots.indices) {
+            if (i > 0) {
+                sb.append('\n')
+                    .append("[#")
+                    .append(i.toString().padStart(4, '0'))
+                    .append("#]")
+                    .append('\n')
+            }
+            sb.append(slots[i].text)
+        }
+        return sb.toString()
+    }
+
+    private suspend fun <T> executeInGroups(
+        items: List<Batch>,
+        task: suspend (Batch) -> T?,
+    ): List<T>? = coroutineScope {
+        val collected = ArrayList<T>(items.size)
+        for (group in items.chunked(CONCURRENT_BATCHES)) {
+            val groupResults = group.map { item -> async { task(item) } }.awaitAll()
+            for (res in groupResults) {
+                if (res == null) return@coroutineScope null
+                collected.add(res)
+            }
+        }
+        collected
+    }
+
+    private fun dominantSource(answers: List<BatchAnswer>): String {
+        val weights = HashMap<String, Int>()
+        for (answer in answers) {
+            val lang = canonicalLanguage(answer.sourceLanguage)
+            weights[lang] = (weights[lang] ?: 0) + answer.sourceWeight
+        }
+        return weights.maxByOrNull { it.value }?.key.orEmpty()
+    }
+
+    private suspend fun fetchTranslation(
+        batch: Batch,
+        target: String,
+        sourceLang: String = "auto",
+    ): BatchAnswer? {
+        val body = submitTranslateForm(batch.payload, sourceLang, target, "t") ?: return null
+        return parseTranslatedAnswer(body, batch.slots.size, batch.payload.length)
+    }
+
+    private suspend fun fetchRomanization(batch: Batch): BatchAnswer? {
+        val body = submitTranslateForm(batch.payload, "auto", "en", "rm") ?: return null
+        return parseRomanizedAnswer(body, batch.slots.size, batch.payload.length)
+    }
+
+    private suspend fun submitTranslateForm(
+        text: String,
+        sourceLang: String,
+        targetLang: String,
+        detailType: String,
+    ): String? {
+        val form = FormBody.Builder()
+            .add("client", "dict-chrome-ex")
+            .add("sl", sourceLang)
+            .add("tl", targetLang)
+            .add("dt", detailType)
+            .add("q", text)
+            .build()
+        val req = Request.Builder()
+            .url(TRANSLATE_URL)
+            .header("User-Agent", CLIENT_HEADER)
+            .header("Accept", "application/json")
+            .post(form)
+            .build()
+        return httpClient.newCall(req).awaitSuccessfulBodyOrNull()
+    }
+
+    private fun decodeResponse(
+        rawJson: String,
+        expectedCount: Int,
+        payloadLength: Int,
+        cellIndex: Int,
+        requireDetectedSource: Boolean,
+    ): BatchAnswer? = try {
+        val rootArray = jsonParser.parseToJsonElement(rawJson).jsonArray
+        val joinedText = buildString {
+            for (segment in rootArray[0].jsonArray) {
+                append(segment.jsonArray.getOrNull(cellIndex)?.jsonPrimitive?.contentOrNull.orEmpty())
+            }
+        }
+        val sourceLang = rootArray.getOrNull(2)?.jsonPrimitive?.contentOrNull.orEmpty()
+        val chunks = joinedText.split(slotDividerPattern).map { it.trim() }
+        if ((requireDetectedSource && sourceLang.isBlank()) ||
+            chunks.size != expectedCount ||
+            chunks.any { it.isEmpty() }
+        ) {
+            null
+        } else {
+            BatchAnswer(chunks, sourceLang, payloadLength)
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private suspend fun translateViaNativeScript(
+        batches: List<Batch>,
+        sourceLang: String,
+        targetLang: String,
+    ): List<String>? {
+        val canonical = canonicalLanguage(sourceLang)
+        if (canonical.isEmpty() || canonical == "en") return null
+
+        val answers = executeInGroups(batches) { batch ->
+            val converted = transliterateToNative(batch.payload, canonical) ?: return@executeInGroups null
+            fetchTranslation(batch.copy(payload = converted), targetLang, canonical)
+        } ?: return null
+
+        return answers.flatMap(BatchAnswer::translations)
+    }
+
+    private suspend fun transliterateToNative(text: String, sourceLang: String): String? {
+        val form = FormBody.Builder()
             .add("text", text)
-            .add("itc", "$sourceLanguage-t-i0-und")
+            .add("itc", "$sourceLang-t-i0-und")
             .add("num", "1")
             .add("cp", "0")
             .add("cs", "1")
             .add("ie", "utf-8")
             .add("oe", "utf-8")
             .build()
-        val request = Request.Builder()
-            .url(INPUT_TOOLS_ENDPOINT)
-            .header("User-Agent", USER_AGENT)
+        val req = Request.Builder()
+            .url(INPUT_TOOLS_URL)
+            .header("User-Agent", CLIENT_HEADER)
             .header("Accept", "application/json")
-            .post(body)
+            .post(form)
             .build()
-        val response = client.newCall(request).awaitSuccessfulBodyOrNull() ?: return null
-        return runCatching {
-            val root = json.parseToJsonElement(response).jsonArray
-            if (root.getOrNull(0)?.jsonPrimitive?.contentOrNull != "SUCCESS") return@runCatching null
+        val body = httpClient.newCall(req).awaitSuccessfulBodyOrNull() ?: return null
+        return try {
+            val root = jsonParser.parseToJsonElement(body).jsonArray
+            if (root.getOrNull(0)?.jsonPrimitive?.contentOrNull != "SUCCESS") return null
             root[1].jsonArray[0].jsonArray[1].jsonArray[0].jsonPrimitive.contentOrNull
                 ?.takeIf { it.isNotBlank() }
-        }.getOrNull()
+        } catch (_: Exception) {
+            null
+        }
     }
 
-    private fun predominantlyLatin(slots: List<TextSlot>): Boolean {
-        var latin = 0
-        var other = 0
-        slots.forEach { slot ->
-            slot.text.codePoints().forEach { codePoint ->
-                if (Character.isLetter(codePoint)) {
-                    if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.LATIN) latin++
-                    else other++
+    private fun isMostlyLatin(slots: List<TextSlot>): Boolean {
+        var latinLetters = 0
+        var otherLetters = 0
+        for (slot in slots) {
+            val stream = slot.text.codePoints().iterator()
+            while (stream.hasNext()) {
+                val cp = stream.nextInt()
+                if (!Character.isLetter(cp)) continue
+                if (Character.UnicodeScript.of(cp) == Character.UnicodeScript.LATIN) {
+                    latinLetters++
+                } else {
+                    otherLetters++
                 }
             }
         }
-        return latin > 0 && latin >= other * 4
+        return latinLetters > 0 && latinLetters >= otherLetters * 4
     }
 
-    private fun hasNonLatinLetters(slots: List<TextSlot>): Boolean = slots.any { slot ->
-        slot.text.codePoints().anyMatch { codePoint ->
-            Character.isLetter(codePoint) &&
-                Character.UnicodeScript.of(codePoint) != Character.UnicodeScript.LATIN
-        }
-    }
-
-    internal fun unchangedWeight(slots: List<TextSlot>, transformed: List<String>): Int =
-        slots.zip(transformed).sumOf { (slot, text) ->
-            if (comparable(slot.text) == comparable(text)) slot.text.length else 0
-        }
-
-    private fun comparable(text: String): String = text
-        .trim()
-        .lowercase(Locale.ROOT)
-        .replace(Regex("\\s+"), " ")
-
-    /**
-     * One entry per original line, aligned by index: the visible sub-line text
-     * where there is one, `null` where there is not. A transformed line that
-     * merely repeats its source (names, shared phrases, already-Latin lines in
-     * a romanization) is not worth a second copy on screen, so it maps to
-     * `null` too.
-     */
-    internal fun rebuild(
-        lines: List<LyricLine>,
-        slots: List<TextSlot>,
-        transformed: List<String>,
-    ): List<String?> {
-        val byIndex = HashMap<Int, String>(slots.size)
-        slots.zip(transformed).forEach { (slot, text) ->
-            byIndex[slot.lineIndex] = if (slot.sectionHeader) "[$text]" else text
-        }
-        return lines.mapIndexed { index, line ->
-            val subLine = byIndex[index] ?: return@mapIndexed null
-            subLine.takeIf { comparable(it) != comparable(line.text) }
-        }
-    }
-
-    internal fun canonicalLanguage(tag: String): String = when (
-        Locale.forLanguageTag(tag.replace('_', '-')).language.lowercase(Locale.ROOT)
-    ) {
-        "iw" -> "he"
-        "in" -> "id"
-        "ji" -> "yi"
-        else -> Locale.forLanguageTag(tag.replace('_', '-')).language.lowercase(Locale.ROOT)
-    }
-
-    private fun sameLanguage(first: String, second: String): Boolean =
-        canonicalLanguage(first) == canonicalLanguage(second)
-
-    internal fun cacheKey(trackId: String, target: String, slots: List<TextSlot>): String {
-        val source = buildString {
-            append(trackId).append('\u0000').append(target)
-            slots.forEach { append('\u0000').append(it.text) }
-        }
-        return MessageDigest.getInstance("SHA-256")
-            .digest(source.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    }
-
-    internal suspend fun readCache(key: String): CachedTranslation? =
-        withContext(Dispatchers.IO) {
-            diskMutex.withLock {
-                val root = cacheDir ?: return@withLock null
-                val file = File(File(root, CACHE_DIRECTORY), "$key.json.gz")
-                if (!file.isFile) return@withLock null
-                runCatching {
-                    val value = GZIPInputStream(FileInputStream(file)).bufferedReader().use {
-                        json.decodeFromString<CachedTranslation>(it.readText())
-                    }
-                    file.setLastModified(System.currentTimeMillis())
-                    value.takeIf { it.version == CACHE_VERSION }
-                }.getOrNull()
+    private fun containsNonLatinText(slots: List<TextSlot>): Boolean {
+        for (slot in slots) {
+            val stream = slot.text.codePoints().iterator()
+            while (stream.hasNext()) {
+                val cp = stream.nextInt()
+                if (Character.isLetter(cp) && Character.UnicodeScript.of(cp) != Character.UnicodeScript.LATIN) {
+                    return true
+                }
             }
         }
+        return false
+    }
 
-    internal suspend fun writeCache(key: String, value: CachedTranslation) =
-        withContext(Dispatchers.IO) {
-            diskMutex.withLock {
-                val root = cacheDir ?: return@withLock
-                val directory = File(root, CACHE_DIRECTORY)
-                if (!directory.exists() && !directory.mkdirs()) return@withLock
-                val destination = File(directory, "$key.json.gz")
-                val temporary = File(directory, "$key.tmp")
-                runCatching {
-                    GZIPOutputStream(FileOutputStream(temporary)).bufferedWriter().use {
-                        it.write(json.encodeToString(value))
-                    }
-                    if (!temporary.renameTo(destination)) {
-                        temporary.copyTo(destination, overwrite = true)
-                        temporary.delete()
-                    }
-                    trimCache(directory)
-                }.onFailure { temporary.delete() }
-            }
+    private fun normalizeComparable(input: String): String =
+        input.trim().lowercase(Locale.ROOT).replace(multiSpacePattern, " ")
+
+    private fun languagesMatch(a: String, b: String): Boolean =
+        canonicalLanguage(a) == canonicalLanguage(b)
+
+    private suspend fun loadFromCache(key: String): CachedTranslation? {
+        synchronized(lruLock) { recentTranslations[key] }?.let { return it }
+        return readCache(key)?.also { entry -> saveToMemory(key, entry) }
+    }
+
+    private fun saveToMemory(key: String, value: CachedTranslation) {
+        synchronized(lruLock) {
+            recentTranslations[key] = value
         }
+    }
 
-    private fun trimCache(directory: File) {
-        val files = directory.listFiles { file -> file.extension == "gz" }
-            ?.sortedByDescending(File::lastModified)
-            .orEmpty()
-        var kept = 0L
-        files.forEach { file ->
-            kept += file.length()
-            if (kept > MAX_CACHE_BYTES) file.delete()
+    private fun pruneDiskCache(folder: File) {
+        val entries = folder.listFiles { file -> file.extension == "gz" }
+            ?.sortedByDescending { it.lastModified() }
+            ?: return
+        var bytesKept = 0L
+        for (entry in entries) {
+            bytesKept += entry.length()
+            if (bytesKept > DISK_CACHE_LIMIT_BYTES) {
+                entry.delete()
+            }
         }
     }
 }

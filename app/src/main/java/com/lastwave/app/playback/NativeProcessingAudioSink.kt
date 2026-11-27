@@ -42,12 +42,11 @@ import java.nio.ByteOrder
 
 /**
  * Media3 multiplies the AudioTrack buffer by 8 once AudioTrack playback params
- * are enabled, headroom for 8x speed. [speedHeadroom] replaces that factor for
- * the AudioTracks opened while it is set; null keeps Media3's sizing.
+ * are enabled, headroom for 8x speed: 2.6 s (6 s over Bluetooth). A normal
+ * AudioTrack stays silent until its buffer is full, so every start and skip
+ * waited that long. Sized for the speed in use, first audio comes ~0.6 s sooner.
  */
-class OutputBufferSizing : DefaultAudioSink.AudioTrackBufferSizeProvider {
-    @Volatile var speedHeadroom: Double? = null
-
+class OutputBufferSizing(private val speed: () -> Float) : DefaultAudioSink.AudioTrackBufferSizeProvider {
     override fun getBufferSizeInBytes(
         minBufferSizeInBytes: Int,
         encoding: Int,
@@ -58,7 +57,7 @@ class OutputBufferSizing : DefaultAudioSink.AudioTrackBufferSizeProvider {
         maxAudioTrackPlaybackSpeed: Double,
     ): Int = DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT.getBufferSizeInBytes(
         minBufferSizeInBytes, encoding, outputMode, pcmFrameSize, sampleRate, bitrate,
-        speedHeadroom ?: maxAudioTrackPlaybackSpeed,
+        speed().coerceAtLeast(1f).toDouble().coerceAtMost(maxAudioTrackPlaybackSpeed),
     )
 }
 
@@ -86,8 +85,6 @@ class NativeProcessingAudioSink(
     private val internalDirect: InternalDirectOutput? = null,
     /** Loudness normalization; only touches the processed (non-bit-perfect) output. */
     private val loudness: LoudnessStage? = null,
-    /** The provider both delegates were built with. */
-    val outputBufferSizing: OutputBufferSizing? = null,
 ) : AudioSink {
     private var activeDelegate: DefaultAudioSink = fallbackDelegate
     // Read on the main thread for the signal-path verdict, written on the
@@ -179,6 +176,11 @@ class NativeProcessingAudioSink(
      */
     private var eqCopySource: ByteBuffer? = null
     private var eqCopy: ByteBuffer? = null
+    @Volatile private var downmixToStereo = false
+    private var downmixCopySource: ByteBuffer? = null
+    private var downmixCopy: ByteBuffer? = null
+    @Volatile private var rateFallbackTargetHz = 0
+    @Volatile private var preferredDeviceSupportedRates: List<Int> = emptyList()
 
     /**
      * Music-haptics analyser. Fed here, before any routing, because this is the
@@ -240,8 +242,11 @@ class NativeProcessingAudioSink(
             activeDelegate.getCurrentPositionUs(sourceEnded)
         }
 
+    override fun getAudioTrackBufferSizeUs(): Long =
+        if (usbExclusive || internalActive) C.TIME_UNSET else activeDelegate.audioTrackBufferSizeUs
+
     private fun canReuseNativeProcessing(format: Format, outputChannels: IntArray?): Boolean {
-        if (!processingActive || nativePathDisabled || !processor.isAvailable || bitPerfectRequested || exclusiveWanted || internalWanted) {
+        if (downmixToStereo || !processingActive || nativePathDisabled || !processor.isAvailable || bitPerfectRequested || exclusiveWanted || internalWanted) {
             return false
         }
         val current = configuredFormat ?: return false
@@ -301,6 +306,12 @@ class NativeProcessingAudioSink(
         configuredOutputChannels = outputChannels?.clone()
         clearPending()
         clearEndOfStream()
+        downmixToStereo = false
+        downmixCopySource = null
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
+            runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
+        }
         processingActive = false
         processedFormat = null
         hasConfigured = true
@@ -389,6 +400,10 @@ class NativeProcessingAudioSink(
             format.channelCount !in 1..2 ||
             format.pcmEncoding !in SUPPORTED_ENCODINGS
         ) {
+            return false
+        }
+        val routedRates = preferredDeviceSupportedRates
+        if (!usbExclusive && routedRates.isNotEmpty() && format.sampleRate !in routedRates) {
             return false
         }
         return try {
@@ -535,9 +550,29 @@ class NativeProcessingAudioSink(
         processingActive = false
         clearPending()
         clearEndOfStream()
+        downmixToStereo = false
+        downmixCopySource = null
+        downmixCopy = null
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
+            runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
+        }
         processedFormat = null
         safeResetProcessor()
-        fallbackDelegate.configure(format, specifiedBufferSize, outputChannels)
+        val canFoldMultichannel = format.sampleMimeType == MimeTypes.AUDIO_RAW &&
+            format.channelCount > 2 &&
+            format.pcmEncoding in SUPPORTED_ENCODINGS
+        if (canFoldMultichannel && format.channelCount > 8) {
+            // Android AudioTrack supports at most 8 channels; fold to stereo before configuring.
+            if (activateStereoDownmix(format)) return
+        }
+        try {
+            fallbackDelegate.configure(format, specifiedBufferSize, outputChannels)
+        } catch (error: Exception) {
+            if (canFoldMultichannel && activateStereoDownmix(format)) return
+            if (recoverUnsupportedSampleRate(error)) return
+            throw error
+        }
         if (activeDelegate !== fallbackDelegate) safeFlush(enhancedDelegate)
         activeDelegate = fallbackDelegate
         // Request the mixer format actually sent to AudioTrack (the source
@@ -548,6 +583,48 @@ class NativeProcessingAudioSink(
         syncDelegateVolume()
         notifyPlatformEffectsRequired(true)
         if (playing) fallbackDelegate.play()
+    }
+
+    private fun activateStereoDownmix(sourceFormat: Format): Boolean {
+        if (sourceFormat.sampleMimeType != MimeTypes.AUDIO_RAW ||
+            sourceFormat.sampleRate <= 0 ||
+            sourceFormat.channelCount <= 2 ||
+            sourceFormat.pcmEncoding !in SUPPORTED_ENCODINGS
+        ) {
+            return false
+        }
+        val stereoFormat = sourceFormat.buildUpon().setChannelCount(2).build()
+        downmixToStereo = true
+        downmixCopySource = null
+        directEqBuffer = null
+        eqCopySource = null
+        lastGainBuffer = null
+        directEq.configure(stereoFormat.sampleRate, 2, stereoFormat.pcmEncoding)
+        if (!bitPerfectRequested && !nativePathDisabled && processor.isAvailable && canProcess(stereoFormat) &&
+            tryConfigureNativePath(stereoFormat, null)
+        ) {
+            bitPerfectAtConfigure = false
+            Log.w(TAG, "Folded ${sourceFormat.channelCount}ch PCM to stereo for native DSP")
+            return true
+        }
+        return try {
+            fallbackDelegate.flush()
+            fallbackDelegate.configure(stereoFormat, 0, null)
+            if (activeDelegate !== fallbackDelegate) safeFlush(enhancedDelegate)
+            activeDelegate = fallbackDelegate
+            processingActive = false
+            processedFormat = null
+            configureUsbOutput(stereoFormat, stereoFormat.pcmEncoding, null)
+            syncDelegateVolume()
+            notifyPlatformEffectsRequired(true)
+            if (playing) fallbackDelegate.play()
+            Log.w(TAG, "Folded ${sourceFormat.channelCount}ch PCM to stereo for AudioTrack compatibility")
+            true
+        } catch (error: Exception) {
+            downmixToStereo = false
+            Log.e(TAG, "Stereo downmix configuration failed", error)
+            false
+        }
     }
 
     override fun play() {
@@ -658,37 +735,96 @@ class NativeProcessingAudioSink(
         // A copy in flight stays the routed buffer until consumed, even if the
         // route or the EQ changes meanwhile: the delegate requires the same
         // object on every retry.
-        val routed = when {
-            eqCopySource === buffer -> eqCopy ?: buffer
-            !isDirectEqRoute() -> buffer
-            buffer.isReadOnly -> if (com.lastwave.app.playback.eq.ParametricEqNative.isEngaged()) {
-                copyForEq(buffer).also {
-                    directEq.process(it)
-                    eqCopySource = buffer
+        var activeRouted = prepareRoutedBuffer(buffer)
+        var consumed = false
+        var rateRetries = 0
+        while (true) {
+            try {
+                consumed = handleRoutedBuffer(activeRouted, presentationTimeUs, encodedAccessUnitCount)
+                break
+            } catch (error: Exception) {
+                val fmt = configuredFormat
+                if (fmt != null && !downmixToStereo && activateStereoDownmix(fmt)) {
+                    activeRouted = prepareRoutedBuffer(buffer)
+                } else if (fmt != null && rateRetries++ < 2 && recoverUnsupportedSampleRate(error)) {
+                    activeRouted = prepareRoutedBuffer(buffer)
+                } else {
+                    throw error
                 }
-            } else {
-                buffer
-            }
-            else -> {
-                if (directEqBuffer !== buffer) {
-                    directEq.process(buffer)
-                    directEqBuffer = buffer
-                }
-                buffer
             }
         }
-        val consumed = handleRoutedBuffer(routed, presentationTimeUs, encodedAccessUnitCount)
-        // The copy holds buffer[position, limit): mirror how far it got.
-        if (routed !== buffer) buffer.position(buffer.limit() - routed.remaining())
+        mirrorConsumedPosition(buffer, activeRouted)
         // Decoder buffers are recycled objects: once consumed, the next
         // payload in the same object must be equalised again.
         if (consumed) {
             directEqBuffer = null
             eqCopySource = null
+            downmixCopySource = null
             hapticsBuffer = null
             skipCheckedBuffer = null
         }
         return consumed
+    }
+
+    private fun prepareRoutedBuffer(buffer: ByteBuffer): ByteBuffer {
+        val working = if (downmixToStereo) prepareStereoDownmixBuffer(buffer) else buffer
+        return when {
+            eqCopySource === working -> eqCopy ?: working
+            !isDirectEqRoute() -> working
+            working.isReadOnly -> if (com.lastwave.app.playback.eq.ParametricEqNative.isEngaged()) {
+                copyForEq(working).also {
+                    directEq.process(it)
+                    eqCopySource = working
+                }
+            } else {
+                working
+            }
+            else -> {
+                if (directEqBuffer !== working) {
+                    directEq.process(working)
+                    directEqBuffer = working
+                }
+                working
+            }
+        }
+    }
+
+    private fun mirrorConsumedPosition(source: ByteBuffer, routed: ByteBuffer) {
+        if (routed === source) return
+        val fmt = configuredFormat
+        if (downmixToStereo && fmt != null && fmt.channelCount > 2) {
+            val sampleBytes = pcmSampleBytes(fmt.pcmEncoding)
+            if (sampleBytes > 0) {
+                val remainingFrames = routed.remaining() / (2 * sampleBytes)
+                val targetPos = (source.limit() - remainingFrames * fmt.channelCount * sampleBytes)
+                    .coerceIn(source.position(), source.limit())
+                source.position(targetPos)
+                return
+            }
+        }
+        source.position((source.limit() - routed.remaining()).coerceIn(source.position(), source.limit()))
+    }
+
+    private fun prepareStereoDownmixBuffer(source: ByteBuffer): ByteBuffer {
+        if (downmixCopySource === source) {
+            return downmixCopy ?: source
+        }
+        val fmt = configuredFormat ?: return source
+        val sampleBytes = pcmSampleBytes(fmt.pcmEncoding)
+        val channels = fmt.channelCount
+        if (sampleBytes <= 0 || channels <= 2) return source
+        val inFrameBytes = channels * sampleBytes
+        val frameCount = source.remaining() / inFrameBytes
+        val outBytes = frameCount * 2 * sampleBytes
+        val target = downmixCopy?.takeIf { it.capacity() >= outBytes }
+            ?: ByteBuffer.allocateDirect(outBytes).order(ByteOrder.LITTLE_ENDIAN).also { downmixCopy = it }
+        target.clear()
+        target.order(ByteOrder.LITTLE_ENDIAN)
+        val src = source.duplicate().order(ByteOrder.LITTLE_ENDIAN)
+        downmixFramesToStereo(src, target, frameCount, channels, fmt.pcmEncoding, sampleBytes)
+        target.flip()
+        downmixCopySource = source
+        return target
     }
 
     private fun copyForEq(source: ByteBuffer): ByteBuffer {
@@ -769,10 +905,13 @@ class NativeProcessingAudioSink(
         }
         return try {
             handleProcessedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
-        } catch (retryError: Exception) {
-            if (!switchToPlatformFallback("Processed PCM16 retry failed", retryError)) throw retryError
+        } catch (error: Exception) {
+            if (recoverUnsupportedSampleRate(error)) {
+                return handleProcessedBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+            }
+            if (!switchToPlatformFallback("Processed PCM16 retry failed", error)) throw error
             fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
-        } catch (retryError: LinkageError) {
+        } catch (error: LinkageError) {
             if (!switchToPlatformFallback("Processed PCM16 retry linkage failed", retryError)) throw retryError
             fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
         }
@@ -792,25 +931,43 @@ class NativeProcessingAudioSink(
         presentationTimeUs: Long,
         encodedAccessUnitCount: Int,
     ): Boolean {
+        val fmt = configuredFormat
         val gain = lastVolume
         val needsGain = bitPerfectRequested && bitPerfectAtConfigure && mixerIgnoresVolume && hasConfigured &&
             gain < 1f - 1e-6f && gain >= 0f && buffer.hasRemaining()
-        if (!needsGain) {
-            lastGainBuffer = null
-            return activeDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
-        }
-        // Media3 retries the SAME buffer object when the delegate partially
-        // consumes it. Scale once per buffer identity: re-scaling the tail on
-        // retry would compound attenuation.
-        if (lastGainBuffer !== buffer) {
-            val fmt = configuredFormat
-            if (fmt == null || fmt.sampleMimeType != MimeTypes.AUDIO_RAW) {
-                return activeDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
-            }
+        if (needsGain && lastGainBuffer !== buffer && fmt?.sampleMimeType == MimeTypes.AUDIO_RAW) {
             scalePcmInPlace(buffer, buffer.position(), buffer.limit(), fmt.pcmEncoding, gain)
             lastGainBuffer = buffer
         }
-        return activeDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        return try {
+            activeDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        } catch (error: Exception) {
+            if (activeDelegate !== enhancedDelegate || !switchDirectEnhancedToPcm16(error)) throw error
+            fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        } catch (error: LinkageError) {
+            if (activeDelegate !== enhancedDelegate || !switchDirectEnhancedToPcm16(error)) throw error
+            fallbackDelegate.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        }
+    }
+
+    private fun switchDirectEnhancedToPcm16(error: Throwable): Boolean {
+        val format = effectiveFallbackFormat() ?: return false
+        disableFloatOutput("Direct Float32 AudioTrack failed", error)
+        safeFlush(enhancedDelegate)
+        return try {
+            fallbackDelegate.flush()
+            fallbackDelegate.configure(format, 0, if (downmixToStereo) null else configuredOutputChannels)
+            activeDelegate = fallbackDelegate
+            bitPerfectAtConfigure = false
+            configureUsbOutput(format, format.pcmEncoding, if (downmixToStereo) null else configuredOutputChannels)
+            syncDelegateVolume()
+            notifyPlatformEffectsRequired(true)
+            if (playing) fallbackDelegate.play()
+            true
+        } catch (fallbackError: Exception) {
+            Log.e(TAG, "Direct PCM16 fallback configuration failed", fallbackError)
+            false
+        }
     }
 
     private fun scalePcmInPlace(
@@ -1040,6 +1197,11 @@ class NativeProcessingAudioSink(
         fallbackDelegate.setPreferredDevice(audioDeviceInfo)
     }
 
+    /** Supported rates advertised by the routed USB DAC (`AudioDeviceInfo.sampleRates`). */
+    fun setPreferredDeviceSupportedRates(rates: List<Int>) {
+        preferredDeviceSupportedRates = rates.filter { it > 0 }.distinct()
+    }
+
     /**
      * USB-DAC mode: request the track's native rate so the sink opens its
      * AudioTrack without app-side resampling. Null restores default
@@ -1148,6 +1310,10 @@ class NativeProcessingAudioSink(
             format.channelCount !in 1..2 ||
             format.pcmEncoding !in SUPPORTED_ENCODINGS
         ) {
+            return false
+        }
+        val routedRates = preferredDeviceSupportedRates
+        if (!usbExclusive && routedRates.isNotEmpty() && format.sampleRate !in routedRates) {
             return false
         }
         // Tempo/pitch lives in Media3's Sonic stage inside DefaultAudioSink,
@@ -1339,11 +1505,12 @@ class NativeProcessingAudioSink(
         val session = exclusiveUsb ?: return false
         if (format.sampleMimeType != MimeTypes.AUDIO_RAW ||
             format.sampleRate <= 0 ||
-            format.channelCount !in 1..2 ||
+            format.channelCount !in 1..8 ||
             format.pcmEncoding !in SUPPORTED_ENCODINGS
         ) {
             return false
         }
+        if (!session.canOpen()) return false
         // Release AudioTrack before claiming the USB interface. While the
         // mixer still owns the DAC, libusb cannot detach snd-usb-audio and
         // exclusive start fails closed onto the shared 48 kHz track.
@@ -1709,6 +1876,7 @@ class NativeProcessingAudioSink(
         directEq.reset()
         directEqBuffer = null
         eqCopySource = null
+        downmixCopySource = null
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.flush() }
         runCatching { rhythmAnalyzer.flush() }
@@ -1756,6 +1924,13 @@ class NativeProcessingAudioSink(
         directEqBuffer = null
         eqCopySource = null
         eqCopy = null
+        downmixToStereo = false
+        downmixCopySource = null
+        downmixCopy = null
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
+            runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
+        }
         hapticsBuffer = null
         runCatching { hapticsAnalyzer?.reset() }
         runCatching { rhythmAnalyzer.reset() }
@@ -1807,6 +1982,13 @@ class NativeProcessingAudioSink(
         pendingInternalFloat = null
         clearPending()
         clearEndOfStream()
+        downmixToStereo = false
+        downmixCopySource = null
+        downmixCopy = null
+        if (rateFallbackTargetHz != 0) {
+            rateFallbackTargetHz = 0
+            runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
+        }
         processedFormat = null
         processingActive = false
         playing = false
@@ -1832,8 +2014,9 @@ class NativeProcessingAudioSink(
         }
 
     private fun switchToProcessedPcm16(reason: String, error: Throwable): Boolean {
-        val format = configuredFormat ?: return false
+        val format = effectiveFallbackFormat() ?: return false
         val floatFormat = processedFormat ?: return false
+        val outChannels = if (downmixToStereo) null else configuredOutputChannels
         disableFloatOutput(reason, error)
         clearPending()
         clearEndOfStream()
@@ -1844,10 +2027,10 @@ class NativeProcessingAudioSink(
             // buffer, so encoder delay must not be removed a second time.
             processor.beginStream(0, format.encoderPadding)
             fallbackDelegate.flush()
-            fallbackDelegate.configure(floatFormat, 0, configuredOutputChannels)
+            fallbackDelegate.configure(floatFormat, 0, outChannels)
             activeDelegate = fallbackDelegate
             processingActive = true
-            configureUsbOutput(floatFormat, C.ENCODING_PCM_16BIT, configuredOutputChannels)
+            configureUsbOutput(floatFormat, C.ENCODING_PCM_16BIT, outChannels)
             notifyPlatformEffectsRequired(false)
             if (playing) fallbackDelegate.play()
             Log.w(TAG, "Recovered with native Float32 DSP and PCM16 AudioTrack output")
@@ -1862,7 +2045,8 @@ class NativeProcessingAudioSink(
     }
 
     private fun switchToPlatformFallback(reason: String, error: Throwable): Boolean {
-        val format = configuredFormat ?: return false
+        val format = effectiveFallbackFormat() ?: return false
+        val outChannels = if (downmixToStereo) null else configuredOutputChannels
         disableNativePath(reason, error)
         processingActive = false
         clearPending()
@@ -1874,12 +2058,12 @@ class NativeProcessingAudioSink(
             fallbackDelegate.flush()
             fallbackDelegate.configure(
                 format,
-                configuredBufferSize,
-                configuredOutputChannels,
+                if (downmixToStereo) 0 else configuredBufferSize,
+                outChannels,
             )
             activeDelegate = fallbackDelegate
             notifyPlatformEffectsRequired(true)
-            configureUsbOutput(format, format.pcmEncoding, configuredOutputChannels)
+            configureUsbOutput(format, format.pcmEncoding, outChannels)
             if (playing) fallbackDelegate.play()
             true
         } catch (fallbackError: Exception) {
@@ -1889,6 +2073,63 @@ class NativeProcessingAudioSink(
             Log.e(TAG, "PCM16 fallback linkage failed", fallbackError)
             false
         }
+    }
+
+    private fun effectiveFallbackFormat(): Format? {
+        val fmt = configuredFormat ?: return null
+        return if (downmixToStereo && fmt.channelCount > 2) fmt.buildUpon().setChannelCount(2).build() else fmt
+    }
+
+    /**
+     * Last-resort recovery when the active AudioTrack rejects the stream's
+     * sample rate (e.g. 176.4/192/384 kHz on a 96 kHz-max DAC, or 96 kHz over
+     * Bluetooth/speaker HAL): steps down to 96 kHz first (if above 96 kHz),
+     * then 48 kHz through the native resampler for this item.
+     */
+    private fun recoverUnsupportedSampleRate(error: Throwable): Boolean {
+        val isSinkReject = error is AudioSink.InitializationException ||
+            error is AudioSink.ConfigurationException ||
+            error is AudioSink.WriteException ||
+            error is IllegalStateException ||
+            error is IllegalArgumentException
+        if (!isSinkReject || nativePathDisabled || !processor.isAvailable) {
+            return false
+        }
+        val effective = effectiveFallbackFormat() ?: return false
+        if (effective.sampleRate == SAFE_FALLBACK_SAMPLE_RATE_HZ || !canProcess(effective)) {
+            return false
+        }
+        val nextRate = when {
+            rateFallbackTargetHz == 0 && effective.sampleRate > HI_RES_96K_SAMPLE_RATE_HZ ->
+                HI_RES_96K_SAMPLE_RATE_HZ
+            rateFallbackTargetHz != SAFE_FALLBACK_SAMPLE_RATE_HZ ->
+                SAFE_FALLBACK_SAMPLE_RATE_HZ
+            else -> return false
+        }
+        rateFallbackTargetHz = nextRate
+        floatOutputDisabled = true
+        bitPerfectAtConfigure = false
+        clearPending()
+        clearEndOfStream()
+        safeFlush(enhancedDelegate)
+        safeFlush(fallbackDelegate)
+        processor.setOutputSampleRateOverride(nextRate)
+        val outChannels = if (downmixToStereo) null else configuredOutputChannels
+        if (!tryConfigureNativePath(effective, outChannels)) {
+            if (nextRate == HI_RES_96K_SAMPLE_RATE_HZ) {
+                rateFallbackTargetHz = SAFE_FALLBACK_SAMPLE_RATE_HZ
+                processor.setOutputSampleRateOverride(SAFE_FALLBACK_SAMPLE_RATE_HZ)
+                if (tryConfigureNativePath(effective, outChannels)) {
+                    Log.w(TAG, "AudioTrack rejected ${effective.sampleRate} Hz; resampled to $SAFE_FALLBACK_SAMPLE_RATE_HZ Hz PCM16", error)
+                    return true
+                }
+            }
+            rateFallbackTargetHz = 0
+            runCatching { processor.setOutputSampleRateOverride(requestedOutputOverrideHz) }
+            return false
+        }
+        Log.w(TAG, "AudioTrack rejected ${effective.sampleRate} Hz; resampled to $nextRate Hz PCM16", error)
+        return true
     }
 
     private fun disableFloatOutput(reason: String, error: Throwable) {
@@ -1993,11 +2234,107 @@ class NativeProcessingAudioSink(
     private companion object {
         const val TAG = "NativeAudioSink"
         const val MICROS_PER_SECOND = 1_000_000L
+        const val HI_RES_96K_SAMPLE_RATE_HZ = 96_000
+        const val SAFE_FALLBACK_SAMPLE_RATE_HZ = 48_000
         val SUPPORTED_ENCODINGS = setOf(
             C.ENCODING_PCM_16BIT,
             C.ENCODING_PCM_24BIT,
             C.ENCODING_PCM_32BIT,
             C.ENCODING_PCM_FLOAT,
         )
+
+        fun pcmSampleBytes(encoding: Int): Int = when (encoding) {
+            C.ENCODING_PCM_16BIT -> 2
+            C.ENCODING_PCM_24BIT -> 3
+            C.ENCODING_PCM_32BIT, C.ENCODING_PCM_FLOAT -> 4
+            else -> 0
+        }
+
+        fun downmixFramesToStereo(
+            src: ByteBuffer,
+            dst: ByteBuffer,
+            frameCount: Int,
+            channels: Int,
+            encoding: Int,
+            sampleBytes: Int,
+        ) {
+            val ch = FloatArray(channels)
+            val basePos = src.position()
+            for (frame in 0 until frameCount) {
+                var pos = basePos + frame * channels * sampleBytes
+                for (c in 0 until channels) {
+                    ch[c] = readNormalizedSample(src, pos, encoding)
+                    pos += sampleBytes
+                }
+                val left: Float
+                val right: Float
+                when (channels) {
+                    6 -> {
+                        // ITU 5.1 (FL, FR, FC, LFE, Ls, Rs) scaled to prevent clipping.
+                        left = ((ch[0] + 0.70710677f * (ch[2] + ch[4])) * 0.5f).coerceIn(-1f, 1f)
+                        right = ((ch[1] + 0.70710677f * (ch[2] + ch[5])) * 0.5f).coerceIn(-1f, 1f)
+                    }
+                    8 -> {
+                        // ITU 7.1 (FL, FR, FC, LFE, BL, BR, SL, SR)
+                        left = ((ch[0] + 0.70710677f * (ch[2] + ch[4] + ch[6])) * 0.4f).coerceIn(-1f, 1f)
+                        right = ((ch[1] + 0.70710677f * (ch[2] + ch[5] + ch[7])) * 0.4f).coerceIn(-1f, 1f)
+                    }
+                    else -> {
+                        var sumL = 0f
+                        var sumR = 0f
+                        for (c in 0 until channels) {
+                            if (c == 2 && (channels == 3 || channels == 5)) {
+                                sumL += 0.70710677f * ch[c]
+                                sumR += 0.70710677f * ch[c]
+                            } else if ((c and 1) == 0) {
+                                sumL += ch[c]
+                            } else {
+                                sumR += ch[c]
+                            }
+                        }
+                        val norm = 1f / kotlin.math.sqrt(channels / 2f).coerceAtLeast(1f)
+                        left = (sumL * norm).coerceIn(-1f, 1f)
+                        right = (sumR * norm).coerceIn(-1f, 1f)
+                    }
+                }
+                writeNormalizedSample(dst, encoding, left)
+                writeNormalizedSample(dst, encoding, right)
+            }
+        }
+
+        private fun readNormalizedSample(buf: ByteBuffer, pos: Int, encoding: Int): Float = when (encoding) {
+            C.ENCODING_PCM_16BIT -> buf.getShort(pos) / 32768f
+            C.ENCODING_PCM_24BIT -> {
+                val b1 = buf.get(pos).toInt() and 0xFF
+                val b2 = buf.get(pos + 1).toInt() and 0xFF
+                val b3 = buf.get(pos + 2).toInt()
+                (b1 or (b2 shl 8) or (b3 shl 16)) / 8388608f
+            }
+            C.ENCODING_PCM_32BIT -> (buf.getInt(pos).toDouble() / 2147483648.0).toFloat()
+            C.ENCODING_PCM_FLOAT -> buf.getFloat(pos).let { if (it.isFinite()) it else 0f }
+            else -> 0f
+        }
+
+        private fun writeNormalizedSample(dst: ByteBuffer, encoding: Int, value: Float) {
+            val v = value.coerceIn(-1f, 1f)
+            when (encoding) {
+                C.ENCODING_PCM_16BIT -> {
+                    val sample = kotlin.math.round(v * 32767f).toInt().coerceIn(-32768, 32767)
+                    dst.putShort(sample.toShort())
+                }
+                C.ENCODING_PCM_24BIT -> {
+                    val sample = kotlin.math.round(v * 8388607.0).toLong().coerceIn(-8388608L, 8388607L).toInt()
+                    dst.put(sample.toByte())
+                    dst.put((sample shr 8).toByte())
+                    dst.put((sample shr 16).toByte())
+                }
+                C.ENCODING_PCM_32BIT -> {
+                    val sample = kotlin.math.round(v * 2147483647.0).toLong()
+                        .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
+                    dst.putInt(sample)
+                }
+                C.ENCODING_PCM_FLOAT -> dst.putFloat(v)
+            }
+        }
     }
 }

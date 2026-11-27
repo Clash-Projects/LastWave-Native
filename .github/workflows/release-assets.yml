@@ -1,8 +1,8 @@
-name: Build 5.2.1 Release Assets
+name: Build Release Assets
 
 on:
   push:
-    branches: [ codex/release-5.2.1 ]
+    branches: [ 'codex/release-*' ]
     paths-ignore: [ '**.md' ]
   workflow_dispatch:
 
@@ -93,7 +93,7 @@ jobs:
         if: ${{ always() && matrix.variant == 'universal' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v5.2.1-regression-test-results
+          name: LastWave-regression-test-results
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
@@ -114,8 +114,10 @@ jobs:
           EXPECTED_MIN_SDK: ${{ matrix.min_sdk }}
         run: |
           set -euo pipefail
+          VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n1 | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')
           mkdir -p final_apk
-          APK="final_apk/LastWave-v5.2.1-${VARIANT}.apk"
+          APK="final_apk/LastWave-v${VERSION}-${VARIANT}.apk"
           cp "app/build/outputs/apk/${APK_OUTPUT}" "$APK"
           SDKROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           BUILD_TOOLS=$(find "$SDKROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
@@ -132,13 +134,13 @@ jobs:
             *) echo "::error::Unexpected signing certificate for $APK"; exit 1 ;;
           esac
           "$AAPT" dump badging "$APK" > badging.txt
-          grep -F "package: name='${EXPECTED_PACKAGE}' versionCode='33' versionName='5.2.1'" badging.txt
+          grep -F "package: name='${EXPECTED_PACKAGE}' versionCode='${VERSION_CODE}' versionName='${VERSION}'" badging.txt
           grep -Fx "sdkVersion:'${EXPECTED_MIN_SDK}'" badging.txt
 
       - name: Upload verified APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v5.2.1-${{ matrix.variant }}-verified
+          name: LastWave-${{ matrix.variant }}-verified
           path: final_apk/*.apk
           if-no-files-found: error
           compression-level: 0
@@ -151,7 +153,7 @@ jobs:
       - name: Download four verified APKs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: LastWave-v5.2.1-*-verified
+          pattern: LastWave-*-verified
           merge-multiple: true
           path: final_apk
 
@@ -167,7 +169,7 @@ jobs:
       - name: Upload complete release assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: LastWave-v5.2.1-release-assets
+          name: LastWave-release-assets
           path: final_apk/*
           if-no-files-found: error
           compression-level: 0

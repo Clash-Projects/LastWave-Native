@@ -1277,8 +1277,10 @@ internal fun FullPlayer(
                     modifier = Modifier
                         .weight(1f)
                         .then(
+                            // No cap in landscape: the split's art pane must reach the
+                            // screen edge, or wide (>1200dp) tablets get a hard-edged band.
                             if (isTabletLandscape) {
-                                Modifier.widthIn(max = 1200.dp).fillMaxWidth()
+                                Modifier.fillMaxWidth()
                             } else {
                                 Modifier.adaptiveContentWidth(maxWidth = 680.dp)
                             }

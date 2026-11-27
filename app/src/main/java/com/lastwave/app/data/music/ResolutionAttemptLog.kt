@@ -90,3 +90,12 @@ internal fun containedAudioResolutionFailure(tag: String): CoroutineExceptionHan
         }
         throw error
     }
+
+/**
+ * Set by the player around its stream resolves. The deep probe past the first
+ * MiB cost 0.25-2 s before every first audio; the player already recovers a
+ * rejected URL at the same position, so the probe runs after the URL is used.
+ */
+internal object DeferredStreamProbe : CoroutineContext.Element, CoroutineContext.Key<DeferredStreamProbe> {
+    override val key: CoroutineContext.Key<*> get() = this
+}

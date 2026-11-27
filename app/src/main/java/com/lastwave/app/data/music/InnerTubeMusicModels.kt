@@ -371,6 +371,7 @@ internal const val RELATED_REQUEST_TIMEOUT_MS = 8_000L
 internal const val SEARCH_REQUEST_TIMEOUT_MS = 10_000L
 internal const val ACCOUNT_SWITCHER_TIMEOUT_MS = 15_000L
 internal const val STREAM_PROBE_TIMEOUT_MS = 15_000L
+internal const val DEFERRED_PROBE_DELAY_MS = 5_000L
 internal const val HISTORY_PING_TIMEOUT_MS = 15_000L
 internal const val URL_EXPIRY_MARGIN_MS = 2 * 60 * 1000L
 internal const val REQUEST_RETRY_BASE_DELAY_MS = 250L

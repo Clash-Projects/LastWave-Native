@@ -4,6 +4,7 @@ import android.util.Log
 import com.lastwave.app.data.network.NetworkMonitor
 import com.lastwave.app.data.spotify.SpotifyPreferences
 import com.lastwave.app.playback.PlayableTrack
+import com.lastwave.app.util.ArtistHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -12,25 +13,16 @@ import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Finds the looping video that belongs behind a track's or a release's cover
- * art (Spotify Canvas, Apple motion artwork, Tidal video cover, or Community
- * Canvas manifest).
- *
- * Sources are queried in order:
- * 1. Apple Music (highest quality, richest animated album catalog)
- * 2. Tidal (1280x1280 square video covers)
- * 3. Community Canvas (ViMusic manifest for catalog gaps and indie tracks)
- * 4. Spotify Canvas (official looping video loops, portrait 9:16)
- *
- * Spotify is asked last by default: it is the only source that needs an account
- * and the only one that can be refused, and the other three between them cover
- * most of what it would have answered. The preference for Spotify being asked
- * first moves it to the front.
- *
- * Waterfall lookups are serialized with a Mutex to avoid overwhelming the network
- * on rapid track skips. Results (both hits and misses) are cached in a 64-entry LRU cache.
- */
+private const val REPO_LOG_TAG = "CanvasRepository"
+private const val MEMORY_CACHE_CAPACITY = 64
+
+private val collapseSpaceRegex = Regex("\\s+")
+private val titleNoiseRegex = Regex(
+    """\((?:from|official|lyrical|video|audio)[^)]*\)|\[[^]]*]|""" +
+        """\b(?:official (?:video|audio|music video)|lyrical|full song|4k video)\b""",
+    RegexOption.IGNORE_CASE,
+)
+
 @Singleton
 class CanvasRepository @Inject constructor(
     private val okHttpClient: OkHttpClient,
@@ -38,63 +30,42 @@ class CanvasRepository @Inject constructor(
     private val spotifyCanvas: SpotifyCanvas,
     private val spotifyPreferences: SpotifyPreferences,
 ) {
-
-    private class Entry(val artwork: CanvasArtwork?, val withAlbum: Boolean)
-
-    private val cache = object : LinkedHashMap<String, Entry>(CACHE_SIZE, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>): Boolean =
-            size > CACHE_SIZE
+    private class CachedResult(
+        val artwork: CanvasArtwork?,
+        val queriedWithAlbum: Boolean,
+    ) {
+        fun satisfies(needsAlbumContext: Boolean): Boolean =
+            artwork != null || queriedWithAlbum || !needsAlbumContext
     }
 
-    private val lock = Mutex()
+    private val cacheGuard = Any()
+    private val lruCache = object : LinkedHashMap<String, CachedResult>(MEMORY_CACHE_CAPACITY, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedResult>): Boolean =
+            size > MEMORY_CACHE_CAPACITY
+    }
+    private val fetchMutex = Mutex()
 
-    /**
-     * The provider order the cached answers were gathered under.
-     *
-     * A different order answers a different question — "the best clip" and "Spotify's clip"
-     * are not the same answer — so the answers gathered under the old order are dropped
-     * rather than reused.
-     */
     @Volatile
-    private var cachedProviderOrder: Boolean? = null
+    private var lastPreferSpotify: Boolean? = null
 
-    private fun syncProviderOrder(preferSpotify: Boolean) {
-        val previous = cachedProviderOrder
-        if (previous == null) {
-            cachedProviderOrder = preferSpotify
-            return
-        }
-        if (previous != preferSpotify) {
-            Log.d(TAG, "Provider order changed; dropping the answers cached under the old one")
-            synchronized(cache) { cache.clear() }
-            cachedProviderOrder = preferSpotify
-        }
-    }
-
-    /**
-     * Resolves canvas for a [track], respecting cellular data settings. Never throws.
-     */
     suspend fun canvasFor(track: PlayableTrack, cellularAllowed: Boolean = true): CanvasArtwork? {
-        val title = track.title.cleaned()
-        val artist = track.artist.cleaned()
-        if (title.isBlank() || artist.isBlank()) return null
+        val cleanTitle = stripNoise(track.title)
+        val cleanArtist = stripNoise(track.artist)
+        if (cleanTitle.isBlank() || cleanArtist.isBlank()) return null
 
-        val album = track.album?.takeIf { it.isNotBlank() }
-        val id = track.videoId?.takeIf { it.isNotBlank() } ?: "$artist-$title"
+        val albumTitle = track.album?.takeIf { it.isNotBlank() }
+        val resolvedId = track.videoId?.takeIf { it.isNotBlank() } ?: "$cleanArtist-$cleanTitle"
 
         return canvasFor(
-            title = title,
-            artist = artist,
-            album = album,
-            trackId = id,
+            title = cleanTitle,
+            artist = cleanArtist,
+            album = albumTitle,
+            trackId = resolvedId,
             durationMs = track.durationMs,
             cellularAllowed = cellularAllowed,
         )
     }
 
-    /**
-     * Resolves canvas for raw title/artist/album strings.
-     */
     suspend fun canvasFor(
         title: String,
         artist: String,
@@ -103,191 +74,194 @@ class CanvasRepository @Inject constructor(
         durationMs: Long? = null,
         cellularAllowed: Boolean = true,
     ): CanvasArtwork? {
-        val cleanTitle = title.cleaned()
-        val cleanArtist = artist.cleaned()
+        val cleanTitle = stripNoise(title)
+        val cleanArtist = stripNoise(artist)
         if (cleanTitle.isBlank() || cleanArtist.isBlank()) return null
 
-        val id = trackId ?: "$cleanArtist-$cleanTitle"
-        val key = "song|$id"
+        val cacheKey = "song|${trackId ?: "$cleanArtist-$cleanTitle"}"
+        val spotifyFirst = spotifyPreferences.isPreferSpotifyCanvas()
+        invalidateIfOrderChanged(spotifyFirst)
 
-        val preferSpotify = spotifyPreferences.isPreferSpotifyCanvas()
-        syncProviderOrder(preferSpotify)
-
-        val cachedAnswer = synchronized(cache) { cache[key] }
-        if (cachedAnswer != null && cachedAnswer.reusable(album != null)) {
-            return cachedAnswer.artwork
+        val hasAlbum = album != null
+        val existing = synchronized(cacheGuard) { lruCache[cacheKey] }
+        if (existing != null && existing.satisfies(hasAlbum)) {
+            return existing.artwork
         }
 
         if (!cellularAllowed && networkMonitor.isOnCellular()) {
-            Log.d(TAG, "Skipping online canvas fetch on cellular connection (cellularAllowed=false)")
-            return cachedAnswer?.artwork
+            Log.d(REPO_LOG_TAG, "Skipping online canvas fetch on cellular connection (cellularAllowed=false)")
+            return existing?.artwork
         }
 
-        return resolve(key, album != null) {
-            val sources = buildList<suspend () -> CanvasArtwork?> {
-                if (preferSpotify) {
-                    add { spotifyCanvas.search(cleanTitle, cleanArtist, album, durationMs) }
-                }
-                add { AppleMusicCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) }
-                add { TidalCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) }
-                add { CommunityCanvas.search(okHttpClient, cleanTitle, cleanArtist, album) }
-                if (!preferSpotify) {
-                    add { spotifyCanvas.search(cleanTitle, cleanArtist, album, durationMs) }
-                }
+        return lookupAndStore(cacheKey, hasAlbum) {
+            val providers = orderedSongProviders(
+                spotifyFirst = spotifyFirst,
+                title = cleanTitle,
+                artist = cleanArtist,
+                album = album,
+                durationMs = durationMs,
+            )
+            selectMatchingArtwork(providers) { candidate ->
+                candidate.matches(cleanTitle, cleanArtist, album)
             }
-            firstHit(*sources.toTypedArray()) { it.matches(cleanTitle, cleanArtist, album) }
         }
     }
 
-    /**
-     * Cached canvas for [track] if already resolved in memory.
-     */
     fun cached(track: PlayableTrack): CanvasArtwork? {
-        val id = track.videoId?.takeIf { it.isNotBlank() } ?: "${track.artist.cleaned()}-${track.title.cleaned()}"
-        val key = "song|$id"
-        return synchronized(cache) { cache[key]?.artwork }
+        val resolvedId = track.videoId?.takeIf { it.isNotBlank() }
+            ?: "${stripNoise(track.artist)}-${stripNoise(track.title)}"
+        return synchronized(cacheGuard) { lruCache["song|$resolvedId"]?.artwork }
     }
 
-    /**
-     * Cached canvas for raw title/artist/id strings if already resolved in memory.
-     */
     fun cached(title: String, artist: String, trackId: String? = null): CanvasArtwork? {
-        val cleanTitle = title.cleaned()
-        val cleanArtist = artist.cleaned()
-        val fallbackId = "$cleanArtist-$cleanTitle"
-        return synchronized(cache) {
-            val fromId = trackId?.takeIf { it.isNotBlank() }?.let { cache["song|$it"]?.artwork }
-            fromId ?: cache["song|$fallbackId"]?.artwork
+        val (idKey, nameKey) = trackCacheKeys(title, artist, trackId)
+        return synchronized(cacheGuard) {
+            val byId = if (idKey != null) lruCache[idKey]?.artwork else null
+            byId ?: lruCache[nameKey]?.artwork
         }
     }
 
-    /**
-     * Whether canvas lookup for this song has already been completed (hit or miss).
-     */
     fun hasResolved(title: String, artist: String, trackId: String? = null): Boolean {
-        val cleanTitle = title.cleaned()
-        val cleanArtist = artist.cleaned()
-        val fallbackId = "$cleanArtist-$cleanTitle"
-        return synchronized(cache) {
-            val fromId = trackId?.takeIf { it.isNotBlank() }?.let { cache.containsKey("song|$it") } ?: false
-            fromId || cache.containsKey("song|$fallbackId")
+        val (idKey, nameKey) = trackCacheKeys(title, artist, trackId)
+        return synchronized(cacheGuard) {
+            (idKey != null && lruCache.containsKey(idKey)) || lruCache.containsKey(nameKey)
         }
     }
 
-    /**
-     * Resolves canvas for an entire album release.
-     */
     suspend fun canvasForAlbum(
         album: String,
         artist: String,
         cellularAllowed: Boolean = true,
     ): CanvasArtwork? {
-        val name = album.cleaned()
-        val credit = artist.cleaned()
-        if (name.isBlank() || credit.isBlank()) return null
+        val cleanAlbum = stripNoise(album)
+        val cleanArtist = stripNoise(artist)
+        if (cleanAlbum.isBlank() || cleanArtist.isBlank()) return null
 
-        val key = "album|$name|$credit"
-        val cachedAnswer = synchronized(cache) { cache[key] }
-        if (cachedAnswer != null) return cachedAnswer.artwork
+        val cacheKey = "album|$cleanAlbum|$cleanArtist"
+        synchronized(cacheGuard) { lruCache[cacheKey] }?.let { return it.artwork }
+        if (!cellularAllowed && networkMonitor.isOnCellular()) return null
 
-        if (!cellularAllowed && networkMonitor.isOnCellular()) {
-            return null
-        }
-
-        return resolve(key, withAlbum = true) {
-            firstHit(
-                { AppleMusicCanvas.searchAlbum(okHttpClient, name, credit) },
-                { TidalCanvas.searchAlbum(okHttpClient, name, credit) },
-                { CommunityCanvas.search(okHttpClient, name, credit, name) },
-            ) { it.matches(name, credit, name) }
+        return lookupAndStore(cacheKey, withAlbum = true) {
+            val providers = listOf<suspend () -> CanvasArtwork?>(
+                { AppleMusicCanvas.searchAlbum(okHttpClient, cleanAlbum, cleanArtist) },
+                { TidalCanvas.searchAlbum(okHttpClient, cleanAlbum, cleanArtist) },
+            )
+            selectMatchingArtwork(providers) { candidate ->
+                candidate.matches(cleanAlbum, cleanArtist, cleanAlbum)
+            }
         }
     }
 
-    /**
-     * Resolves Apple Music motion artwork video for an artist profile.
-     */
     suspend fun canvasForArtist(
         artist: String,
         cellularAllowed: Boolean = true,
     ): CanvasArtwork? {
-        val credit = artist.cleaned()
-        if (credit.isBlank()) return null
+        val cleanArtist = stripNoise(artist)
+        if (cleanArtist.isBlank()) return null
 
-        val key = "artist|$credit"
-        val cachedAnswer = synchronized(cache) { cache[key] }
-        if (cachedAnswer != null) return cachedAnswer.artwork
+        val cacheKey = "artist|$cleanArtist"
+        synchronized(cacheGuard) { lruCache[cacheKey] }?.let { return it.artwork }
+        if (!cellularAllowed && networkMonitor.isOnCellular()) return null
 
-        if (!cellularAllowed && networkMonitor.isOnCellular()) {
-            return null
-        }
-
-        // Only official Apple Music artist motion animation is used on artist profiles.
-        // Third-party song canvases (Spotify/Tidal/Community) are track video loops that look out of place on an artist profile.
-        return resolve(key, withAlbum = false) {
-            val appleMotion = AppleMusicCanvas.searchArtist(okHttpClient, credit)
-            if (appleMotion != null) {
-                val want = credit.normalizeForMatch()
-                val credited = com.lastwave.app.util.ArtistHelper.splitArtists(appleMotion.artist)
-                    .map { it.normalizeForMatch() }
-                if (want.isNotBlank() && (appleMotion.artist?.normalizeForMatch() == want || credited.any { it == want })) {
-                    appleMotion
-                } else null
-            } else null
+        return lookupAndStore(cacheKey, withAlbum = false) {
+            val found = AppleMusicCanvas.searchArtist(okHttpClient, cleanArtist) ?: return@lookupAndStore null
+            val expected = cleanArtist.normalizeForMatch()
+            val credited = ArtistHelper.splitArtists(found.artist).map { it.normalizeForMatch() }
+            val sameArtist = expected.isNotEmpty() && (
+                found.artist?.normalizeForMatch() == expected || credited.any { it == expected }
+                )
+            if (sameArtist) found else null
         }
     }
 
-    private suspend fun resolve(
-        key: String,
+    private fun invalidateIfOrderChanged(spotifyFirst: Boolean) {
+        val prev = lastPreferSpotify
+        if (prev == null) {
+            lastPreferSpotify = spotifyFirst
+            return
+        }
+        if (prev != spotifyFirst) {
+            Log.d(REPO_LOG_TAG, "Provider order changed; dropping the answers cached under the old one")
+            synchronized(cacheGuard) { lruCache.clear() }
+            lastPreferSpotify = spotifyFirst
+        }
+    }
+
+    private fun orderedSongProviders(
+        spotifyFirst: Boolean,
+        title: String,
+        artist: String,
+        album: String?,
+        durationMs: Long?,
+    ): List<suspend () -> CanvasArtwork?> = buildList(3) {
+        if (spotifyFirst) {
+            add { spotifyCanvas.search(title, artist, album, durationMs) }
+        }
+        add { AppleMusicCanvas.search(okHttpClient, title, artist, album) }
+        add { TidalCanvas.search(okHttpClient, title, artist, album) }
+        if (!spotifyFirst) {
+            add { spotifyCanvas.search(title, artist, album, durationMs) }
+        }
+    }
+
+    private fun trackCacheKeys(title: String, artist: String, trackId: String?): Pair<String?, String> {
+        val idKey = trackId?.takeIf { it.isNotBlank() }?.let { "song|$it" }
+        val fallbackKey = "song|${stripNoise(artist)}-${stripNoise(title)}"
+        return idKey to fallbackKey
+    }
+
+    private suspend fun lookupAndStore(
+        cacheKey: String,
         withAlbum: Boolean,
-        lookUp: suspend () -> CanvasArtwork?,
-    ): CanvasArtwork? = lock.withLock {
-        synchronized(cache) {
-            cache[key]?.let { if (it.reusable(withAlbum)) return@withLock it.artwork }
+        loader: suspend () -> CanvasArtwork?,
+    ): CanvasArtwork? = fetchMutex.withLock {
+        synchronized(cacheGuard) {
+            lruCache[cacheKey]?.let { entry ->
+                if (entry.satisfies(withAlbum)) return@withLock entry.artwork
+            }
         }
-        val found = withContext(Dispatchers.IO) {
-            runCatching { lookUp() }
-                .onFailure { Log.w(TAG, "Canvas lookup failed for '$key': ${it.message}") }
-                .getOrNull()
+        val artwork = withContext(Dispatchers.IO) {
+            try {
+                loader()
+            } catch (ex: Exception) {
+                Log.w(REPO_LOG_TAG, "Canvas lookup failed for '$cacheKey': ${ex.message}")
+                null
+            }
         }
-        synchronized(cache) { cache[key] = Entry(found, withAlbum) }
-        found
+        synchronized(cacheGuard) {
+            lruCache[cacheKey] = CachedResult(artwork, withAlbum)
+        }
+        artwork
     }
 
-    private fun Entry.reusable(withAlbum: Boolean): Boolean =
-        artwork != null || this.withAlbum || !withAlbum
-
-    private suspend fun firstHit(
-        vararg sources: suspend () -> CanvasArtwork?,
-        accept: (CanvasArtwork) -> Boolean,
+    private suspend fun selectMatchingArtwork(
+        providers: List<suspend () -> CanvasArtwork?>,
+        validator: (CanvasArtwork) -> Boolean,
     ): CanvasArtwork? {
-        for (source in sources) {
-            val found = runCatching { source() }
-                .onFailure { Log.d(TAG, "Source lookup failed: ${it.message}") }
-                .getOrNull() ?: continue
-            if (!accept(found)) {
-                Log.d(TAG, "Rejected canvas mismatch: '${found.title}' by '${found.artist}'")
+        for (provider in providers) {
+            val candidate = try {
+                provider()
+            } catch (ex: Exception) {
+                Log.d(REPO_LOG_TAG, "Source lookup failed: ${ex.message}")
+                null
+            } ?: continue
+
+            if (!validator(candidate)) {
+                Log.d(REPO_LOG_TAG, "Rejected canvas mismatch: '${candidate.title}' by '${candidate.artist}'")
                 continue
             }
-            return found
+            return candidate
         }
-        Log.d(TAG, "No canvas from any provider")
+        Log.d(REPO_LOG_TAG, "No canvas from any provider")
         return null
     }
 
-    private fun String.cleaned(): String = replace(NOISE, " ")
-        .substringBefore(" | ")
-        .replace(Regex("\\s+"), " ")
-        .trim()
-        .ifBlank { this }
-
-    private companion object {
-        private const val TAG = "CanvasRepository"
-        private const val CACHE_SIZE = 64
-
-        private val NOISE = Regex(
-            """\((?:from|official|lyrical|video|audio)[^)]*\)|\[[^]]*]|""" +
-                """\b(?:official (?:video|audio|music video)|lyrical|full song|4k video)\b""",
-            RegexOption.IGNORE_CASE,
-        )
+    private fun stripNoise(raw: String): String {
+        val cleaned = raw
+            .replace(titleNoiseRegex, " ")
+            .substringBefore(" | ")
+            .replace(collapseSpaceRegex, " ")
+            .trim()
+        return cleaned.ifEmpty { raw }
     }
 }

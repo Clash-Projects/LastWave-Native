@@ -186,6 +186,31 @@ class ExclusiveUsbSignalPathTest {
     }
 
     @Test
+    fun ninetySixMaxDacFallsBackFromAllHigherRatesTo96k() {
+        val dac96Max = listOf(44100, 48000, 96000)
+        val dac96Only = listOf(96000)
+        for (highRate in listOf(176400, 192000, 352800, 384000)) {
+            assertThat(MusicPlayer.selectExclusiveRateFallback(highRate, dac96Max)).isEqualTo(96000)
+            assertThat(MusicPlayer.selectExclusiveRateFallback(highRate, dac96Only)).isEqualTo(96000)
+        }
+        assertThat(MusicPlayer.selectExclusiveRateFallback(96000, dac96Only)).isNull()
+    }
+
+    @Test
+    fun requiredIsoPacketBytesDetects96kEndpointOverflowAt192k() {
+        // Full-Speed 96 kHz / 24-bit stereo: 96 frames * 6 bytes = 576 bytes/ms
+        assertThat(ExclusiveUsbOutput.requiredIsoPacketBytes(96000, 2, 24, interval = 1, usbSpeed = 2))
+            .isEqualTo(576)
+        assertThat(ExclusiveUsbOutput.requiredIsoPacketBytes(192000, 2, 24, interval = 1, usbSpeed = 2))
+            .isEqualTo(1152)
+        // High-Speed 96 kHz / 24-bit stereo: 12 frames/uframe * 6 bytes = 72 bytes
+        assertThat(ExclusiveUsbOutput.requiredIsoPacketBytes(96000, 2, 24, interval = 1, usbSpeed = 3))
+            .isEqualTo(72)
+        assertThat(ExclusiveUsbOutput.requiredIsoPacketBytes(192000, 2, 24, interval = 1, usbSpeed = 3))
+            .isEqualTo(144)
+    }
+
+    @Test
     fun trackTransitionAfterFallbackRestoresTrueBitPerfectOnSupportedTrack() {
         val dacRates = listOf(44100, 48000, 96000, 192000)
 

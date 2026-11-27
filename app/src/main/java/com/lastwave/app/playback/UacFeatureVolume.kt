@@ -75,6 +75,36 @@ class UacFeatureVolume(
         return false
     }
 
+    /**
+     * Best-effort unmute (including Master Channel 0 on DACs where Mute is on
+     * ch 0 while Volume is on ch 1/2) and unity-gain (0 dB) park for playback
+     * Feature Units when software scaling owns volume.
+     */
+    fun parkUnityAndUnmute() {
+        val (playbackFus, allFeatureUnits) = parseFeatureUnitTopology()
+        val targets = playbackFus.ifEmpty {
+            if (allFeatureUnits.size == 1) allFeatureUnits else emptyList()
+        }
+        for (id in targets) {
+            val found = CHANNELS_TO_TRY.filter { ch -> readVolume(id, ch) != null }
+            val maxPark = if (found.isNotEmpty()) {
+                queryVolumeRange(id, found.toIntArray()).second
+            } else {
+                DEFAULT_MAX_RAW
+            }
+            val volChannels = found.ifEmpty { CHANNELS_TO_TRY.toList() }
+            for (ch in volChannels) {
+                writeVolume(id, ch, maxPark)
+            }
+            val unmuted = writeMute(id, false)
+            Log.i(
+                TAG,
+                "parkUnityAndUnmute id=0x${id.toString(16)} iface=$controlInterfaceId " +
+                    "volCh=$volChannels maxRaw=$maxPark unmuted=$unmuted",
+            )
+        }
+    }
+
     fun setNormalized(volume: Float): Boolean {
         if (!available || featureUnitId == 0) return false
         val clamped = volume.coerceIn(0f, 1f)
@@ -273,7 +303,16 @@ class UacFeatureVolume(
         val data = byteArrayOf(if (mute) 1 else 0)
         val wIndex = (unitId shl 8) or controlInterfaceId
         var ok = false
-        val muteChannels = if (channels.contains(0)) intArrayOf(0) else channels
+        // Always include Master Channel 0: many DACs (e.g. CX31993) expose Mute
+        // only on ch 0 while Volume controls sit on discrete channels 1 & 2.
+        val muteChannels = buildList {
+            add(0)
+            channels.forEach { add(it) }
+            if (!mute) {
+                add(1)
+                add(2)
+            }
+        }.distinct()
         for (channel in muteChannels) {
             val wValue = MUTE_WVALUE or (channel and 0xFF)
             val ret = connection.controlTransfer(
@@ -287,25 +326,16 @@ class UacFeatureVolume(
             )
             if (ret >= 0) ok = true
         }
-        if (!mute) {
-            for (ch in intArrayOf(1, 2)) {
-                val wValue = MUTE_WVALUE or (ch and 0xFF)
-                connection.controlTransfer(
-                    0x21,
-                    0x01,
-                    wValue,
-                    wIndex,
-                    data,
-                    data.size,
-                    TIMEOUT_MS,
-                )
-            }
-        }
         return ok
     }
 
     private fun parseFeatureUnitIds(): List<Int> {
-        val raw = connection.rawDescriptors ?: return emptyList()
+        val (playbackFus, allFeatureUnits) = parseFeatureUnitTopology()
+        return (playbackFus + allFeatureUnits).distinct()
+    }
+
+    private fun parseFeatureUnitTopology(): Pair<List<Int>, List<Int>> {
+        val raw = connection.rawDescriptors ?: return Pair(emptyList(), emptyList())
         val allFeatureUnits = mutableListOf<Int>()
         val outputTerminals = mutableListOf<Pair<Int, Int>>() // Pair(terminalType, sourceId)
         val unitSources = mutableMapOf<Int, Int>() // unitId -> sourceId
@@ -367,7 +397,7 @@ class UacFeatureVolume(
             }
         }
 
-        return (playbackFus + allFeatureUnits).distinct()
+        return Pair(playbackFus.distinct(), allFeatureUnits.distinct())
     }
 
     companion object {

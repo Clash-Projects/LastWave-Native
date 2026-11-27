@@ -116,9 +116,10 @@ internal suspend fun InnerTubeMusicApi.resolveAudioStreamImpl(
                 logStreamEvent("cache-rejected", stream)
             }
 
+        val deferProbe = currentCoroutineContext()[DeferredStreamProbe] ?: kotlin.coroutines.EmptyCoroutineContext
         val shared = activeStreamRequests.computeIfAbsent(requestKey) {
             lateinit var request: SharedStreamRequest
-            val deferred = apiScope.async(start = CoroutineStart.LAZY) {
+            val deferred = apiScope.async(deferProbe, start = CoroutineStart.LAZY) {
                 kotlinx.coroutines.withTimeout(STREAM_RESOLVE_TOTAL_TIMEOUT_MS) {
                     resolveAudioStreamInternal(videoId, authScope, startedAt, maxBitrateBps)
                 }
@@ -891,6 +892,20 @@ internal suspend fun InnerTubeMusicApi.resolveDirectClientStream(
         if (!probeCandidates) {
             return candidates.firstOrNull()
                 ?: throw IOException("${client.key} returned no usable audio URL")
+        }
+        if (currentCoroutineContext()[DeferredStreamProbe] != null) {
+            val first = candidates.firstOrNull() ?: throw IOException("${client.key} returned no usable audio URL")
+            apiScope.launch {
+                // Run after first audio: a 1 MiB read on the same new host
+                // doubled the player's first-byte time when they overlapped.
+                delay(DEFERRED_PROBE_DELAY_MS)
+                // Cool the client down so the player's error retry resolves a fresh URL.
+                if (!probeStream(first, "deferred-probe")) {
+                    invalidateCache(videoId)
+                    reportPlaybackFailure(videoId, first)
+                }
+            }
+            return first
         }
         for (candidate in candidates.take(MAX_FORMAT_PROBES_PER_CLIENT)) {
             if (probeStream(candidate, "client-probe")) return candidate

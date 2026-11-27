@@ -56,37 +56,42 @@ class LyricsTranslationTest {
             LyricsTranslation.TextSlot(1, "second", sectionHeader = false),
         )
         val batch = LyricsTranslation.batches(slots).single()
-        assertThat(batch.payload).isEqualTo("first\n\uE0000001\uE001\nsecond")
+        assertThat(batch.payload).isEqualTo("first\n[#0001#]\nsecond")
     }
 
     @Test
     fun parseTranslatedAnswer_mapsSegmentsToSlotsAndReadsSource() {
         val slots = listOf(
-            LyricsTranslation.TextSlot(0, "你好", sectionHeader = false),
-            LyricsTranslation.TextSlot(1, "世界", sectionHeader = false),
+            LyricsTranslation.TextSlot(0, "Hello", sectionHeader = false),
+            LyricsTranslation.TextSlot(1, "World", sectionHeader = false),
         )
         val payload = LyricsTranslation.batches(slots).single().payload
-        val marker = "\uE0000001\uE001"
+        val marker = "[#0001#]"
         val response =
-            """[[["Hello","你好",null,null,10],["$marker","$marker",null,null,10],["World","世界",null,null,10]],null,"zh-CN"]"""
+            """[[["مرحبا","Hello",null,null,10],["\n$marker\n","\n$marker\n",null,null,10],["العالم","World",null,null,10]],null,"en"]"""
         val answer = LyricsTranslation.parseTranslatedAnswer(response, slots.size, payload.length)
         assertThat(answer).isNotNull()
-        assertThat(answer!!.translations).containsExactly("Hello", "World").inOrder()
-        assertThat(answer.sourceLanguage).isEqualTo("zh-CN")
+        assertThat(answer!!.translations).containsExactly("مرحبا", "العالم").inOrder()
+        assertThat(answer.sourceLanguage).isEqualTo("en")
     }
 
     @Test
-    fun parseTranslatedAnswer_toleratesDigitTransformedMarkers() {
-        // Input Tools rewrites ASCII digits into the destination script; the
-        // marker match must survive that or every romanized batch would fail.
+    fun parseTranslatedAnswer_toleratesDigitTransformedSpacedAndCorruptedPuaMarkers() {
         val slots = listOf(
             LyricsTranslation.TextSlot(0, "你好", sectionHeader = false),
             LyricsTranslation.TextSlot(1, "世界", sectionHeader = false),
         )
-        val response = "[[[\"Hello\uE000٠٠٠١\uE001World\",\"\"]]]"
-        val answer = LyricsTranslation.parseTranslatedAnswer(response, slots.size, 10)
-        assertThat(answer).isNotNull()
-        assertThat(answer!!.translations).containsExactly("Hello", "World").inOrder()
+        val spaced = "[[[\"Hello [# 0001#] World\",\"\"]]]"
+        assertThat(LyricsTranslation.parseTranslatedAnswer(spaced, slots.size, 10)?.translations)
+            .containsExactly("Hello", "World").inOrder()
+
+        val arabicDigits = "[[[\"مرحبا [#٠٠٠١#] العالم\",\"\"]]]"
+        assertThat(LyricsTranslation.parseTranslatedAnswer(arabicDigits, slots.size, 10)?.translations)
+            .containsExactly("مرحبا", "العالم").inOrder()
+
+        val corruptedPua = "[[[\"Hello\uE0000001\uE000World\",\"\"]]]"
+        assertThat(LyricsTranslation.parseTranslatedAnswer(corruptedPua, slots.size, 10)?.translations)
+            .containsExactly("Hello", "World").inOrder()
     }
 
     @Test

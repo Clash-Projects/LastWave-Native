@@ -368,9 +368,12 @@ class LosslessMusicApi @Inject constructor(
         private val LANGUAGE_TOKENS = setOf(
             "telugu", "tamil", "hindi", "kannada", "malayalam", "punjabi",
             "marathi", "gujarati", "bengali", "bhojpuri", "odia", "oriya",
-            "assamese", "urdu", "sanskrit", "english", "spanish", "french",
-            "german", "italian", "portuguese", "japanese", "korean", "chinese",
-            "arabic", "turkish",
+            "assamese", "urdu", "sanskrit", "haryanvi", "rajasthani", "nepali",
+            "sinhala", "sinhalese", "english", "spanish", "espanol", "french",
+            "francais", "german", "deutsch", "italian", "italiano", "portuguese",
+            "portugues", "japanese", "korean", "chinese", "mandarin", "cantonese",
+            "arabic", "turkish", "persian", "farsi", "russian", "indonesian",
+            "malay", "thai", "vietnamese", "tagalog", "filipino",
         )
         data class TitleParts(
             val words: List<String>,
@@ -381,8 +384,10 @@ class LosslessMusicApi @Inject constructor(
 
         private val VERSION_WORDS = setOf(
             "remix", "remixes", "rmx", "refix", "flip", "bootleg", "mashup", "medley",
-            "live", "concert", "unplugged", "acoustic", "instrumental", "karaoke",
+            "live", "concert", "unplugged", "acoustic", "instrumental", "instrumentals", "karaoke",
             "vocals", "vocal", "acapella", "acappella", "backing", "stems", "stem",
+            "offvocal", "minus", "bgm", "tribute", "piano", "guitar", "violin", "cello",
+            "lullaby", "ringtone", "8bit", "8d",
             "cover", "demo", "reprise", "remake", "rework", "extended", "edit",
             "version", "mix", "dub", "vip", "session", "sessions",
             "sped", "slowed", "reverb", "nightcore", "lofi", "orchestral", "symphonic",
@@ -395,6 +400,8 @@ class LosslessMusicApi @Inject constructor(
 
         /** Markers for a singer's own cut of the same song ("Reprise - Female", "Female Version"). */
         private val SOFT_VERSION_WORDS = setOf("reprise", "version")
+        private val ALBUM_NEUTRAL_VERSION_WORDS = SOFT_VERSION_WORDS + LANGUAGE_TOKENS +
+            setOf("part", "pt", "chapter", "atmos", "dolby", "spatial")
         private const val SOFT_VERSION_MAX_DURATION_DIFF = 5
         private const val SOFT_VERSION_PENALTY = 400
 
@@ -685,7 +692,20 @@ class LosslessMusicApi @Inject constructor(
             "live" to Regex("\\blive\\b"),
             "acoustic" to Regex("\\bacoustic\\b"),
             "karaoke" to Regex("\\bkaraoke\\b"),
-            "instrumental" to Regex("\\binstrumental\\b"),
+            "instrumental" to Regex(
+                "\\binstrumentals?\\b|\\boff[\\s-]?vocals?\\b|\\bminus[\\s-]?(?:one|1)\\b|" +
+                    "\\b(?:no|without)\\s+(?:vocals?|lyrics|singing)\\b|\\bbgm\\b|" +
+                    "\\bbackground\\s+(?:music|score)\\b|\\btype\\s+beat\\b",
+            ),
+            "acapella" to Regex("\\ba\\s*capp?ella\\b|\\bvocals?\\s+only\\b"),
+            "backing" to Regex("\\bbacking(?:\\s+track)?\\b|\\bstems?\\b"),
+            "music-box" to Regex("\\bmusic\\s+box\\b|\\blullab(?:y|ies)\\b|\\b8[\\s-]?bit\\b|\\bringtone\\b"),
+            "8d" to Regex("\\b8d(?:\\s+audio)?\\b"),
+            "solo-instrument" to Regex(
+                "\\b(?:piano|guitar|violin|cello|saxophone|sax)\\s+(?:version|cover|instrumental|solo)\\b|" +
+                    "\\bsolo\\s+(?:piano|guitar|violin|cello)\\b",
+            ),
+            "orchestral" to Regex("\\borchestral\\b|\\bsymphonic\\b"),
             "tribute" to Regex("\\btribute\\b"),
             "cover" to Regex("\\bcover\\b"),
             "remix" to Regex("\\bremix(?:ed)?\\b"),
@@ -699,6 +719,11 @@ class LosslessMusicApi @Inject constructor(
             "extended" to Regex("\\bextended(?: version| mix)?\\b"),
             "atmos" to Regex("\\bdolby\\b|\\batmos\\b|\\bspatial\\b|360\\s*reality|sony\\s*360"),
         )
+        private val SEVERE_IDENTITY_VARIANTS = setOf(
+            "instrumental", "karaoke", "tribute", "cover", "acapella",
+            "backing", "music-box", "8d", "solo-instrument", "orchestral",
+        )
+        private val ALBUM_IDENTITY_VARIANTS = SEVERE_IDENTITY_VARIANTS - setOf("cover")
     }
 
     fun invalidateCredentialsCache() {
@@ -925,8 +950,12 @@ class LosslessMusicApi @Inject constructor(
             .filter { it.isNotBlank() }
         val primaryArtist = artistList.firstOrNull().orEmpty()
         val secondaryArtist = artistList.getOrNull(1).orEmpty()
+        val albumLanguage = (albumVersionMarkers(expectedAlbum) intersect LANGUAGE_TOKENS).singleOrNull()
+        val includeAlbumLang = albumLanguage != null &&
+            !searchableTitle.contains(albumLanguage, ignoreCase = true)
 
         val queries = listOfNotNull(
+            if (includeAlbumLang && primaryArtist.isNotBlank()) "$searchableTitle $primaryArtist $albumLanguage".trim() else null,
             if (primaryArtist.isNotBlank()) "$searchableTitle $primaryArtist".trim() else null,
             if (secondaryArtist.isNotBlank()) "$searchableTitle $secondaryArtist".trim() else null,
             searchableTitle.trim(),
@@ -1080,12 +1109,15 @@ class LosslessMusicApi @Inject constructor(
         // title, uncredited artist, off duration) could be streamed ahead of
         // the exact one. Keep only candidates near the best score.
         val bestScore = scored.firstOrNull()?.second ?: return emptyList()
+        val allScored = scored
+            .map { it.first }
+            .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
         val verified = scored
             .filter { it.second >= bestScore - MATCH_SCORE_MARGIN }
             .map { it.first }
             .distinctBy { it.rawAddonId.ifBlank { it.id.toString() } }
         if (verified.isEmpty()) return emptyList()
-        return gateAmbiguousLanguage(verified, title, expectedAlbum)
+        return gateAmbiguousLanguage(verified, allScored, title, expectedAlbum)
     }
 
     /** Hi-res masters first for hi-res, Atmos first for Atmos; score order kept within groups. */
@@ -1439,31 +1471,37 @@ class LosslessMusicApi @Inject constructor(
 
         // 1. Version agreement: asking for original must never land on remix, live, acoustic, karaoke, etc.
         // And asking for remix must never land on original cut.
-        val albumMarks = albumVersionMarkers(item.albumTitle)
-        val effectiveVersions = got.versions + (albumMarks intersect wanted.versions)
+        val expectedAlbumLangs = albumVersionMarkers(expectedAlbum) intersect LANGUAGE_TOKENS
+        val wantedVersions = wanted.versions + expectedAlbumLangs
+        val rawAlbumMarks = albumVersionMarkers(item.albumTitle)
+        val albumMarks = rawAlbumMarks + (extractLanguages(item.albumTitle) intersect wantedVersions)
+        val extraAlbumVariants = rawAlbumMarks - ALBUM_NEUTRAL_VERSION_WORDS
+        val effectiveVersions = got.versions + (albumMarks intersect wantedVersions) + extraAlbumVariants
         // A singer's own cut is often catalogued as "Saiyaara Reprise - Female"
         // while the player shows just "Saiyaara" by Shreya Ghoshal. Extra
         // soft markers (reprise/female/male/version) are tolerated, but only
         // with a verified artist credit and a matching length (checked below),
         // and with a penalty so an exact-version master always wins.
         var softVersionOnly = false
-        if (wanted.versions != effectiveVersions) {
-            val extra = effectiveVersions - wanted.versions
-            softVersionOnly = (wanted.versions - effectiveVersions).isEmpty() &&
+        if (wantedVersions != effectiveVersions) {
+            val extra = effectiveVersions - wantedVersions
+            softVersionOnly = (wantedVersions - effectiveVersions).isEmpty() &&
                 extra.isNotEmpty() && extra.all { it in SOFT_VERSION_WORDS }
             if (!softVersionOnly) {
-                Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=${wanted.versions} got=$effectiveVersions for '$title'")
+                Log.d(TAG, "reject candidate id=${item.id}: version mismatch wanted=$wantedVersions got=$effectiveVersions for '$title'")
                 return null
             }
         }
 
-        // Severe mismatches (karaoke, instrumental, tribute, cover)
-        val targetVariants = identityVariants(title, matchArtist)
-        val candidateVariants = identityVariants(item.title, matchArtist)
-        val severeMismatch = (!targetVariants.contains("instrumental") && candidateVariants.contains("instrumental")) ||
-            (!targetVariants.contains("karaoke") && candidateVariants.contains("karaoke")) ||
-            (!targetVariants.contains("tribute") && candidateVariants.contains("tribute")) ||
-            (!targetVariants.contains("cover") && candidateVariants.contains("cover"))
+        // Severe mismatches (instrumental, karaoke, acapella, backing, tribute, cover, etc.)
+        val targetVariants = identityVariants(title, matchArtist) +
+            (identityVariants(expectedAlbum.orEmpty(), "") intersect ALBUM_IDENTITY_VARIANTS)
+        val candidateVariants = identityVariants(item.title, matchArtist) +
+            (identityVariants(item.albumTitle, "") intersect ALBUM_IDENTITY_VARIANTS) +
+            (identityVariants("${item.performerName} ${item.albumArtistName}", "") intersect ALBUM_IDENTITY_VARIANTS)
+        val severeMismatch = SEVERE_IDENTITY_VARIANTS.any { variant ->
+            variant !in targetVariants && variant in candidateVariants
+        }
         if (severeMismatch) {
             Log.d(TAG, "reject candidate id=${item.id}: severe variant mismatch target=$targetVariants candidate=$candidateVariants for '$title'")
             return null
@@ -1588,13 +1626,23 @@ class LosslessMusicApi @Inject constructor(
         if (Regex("""\p{Script=Bengali}""").containsMatchIn(raw)) result += "bengali"
         if (Regex("""\p{Script=Gujarati}""").containsMatchIn(raw)) result += "gujarati"
         if (Regex("""\p{Script=Devanagari}""").containsMatchIn(raw)) result += "hindi"
+        if (Regex("""\p{Script=Hangul}""").containsMatchIn(raw)) result += "korean"
+        if (Regex("""\p{Script=Hiragana}|\p{Script=Katakana}""").containsMatchIn(raw)) result += "japanese"
 
         val tokens = normalizeText(raw).split(' ').toSet()
         for (token in tokens) {
             when (token) {
-                in LANGUAGE_TOKENS -> result += token
                 "panjabi" -> result += "punjabi"
                 "bangla" -> result += "bengali"
+                "espanol" -> result += "spanish"
+                "francais" -> result += "french"
+                "deutsch" -> result += "german"
+                "italiano" -> result += "italian"
+                "portugues" -> result += "portuguese"
+                "farsi" -> result += "persian"
+                "sinhalese" -> result += "sinhala"
+                "filipino" -> result += "tagalog"
+                in LANGUAGE_TOKENS -> result += token
             }
         }
         return result
@@ -1640,22 +1688,34 @@ class LosslessMusicApi @Inject constructor(
      */
     private fun gateAmbiguousLanguage(
         verified: List<TidalCandidateItem>,
+        allScored: List<TidalCandidateItem>,
         title: String,
         expectedAlbum: String?,
     ): List<TidalCandidateItem>? {
-        if (verified.size < 2) return verified
         val expectedLanguages = extractLanguages("$title ${expectedAlbum.orEmpty()}")
-        val candidateLanguages = verified.map { extractLanguages("${it.title} ${it.albumTitle}") }
+        val verifiedLanguages = verified.map { extractLanguages("${it.title} ${it.albumTitle}") }
         if (expectedLanguages.isNotEmpty()) {
             val matching = verified.filterIndexed { i, _ ->
-                candidateLanguages[i].intersect(expectedLanguages).isNotEmpty()
+                verifiedLanguages[i].intersect(expectedLanguages).isNotEmpty()
             }
             if (matching.isNotEmpty()) return matching
-        } else {
-            val clean = verified.filterIndexed { i, _ -> candidateLanguages[i].isEmpty() }
-            if (clean.isNotEmpty()) return clean
-            if (candidateLanguages.flatten().toSet().size > 1) return null
+            val matchingAll = allScored.filter {
+                extractLanguages("${it.title} ${it.albumTitle}").intersect(expectedLanguages).isNotEmpty()
+            }
+            if (matchingAll.isNotEmpty()) return matchingAll
+            return verified
         }
+
+        val allLanguages = allScored.map { extractLanguages("${it.title} ${it.albumTitle}") }
+        if (allLanguages.flatten().toSet().size > 1) return null
+
+        val hasExplicitAlbumLangTag = allScored.any {
+            (albumVersionMarkers(it.albumTitle) intersect LANGUAGE_TOKENS).isNotEmpty()
+        }
+        if (hasExplicitAlbumLangTag) return null
+
+        val clean = verified.filterIndexed { i, _ -> verifiedLanguages[i].isEmpty() }
+        if (clean.isNotEmpty()) return clean
         return verified
     }
 

@@ -83,6 +83,7 @@ import com.lastwave.app.data.local.AdaptiveCacheEvictor
 import com.lastwave.app.data.local.EqualizerPreferences
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.db.DownloadedTrackEntity
+import com.lastwave.app.data.music.DeferredStreamProbe
 import com.lastwave.app.data.music.InnerTubeMusicApi
 import com.lastwave.app.data.music.ConfirmedUnplayableMediaException
 import com.lastwave.app.data.music.YouTubeAudioStream
@@ -214,7 +215,7 @@ class MusicPlayer @Inject constructor(
     internal val streamResolver = StreamResolveCoordinator(
         cacheDir = File(appContext.cacheDir, "playback_stream_cache"),
         scope = applicationScope,
-        extract = { videoId -> innerTube.resolveAudioStream(videoId) },
+        extract = { videoId -> withContext(DeferredStreamProbe) { innerTube.resolveAudioStream(videoId) } },
     )
     private val streamResolutionWakeLock by lazy {
         (appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.newWakeLock(
@@ -1717,7 +1718,7 @@ class MusicPlayer @Inject constructor(
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): androidx.media3.exoplayer.audio.AudioSink {
-                val bufferSizing = OutputBufferSizing()
+                val bufferSizing = OutputBufferSizing { userPlaybackSpeed }
                 fun pcmSink(floatOutput: Boolean) = DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(floatOutput)
                     .setEnableAudioTrackPlaybackParams(true)
@@ -1747,7 +1748,6 @@ class MusicPlayer @Inject constructor(
                     enhancedDelegate = enhancedSink,
                     fallbackDelegate = fallbackSink,
                     processor = NativePcmAudioProcessor(processorEngine),
-                    outputBufferSizing = bufferSizing,
                     onPlatformEffectsRequired = effects::setFallbackRequired,
                     usbOutput = if (handleAudioFocus) UsbBitPerfectOutput(audioManager) else null,
                     // The crossfade standby must not share the DAC. Its
@@ -1815,83 +1815,30 @@ class MusicPlayer @Inject constructor(
                 eventListener: AudioRendererEventListener,
                 out: ArrayList<Renderer>,
             ) {
-                // Hardware/platform Dolby Atmos & Spatial audio MediaCodec renderer:
-                // Placed ahead of FFmpeg so Android's native Dolby Atmos HAL and Spatializer
-                // decode E-AC-3 JOC with hardware dialogue normalization, full volume
-                // (no -8 dB FFmpeg downmix attenuation), and system spatial virtualization.
-                // Standard codecs (FLAC, Opus, AAC, MP3, Vorbis) return FORMAT_UNSUPPORTED_TYPE
-                // here so FFmpeg retains priority for them.
-                val dolbySpatialRenderer = object : MediaCodecAudioRenderer(
-                    context,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    eventHandler,
-                    eventListener,
-                    audioSink,
+                FfmpegCompat.appendAudioRenderers(
+                    context = context,
+                    mediaCodecSelector = mediaCodecSelector,
+                    enableDecoderFallback = enableDecoderFallback,
+                    audioSink = audioSink,
+                    eventHandler = eventHandler,
+                    eventListener = eventListener,
+                    out = out,
+                    onConfigureSpatialMediaFormat = ::configureDolbySpatialMediaFormat,
                 ) {
-                    override fun supportsFormat(
-                        mediaCodecSelector: MediaCodecSelector,
-                        format: androidx.media3.common.Format,
-                    ): Int {
-                        val mime = format.sampleMimeType?.lowercase().orEmpty()
-                        val isDolbyOrSpatial = mime.contains("eac3") || mime.contains("ec-3") ||
-                            mime.contains("ac-3") || mime.contains("ac3") || mime.contains("ac4") ||
-                            mime.contains("mha1") || mime.contains("mhm1")
-                        if (!isDolbyOrSpatial) {
-                            return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
-                        }
-                        return super.supportsFormat(mediaCodecSelector, format)
-                    }
-
-                    override fun getMediaFormat(
-                        format: androidx.media3.common.Format,
-                        codecMimeType: String,
-                        codecMaxInputSize: Int,
-                        codecOperatingRate: Float,
-                    ): MediaFormat {
-                        val mediaFormat = super.getMediaFormat(
-                            format,
-                            codecMimeType,
-                            codecMaxInputSize,
-                            codecOperatingRate,
-                        )
-                        configureDolbySpatialMediaFormat(mediaFormat, format)
-                        return mediaFormat
-                    }
-                }
-                out.add(dolbySpatialRenderer)
-
-                super.buildAudioRenderers(
-                    context,
-                    extensionRendererMode,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    audioSink,
-                    eventHandler,
-                    eventListener,
-                    out,
-                )
-                // Explicit software decoder fallback for MediaTek / ColorOS
-                if (FfmpegCompat.isUsable) try {
-                    // Direct dependency (org.jellyfin.media3:media3-ffmpeg-decoder):
-                    // construct it typed instead of via reflection.
-                    out.add(
-                        androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer(eventHandler, eventListener, audioSink),
+                    super.buildAudioRenderers(
+                        context,
+                        extensionRendererMode,
+                        mediaCodecSelector,
+                        enableDecoderFallback,
+                        audioSink,
+                        eventHandler,
+                        eventListener,
+                        out,
                     )
-                } catch (_: Throwable) {
                 }
             }
         }.apply {
-            // FFmpeg-first decoding, the Poweramp/VLC model: every codec the
-            // bundled GPL build supports (FLAC 24/96-192, Opus, AAC, MP3,
-            // Vorbis) decodes through the same battle-tested software path on
-            // every device, eliminating per-OEM platform codec bugs that
-            // surface as noise/distortion. setEnableDecoderFallback keeps the
-            // platform decoder for anything FFmpeg rejects.
-            setExtensionRendererMode(
-                if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
-            )
+            setExtensionRendererMode(FfmpegCompat.recommendedExtensionRendererMode())
             setEnableDecoderFallback(true)
             setEnableAudioTrackPlaybackParams(false)
             setMediaCodecSelector(accurateAudioMediaCodecSelector)
@@ -1932,6 +1879,7 @@ class MusicPlayer @Inject constructor(
                     override fun onAudioInputFormatChanged(
                         eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
                         format: androidx.media3.common.Format,
+                        decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
                     ) {
                         // Crossfade standby or background players must NEVER publish format or rate to active state.
                         if (!handleAudioFocus || (activePlayer != null && this@apply !== activePlayer)) return
@@ -2275,8 +2223,13 @@ class MusicPlayer @Inject constructor(
                             val stream = nextItem?.localConfiguration?.customCacheKey?.let(preparedStreams::get)
                                 ?: preparedStreams.values.firstOrNull { it.url == nextItem?.localConfiguration?.uri?.toString() }
 
-                            val transitionActive = crossfadeEnabled || autoMixCoordinator.get().isEnabled
-                            if (transitionActive && upcomingIdx != C.INDEX_UNSET && nextItem != null) {
+                            val repeatOne = player.repeatMode == Player.REPEAT_MODE_ONE ||
+                                _state.value.repeatMode == Player.REPEAT_MODE_ONE
+                            val transitionActive = !bitPerfectEnabled &&
+                                (crossfadeEnabled || autoMixCoordinator.get().isEnabled)
+                            if (transitionActive && !repeatOne && upcomingIdx != C.INDEX_UNSET &&
+                                upcomingIdx != player.currentMediaItemIndex && nextItem != null
+                            ) {
                                 val remainingMs = dur - pos
                                 if (dur > 0L && (pos > dur * 0.25f || remainingMs < 90_000L)) {
                                     val isNextNonPlaceholder = nextItem.localConfiguration?.uri?.scheme?.let { it != "lastwave" } == true
@@ -2597,8 +2550,11 @@ class MusicPlayer @Inject constructor(
                 }
                 if (playerDelegate.isInitialized()) {
                     onMain {
-                        // Any settings write (even the volume) lands here: an AutoMix blend has its own gates.
-                        if (!crossfadeEnabled || bitPerfectEnabled) cancelCrossfade(endAutoMix = false)
+                        // Any settings write (even the volume) lands here: an AutoMix arm/blend has its own gates.
+                        val autoMixActive = autoMixCoordinator.get().isEnabled
+                        if (bitPerfectEnabled || (!crossfadeEnabled && (!autoMixActive || _state.value.isCrossfading))) {
+                            cancelCrossfade(endAutoMix = false)
+                        }
                         if (bitPerfectEnabled) {
                             // Tempo stretch resamples, which defeats bit-perfect.
                             // Volume is left alone: the direct sinks scale it in
@@ -4030,6 +3986,7 @@ class MusicPlayer @Inject constructor(
             player.playbackParameters.speed < 2f -> 2f
             else -> 0.75f
         }
+        userPlaybackSpeed = next
         player.setPlaybackSpeed(next)
     }
 
@@ -7009,7 +6966,7 @@ class MusicPlayer @Inject constructor(
         val token = if (claimPlayback) streamResolver.playback.claim(identity) else null
         if (claimPlayback) PlaybackStartupLog.extractStart()
         val candidate = try {
-            innerTube.resolveAudioStream(identity.youtubeVideoId, maxBitrateBps)
+            withContext(DeferredStreamProbe) { innerTube.resolveAudioStream(identity.youtubeVideoId, maxBitrateBps) }
         } finally {
             if (claimPlayback) PlaybackStartupLog.extractEnd()
         }
@@ -8003,61 +7960,30 @@ class MusicPlayer @Inject constructor(
                 eventListener: AudioRendererEventListener,
                 out: ArrayList<Renderer>,
             ) {
-                val immersiveRenderer = object : MediaCodecAudioRenderer(
-                    context,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    eventHandler,
-                    eventListener,
-                    audioSink,
+                FfmpegCompat.appendAudioRenderers(
+                    context = context,
+                    mediaCodecSelector = mediaCodecSelector,
+                    enableDecoderFallback = enableDecoderFallback,
+                    audioSink = audioSink,
+                    eventHandler = eventHandler,
+                    eventListener = eventListener,
+                    out = out,
+                    onConfigureSpatialMediaFormat = ::configureDolbySpatialMediaFormat,
                 ) {
-                    override fun supportsFormat(
-                        mediaCodecSelector: MediaCodecSelector,
-                        format: androidx.media3.common.Format,
-                    ): Int {
-                        val mime = format.sampleMimeType?.lowercase().orEmpty()
-                        val isImmersive = mime.contains("eac3") || mime.contains("ec-3") ||
-                            mime.contains("ac-3") || mime.contains("ac3") || mime.contains("ac4") ||
-                            mime.contains("mha1") || mime.contains("mhm1")
-                        if (!isImmersive) {
-                            return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
-                        }
-                        return super.supportsFormat(mediaCodecSelector, format)
-                    }
-
-                    override fun getMediaFormat(
-                        format: androidx.media3.common.Format,
-                        codecMimeType: String,
-                        codecMaxInputSize: Int,
-                        codecOperatingRate: Float,
-                    ): MediaFormat {
-                        val mediaFormat = super.getMediaFormat(
-                            format,
-                            codecMimeType,
-                            codecMaxInputSize,
-                            codecOperatingRate,
-                        )
-                        configureDolbySpatialMediaFormat(mediaFormat, format)
-                        return mediaFormat
-                    }
+                    super.buildAudioRenderers(
+                        context,
+                        extensionRendererMode,
+                        mediaCodecSelector,
+                        enableDecoderFallback,
+                        audioSink,
+                        eventHandler,
+                        eventListener,
+                        out,
+                    )
                 }
-                out.add(immersiveRenderer)
-                super.buildAudioRenderers(
-                    context,
-                    extensionRendererMode,
-                    mediaCodecSelector,
-                    enableDecoderFallback,
-                    audioSink,
-                    eventHandler,
-                    eventListener,
-                    out,
-                )
             }
         }.apply {
-            setExtensionRendererMode(
-                if (FfmpegCompat.isUsable) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
-            )
+            setExtensionRendererMode(FfmpegCompat.recommendedExtensionRendererMode())
             setEnableDecoderFallback(true)
             setMediaCodecSelector(accurateAudioMediaCodecSelector)
         }
@@ -8228,12 +8154,6 @@ class MusicPlayer @Inject constructor(
             // opened a 24/96 upgrade at 48 kHz. Null opens at the stream's own rate.
             val standbySink = playerToSink[standby]
             standbySink?.setOutputSampleRateOverride(null)
-            // Media3 sizes the AudioTrack for 8x speed (2.7 s here, 6 s over
-            // Bluetooth), and a skip only shows once that much has played out:
-            // two skips were 6.5 s of an 8.5 s line-up. Sized for the speed in
-            // use, the muted deck starts sooner and a skip lands in well under
-            // a second. The deck keeps this track's buffer after it goes live.
-            standbySink?.outputBufferSizing?.speedHeadroom = live.playbackParameters.speed.coerceAtLeast(1f).toDouble()
             standby.setMediaItems(queue, index, (live.currentPosition + lagMs + HOT_SWAP_SEEK_LEAD_MS).coerceAtLeast(0L))
             standby.prepare()
 
@@ -8402,8 +8322,6 @@ class MusicPlayer @Inject constructor(
             }
             return OverlapSwap.Swapped(roundsUsed, driftMs)
         } finally {
-            // Only this swap's AudioTrack: the deck's next track sizes as usual.
-            playerToSink[standby]?.outputBufferSizing?.speedHeadroom = null
             if (!committed) {
                 runCatching {
                     standby.stop()
