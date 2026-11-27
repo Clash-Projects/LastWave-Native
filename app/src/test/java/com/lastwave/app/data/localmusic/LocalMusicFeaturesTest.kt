@@ -129,6 +129,82 @@ class LocalMusicFeaturesTest {
     }
 
     @Test
+    fun dsdMetadataReader_parsesId3v2AtMetadataOffset() {
+        val file = java.io.File.createTempFile("test_dsd", ".dsf")
+        try {
+            val out = ByteArrayOutputStream()
+            // 28-byte DSD chunk
+            out.writeAscii("DSD ")
+            out.writeLeU64(28L)
+            out.writeLeU64(0L) // file size placeholder
+            val metadataOffset = 80L
+            out.writeLeU64(metadataOffset) // metadataOffset = 80
+
+            // 52-byte fmt chunk (to make 80 bytes total before metadata: 4 + 8 + 40 = 52)
+            out.writeAscii("fmt ")
+            out.writeLeU64(52L)
+            out.write(ByteArray(40))
+
+            // Now at byte 80: ID3v2.3 tag
+            out.writeAscii("ID3")
+            out.write(3); out.write(0); out.write(0) // version 2.3.0, flags 0
+
+            // Frames: TIT2, TPE1, TRCK
+            val frames = ByteArrayOutputStream()
+            // TIT2
+            frames.writeAscii("TIT2")
+            val titleBytes = "DSD Master Track".toByteArray(Charsets.ISO_8859_1)
+            frames.writeBeU32((titleBytes.size + 1).toLong())
+            frames.write(0); frames.write(0) // flags
+            frames.write(0) // encoding ISO-8859-1
+            frames.write(titleBytes)
+
+            // TPE1
+            frames.writeAscii("TPE1")
+            val artistBytes = "Audiophile Artist".toByteArray(Charsets.ISO_8859_1)
+            frames.writeBeU32((artistBytes.size + 1).toLong())
+            frames.write(0); frames.write(0)
+            frames.write(0)
+            frames.write(artistBytes)
+
+            // TRCK
+            frames.writeAscii("TRCK")
+            val trackBytes = "05/12".toByteArray(Charsets.ISO_8859_1)
+            frames.writeBeU32((trackBytes.size + 1).toLong())
+            frames.write(0); frames.write(0)
+            frames.write(0)
+            frames.write(trackBytes)
+
+            val frameData = frames.toByteArray()
+            out.writeSyncSafe(frameData.size)
+            out.write(frameData)
+
+            file.writeBytes(out.toByteArray())
+
+            val meta = com.lastwave.app.playback.dsd.DsdMetadataReader.read(
+                context = mockk<Context>(),
+                audioUrl = file.absolutePath,
+            )
+            assertThat(meta).isNotNull()
+            assertThat(meta!!.title).isEqualTo("DSD Master Track")
+            assertThat(meta.artist).isEqualTo("Audiophile Artist")
+            assertThat(meta.trackNumber).isEqualTo(5)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun dsdOutputMode_handlesDefaultsAndIds() {
+        assertThat(com.lastwave.app.data.local.DsdOutputMode.fromId("native"))
+            .isEqualTo(com.lastwave.app.data.local.DsdOutputMode.NATIVE)
+        assertThat(com.lastwave.app.data.local.DsdOutputMode.fromId("pcm"))
+            .isEqualTo(com.lastwave.app.data.local.DsdOutputMode.PCM)
+        assertThat(com.lastwave.app.data.local.DsdOutputMode.fromId("unknown"))
+            .isEqualTo(com.lastwave.app.data.local.DsdOutputMode.NATIVE)
+    }
+
+    @Test
     fun audioHeaderInspector_parsesAiffWavAndAlac() {
         // Synthetic AIFF (24-bit / 96 kHz stereo)
         val aiff = ByteArrayOutputStream()
@@ -350,6 +426,10 @@ class LocalMusicFeaturesTest {
 
     private fun ByteArrayOutputStream.writeBeU64(v: Long) {
         for (i in 7 downTo 0) write(((v ushr (i * 8)) and 0xFFL).toInt())
+    }
+
+    private fun ByteArrayOutputStream.writeLeU64(v: Long) {
+        for (i in 0..7) write(((v ushr (i * 8)) and 0xFFL).toInt())
     }
 
     private fun ByteArrayOutputStream.writeLeU32(v: Long) {

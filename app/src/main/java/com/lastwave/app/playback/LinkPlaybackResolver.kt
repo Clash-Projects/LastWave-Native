@@ -36,7 +36,7 @@ class LinkPlaybackResolver @Inject constructor(
         if (intent == null) return false
 
         val action = intent.action
-        val dataUri = intent.data
+        val dataUri = intent.data ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
         val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
 
         val rawTarget = when {

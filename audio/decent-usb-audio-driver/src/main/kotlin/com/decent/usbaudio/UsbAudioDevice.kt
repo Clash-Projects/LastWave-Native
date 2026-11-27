@@ -228,6 +228,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
 
         if (currentDevice?.vendorId != device.vendorId || currentDevice?.productId != device.productId) {
             cachedSupportedRates = emptyList()
+            cachedRawSupportedRates = emptyList()
         }
 
         // Find the AudioStreaming interface and its endpoints
@@ -828,6 +829,7 @@ class UsbAudioDevice private constructor(private val context: Context) {
     }
 
     private var cachedSupportedRates: List<Int> = emptyList()
+    private var cachedRawSupportedRates: List<Int> = emptyList()
 
     /**
      * Close the USB device and release all resources.
@@ -966,6 +968,11 @@ class UsbAudioDevice private constructor(private val context: Context) {
             }
         }
 
+        val rawSorted = rates.sorted()
+        if (rawSorted.isNotEmpty()) {
+            cachedRawSupportedRates = rawSorted
+        }
+
         // Single-crystal DACs (only 1 Clock Source and no Clock Selector) derive high-speed
         // clocks from a 48 kHz-family crystal (12 / 24.576 MHz) where 48/96/192/384 kHz have
         // exact integer frames per 125us USB microframe (6/12/24/48). High-rate 44.1 kHz
@@ -996,6 +1003,18 @@ class UsbAudioDevice private constructor(private val context: Context) {
             Log.i(TAG, "querySupportedSampleRates: DAC hardware clock rates=$sorted (perClock=$clockSourceRateMap)")
         }
         return sorted
+    }
+
+    /**
+     * Returns all hardware sample rates advertised by the DAC's descriptors without stripping
+     * 44.1 kHz high-rate multiples (88.2 / 176.4 / 352.8 / 705.6 kHz). Required for DoP (DSD over PCM)
+     * streams which cannot be sample-rate converted without destroying the DoP markers.
+     */
+    fun queryRawSupportedSampleRates(): List<Int> {
+        if (cachedRawSupportedRates.isEmpty()) {
+            querySupportedSampleRates()
+        }
+        return cachedRawSupportedRates
     }
 
     private fun readLeInt24(buf: ByteArray, offset: Int): Int =
