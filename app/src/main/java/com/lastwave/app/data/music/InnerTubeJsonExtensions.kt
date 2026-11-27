@@ -74,6 +74,21 @@ internal fun JsonObject.array(key: String): JsonArray? = this[key] as? JsonArray
 internal fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
 internal fun JsonObject.int(key: String): Int? = string(key)?.toIntOrNull()
 internal fun JsonElement.asObject(): JsonObject? = this as? JsonObject
+
+/**
+ * Whether a browse endpoint opens a playlist. Artist pages also have playlist shelves
+ * ("Featured on", "Playlists by …") whose items use the same two-row renderer as albums,
+ * so they must be told apart by page type rather than by the (localized) shelf heading.
+ * Falls back to the "VL" playlist browse id prefix when the page type is missing.
+ */
+internal fun isPlaylistBrowseEndpoint(browseEndpoint: JsonObject?): Boolean {
+    if (browseEndpoint == null) return false
+    val pageType = browseEndpoint.obj("browseEndpointContextSupportedConfigs")
+        ?.obj("browseEndpointContextMusicConfig")
+        ?.string("pageType")
+    if (pageType != null) return pageType == "MUSIC_PAGE_TYPE_PLAYLIST"
+    return browseEndpoint.string("browseId")?.startsWith("VL") == true
+}
 internal fun JsonElement.obj(key: String): JsonObject? = (this as? JsonObject)?.obj(key)
 internal fun JsonElement.array(key: String): JsonArray? = (this as? JsonObject)?.array(key)
 internal fun JsonElement.string(key: String): String? = (this as? JsonObject)?.string(key)
