@@ -3,6 +3,8 @@ package com.lastwave.app.data.music
 import com.google.common.truth.Truth.assertThat
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import kotlinx.serialization.json.Json
 import org.junit.Test
 
@@ -108,15 +110,21 @@ class MoodsParserTest {
         val playlistShelf = parserApi().parseHomeShelves(root).first()
         val track = HomeShelfItem.Track(YouTubeMusicTrack(videoId = "video", title = "Song", artist = "Artist"))
         val api = mockk<InnerTubeMusicApi>()
-        every { api.parseHomeShelves(root) } returns listOf(
-            HomeShelf(title = "Songs", items = listOf(track)),
-            playlistShelf.copy(items = listOf(track) + playlistShelf.items),
-            HomeShelf(title = "Empty"),
-        )
+        // parseHomeShelves is an extension function, which only a static mock can stub.
+        mockkStatic(InnerTubeMusicApi::parseHomeShelves)
+        try {
+            every { api.parseHomeShelves(root) } returns listOf(
+                HomeShelf(title = "Songs", items = listOf(track)),
+                playlistShelf.copy(items = listOf(track) + playlistShelf.items),
+                HomeShelf(title = "Empty"),
+            )
 
-        val category = parseMoodCategory(root, api)
+            val category = parseMoodCategory(root, api)
 
-        assertThat(category.shelves).containsExactly(playlistShelf)
+            assertThat(category.shelves).containsExactly(playlistShelf)
+        } finally {
+            unmockkStatic(InnerTubeMusicApi::parseHomeShelves)
+        }
     }
 
     private fun parserApi() = InnerTubeMusicApi(

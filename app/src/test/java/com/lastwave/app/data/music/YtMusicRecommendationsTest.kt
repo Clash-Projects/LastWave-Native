@@ -163,7 +163,7 @@ class YtMusicRecommendationsTest {
     }
 
     @Test
-    fun canceledPlayerLookupDoesNotContinueToHomeOrFeedback() = runBlocking {
+    fun canceledPlayerLookupDoesNotContinueToHomeOrFeedback(): Unit = runBlocking {
         val account = YtConnection(cookies = mapOf("SAPISID" to "fixture-cookie"), accountName = "Fixture")
         val api = api(MutableStateFlow(account))
         val calls = mutableListOf<String>()
