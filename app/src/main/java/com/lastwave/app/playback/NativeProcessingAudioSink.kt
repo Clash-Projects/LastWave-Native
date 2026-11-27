@@ -1521,10 +1521,16 @@ class NativeProcessingAudioSink(
         // Fallback target: when the DAC descriptor lacks the source rate,
         // open the stream at the supported rate (e.g. 88.2 -> 44.1, 44.1 -> 48 kHz)
         // and convert through native soxr so the DAC receives a supported clock rate.
-        val fallbackTarget = exclusiveFallbackRateHz
-            ?.takeIf { it > 0 && it != format.sampleRate && (exclusiveFallbackSourceRateHz == null || exclusiveFallbackSourceRateHz == format.sampleRate) }
+        val isDsd = format.codecs == "dsd" || format.label == "dsd"
+        // DoP streams must lock to the exact DoP sample rate without fallback resampling.
+        val fallbackTarget = if (isDsd) {
+            null
+        } else {
+            exclusiveFallbackRateHz
+                ?.takeIf { it > 0 && it != format.sampleRate && (exclusiveFallbackSourceRateHz == null || exclusiveFallbackSourceRateHz == format.sampleRate) }
+        }
         val started = runCatching {
-            session.configure(format, fallbackTarget, bitDepthHintProvider?.invoke())
+            session.configure(format, fallbackTarget, bitDepthHintProvider?.invoke(), isDsd = isDsd)
         }.getOrDefault(false)
         if (!started) {
             exclusiveStartFailed = true

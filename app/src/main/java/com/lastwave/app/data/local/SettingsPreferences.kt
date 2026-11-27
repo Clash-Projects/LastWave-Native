@@ -132,6 +132,24 @@ enum class HiResStart(val id: String, val title: String, val subtitle: String) {
     }
 }
 
+/** Output mode for 1-bit Direct Stream Digital (DSF / DFF) audio. */
+enum class DsdOutputMode(val id: String, val title: String, val subtitle: String) {
+    NATIVE(
+        id = "native",
+        title = "Native (DoP)",
+        subtitle = "Bit-perfect 1-bit DSD stream via universal DoP v1.0 standard to supported USB DACs (bypasses DSP & EQ)",
+    ),
+    PCM(
+        id = "pcm",
+        title = "Convert to PCM",
+        subtitle = "Decimates DSD to high-res 32-bit float PCM; compatible with all outputs and enables EQ & DSP",
+    );
+
+    companion object {
+        fun fromId(id: String?): DsdOutputMode = entries.firstOrNull { it.id == id } ?: NATIVE
+    }
+}
+
 /** Cellular-only streaming choice: adapt to the link and buffer, never above the Wi-Fi choice. */
 const val CELLULAR_QUALITY_AUTO = 0
 
@@ -176,6 +194,8 @@ data class MiscSettings(
     val clarityAtmosBypass: Boolean = false,
     /** When true, completely bypasses DSP, EQ, tone effects, and software volume ducking for bit-exact audio. */
     val isBitPerfectEnabled: Boolean = false,
+    /** Output mode for 1-bit DSD files (DSF / DFF): Native (DoP) or Convert to PCM. */
+    val dsdOutputMode: DsdOutputMode = DsdOutputMode.NATIVE,
     /** System audio-effects mode (Settings -> Experimental). Off by default:
      *  when on, the app flattens its own DSP on mixer routes and publishes
      *  the audio session so external equalizer apps / OEM Dolby can process
@@ -462,6 +482,7 @@ class SettingsPreferences @Inject constructor(
         val CLARITY_PRESET = intPreferencesKey("lw_clarity_preset")
         val CLARITY_ATMOS_BYPASS = booleanPreferencesKey("lw_clarity_atmos_bypass")
         val BIT_PERFECT_ENABLED = booleanPreferencesKey("lw_bit_perfect_enabled")
+        val DSD_OUTPUT_MODE = stringPreferencesKey("lw_dsd_output_mode")
         val WORD_BY_WORD_LYRICS = booleanPreferencesKey("lw_word_by_word_lyrics")
         val LYRICS_PROVIDER = stringPreferencesKey("lw_lyrics_provider")
         val RECOMMENDATION_SOURCE = stringPreferencesKey("lw_recommendation_source")
@@ -586,6 +607,7 @@ class SettingsPreferences @Inject constructor(
                 clarityPreset = 0,
                 clarityAtmosBypass = false,
                 isBitPerfectEnabled = p.readSafely(Keys.BIT_PERFECT_ENABLED) ?: false,
+                dsdOutputMode = DsdOutputMode.fromId(p.readSafely(Keys.DSD_OUTPUT_MODE)),
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
                 recommendationSource = RecommendationSource.fromId(p.readSafely(Keys.RECOMMENDATION_SOURCE)),
@@ -974,6 +996,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setBitPerfectEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.BIT_PERFECT_ENABLED] = enabled }
+    }
+
+    suspend fun setDsdOutputMode(mode: DsdOutputMode) {
+        dataStore.edit { it[Keys.DSD_OUTPUT_MODE] = mode.id }
     }
 
     suspend fun setWordByWordLyrics(enabled: Boolean) {
