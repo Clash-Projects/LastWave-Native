@@ -713,7 +713,8 @@ fun FeedScreen(
                 }
 
                 val showInitialPlaceholders = showSynthetic && state.isFeedUpdating && state.feedData.lastUpdatedMillis == 0L
-                val isInfiniteRadioVisible = showSynthetic && (combinedQuickPicks.isNotEmpty() || showInitialPlaceholders)
+                val isInfiniteRadioVisible = showSynthetic && isSectionVisible(HomeSection.INFINITE_RADIO) &&
+                    (combinedQuickPicks.isNotEmpty() || showInitialPlaceholders)
                 val isQuickTilesVisible = showSynthetic && isSectionVisible(HomeSection.QUICK_TILES) &&
                     (quickTiles.isNotEmpty() || showInitialPlaceholders)
                 val hasSectionsBelowQuickTiles = allContainerKeys.isNotEmpty()
