@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">LastWave Player</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">SoundDrop Player</string>
     <string name="widget_description">Cover, Trackdetails und Wiedergabesteuerung für alle Medien-Apps</string>
 
     <string name="nav_feed">Feed</string>
@@ -11,7 +11,7 @@
     <string name="update_available">Update verfügbar</string>
     <string name="update">Aktualisieren</string>
     <string name="dismiss_update">Update verwerfen</string>
-    <string name="update_ready_to_install">LastWave v%1$s ist bereit zur Installation</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s ist bereit zur Installation</string>
 
     <string name="settings">Einstellungen</string>
     <string name="settings_section_language">Sprache</string>
@@ -116,7 +116,7 @@
     <string name="dialog_clear_all_text">Entfernt Anmeldedaten, Playlists und Cache. Kann nicht rückgängig gemacht werden.</string>
     <string name="dialog_clear_all_confirm">Alles löschen</string>
     <string name="dialog_disconnect_yt_title">YouTube Music trennen?</string>
-    <string name="dialog_disconnect_yt_text">Bereits gespiegelte Playlists bleiben im Konto, aber LastWave stoppt den Sync und vergisst die Verbindung.</string>
+    <string name="dialog_disconnect_yt_text">Bereits gespiegelte Playlists bleiben im Konto, aber SoundDrop stoppt den Sync und vergisst die Verbindung.</string>
     <string name="dialog_logout_title">Von Last.fm abmelden?</string>
     <string name="dialog_logout_text">Playlists und Cache bleiben erhalten.</string>
     <string name="common_save">Speichern</string>
@@ -259,7 +259,7 @@
     <string name="desc_repeat">Wiederholen</string>
     <string name="desc_play_pause">Abspielen oder pausieren</string>
 
-    <string name="widget_obsidian_name">LastWave Obsidianglas</string>
+    <string name="widget_obsidian_name">SoundDrop Obsidianglas</string>
     <string name="widget_obsidian_description">Spieler aus mattiertem Obsidianglas mit durchscheinender Tiefe und Kristallrand</string>
     <string name="nav_generator">Generator</string>
     <string name="settings_downloads_sub_custom">%1$d Lied(e) • %2$s • %3$s</string>
@@ -762,7 +762,7 @@
     <string name="set_lfm_disc_title">Last.fm trennen?</string>
     <string name="set_lfm_disc_text">Globales Gekritzel pausiert. Ihre Statistiken wechseln zum lokalen Hörverlauf – es wird nichts gelöscht.</string>
     <string name="set_lfm_disc_btn">Trennen</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">Benutzerdefinierte Farbe</string>
     <string name="set_hue">Farbton</string>
     <string name="set_sat">Sättigung</string>
@@ -771,7 +771,7 @@
     <string name="set_eq_enable">Equalizer aktivieren</string>
     <string name="set_eq_custom">Benutzerdefiniert</string>
     <string name="set_yt_channel">YouTube-Kanal</string>
-    <string name="set_yt_channel_sub">Wählen Sie aus, welche Kanalbibliothek, Likes und Verlauf LastWave verwendet</string>
+    <string name="set_yt_channel_sub">Wählen Sie aus, welche Kanalbibliothek, Likes und Verlauf SoundDrop verwendet</string>
     <string name="set_yt_loading">Kanäle werden geladen…</string>
     <string name="set_yt_empty_title">Keine Kanäle gefunden</string>
     <string name="set_yt_empty_sub">Überprüfen Sie Ihre Verbindung und versuchen Sie es dann erneut.</string>
@@ -809,11 +809,11 @@
     <string name="set_usb_old">Erfordert Android 10 oder neuer</string>
     <string name="set_usb_on">Direkt usbdevfs zum DAC • Bit-Perfect aktiviert dies automatisch</string>
     <string name="set_usb_off">Aus • Benötigt einen USB-DAC und Bit-Perfect (oder diesen Schalter)</string>
-    <string name="set_yt_hist_on">Ein • Songs, die Sie in LastWave anhören, einschließlich verlustfreier Musik und Downloads, werden in Ihrem YouTube Music-Verlauf angezeigt</string>
-    <string name="set_yt_hist_off">Aus • Das Abhören von LastWave bleibt aus Ihrem YouTube Music-Verlauf ausgeschlossen</string>
+    <string name="set_yt_hist_on">Ein • Songs, die Sie in SoundDrop anhören, einschließlich verlustfreier Musik und Downloads, werden in Ihrem YouTube Music-Verlauf angezeigt</string>
+    <string name="set_yt_hist_off">Aus • Das Abhören von SoundDrop bleibt aus Ihrem YouTube Music-Verlauf ausgeschlossen</string>
     <string name="set_discord_title">Discord-reiche Präsenz</string>
     <string name="set_discord_on">Auf • werden Ihr Titel, Ihre Qualität und Ihr Cover in Ihrem Discord-Profil angezeigt</string>
-    <string name="set_discord_off">Aus • LastWave bleibt aus Ihrem Discord-Profil entfernt</string>
+    <string name="set_discord_off">Aus • SoundDrop bleibt aus Ihrem Discord-Profil entfernt</string>
     <string name="set_tg_sub">Treten Sie @clashprojects per Telegram bei</string>
     <string name="set_discord_support">Discord-Unterstützung</string>
     <string name="set_discord_support_sub">Treten Sie unserer Discord-Community bei</string>
@@ -839,9 +839,9 @@
     <string name="toast_sync_fail">Synchronisierung der Wiedergabeliste fehlgeschlagen: %1$s</string>
     <string name="toast_synced">Synchronisierte %1$d-Playlist(s) aus lokalem JSON</string>
     <string name="toast_restored">Wiederhergestellte %1$d Playlist(s)%2$s</string>
-    <string name="toast_newer_backup">Dieses Backup wurde mit einer neueren Version von LastWave erstellt</string>
-    <string name="toast_not_backup">Diese Datei sieht nicht wie ein LastWave-Backup aus</string>
-    <string name="toast_not_json">Das ist kein LastWave-Backup oder Playlist-JSON</string>
+    <string name="toast_newer_backup">Dieses Backup wurde mit einer neueren Version von SoundDrop erstellt</string>
+    <string name="toast_not_backup">Diese Datei sieht nicht wie ein SoundDrop-Backup aus</string>
+    <string name="toast_not_json">Das ist kein SoundDrop-Backup oder Playlist-JSON</string>
     <string name="toast_empty_file">Die ausgewählte Datei ist leer oder nicht lesbar</string>
     <string name="toast_restore_fail">Wiederherstellung fehlgeschlagen: %1$s</string>
     <string name="toast_restore_read">Lesefehler beim Wiederherstellen: %1$s</string>
@@ -1053,7 +1053,7 @@
     <string name="lyshare_mode_lyrics">Songtext</string>
     <string name="lyshare_action_share">Teilen</string>
     <string name="lyshare_action_save">Speichern</string>
-    <string name="lyshare_saved_to_gallery">In Bilder/LastWave gespeichert</string>
+    <string name="lyshare_saved_to_gallery">In Bilder/SoundDrop gespeichert</string>
     <string name="lyshare_save_failed">Bild konnte nicht gespeichert werden</string>
     <string name="lyshare_share_failed">Bild konnte nicht geteilt werden</string>
     <string name="lyshare_button_cd">Songtext teilen</string>
@@ -1068,7 +1068,7 @@
     <string name="lyshare_color_white">Weiß</string>
     <string name="lyshare_color_black">Schwarz</string>
     <string name="lyshare_color_accent">Akzent</string>
-    <string name="lyshare_color_brand">LastWave Limette</string>
+    <string name="lyshare_color_brand">SoundDrop Limette</string>
     <string name="lyshare_accessibility_line_selected">Ausgewählt, Zeile %1$d von %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Zeile %1$d von %2$d</string>
 

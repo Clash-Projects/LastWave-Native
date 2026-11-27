@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">LastWave Oynatıcı</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">SoundDrop Oynatıcı</string>
     <string name="widget_description">Tüm medya uygulamaları için kapak, parça bilgisi ve oynatma kontrolleri</string>
-    <string name="widget_obsidian_name">LastWave Obsidian Glass</string>
+    <string name="widget_obsidian_name">SoundDrop Obsidian Glass</string>
     <string name="widget_obsidian_description">Yarı saydam derinlikli ve kristal çerçeveli buzlu obsidyen cam oynatıcı</string>
 
     <!-- Alt gezinti -->
@@ -14,7 +14,7 @@
     <string name="update_available">Güncelleme Mevcut</string>
     <string name="update">Güncelle</string>
     <string name="dismiss_update">Güncellemeyi kapat</string>
-    <string name="update_ready_to_install">LastWave v%1$s kurulmaya hazır</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s kurulmaya hazır</string>
 
     <!-- Ayarlar -->
     <string name="settings">Ayarlar</string>
@@ -167,7 +167,7 @@
     <string name="dialog_clear_all_text">Kimlik bilgileriniz, listeleriniz, indirilen şarkılarınız ve önbelleğe alınmış veriler kaldırılır. Bu işlem geri alınamaz.</string>
     <string name="dialog_clear_all_confirm">Her Şeyi Temizle</string>
     <string name="dialog_disconnect_yt_title">YouTube Music bağlantısı kesilsin mi?</string>
-    <string name="dialog_disconnect_yt_text">Hesabınıza yansıtılan listeler orada kalır, ancak LastWave eşitlemeyi durdurur ve bağlantıyı unutur.</string>
+    <string name="dialog_disconnect_yt_text">Hesabınıza yansıtılan listeler orada kalır, ancak SoundDrop eşitlemeyi durdurur ve bağlantıyı unutur.</string>
     <string name="dialog_logout_title">Last.fm\'den çıkış yapılsın mı?</string>
     <string name="dialog_logout_text">Listeleriniz ve önbelleğe alınmış verileriniz korunur.</string>
     <string name="common_save">Kaydet</string>
@@ -796,7 +796,7 @@
     <string name="set_lfm_disc_title">Last.fm bağlantısı kesilsin mi?</string>
     <string name="set_lfm_disc_text">Genel scrobble’lar duraklatılır. İstatistikleriniz yerel dinleme geçmişine geçer — hiçbir şey silinmez.</string>
     <string name="set_lfm_disc_btn">Bağlantıyı Kes</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">Özel Renk</string>
     <string name="set_hue">Ton</string>
     <string name="set_sat">Doygunluk</string>
@@ -805,7 +805,7 @@
     <string name="set_eq_enable">Ekolayzeri Aç</string>
     <string name="set_eq_custom">Özel</string>
     <string name="set_yt_channel">YouTube Kanalı</string>
-    <string name="set_yt_channel_sub">LastWave’in hangi kanalın kitaplığını, beğenilerini ve geçmişini kullanacağını seçin</string>
+    <string name="set_yt_channel_sub">SoundDrop’un hangi kanalın kitaplığını, beğenilerini ve geçmişini kullanacağını seçin</string>
     <string name="set_yt_loading">Kanallar yükleniyor…</string>
     <string name="set_yt_empty_title">Kanal bulunamadı</string>
     <string name="set_yt_empty_sub">Bağlantınızı denetleyip tekrar deneyin.</string>
@@ -843,11 +843,11 @@
     <string name="set_usb_old">Android 10 veya üstü gerekir</string>
     <string name="set_usb_on">DAC’a doğrudan usbdevfs • Bit-Perfect bunu otomatik açar</string>
     <string name="set_usb_off">Kapalı • USB DAC ve Bit-Perfect (veya bu düğme) gerekir</string>
-    <string name="set_yt_hist_on">Açık • LastWave’de dinledikleriniz (kayıpsız ve indirmeler dahil) YouTube Music geçmişinizde görünür</string>
-    <string name="set_yt_hist_off">Kapalı • LastWave dinlemeleri YouTube Music geçmişine işlenmez</string>
+    <string name="set_yt_hist_on">Açık • SoundDrop’ta dinledikleriniz (kayıpsız ve indirmeler dahil) YouTube Music geçmişinizde görünür</string>
+    <string name="set_yt_hist_off">Kapalı • SoundDrop dinlemeleri YouTube Music geçmişine işlenmez</string>
     <string name="set_discord_title">Discord Zengin Durum</string>
     <string name="set_discord_on">Açık • parçanız, kalite ve kapak Discord profilinizde görünür</string>
-    <string name="set_discord_off">Kapalı • LastWave Discord profilinizde görünmez</string>
+    <string name="set_discord_off">Kapalı • SoundDrop Discord profilinizde görünmez</string>
     <string name="set_tg_sub">Telegram’da @clashprojects’e katılın</string>
     <string name="set_discord_support">Discord Desteği</string>
     <string name="set_discord_support_sub">Discord topluluğumuza katılın</string>
@@ -873,9 +873,9 @@
     <string name="toast_sync_fail">Liste eşitleme başarısız: %1$s</string>
     <string name="toast_synced">Yerel JSON’dan %1$d liste eşitlendi</string>
     <string name="toast_restored">%1$d liste geri yüklendi%2$s</string>
-    <string name="toast_newer_backup">Bu yedek daha yeni bir LastWave sürümüyle alındı</string>
-    <string name="toast_not_backup">Bu dosya LastWave yedeğine benzemiyor</string>
-    <string name="toast_not_json">Bu, LastWave yedeği veya liste JSON’u değil</string>
+    <string name="toast_newer_backup">Bu yedek daha yeni bir SoundDrop sürümüyle alındı</string>
+    <string name="toast_not_backup">Bu dosya SoundDrop yedeğine benzemiyor</string>
+    <string name="toast_not_json">Bu, SoundDrop yedeği veya liste JSON’u değil</string>
     <string name="toast_empty_file">Seçilen dosya boş veya okunamıyor</string>
     <string name="toast_restore_fail">Geri yükleme başarısız: %1$s</string>
     <string name="toast_restore_read">Geri yükleme okuma hatası: %1$s</string>
@@ -1109,7 +1109,7 @@
     <string name="lyshare_mode_lyrics">Sözler</string>
     <string name="lyshare_action_share">Paylaş</string>
     <string name="lyshare_action_save">Kaydet</string>
-    <string name="lyshare_saved_to_gallery">Pictures/LastWave klasörüne kaydedildi</string>
+    <string name="lyshare_saved_to_gallery">Pictures/SoundDrop klasörüne kaydedildi</string>
     <string name="lyshare_save_failed">Görsel kaydedilemedi</string>
     <string name="lyshare_share_failed">Görsel paylaşılamadı</string>
     <string name="lyshare_button_cd">Şarkı sözü paylaş</string>
@@ -1124,7 +1124,7 @@
     <string name="lyshare_color_white">Beyaz</string>
     <string name="lyshare_color_black">Siyah</string>
     <string name="lyshare_color_accent">Vurgu</string>
-    <string name="lyshare_color_brand">LastWave Limon Yeşili</string>
+    <string name="lyshare_color_brand">SoundDrop Limon Yeşili</string>
     <string name="lyshare_accessibility_line_selected">Seçildi, %1$d / %2$d. satır</string>
     <string name="lyshare_accessibility_line_unselected">%1$d / %2$d. satır</string>
 

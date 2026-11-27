@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">Lecteur LastWave</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">Lecteur SoundDrop</string>
     <string name="widget_description">Pochette, détails du morceau et contrôles de lecture pour toutes les apps média</string>
 
     <string name="nav_feed">Fil</string>
@@ -11,7 +11,7 @@
     <string name="update_available">Mise à jour disponible</string>
     <string name="update">Mettre à jour</string>
     <string name="dismiss_update">Ignorer la mise à jour</string>
-    <string name="update_ready_to_install">LastWave v%1$s prête à installer</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s prête à installer</string>
 
     <string name="settings">Paramètres</string>
     <string name="settings_section_language">Langue</string>
@@ -116,7 +116,7 @@
     <string name="dialog_clear_all_text">Supprime vos identifiants, playlists et données en cache. Irréversible.</string>
     <string name="dialog_clear_all_confirm">Tout effacer</string>
     <string name="dialog_disconnect_yt_title">Déconnecter YouTube Music ?</string>
-    <string name="dialog_disconnect_yt_text">Les playlists déjà reflétées sur votre compte y restent, mais LastWave arrête la synchronisation et oublie la connexion.</string>
+    <string name="dialog_disconnect_yt_text">Les playlists déjà reflétées sur votre compte y restent, mais SoundDrop arrête la synchronisation et oublie la connexion.</string>
     <string name="dialog_logout_title">Se déconnecter de Last.fm ?</string>
     <string name="dialog_logout_text">Vos playlists et données en cache seront conservées.</string>
     <string name="common_save">Enregistrer</string>
@@ -332,7 +332,7 @@
     <string name="signal_usb_diag_copy">Copier le diagnostic USB</string>
     <string name="signal_usb_diag_copied">Diagnostic USB copié — colle-le dans un message</string>
 
-    <string name="widget_obsidian_name">LastWave Verre d\'obsidienne</string>
+    <string name="widget_obsidian_name">SoundDrop Verre d\'obsidienne</string>
     <string name="widget_obsidian_description">Lecteur en verre d\'obsidienne givré avec profondeur translucide et bord en cristal</string>
     <string name="nav_generator">Générateur</string>
     <string name="settings_downloads_sub_custom">%1$d chanson(s) • %2$s • %3$s</string>
@@ -769,7 +769,7 @@
     <string name="set_lfm_disc_title">Déconnecter Last.fm ?</string>
     <string name="set_lfm_disc_text">Pause globale des scrobbles. Vos statistiques passent à l\'historique d\'écoute local – rien n\'est supprimé.</string>
     <string name="set_lfm_disc_btn">Déconnecter</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">Couleur personnalisée</string>
     <string name="set_hue">Teinte</string>
     <string name="set_sat">Saturation</string>
@@ -778,7 +778,7 @@
     <string name="set_eq_enable">Activer l\'égaliseur</string>
     <string name="set_eq_custom">Personnalisé</string>
     <string name="set_yt_channel">Chaîne YouTube</string>
-    <string name="set_yt_channel_sub">Choisissez la bibliothèque, les likes et l\'historique de la chaîne que LastWave utilise</string>
+    <string name="set_yt_channel_sub">Choisissez la bibliothèque, les likes et l\'historique de la chaîne que SoundDrop utilise</string>
     <string name="set_yt_loading">Chargement des chaînes…</string>
     <string name="set_yt_empty_title">Aucune chaîne trouvée</string>
     <string name="set_yt_empty_sub">Vérifiez votre connexion, puis réessayez.</string>
@@ -816,11 +816,11 @@
     <string name="set_usb_old">Nécessite Android 10 ou version ultérieure</string>
     <string name="set_usb_on">Dirigez usbdevfs vers le DAC • Bit-Perfect l\'active automatiquement</string>
     <string name="set_usb_off">Désactivé • Nécessite un DAC USB et Bit-Perfect (ou cette bascule)</string>
-    <string name="set_yt_hist_on">Sur • les chansons que vous écoutez en LastWave, y compris les chansons sans perte et les téléchargements, apparaissent dans votre historique YouTube Music</string>
-    <string name="set_yt_hist_off">Désactivé – L\'écoute dans LastWave reste en dehors de votre historique YouTube Music</string>
+    <string name="set_yt_hist_on">Sur • les chansons que vous écoutez en SoundDrop, y compris les chansons sans perte et les téléchargements, apparaissent dans votre historique YouTube Music</string>
+    <string name="set_yt_hist_off">Désactivé – L\'écoute dans SoundDrop reste en dehors de votre historique YouTube Music</string>
     <string name="set_discord_title">Présence riche en discorde</string>
     <string name="set_discord_on">Sur • votre titre, qualité et couverture diffusés sur votre profil Discord</string>
-    <string name="set_discord_off">Désactivé • LastWave reste hors de votre profil Discord</string>
+    <string name="set_discord_off">Désactivé • SoundDrop reste hors de votre profil Discord</string>
     <string name="set_tg_sub">Rejoignez @clashprojects sur Telegram</string>
     <string name="set_discord_support">Prise en charge de Discorde</string>
     <string name="set_discord_support_sub">Rejoignez notre communauté Discord</string>
@@ -846,9 +846,9 @@
     <string name="toast_sync_fail">Échec de la synchronisation de la playlist : %1$s</string>
     <string name="toast_synced">Playlist(s) %1$d synchronisée(s) à partir du JSON local</string>
     <string name="toast_restored">Liste(s) de lecture %1$d restaurée(s)%2$s</string>
-    <string name="toast_newer_backup">Cette sauvegarde a été réalisée avec une version plus récente de LastWave</string>
-    <string name="toast_not_backup">Ce fichier ne ressemble pas à une sauvegarde LastWave</string>
-    <string name="toast_not_json">Il ne s\'agit pas d\'une sauvegarde LastWave ou d\'une playlist JSON.</string>
+    <string name="toast_newer_backup">Cette sauvegarde a été réalisée avec une version plus récente de SoundDrop</string>
+    <string name="toast_not_backup">Ce fichier ne ressemble pas à une sauvegarde SoundDrop</string>
+    <string name="toast_not_json">Il ne s\'agit pas d\'une sauvegarde SoundDrop ou d\'une playlist JSON.</string>
     <string name="toast_empty_file">Le fichier sélectionné est vide ou illisible</string>
     <string name="toast_restore_fail">Échec de la restauration : %1$s</string>
     <string name="toast_restore_read">Erreur de lecture de restauration : %1$s</string>
@@ -1056,7 +1056,7 @@
     <string name="lyshare_mode_lyrics">Paroles</string>
     <string name="lyshare_action_share">Partager</string>
     <string name="lyshare_action_save">Enregistrer</string>
-    <string name="lyshare_saved_to_gallery">Enregistré dans Images/LastWave</string>
+    <string name="lyshare_saved_to_gallery">Enregistré dans Images/SoundDrop</string>
     <string name="lyshare_save_failed">Impossible d\'enregistrer l\'image</string>
     <string name="lyshare_share_failed">Impossible de partager l\'image</string>
     <string name="lyshare_button_cd">Partager les paroles</string>
@@ -1071,7 +1071,7 @@
     <string name="lyshare_color_white">Blanc</string>
     <string name="lyshare_color_black">Noir</string>
     <string name="lyshare_color_accent">Accent</string>
-    <string name="lyshare_color_brand">Citron vert LastWave</string>
+    <string name="lyshare_color_brand">Citron vert SoundDrop</string>
     <string name="lyshare_accessibility_line_selected">Sélectionnée, ligne %1$d sur %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Ligne %1$d sur %2$d</string>
     <!-- AutoEQ -->
@@ -1121,8 +1121,8 @@
     <string name="autoeq_msg_download_failed">Impossible de télécharger ce profil</string>
     <string name="autoeq_msg_device_saved">Profil enregistré pour cet appareil</string>
     <string name="signal_label_autoeq">AutoEQ</string>
-    <string name="signal_detail_autoeq">Correction appliquée par LastWave (modifie les échantillons, mixer Android toujours contourné)</string>
-    <string name="signal_verdict_direct_eq">Mixer Android contourné. LastWave applique ta correction AutoEQ, puis les échantillons vont directement au HAL.</string>
+    <string name="signal_detail_autoeq">Correction appliquée par SoundDrop (modifie les échantillons, mixer Android toujours contourné)</string>
+    <string name="signal_verdict_direct_eq">Mixer Android contourné. SoundDrop applique ta correction AutoEQ, puis les échantillons vont directement au HAL.</string>
     <string name="signal_direct_eq">DIRECT + EQ</string>
 
     <!-- Recommendations -->

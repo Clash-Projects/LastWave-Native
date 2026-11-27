@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">LastWave Плеер</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">SoundDrop Плеер</string>
     <string name="widget_description">Обложка, информация о треке и управление воспроизведением для всех медиаприложений</string>
 
     <string name="nav_feed">Лента</string>
@@ -11,7 +11,7 @@
     <string name="update_available">Доступно обновление</string>
     <string name="update">Обновить</string>
     <string name="dismiss_update">Скрыть обновление</string>
-    <string name="update_ready_to_install">LastWave v%1$s готова к установке</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s готова к установке</string>
 
     <string name="settings">Настройки</string>
     <string name="settings_section_language">Язык</string>
@@ -116,7 +116,7 @@
     <string name="dialog_clear_all_text">Это удалит ваши учётные данные, плейлисты и кэшированные данные. Действие необратимо.</string>
     <string name="dialog_clear_all_confirm">Удалить всё</string>
     <string name="dialog_disconnect_yt_title">Отключить YouTube Music?</string>
-    <string name="dialog_disconnect_yt_text">Плейлисты, уже отражённые в вашем аккаунте, останутся, но LastWave прекратит синхронизацию и забудет подключение.</string>
+    <string name="dialog_disconnect_yt_text">Плейлисты, уже отражённые в вашем аккаунте, останутся, но SoundDrop прекратит синхронизацию и забудет подключение.</string>
     <string name="dialog_logout_title">Выйти из Last.fm?</string>
     <string name="dialog_logout_text">Ваши плейлисты и кэшированные данные сохранятся.</string>
     <string name="common_save">Сохранить</string>
@@ -259,7 +259,7 @@
     <string name="desc_repeat">Повтор</string>
     <string name="desc_play_pause">Играть или пауза</string>
 
-    <string name="widget_obsidian_name">LastWave Обсидиановое стекло</string>
+    <string name="widget_obsidian_name">SoundDrop Обсидиановое стекло</string>
     <string name="widget_obsidian_description">Плеер из матового обсидианового стекла с полупрозрачной глубиной и хрустальной оправой.</string>
     <string name="nav_generator">Генератор</string>
     <string name="settings_downloads_sub_custom">%1$d песен • %2$s • %3$s</string>
@@ -762,7 +762,7 @@
     <string name="set_lfm_disc_title">Отключить Last.fm?</string>
     <string name="set_lfm_disc_text">Глобальные скробблы приостанавливаются. Ваша статистика переключается на локальную историю прослушивания — ничего не удаляется.</string>
     <string name="set_lfm_disc_btn">Отключить</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">Пользовательский цвет</string>
     <string name="set_hue">Хюэ</string>
     <string name="set_sat">Насыщенность</string>
@@ -771,7 +771,7 @@
     <string name="set_eq_enable">Включить эквалайзер</string>
     <string name="set_eq_custom">Пользовательский</string>
     <string name="set_yt_channel">YouTube-канал</string>
-    <string name="set_yt_channel_sub">Выберите, какую библиотеку, лайки и историю канала использует LastWave.</string>
+    <string name="set_yt_channel_sub">Выберите, какую библиотеку, лайки и историю канала использует SoundDrop.</string>
     <string name="set_yt_loading">Загрузка каналов…</string>
     <string name="set_yt_empty_title">Каналы не найдены</string>
     <string name="set_yt_empty_sub">Проверьте подключение и повторите попытку.</string>
@@ -809,11 +809,11 @@
     <string name="set_usb_old">Требуется Android 10 или новее.</string>
     <string name="set_usb_on">Направьте usbdevfs на ЦАП. • Bit-Perfect включает это автоматически.</string>
     <string name="set_usb_off">Выкл. • Требуется USB-ЦАП и Bit-Perfect (или этот переключатель)</string>
-    <string name="set_yt_hist_on">Вкл. • Песни, которые вы слушаете в LastWave, включая файлы без потерь и загрузки, отображаются в вашей истории YouTube Music.</string>
-    <string name="set_yt_hist_off">Выкл. • прослушивание в LastWave не входит в историю YouTube Music.</string>
+    <string name="set_yt_hist_on">Вкл. • Песни, которые вы слушаете в SoundDrop, включая файлы без потерь и загрузки, отображаются в вашей истории YouTube Music.</string>
+    <string name="set_yt_hist_off">Выкл. • прослушивание в SoundDrop не входит в историю YouTube Music.</string>
     <string name="set_discord_title">Богатое присутствие Discord</string>
     <string name="set_discord_on">Включите • ваш трек, качество и обложку в вашем профиле Discord.</string>
-    <string name="set_discord_off">Выкл. • LastWave остается вне вашего профиля Discord.</string>
+    <string name="set_discord_off">Выкл. • SoundDrop остается вне вашего профиля Discord.</string>
     <string name="set_tg_sub">Присоединяйтесь к @clashprojects в Telegram</string>
     <string name="set_discord_support">Поддержка Дискорда</string>
     <string name="set_discord_support_sub">Присоединяйтесь к нашему сообществу Discord</string>
@@ -839,9 +839,9 @@
     <string name="toast_sync_fail">Не удалось синхронизировать плейлист: %1$s.</string>
     <string name="toast_synced">Синхронизированы плейлисты %1$d из локального JSON.</string>
     <string name="toast_restored">Восстановлены плейлисты %1$d%2$s.</string>
-    <string name="toast_newer_backup">Эта резервная копия была сделана с использованием более новой версии LastWave.</string>
-    <string name="toast_not_backup">Этот файл не похож на резервную копию LastWave.</string>
-    <string name="toast_not_json">Это не резервная копия LastWave или JSON плейлиста.</string>
+    <string name="toast_newer_backup">Эта резервная копия была сделана с использованием более новой версии SoundDrop.</string>
+    <string name="toast_not_backup">Этот файл не похож на резервную копию SoundDrop.</string>
+    <string name="toast_not_json">Это не резервная копия SoundDrop или JSON плейлиста.</string>
     <string name="toast_empty_file">Выбранный файл пуст или не читается</string>
     <string name="toast_restore_fail">Не удалось восстановить: %1$s.</string>
     <string name="toast_restore_read">Восстановить ошибку чтения: %1$s</string>
@@ -1053,7 +1053,7 @@
     <string name="lyshare_mode_lyrics">Текст</string>
     <string name="lyshare_action_share">Поделиться</string>
     <string name="lyshare_action_save">Сохранить</string>
-    <string name="lyshare_saved_to_gallery">Сохранено в Pictures/LastWave</string>
+    <string name="lyshare_saved_to_gallery">Сохранено в Pictures/SoundDrop</string>
     <string name="lyshare_save_failed">Не удалось сохранить изображение</string>
     <string name="lyshare_share_failed">Не удалось поделиться изображением</string>
     <string name="lyshare_button_cd">Поделиться текстом</string>
@@ -1068,7 +1068,7 @@
     <string name="lyshare_color_white">Белый</string>
     <string name="lyshare_color_black">Чёрный</string>
     <string name="lyshare_color_accent">Акцент</string>
-    <string name="lyshare_color_brand">Лайм LastWave</string>
+    <string name="lyshare_color_brand">Лайм SoundDrop</string>
     <string name="lyshare_accessibility_line_selected">Выбрана, строка %1$d из %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Строка %1$d из %2$d</string>
 
