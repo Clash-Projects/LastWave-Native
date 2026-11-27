@@ -314,6 +314,12 @@ object DatabaseModule {
         }
     }
 
+    private val migration15To16 = object : Migration(15, 16) {
+        override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE downloaded_tracks ADD COLUMN smartDownloadVideoId TEXT")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
@@ -335,6 +341,7 @@ object DatabaseModule {
                 migration12To13,
                 migration13To14,
                 migration14To15,
+                migration15To16,
             )
             .build()
 

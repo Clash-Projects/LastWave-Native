@@ -1562,4 +1562,18 @@
     <string name="recognize_error_no_match">This song could not be recognised. Move closer to the music and try again.</string>
     <string name="recognize_error_rate_limited">Too many attempts. Wait a moment and try again.</string>
     <string name="recognize_error_network">The recognition service could not be reached. Check your connection and try again.</string>
+    <string name="dl_smart_downloads">Smart downloads</string>
+    <string name="dl_smart_settings">Smart download settings</string>
+    <string name="dl_smart_description">Automatically save recommendations from YouTube Music for offline listening.</string>
+    <string name="dl_smart_sign_in">Connect a YouTube Music account in Settings to get recommendations.</string>
+    <string name="dl_smart_enable">Download recommendations</string>
+    <string name="dl_smart_wifi_only">Download over Wi-Fi only</string>
+    <string name="dl_smart_song_limit">Song limit · %1$d</string>
+    <string name="dl_smart_storage_limit">Storage limit · %1$d GB</string>
+    <plurals name="dl_smart_summary">
+        <item quantity="one">%1$d song · %2$s</item>
+        <item quantity="other">%1$d songs · %2$s</item>
+    </plurals>
+    <string name="dl_smart_disabled">Turn on Smart downloads to start saving recommendations.</string>
+    <string name="dl_smart_waiting">Waiting for YouTube Music recommendations.</string>
 </resources>

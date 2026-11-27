@@ -271,7 +271,13 @@ class TrackDownloadManager @Inject constructor(
     suspend fun syncDownloadsFromStorage() = syncDownloadsFromStorageImpl()
     suspend fun removeFromHistoryOnly(track: DownloadedTrackEntity) = removeFromHistoryOnlyImpl(track)
     suspend fun clearHistoryOnly() = clearHistoryOnlyImpl()
-    suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity) = deleteDownloadedTrackImpl(track)
+    suspend fun deleteDownloadedTrack(track: DownloadedTrackEntity): DeleteDownloadResult {
+        val result = deleteDownloadedTrackImpl(track)
+        if (result == DeleteDownloadResult.Deleted && track.smartDownloadVideoId != null) {
+            hideFromHistory(listOf(track))
+        }
+        return result
+    }
     suspend fun finishConsentedDelete(track: DownloadedTrackEntity): Boolean = finishConsentedDeleteImpl(track)
     suspend fun clearAllDownloads() = clearAllDownloadsImpl()
     suspend fun clearAllDownloadsWithConsent(): ClearAllDownloadsResult = clearAllDownloadsWithConsentImpl()
@@ -492,18 +498,53 @@ class TrackDownloadManager @Inject constructor(
         videoId: String? = null,
         durationMs: Long? = null,
     ) {
+        enqueueDownload(applicationScope, title, artist, album, artworkUrl, year, videoId, durationMs)
+    }
+
+    internal val smartDownloadDirectory: File
+        get() = File(context.noBackupFilesDir, "smart-downloads")
+
+    // App scope like manual downloads: cancelling the worker only stops waiting. Cancelling
+    // mid-transfer aborted ART inside runDownloadJob ("Unexpected instruction: unused-43").
+    internal suspend fun downloadAutomatically(track: YouTubeMusicTrack, availableBytes: Long) {
+        enqueueDownload(
+            applicationScope, track.title, track.artist, track.album, track.artworkUrl, null,
+            track.videoId, track.durationSeconds?.times(1000L),
+            SmartDownload(track.videoId, availableBytes),
+        )?.join()
+    }
+
+    private data class SmartDownload(val videoId: String, val availableBytes: Long) {
+        fun requireFits(bytes: Long) {
+            if (bytes > availableBytes) throw SmartDownloadTooLarge()
+        }
+    }
+
+    private class SmartDownloadTooLarge : IOException("Smart downloads storage limit reached")
+
+    private fun enqueueDownload(
+        scope: CoroutineScope,
+        title: String,
+        artist: String,
+        album: String?,
+        artworkUrl: String?,
+        year: String?,
+        videoId: String?,
+        durationMs: Long?,
+        smartDownload: SmartDownload? = null,
+    ): Job? {
         val key = makeDownloadKey(title, artist)
         // Admission and job registration share [admissionLock] with the wipe so a
         // worker cannot start, or publish its handle, after the wipe has snapshotted.
         synchronized(admissionLock) {
-            if (downloadsWiping) return
-            if (!activeKeys.add(key)) return
+            if (downloadsWiping || !activeKeys.add(key)) return null
             reconnectGenerations[key] = AtomicLong()
-            val job = applicationScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                runDownloadJob(key, title, artist, album, artworkUrl, year, videoId, durationMs)
+            val job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                runDownloadJob(key, title, artist, album, artworkUrl, year, videoId, durationMs, smartDownload)
             }
             activeJobs[key] = job
-            job.start()
+            if (!job.start()) forgetDownloadKey(key)
+            return job
         }
     }
 
@@ -516,6 +557,7 @@ class TrackDownloadManager @Inject constructor(
         year: String?,
         videoId: String?,
         durationMs: Long?,
+        smartDownload: SmartDownload?,
     ) {
             // Bound the number of simultaneous downloads: each one holds
             // sockets, buffers and (during tagging) a decoded cover bitmap,
@@ -528,7 +570,7 @@ class TrackDownloadManager @Inject constructor(
                 forgetDownloadKey(key)
                 return
             }
-            if (downloadsWiping) {
+            if (downloadsWiping || (smartDownload != null && isHiddenFromHistory(key))) {
                 abandonAcquiredDownload(key)
                 return
             }
@@ -585,7 +627,7 @@ class TrackDownloadManager @Inject constructor(
                     return
                 }
             }
-            val notifId = key.hashCode()
+            val notifId = key.hashCode().takeIf { smartDownload == null }
             updateProgress(DownloadProgress(key = key, title = title, artist = artist, progressPercent = 0))
             // Notifications are best-effort: a PendingIntent/Notification
             // failure must never escape the coroutine and kill the app.
@@ -660,13 +702,13 @@ class TrackDownloadManager @Inject constructor(
                 var resolvedAlbum = safeAlbumInput?.takeIf { it.isNotBlank() }
                 var preloadedBestMatch: YouTubeMusicTrack? = null
 
-                if (!videoId.isNullOrBlank()) {
+                if (smartDownload == null && !videoId.isNullOrBlank()) {
                     preloadedBestMatch = runCatching {
                         innerTube.fetchSongDetails(videoId)
                     }.getOrNull()
                 }
 
-                if (preloadedBestMatch == null && (resolvedArtworkUrl == null || resolvedAlbum == null)) {
+                if (smartDownload == null && preloadedBestMatch == null && (resolvedArtworkUrl == null || resolvedAlbum == null)) {
                     preloadedBestMatch = runCatching {
                         innerTube.findBestMatch(effTitle, effArtistForLookup, prefetchStreams = false)
                     }.getOrNull()
@@ -730,7 +772,7 @@ class TrackDownloadManager @Inject constructor(
                 // A stale grant (revoked permission / removed card) fails fast
                 // with an actionable message instead of silently filling
                 // internal storage the user explicitly moved away from.
-                val customTreeUri = SafTreeFiles.parseTreeUri(misc.downloadTreeUri)
+                val customTreeUri = if (smartDownload == null) SafTreeFiles.parseTreeUri(misc.downloadTreeUri) else null
                 if (customTreeUri != null && !SafTreeFiles.hasPersistedAccess(context, misc.downloadTreeUri)) {
                     val staleMsg = "Download folder unavailable — reselect it in Downloads → Download location"
                     updateProgress(
@@ -1053,6 +1095,7 @@ class TrackDownloadManager @Inject constructor(
                         }
 
                         if (resolvedUrl != null) {
+                            smartDownload?.requireFits(expectedContentLength ?: 0L)
                             val rawFile = File.createTempFile("dl_raw_", ".$extension", context.cacheDir)
                                 tempDownloadFile = rawFile
 
@@ -1126,6 +1169,7 @@ class TrackDownloadManager @Inject constructor(
                                             }
                                         },
                                     ) { downloadedBytes, totalBytes ->
+                                        smartDownload?.requireFits(maxOf(downloadedBytes, totalBytes))
                                         synchronized(progressLock) {
                                             val now = android.os.SystemClock.uptimeMillis()
                                             if (totalBytes > 0) {
@@ -1207,6 +1251,7 @@ class TrackDownloadManager @Inject constructor(
                                         throw IOException("Downloaded payload is not a valid ${extension.uppercase()} audio file")
                                     }
                                 }
+                                smartDownload?.requireFits(rawFile.length())
                                 downloadSucceeded = true
                             }
                     } catch (cancellation: CancellationException) {
@@ -1274,22 +1319,21 @@ class TrackDownloadManager @Inject constructor(
                             preloadedBestMatch?.takeIf { match -> match.videoId == it }
                                 ?: YouTubeMusicTrack(videoId = it, title = finalTitle, artist = finalArtist)
                         }
-                        preloadedBestMatch?.takeIf(isPlausibleTrack)?.let { match ->
-                            candidateTracks.putIfAbsent(match.videoId, match)
-                        }
-                        // Broad search is capped inside (10 merged candidates);
-                        // the 60s resolve budget below bounds the slow path.
-                        runCatching {
-                            innerTube.findDownloadCandidates(finalTitle, lookupArtist)
-                        }.getOrDefault(emptyList()).filter(isPlausibleTrack).forEach { track ->
-                            candidateTracks.putIfAbsent(track.videoId, track)
-                        }
-                        // Last resort: legacy single strict match (kept for metadata only).
-                        if (candidateTracks.isEmpty()) {
+                        if (smartDownload == null) {
+                            preloadedBestMatch?.takeIf(isPlausibleTrack)?.let { match ->
+                                candidateTracks.putIfAbsent(match.videoId, match)
+                            }
                             runCatching {
-                                innerTube.findBestMatch(finalTitle, lookupArtist, prefetchStreams = false)
-                            }.getOrNull()?.takeIf(isPlausibleTrack)?.let { track ->
+                                innerTube.findDownloadCandidates(finalTitle, lookupArtist)
+                            }.getOrDefault(emptyList()).filter(isPlausibleTrack).forEach { track ->
                                 candidateTracks.putIfAbsent(track.videoId, track)
+                            }
+                            if (candidateTracks.isEmpty()) {
+                                runCatching {
+                                    innerTube.findBestMatch(finalTitle, lookupArtist, prefetchStreams = false)
+                                }.getOrNull()?.takeIf(isPlausibleTrack)?.let { track ->
+                                    candidateTracks.putIfAbsent(track.videoId, track)
+                                }
                             }
                         }
                         if (candidateTracks.isEmpty()) throw IOException("No YouTube match found for $finalTitle by $finalArtist")
@@ -1390,6 +1434,7 @@ class TrackDownloadManager @Inject constructor(
                         }
                         isLossless = false
 
+                        smartDownload?.requireFits(expectedContentLength ?: 0L)
                         val rawFile = File.createTempFile("dl_raw_", ".$extension", context.cacheDir)
                         tempDownloadFile = rawFile
 
@@ -1423,6 +1468,7 @@ class TrackDownloadManager @Inject constructor(
                                 }
                             },
                         ) { downloadedBytes, totalBytes ->
+                            smartDownload?.requireFits(maxOf(downloadedBytes, totalBytes))
                             synchronized(progressLock) {
                                 val now = android.os.SystemClock.uptimeMillis()
                                 if (totalBytes > 0) {
@@ -1511,7 +1557,9 @@ class TrackDownloadManager @Inject constructor(
                             )
                             if (rejected != null) {
                                 rejectedYtStreams += rejected.downloadRenditionKey()
-                                runCatching { innerTube.reportPlaybackFailure(rejected.videoId, rejected) }
+                                if (ytError !is SmartDownloadTooLarge) {
+                                    runCatching { innerTube.reportPlaybackFailure(rejected.videoId, rejected) }
+                                }
                             } else {
                                 awaitNetworkForResolveRetry()
                             }
@@ -1784,18 +1832,27 @@ class TrackDownloadManager @Inject constructor(
                         primaryOnly = misc.primaryArtistOnly,
                     )
                     ensureDownloadStillAllowed()
-                    val (destStream, uri, file) = openPublicOutputStream(
-                        filename = safeFilename,
-                        mimeType = mimeType,
-                        title = finalTitle,
-                        artist = finalArtist,
-                        album = resolvedAlbum,
-                        year = year,
-                        durationMs = durationMs,
-                        dirName = dirName,
-                        subpath = subpath,
-                        treeUri = customTreeUri,
-                    )
+                    val (destStream, uri, file) = if (smartDownload != null) {
+                        smartDownload.requireFits(currentAudioFile.length())
+                        val directory = smartDownloadDirectory
+                        directory.mkdirs()
+                        val output = File.createTempFile("${smartDownload.videoId}-", ".$extension", directory)
+                        destinationFile = output
+                        Triple(FileOutputStream(output), null, output)
+                    } else {
+                        openPublicOutputStream(
+                            filename = safeFilename,
+                            mimeType = mimeType,
+                            title = finalTitle,
+                            artist = finalArtist,
+                            album = resolvedAlbum,
+                            year = year,
+                            durationMs = durationMs,
+                            dirName = dirName,
+                            subpath = subpath,
+                            treeUri = customTreeUri,
+                        )
+                    }
                     destinationUri = uri
                     destinationFile = file
                     if (uri != null) activeUris[key] = uri
@@ -1816,7 +1873,7 @@ class TrackDownloadManager @Inject constructor(
 
                     // 6. Mark public MediaStore file as finished (IS_PENDING = 0)
                     finalizePublicFile(uri)
-                    if (file != null) {
+                    if (file != null && smartDownload == null) {
                         MediaScannerConnection.scanFile(
                             context,
                             arrayOf(file.absolutePath),
@@ -1838,7 +1895,7 @@ class TrackDownloadManager @Inject constructor(
                 // Stop before creating lyrics or the database row if a wipe has
                 // cancelled this worker; the wipe joins us before it deletes rows.
                 ensureDownloadStillAllowed()
-                if (shouldDownloadLyrics) {
+                if (shouldDownloadLyrics && smartDownload == null) {
                     val lyricsText = syncedLyrics ?: plainLyrics
                     if (!lyricsText.isNullOrBlank()) {
                         val lrcFilename = sanitizeFilename("$finalArtist - $finalTitle") + ".lrc"
@@ -1865,9 +1922,16 @@ class TrackDownloadManager @Inject constructor(
                     plainLyrics = plainLyrics,
                     lrcFilePath = lrcPath,
                     downloadedAtMillis = System.currentTimeMillis(),
+                    smartDownloadVideoId = smartDownload?.videoId,
                 )
-                downloadedTrackDao.insert(entity)
-                unhideFromHistory(entity)
+                if (smartDownload == null) {
+                    downloadedTrackDao.insert(entity)
+                    unhideFromHistory(entity)
+                } else if (downloadedTrackDao.insertSmartDownload(entity) == -1L) {
+                    destinationFile?.delete()
+                    _downloads.update { it - key }
+                    return
+                }
 
                 // 6b. Module DRM: persist offline keys + sidecar so the encrypted
                 // file plays without network. Skipped when transcoding already
@@ -1929,7 +1993,7 @@ class TrackDownloadManager @Inject constructor(
                 // Cancelled by user — clean up partial file
                 destinationUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
                 destinationFile?.let { runCatching { if (it.exists()) it.delete() } }
-                notificationManager?.cancel(notifId)
+                notifId?.let { notificationManager?.cancel(it) }
                 _downloads.update { it - key }
             } catch (oom: OutOfMemoryError) {
                 // Memory pressure (parallel ranges + decoded cover art) used
@@ -1970,6 +2034,7 @@ class TrackDownloadManager @Inject constructor(
                 activeUris.remove(key)
                 activeFiles.remove(key)
                 reconnectGenerations.remove(key)
+                if (smartDownload != null) _downloads.update { it - key }
                 tempDownloadFile?.let { runCatching { if (it.exists()) it.delete() } }
             }
     }

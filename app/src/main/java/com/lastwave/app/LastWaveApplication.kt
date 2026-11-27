@@ -41,6 +41,7 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var ytMusicSyncManager: dagger.Lazy<com.lastwave.app.data.ytmusic.YtMusicSyncManager>
     @Inject lateinit var ytMusicHistorySyncManager: dagger.Lazy<com.lastwave.app.data.ytmusic.YtMusicHistorySyncManager>
     @Inject lateinit var likedSongsManager: dagger.Lazy<com.lastwave.app.data.playlist.LikedSongsManager>
+    @Inject lateinit var smartDownloadsSync: dagger.Lazy<com.lastwave.app.data.download.smart.SmartDownloadsSync>
     @Inject lateinit var trackDownloadManager: dagger.Lazy<com.lastwave.app.data.download.TrackDownloadManager>
     @Inject lateinit var discordPresenceManager: dagger.Lazy<com.lastwave.app.presence.DiscordPresenceManager>
     @Inject lateinit var appLocaleManager: dagger.Lazy<com.lastwave.app.util.AppLocaleManager>
@@ -132,6 +133,16 @@ class LastWaveApplication : Application(), ImageLoaderFactory {
             delay(OPTIONAL_STARTUP_DELAY_MS)
             runCatching { ytMusicHistorySyncManager.get().start() }
                 .onFailure { com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "YT history sync startup disabled", it) }
+        }
+        applicationScope.launch {
+            delay(OPTIONAL_STARTUP_DELAY_MS)
+            try {
+                smartDownloadsSync.get().observeSettings()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                com.lastwave.app.diagnostics.AppLog.e("LastWaveStartup", "Smart downloads scheduler unavailable", error)
+            }
         }
         // Reconcile public download directory & MediaStore with local database
         // asynchronously on startup so offline playback works immediately.

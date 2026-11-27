@@ -28,6 +28,9 @@ interface DownloadedTrackDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(track: DownloadedTrackEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSmartDownload(track: DownloadedTrackEntity): Long
+
     @Query("DELETE FROM downloaded_tracks WHERE id = :id")
     suspend fun deleteById(id: Long)
 
@@ -39,6 +42,9 @@ interface DownloadedTrackDao {
 
     @Query("SELECT trackKey FROM downloaded_tracks")
     suspend fun getAllTrackKeys(): List<String>
+
+    @Query("SELECT * FROM downloaded_tracks WHERE smartDownloadVideoId IS NOT NULL ORDER BY downloadedAtMillis DESC")
+    suspend fun getSmartDownloads(): List<DownloadedTrackEntity>
 
     @Query("SELECT COUNT(*) FROM downloaded_tracks")
     fun count(): Flow<Int>

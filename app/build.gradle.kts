@@ -446,6 +446,7 @@ dependencies {
     // scrobbler (MediaScrobbleListenerService) already holds.
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.glance:glance-material3:1.1.1")
+    implementation("androidx.work:work-runtime-ktx:2.7.1")
 
     // Required even in a Compose-only app: Theme.Material3.DayNight.NoActionBar
     // (used as the AndroidManifest/splash theme parent in themes.xml) is an XML
