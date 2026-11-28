@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.TextFields
@@ -284,6 +285,23 @@ object SettingsSearchIndex {
                         "auto pause", "media volume", "volume 0"
                     ),
                     icon = Icons.AutoMirrored.Rounded.VolumeOff,
+                    iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
+                    iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
+                    parentTab = SettingsTab.AUDIO,
+                    section = "Audio & Playback",
+                    type = EntryType.TOGGLE,
+                )
+            )
+            add(
+                SettingsEntry(
+                    id = "audio.persistent_shuffle",
+                    title = "Persistent shuffle",
+                    subtitle = "Keep shuffling continuously (songs may repeat); turn off to shuffle the queue once and stop after the last track",
+                    keywords = listOf(
+                        "shuffle", "persistent shuffle", "one-time shuffle", "queue shuffle",
+                        "repeat songs", "random", "playback order"
+                    ),
+                    icon = Icons.Filled.Shuffle,
                     iconContainer = { MaterialTheme.colorScheme.tertiaryContainer },
                     iconTint = { MaterialTheme.colorScheme.onTertiaryContainer },
                     parentTab = SettingsTab.AUDIO,
