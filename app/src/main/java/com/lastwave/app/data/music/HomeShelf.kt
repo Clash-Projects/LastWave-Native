@@ -13,6 +13,7 @@ import androidx.compose.runtime.Immutable
  * Can be either a playable track or a playlist/album collection.
  */
 @Immutable
+@kotlinx.serialization.Serializable
 sealed interface HomeShelfItem {
     /**
      * Visual/layout hint YTM sends on musicTwoRowItemRenderer, e.g.
@@ -34,6 +35,7 @@ sealed interface HomeShelfItem {
         get() = null
 
     @Immutable
+    @kotlinx.serialization.Serializable
     data class Track(
         val track: YouTubeMusicTrack,
         override val aspectRatio: String? = null,
@@ -43,6 +45,7 @@ sealed interface HomeShelfItem {
     ) : HomeShelfItem
 
     @Immutable
+    @kotlinx.serialization.Serializable
     data class Playlist(
         val playlist: YouTubePlaylistSummary,
         override val aspectRatio: String? = null,
@@ -55,6 +58,7 @@ sealed interface HomeShelfItem {
     ) : HomeShelfItem
 
     @Immutable
+    @kotlinx.serialization.Serializable
     data class PodcastEpisode(
         val videoId: String,
         val title: String,
@@ -72,6 +76,7 @@ sealed interface HomeShelfItem {
     ) : HomeShelfItem
 
     @Immutable
+    @kotlinx.serialization.Serializable
     data class PodcastShow(
         val browseId: String,
         val title: String,
@@ -127,6 +132,7 @@ fun HomeShelfItem.PodcastEpisode.toYouTubeMusicTrack(): YouTubeMusicTrack =
  * and ordered items as returned by InnerTube.
  */
 @Immutable
+@kotlinx.serialization.Serializable
 data class HomeShelf(
     val title: String,
     val subtitle: String? = null,

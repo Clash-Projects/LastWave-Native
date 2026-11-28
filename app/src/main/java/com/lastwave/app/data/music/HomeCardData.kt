@@ -3,6 +3,7 @@ package com.lastwave.app.data.music
 import kotlinx.serialization.json.JsonObject
 
 /** Renderer evidence retained for cards, independently of Home fetching and ordering. */
+@kotlinx.serialization.Serializable
 data class HomeCardData(
     val isTwoRow: Boolean = false,
     val browseId: String? = null,
@@ -15,6 +16,7 @@ data class HomeCardData(
     val largeArtworkUrl: String? = null,
 )
 
+@kotlinx.serialization.Serializable
 data class HomePlayAllButton(val text: String? = null, val watchVideoId: String? = null)
 
 internal const val HOME_SQUARE_ASPECT = "MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_SQUARE"

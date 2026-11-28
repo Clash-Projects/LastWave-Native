@@ -40,7 +40,8 @@ fun rememberAmbientFloat(
     return rememberInfiniteTransition(label).animateFloat(initialValue, targetValue, animationSpec, label)
 }
 
-// An endless marquee on a long title redrew the paused player every frame (~50 fps, measured).
+// An endless marquee on a long title redrew the player every vsync for the whole song
+// (~90 fps on the tablet, measured) and heated the device; scroll a few times, then rest.
 // 0 iterations stops it and returns the text to its start.
 fun Modifier.playingMarquee(isPlaying: Boolean): Modifier =
-    basicMarquee(iterations = if (isPlaying) Int.MAX_VALUE else 0)
+    basicMarquee(iterations = if (isPlaying) 3 else 0)

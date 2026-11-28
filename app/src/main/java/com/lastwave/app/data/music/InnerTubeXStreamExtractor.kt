@@ -477,7 +477,12 @@ class InnerTubeXStreamExtractor @Inject constructor(
         error("Ktor JVM HttpClient factory was not found")
     }
 
-    /** Use the same TLS implementation as the app's successful OkHttp API calls. */
+    /**
+     * Use the same TLS implementation as the app's successful OkHttp API calls. The disk
+     * cache keeps the versioned player script (~0.8 MB, max-age 1 year): InnerTubeX only
+     * caches it in memory, so every cold start re-downloaded it before the first song
+     * could play (61 s on a weak connection, measured).
+     */
     private fun createOkHttpClient(): Any {
         val engine = Class.forName("io.ktor.client.engine.okhttp.OkHttp")
             .getField("INSTANCE")
@@ -486,7 +491,18 @@ class InnerTubeXStreamExtractor @Inject constructor(
             it.name == "HttpClient" && it.parameterCount == 2 &&
                 it.parameterTypes[0].name == "io.ktor.client.engine.HttpClientEngineFactory"
         }
-        return factory.invoke(null, engine, { _: Any? -> Unit })!!
+        val okHttp = okhttp3.OkHttpClient.Builder()
+            .cache(okhttp3.Cache(java.io.File(context.cacheDir, "innertubex_http"), 16L * 1024 * 1024))
+            .build()
+        return factory.invoke(null, engine, { clientConfig: Any? ->
+            val configureEngine = clientConfig!!.javaClass.methods.first { it.name == "engine" && it.parameterCount == 1 }
+            configureEngine.invoke(clientConfig, { engineConfig: Any? ->
+                engineConfig!!.javaClass.getMethod("setPreconfigured", okhttp3.OkHttpClient::class.java)
+                    .invoke(engineConfig, okHttp)
+                Unit
+            })
+            Unit
+        })!!
     }
 
     /**

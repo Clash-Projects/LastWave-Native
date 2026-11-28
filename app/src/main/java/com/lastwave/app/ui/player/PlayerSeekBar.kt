@@ -86,6 +86,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -621,6 +622,7 @@ internal fun SeekBar(
     val sliderFraction = remember { mutableFloatStateOf(0f) }
     val progressDurationMs = remember { mutableLongStateOf(0L) }
     val elapsedSeconds = remember { mutableLongStateOf(0L) }
+    val barWidthPx = remember { mutableIntStateOf(0) }
     val currentFallbackDurationMs by rememberUpdatedState(fallbackDurationMs)
     // Keep collecting while obscured (tracking must not stop), but do not publish
     // state that invalidates the full-player window behind the shade/dialog.
@@ -640,7 +642,11 @@ internal fun SeekBar(
             }
             val second = s.positionMs / 1000L
             if (!windowActive) return@collect
-            progressFraction.floatValue = fraction
+            // A 60 ms tick moves the bar well under a pixel; redrawing the full
+            // player for it kept the GPU busy (~17 fps) the whole song and heated the device.
+            if (abs(fraction - progressFraction.floatValue) * barWidthPx.intValue >= 1f || barWidthPx.intValue == 0) {
+                progressFraction.floatValue = fraction
+            }
             progressDurationMs.longValue = duration
             if (second != elapsedSeconds.longValue) elapsedSeconds.longValue = second
             // The Material slider is visually transparent and only feeds
@@ -726,7 +732,8 @@ internal fun SeekBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(44.dp),
+                .height(44.dp)
+                .onSizeChanged { barWidthPx.intValue = it.width },
             contentAlignment = Alignment.Center,
         ) {
             val scrubHaptics = rememberScrubHaptics()

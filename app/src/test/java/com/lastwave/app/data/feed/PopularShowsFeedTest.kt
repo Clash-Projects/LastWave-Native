@@ -59,6 +59,7 @@ class PopularShowsFeedTest {
             playlistRepository,
             podcastRepository,
             settingsPreferences,
+            org.robolectric.RuntimeEnvironment.getApplication(),
         )
     }
 
@@ -293,6 +294,31 @@ class PopularShowsFeedTest {
         assertThat(cached?.podcastShows).isEqualTo(feed.podcastShows)
         assertThat(cached?.podcastShelfTitle).isEqualTo(feed.podcastShelfTitle)
         assertThat(repository.getCachedFeed("another_user", YtConnection())).isNull()
+    }
+
+    @Test
+    fun feedRestoresFromDiskAfterProcessRestart() = runTest {
+        coEvery { innerTube.fetchHomePage() } returns HomePage(
+            shelves = listOf(
+                HomeShelf(
+                    title = "Quick picks",
+                    items = listOf(
+                        HomeShelfItem.Track(YouTubeMusicTrack("vid00000001", "Song", "Artist")),
+                        HomeShelfItem.Playlist(com.lastwave.app.data.music.YouTubePlaylistSummary("PL1", "Mix")),
+                    ),
+                )
+            ),
+            chips = listOf(HomeChip(title = "Podcasts", params = "podcast_params_1")),
+        )
+        coEvery { innerTube.fetchHomeChip(any()) } returns HomePage(
+            shelves = listOf(HomeShelf(title = "Shows for you", items = createShows(3))),
+        )
+
+        val feed = createRepository().loadFeed("test_user")
+
+        // A new instance has no memory cache, like a cold start.
+        assertThat(createRepository().getCachedFeed("test_user", YtConnection())).isEqualTo(feed)
+        assertThat(createRepository().getCachedFeed("another_user", YtConnection())).isNull()
     }
 
     @Test
