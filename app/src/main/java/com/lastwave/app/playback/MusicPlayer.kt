@@ -583,6 +583,16 @@ class MusicPlayer @Inject constructor(
 
     @Volatile
     internal var pauseOnZeroVolumePref: Boolean = false
+    @Volatile
+    internal var persistentShufflePref: Boolean = false
+    internal var oneTimeShuffleActive: Boolean = false
+    internal var originalUnshuffledQueue: List<PlayableTrack>? = null
+
+    internal fun isShuffleActive(): Boolean = when {
+        !playerDelegate.isInitialized() -> _state.value.shuffleEnabled
+        persistentShufflePref -> player.shuffleModeEnabled
+        else -> oneTimeShuffleActive
+    }
 
     internal val zeroVolumePlaybackObserver: ZeroVolumePlaybackObserver by lazy {
         ZeroVolumePlaybackObserver(
@@ -1152,7 +1162,7 @@ class MusicPlayer @Inject constructor(
                 recordHistory(_state.value.current?.mediaIdKey())
                 // Repeat-all + shuffle wrapped to the first shuffled song: deal a
                 // new order, or every round replays the same "shuffled" sequence.
-                if (player.shuffleModeEnabled && player.repeatMode == Player.REPEAT_MODE_ALL &&
+                if (persistentShufflePref && player.shuffleModeEnabled && player.repeatMode == Player.REPEAT_MODE_ALL &&
                     player.mediaItemCount > 2 &&
                     player.currentMediaItemIndex == player.currentTimeline.getFirstWindowIndex(true)
                 ) {
@@ -2053,21 +2063,51 @@ class MusicPlayer @Inject constructor(
                         restoredSession.positionMs.coerceAtLeast(0),
                     )
                     if (restoredSession.shuffleEnabled && restoredSession.queue.size > 1) {
-                        // Resume the same shuffle instead of a fresh one that
-                        // replays songs already heard before the restart.
-                        val saved = restoredSession.shuffleOrder
-                        val order = if (saved.size == restoredSession.queue.size &&
-                            saved.sorted() == restoredSession.queue.indices.toList()
-                        ) {
-                            saved
+                        if (persistentShufflePref) {
+                            // Resume the same shuffle instead of a fresh one that
+                            // replays songs already heard before the restart.
+                            val saved = restoredSession.shuffleOrder
+                            val order = if (saved.size == restoredSession.queue.size &&
+                                saved.sorted() == restoredSession.queue.indices.toList()
+                            ) {
+                                saved
+                            } else {
+                                listOf(restoredIndex) + restoredSession.queue.indices.filter { it != restoredIndex }.shuffled()
+                            }
+                            runCatching {
+                                restoredPlayer.setShuffleOrder(DefaultShuffleOrder(order.toIntArray(), Random.nextLong()))
+                            }
+                            restoredPlayer.shuffleModeEnabled = true
+                            oneTimeShuffleActive = false
                         } else {
-                            listOf(restoredIndex) + restoredSession.queue.indices.filter { it != restoredIndex }.shuffled()
+                            // One-time shuffle: persisted queue is already shuffled in sequential order.
+                            // Flatten legacy persisted shuffleOrder once if present.
+                            val saved = restoredSession.shuffleOrder
+                            if (saved.size == restoredSession.queue.size &&
+                                saved.sorted() == restoredSession.queue.indices.toList()
+                            ) {
+                                val flattened = saved.map { restoredSession.queue[it] }
+                                val newIdx = saved.indexOf(restoredIndex).coerceAtLeast(0)
+                                originalUnshuffledQueue = restoredSession.queue
+                                restoredPlayer.setMediaItems(
+                                    flattened.map(PlayableTrack::toMediaItem),
+                                    newIdx,
+                                    restoredSession.positionMs.coerceAtLeast(0),
+                                )
+                                _state.update { it.copy(queue = flattened, currentIndex = newIdx, current = flattened[newIdx]) }
+                            }
+                            restoredPlayer.shuffleModeEnabled = false
+                            oneTimeShuffleActive = true
                         }
-                        runCatching {
-                            restoredPlayer.setShuffleOrder(DefaultShuffleOrder(order.toIntArray(), Random.nextLong()))
+                    } else {
+                        if (persistentShufflePref) {
+                            restoredPlayer.shuffleModeEnabled = restoredSession.shuffleEnabled
+                            oneTimeShuffleActive = false
+                        } else {
+                            restoredPlayer.shuffleModeEnabled = false
+                            oneTimeShuffleActive = restoredSession.shuffleEnabled
                         }
                     }
-                    restoredPlayer.shuffleModeEnabled = restoredSession.shuffleEnabled
                     restoredPlayer.repeatMode = restoredSession.repeatMode.takeIf {
                         it in Player.REPEAT_MODE_OFF..Player.REPEAT_MODE_ALL
                     } ?: _state.value.repeatMode
@@ -2082,7 +2122,7 @@ class MusicPlayer @Inject constructor(
                     restoredPlayer.pause()
                 } else {
                     restoredPlayer.repeatMode = _state.value.repeatMode
-                    restoredPlayer.shuffleModeEnabled = _state.value.shuffleEnabled
+                    restoredPlayer.shuffleModeEnabled = if (persistentShufflePref) _state.value.shuffleEnabled else false
                     if (!bitPerfectEnabled && (userPlaybackSpeed != 1f || userPlaybackPitch != 1f)) {
                         restoredPlayer.playbackParameters = PlaybackParameters(userPlaybackSpeed, userPlaybackPitch)
                     }
@@ -2528,6 +2568,11 @@ class MusicPlayer @Inject constructor(
                 crossfadeDurationMs = settings.crossfadeSeconds.coerceIn(1, 12) * 1000L
                 stopPlaybackOnTaskRemovedPref = settings.stopPlaybackOnTaskRemoved
                 pauseOnZeroVolumePref = settings.pauseOnZeroVolume
+                val oldPersistentShuffle = persistentShufflePref
+                persistentShufflePref = settings.persistentShuffle
+                if (oldPersistentShuffle != settings.persistentShuffle) {
+                    onMain { onPersistentShuffleModeChanged(settings.persistentShuffle) }
+                }
                 if (settings.wifiStreamingQuality != previousPlaybackSettings.wifiStreamingQuality ||
                     settings.cellularStreamingQuality != previousPlaybackSettings.cellularStreamingQuality
                 ) {
@@ -2798,13 +2843,17 @@ class MusicPlayer @Inject constructor(
         playHistory.clear()
         latePreloadKey = null
         lastPreloadRetryMs = 0L
+        val wasShuffled = isShuffleActive()
+        originalUnshuffledQueue = null
+        oneTimeShuffleActive = false
         startResolvedQueuePlayback(
             tracks = tracks,
             selectedIndex = selectedIndex,
             startPositionMs = 0L,
             sourceLabel = sourceLabel,
             endlessDiscover = endlessDiscover || (enableRadioContinuation && autoplaySimilarEnabled),
-            startShuffled = startShuffled,
+            startShuffled = startShuffled || wasShuffled,
+            preserveExistingQueueOrder = false,
         )
     }
 
@@ -2816,10 +2865,19 @@ class MusicPlayer @Inject constructor(
         endlessDiscover: Boolean,
         startShuffled: Boolean = false,
         playWhenReady: Boolean = true,
+        preserveExistingQueueOrder: Boolean = false,
     ) {
         if (playWhenReady && zeroVolumePlaybackObserver.shouldBlockPlayAction()) return
         if (playWhenReady) zeroVolumePlaybackObserver.onManualAction()
         val selectedTrack = tracks[selectedIndex].withYoutubeArtwork()
+        val initialShuffle = startShuffled || isShuffleActive()
+        val oneTimePlan = if (!preserveExistingQueueOrder && !persistentShufflePref && initialShuffle) {
+            ShuffleQueueLogic.enableOneTimeShuffle(tracks, selectedIndex, originalSnapshot = tracks)
+        } else {
+            null
+        }
+        val effectiveTracks = oneTimePlan?.queue ?: tracks
+        val effectiveIndex = oneTimePlan?.currentIndex ?: selectedIndex
         PlaybackStartupLog.begin(
             trackId = selectedTrack.internalTrackId?.takeIf { it.isNotBlank() } ?: selectedTrack.videoId.orEmpty(),
             youtubeVideoId = selectedTrack.videoId,
@@ -2828,11 +2886,20 @@ class MusicPlayer @Inject constructor(
             onMain {
                 cancelPendingPlaybackResolution()
                 ensureForegroundService()
-                _state.value = _state.value.copy(current = selectedTrack, queue = tracks,
-                    currentIndex = selectedIndex, positionMs = startPositionMs,
+                if (!preserveExistingQueueOrder) {
+                    if (oneTimePlan != null) {
+                        originalUnshuffledQueue = oneTimePlan.originalQueue
+                        oneTimeShuffleActive = true
+                    } else if (!persistentShufflePref) {
+                        originalUnshuffledQueue = null
+                        oneTimeShuffleActive = false
+                    }
+                }
+                _state.value = _state.value.copy(current = selectedTrack, queue = effectiveTracks,
+                    currentIndex = effectiveIndex, positionMs = startPositionMs,
                     durationMs = selectedTrack.durationMs ?: findKnownDuration(selectedTrack) ?: 0L,
                     sourceLabel = sourceLabel, isEndlessQueue = endlessDiscover,
-                    shuffleEnabled = startShuffled, error = null)
+                    shuffleEnabled = initialShuffle, error = null)
                 durationOwnerMediaId = selectedTrack.mediaIdKey()
                 castPlayback?.load(_state.value)
             }
@@ -2842,7 +2909,7 @@ class MusicPlayer @Inject constructor(
         val generation = playRequestGeneration.incrementAndGet()
         playRequest?.cancel()
         cancelStaleResolverWork("queue-playback")
-        tracks.getOrNull(selectedIndex)?.playbackIdentity()?.let { streamResolver.playback.begin(it) }
+        effectiveTracks.getOrNull(effectiveIndex)?.playbackIdentity()?.let { streamResolver.playback.begin(it) }
         cancelActiveUpgrade()
         preloadJob?.cancel()
         onMain {
@@ -2852,6 +2919,15 @@ class MusicPlayer @Inject constructor(
             losslessBypassMediaIds.clear()
             errorRetryCount = 0
             retryMediaId = null
+            if (!preserveExistingQueueOrder) {
+                if (oneTimePlan != null) {
+                    originalUnshuffledQueue = oneTimePlan.originalQueue
+                    oneTimeShuffleActive = true
+                } else if (!persistentShufflePref) {
+                    originalUnshuffledQueue = null
+                    oneTimeShuffleActive = false
+                }
+            }
             if (playerDelegate.isInitialized()) {
                 player.stop()
                 player.clearMediaItems()
@@ -2860,8 +2936,8 @@ class MusicPlayer @Inject constructor(
             resetRenderWatchdog()
             _state.update { live -> MusicPlayerState(
                 current = selectedTrack,
-                queue = tracks,
-                currentIndex = selectedIndex,
+                queue = effectiveTracks,
+                currentIndex = effectiveIndex,
                 sourceLabel = sourceLabel,
                 isEndlessQueue = endlessDiscover || radioQueueActive,
                 isBuffering = true,
@@ -2873,7 +2949,11 @@ class MusicPlayer @Inject constructor(
                 // until ExoPlayer parsed the container (TIME_UNSET -> READY),
                 // while the notification extrapolated via speed and looked fine.
                 durationMs = selectedTrack.durationMs ?: findKnownDuration(selectedTrack) ?: 0L,
-                shuffleEnabled = if (playerDelegate.isInitialized()) player.shuffleModeEnabled else startShuffled,
+                shuffleEnabled = if (persistentShufflePref) {
+                    if (playerDelegate.isInitialized()) player.shuffleModeEnabled else initialShuffle
+                } else {
+                    oneTimeShuffleActive || initialShuffle
+                },
                 repeatMode = live.repeatMode,
             ).withSubsystemStateFrom(live) }
             durationOwnerMediaId = selectedTrack.mediaIdKey()
@@ -2894,7 +2974,7 @@ class MusicPlayer @Inject constructor(
                 if (generation != playRequestGeneration.get()) return@launch
                 withContext(Dispatchers.Main.immediate) {
                     if (generation != playRequestGeneration.get()) return@withContext
-                    val isShuffle = startShuffled || (playerDelegate.isInitialized() && player.shuffleModeEnabled)
+                    val isShuffle = initialShuffle || isShuffleActive()
                     resolved?.let {
                         registerPreparedStream(it)
                         stagePendingQuality(selectedTrack.mediaIdKey(), it)
@@ -2912,23 +2992,25 @@ class MusicPlayer @Inject constructor(
                     } else {
                         selectedTrack
                     }
-                    learnQueueVideoId(selectedIndex, selectedTrack, learnedVideoId, resolved?.rematchedFromVideoId)
-                    val mediaItems = tracks.mapIndexed { index, track ->
-                        val itemTrack = if (index == selectedIndex) playbackTrack else track
-                        itemTrack.toMediaItem(if (index == selectedIndex) resolved else null)
+                    learnQueueVideoId(effectiveIndex, selectedTrack, learnedVideoId, resolved?.rematchedFromVideoId)
+                    val mediaItems = effectiveTracks.mapIndexed { index, track ->
+                        val itemTrack = if (index == effectiveIndex) playbackTrack else track
+                        itemTrack.toMediaItem(if (index == effectiveIndex) resolved else null)
                     }
                     val targetStartCue = startPositionMs.coerceAtLeast(0L)
                     resetPlayhead(targetStartCue, selectedTrack.mediaIdKey())
-                    player.setMediaItems(mediaItems, selectedIndex, targetStartCue)
-                    if (isShuffle) {
+                    player.setMediaItems(mediaItems, effectiveIndex, targetStartCue)
+                    if (isShuffle && persistentShufflePref) {
                         if (mediaItems.size > 1) {
-                            val remaining = mediaItems.indices.filter { it != selectedIndex }.shuffled()
-                            val order = (listOf(selectedIndex) + remaining).toIntArray()
+                            val remaining = mediaItems.indices.filter { it != effectiveIndex }.shuffled()
+                            val order = (listOf(effectiveIndex) + remaining).toIntArray()
                             player.setShuffleOrder(DefaultShuffleOrder(order, Random.nextLong()))
                         }
                         player.shuffleModeEnabled = true
+                        oneTimeShuffleActive = false
                     } else {
                         player.shuffleModeEnabled = false
+                        oneTimeShuffleActive = isShuffle && !persistentShufflePref
                     }
                     player.repeatMode = _state.value.repeatMode
                     if (!bitPerfectEnabled && (userPlaybackSpeed != 1f || userPlaybackPitch != 1f)) {
@@ -2938,7 +3020,7 @@ class MusicPlayer @Inject constructor(
                     resetRenderWatchdog()
                     player.prepare()
                     if (playWhenReady) player.play() else player.pause()
-                    enrichUpcomingQueue(selectedIndex)
+                    enrichUpcomingQueue(effectiveIndex)
                     resolved?.let { stream ->
                         if (!stream.isLossless && stream.audioCodec != "DOLBY ATMOS") {
                             scheduleQualityUpgrade(
@@ -2950,7 +3032,7 @@ class MusicPlayer @Inject constructor(
                         }
                     }
                     scheduleStartupFollowUp {
-                        preloadNextQueueItem(selectedIndex)
+                        preloadNextQueueItem(effectiveIndex)
                         scheduleDeferredRecommendations()
                     }
                 }
@@ -2986,29 +3068,31 @@ class MusicPlayer @Inject constructor(
                     if (ytFallback != null && generation == playRequestGeneration.get()) {
                         withContext(Dispatchers.Main.immediate) {
                             if (generation != playRequestGeneration.get()) return@withContext
-                            val isShuffle = startShuffled || (playerDelegate.isInitialized() && player.shuffleModeEnabled)
+                            val isShuffle = initialShuffle || isShuffleActive()
                             registerPreparedStream(ytFallback)
                             stagePendingQuality(selectedTrack.mediaIdKey(), ytFallback)
                             publishResolvedQuality(ytFallback, expectedMediaId = selectedTrack.mediaIdKey())
                             cacheCurrentTrackStream(ytFallback)
-                            val mediaItems = tracks.mapIndexed { index, track ->
-                                track.toMediaItem(if (index == selectedIndex) ytFallback else null)
+                            val mediaItems = effectiveTracks.mapIndexed { index, track ->
+                                track.toMediaItem(if (index == effectiveIndex) ytFallback else null)
                             }
-                            player.setMediaItems(mediaItems, selectedIndex, startPositionMs.coerceAtLeast(0L))
-                            if (isShuffle) {
+                            player.setMediaItems(mediaItems, effectiveIndex, startPositionMs.coerceAtLeast(0L))
+                            if (isShuffle && persistentShufflePref) {
                                 if (mediaItems.size > 1) {
-                                    val remaining = mediaItems.indices.filter { it != selectedIndex }.shuffled()
-                                    val order = (listOf(selectedIndex) + remaining).toIntArray()
+                                    val remaining = mediaItems.indices.filter { it != effectiveIndex }.shuffled()
+                                    val order = (listOf(effectiveIndex) + remaining).toIntArray()
                                     player.setShuffleOrder(DefaultShuffleOrder(order, Random.nextLong()))
                                 }
                                 player.shuffleModeEnabled = true
+                                oneTimeShuffleActive = false
                             } else {
                                 player.shuffleModeEnabled = false
+                                oneTimeShuffleActive = isShuffle && !persistentShufflePref
                             }
                             player.repeatMode = _state.value.repeatMode
                             player.prepare()
                             if (playWhenReady) player.play() else player.pause()
-                            enrichUpcomingQueue(selectedIndex)
+                            enrichUpcomingQueue(effectiveIndex)
                             if (endlessDiscover) {
                                 appendMissingDiscoverTracks(discoverRepository.getCachedFeed().map(GeneratedTrack::toPlayableTrack))
                             }
@@ -3019,7 +3103,7 @@ class MusicPlayer @Inject constructor(
                                 currentStream = ytFallback,
                             )
                             scheduleDeferredRecommendations()
-                            preloadNextQueueItem(selectedIndex)
+                            preloadNextQueueItem(effectiveIndex)
                         }
                         return@launch
                     }
@@ -3044,24 +3128,28 @@ class MusicPlayer @Inject constructor(
                             return@withContext
                         }
                         unavailableMediaIds += failedKey
-                        val isShuffle = startShuffled || (playerDelegate.isInitialized() && player.shuffleModeEnabled)
-                        val nextIndex = if (isShuffle) {
-                            tracks.indices
-                                .filter { tracks[it].mediaIdKey() !in unavailableMediaIds }
+                        val isShuffle = initialShuffle || isShuffleActive()
+                        val nextIndex = if (isShuffle && persistentShufflePref) {
+                            effectiveTracks.indices
+                                .filter { effectiveTracks[it].mediaIdKey() !in unavailableMediaIds }
                                 .randomOrNull()
+                        } else if (isShuffle) {
+                            (effectiveIndex + 1 until effectiveTracks.size)
+                                .firstOrNull { effectiveTracks[it].mediaIdKey() !in unavailableMediaIds }
                         } else {
-                            val ordered = (selectedIndex + 1 until tracks.size) + (0 until selectedIndex)
-                            ordered.firstOrNull { tracks[it].mediaIdKey() !in unavailableMediaIds }
+                            val ordered = (effectiveIndex + 1 until effectiveTracks.size) + (0 until effectiveIndex)
+                            ordered.firstOrNull { effectiveTracks[it].mediaIdKey() !in unavailableMediaIds }
                         }
                         if (nextIndex != null) {
                             playRequest = null
                             startResolvedQueuePlayback(
-                                tracks = tracks,
+                                tracks = effectiveTracks,
                                 selectedIndex = nextIndex,
                                 startPositionMs = 0L,
                                 sourceLabel = sourceLabel,
                                 endlessDiscover = endlessDiscover,
                                 startShuffled = isShuffle,
+                                preserveExistingQueueOrder = true,
                             )
                         } else {
                             val isOffline = isNetworkException(error)
@@ -3273,6 +3361,7 @@ class MusicPlayer @Inject constructor(
                 sourceLabel = _state.value.sourceLabel,
                 endlessDiscover = _state.value.isEndlessQueue,
                 startShuffled = _state.value.shuffleEnabled,
+                preserveExistingQueueOrder = true,
             )
             return@onMain
         }
@@ -3511,6 +3600,7 @@ class MusicPlayer @Inject constructor(
             sourceLabel = snapshot.sourceLabel,
             endlessDiscover = snapshot.isEndlessQueue,
             startShuffled = snapshot.shuffleEnabled,
+            preserveExistingQueueOrder = true,
         )
         return true
     }
@@ -3776,8 +3866,9 @@ class MusicPlayer @Inject constructor(
             // its "previous" is often a song never heard in this session.
             // With exhausted history there is no heard song to return to â€”
             // restart instead of jumping to a random unheard track.
-            val historyIndex = if (pendingState.shuffleEnabled) popHistoryIndex(pendingState) else null
-            if (historyIndex == null && pendingState.shuffleEnabled) {
+            val useRandomHistory = pendingState.shuffleEnabled && persistentShufflePref
+            val historyIndex = if (useRandomHistory) popHistoryIndex(pendingState) else null
+            if (historyIndex == null && useRandomHistory) {
                 seekTo(0)
                 return@onMain
             }
@@ -3812,9 +3903,11 @@ class MusicPlayer @Inject constructor(
                 } else {
                     enginePrev
                 }
-            index.takeIf { it != C.INDEX_UNSET }?.let {
-                if (it in 0 until player.mediaItemCount) resolveAndPlayQueueItem(it)
-                else playPendingQueueItem(it, pendingState)
+            if (index == null || index == C.INDEX_UNSET) {
+                seekTo(0)
+            } else {
+                if (index in 0 until player.mediaItemCount) resolveAndPlayQueueItem(index)
+                else playPendingQueueItem(index, pendingState)
             }
         }
     }
@@ -3822,7 +3915,19 @@ class MusicPlayer @Inject constructor(
     fun next() = onMain {
         zeroVolumePlaybackObserver.onManualAction()
         if (isCasting) {
-            seekToQueueItem(nextQueueIndex(_state.value))
+            val snap = _state.value
+            val nextIdx = nextQueueIndex(
+                state = snap,
+                wrap = if (snap.shuffleEnabled && !persistentShufflePref) snap.repeatMode == Player.REPEAT_MODE_ALL else true,
+                persistentShuffle = persistentShufflePref,
+            )
+            if (nextIdx != C.INDEX_UNSET) {
+                seekToQueueItem(nextIdx)
+            } else if (snap.shuffleEnabled && !persistentShufflePref && snap.repeatMode == Player.REPEAT_MODE_OFF) {
+                castPlayback?.pause()
+                _state.update { it.copy(isPlaying = false, isBuffering = false) }
+                persistPlaybackSession()
+            }
             return@onMain
         }
         val pendingState = _state.value
@@ -3856,15 +3961,29 @@ class MusicPlayer @Inject constructor(
         // Fall through to the logical queue order instead; a single-track
         // loop (no logical next) still replays via the engine index.
         val index = if (engineNext == null || engineNext == fromIndex || engineNext == pendingState.currentIndex || (repeatOne && engineNext == player.currentMediaItemIndex)) {
-            val logical = nextQueueIndex(pendingState)
+            val logical = nextQueueIndex(
+                state = pendingState,
+                wrap = if (pendingState.shuffleEnabled && !persistentShufflePref) {
+                    pendingState.repeatMode == Player.REPEAT_MODE_ALL
+                } else {
+                    true
+                },
+                persistentShuffle = persistentShufflePref,
+            )
             if (logical != C.INDEX_UNSET) logical else engineNext
         } else {
             engineNext
         }
-        index.takeIf { it != C.INDEX_UNSET }?.let {
-            if (it in 0 until player.mediaItemCount) resolveAndPlayQueueItem(it)
-            else playPendingQueueItem(it, pendingState)
+        if (index == null || index == C.INDEX_UNSET) {
+            if (pendingState.shuffleEnabled && !persistentShufflePref && pendingState.repeatMode == Player.REPEAT_MODE_OFF) {
+                player.pause()
+                _state.update { it.copy(isPlaying = false, isBuffering = false) }
+                persistPlaybackSession()
+            }
+            return@onMain
         }
+        if (index in 0 until player.mediaItemCount) resolveAndPlayQueueItem(index)
+        else playPendingQueueItem(index, pendingState)
     }
 
     private fun recordHistory(mediaIdKey: String?) {
@@ -3936,23 +4055,96 @@ class MusicPlayer @Inject constructor(
 
     fun setShuffleEnabled(enabled: Boolean) = onMain {
         if (isCasting) {
-            _state.update { it.copy(shuffleEnabled = enabled) }
+            if (persistentShufflePref) {
+                oneTimeShuffleActive = false
+                originalUnshuffledQueue = null
+                _state.update { it.copy(shuffleEnabled = enabled) }
+            } else {
+                val snapshot = _state.value
+                val result = if (enabled) {
+                    ShuffleQueueLogic.enableOneTimeShuffle(snapshot.queue, snapshot.currentIndex)
+                } else {
+                    ShuffleQueueLogic.disableOneTimeShuffle(
+                        shuffledQueue = snapshot.queue,
+                        currentIndex = snapshot.currentIndex,
+                        originalQueue = originalUnshuffledQueue,
+                        keyOf = ShuffleQueueLogic::stableTrackKey,
+                    )
+                }
+                oneTimeShuffleActive = enabled
+                originalUnshuffledQueue = result.originalQueue
+                _state.update {
+                    it.copy(
+                        queue = result.queue,
+                        currentIndex = result.currentIndex,
+                        current = result.queue.getOrNull(result.currentIndex) ?: it.current,
+                        shuffleEnabled = enabled,
+                    )
+                }
+            }
             persistPlaybackSession()
             return@onMain
         }
-        // Converge BOTH flags: refresh() mirrors the engine flag into state
-        // on every player event, so returning early on engine-only equality
-        // leaves a stale state flag behind â€” the toggle then visibly flips
-        // back ("unsuffles itself") on the next event.
-        if (player.shuffleModeEnabled == enabled && _state.value.shuffleEnabled == enabled) return@onMain
-        cancelCrossfade()
-        if (enabled && player.mediaItemCount > 1) {
-            reshuffleFrom(player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0)
+        if (persistentShufflePref) {
+            oneTimeShuffleActive = false
+            originalUnshuffledQueue = null
+            if (player.shuffleModeEnabled == enabled && _state.value.shuffleEnabled == enabled) return@onMain
+            cancelCrossfade()
+            if (enabled && player.mediaItemCount > 1) {
+                reshuffleFrom(player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0)
+            }
+            player.shuffleModeEnabled = enabled
+            preloadNextQueueItem(player.currentMediaItemIndex)
+            _state.update { it.copy(shuffleEnabled = enabled) }
+            persistPlaybackSession()
+        } else {
+            if (oneTimeShuffleActive == enabled && _state.value.shuffleEnabled == enabled && !player.shuffleModeEnabled) {
+                return@onMain
+            }
+            cancelCrossfade()
+            val cur = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: _state.value.currentIndex
+            if (enabled) {
+                enableOneTimeShuffleOnPlayer(cur)
+            } else {
+                disableOneTimeShuffleOnPlayer(cur)
+            }
+            preloadNextQueueItem(player.currentMediaItemIndex)
+            if (player.mediaItemCount > 0) {
+                refresh(player)
+            } else {
+                _state.update { it.copy(shuffleEnabled = enabled) }
+                persistPlaybackSession()
+            }
         }
-        player.shuffleModeEnabled = enabled
-        preloadNextQueueItem(player.currentMediaItemIndex)
-        _state.update { it.copy(shuffleEnabled = enabled) }
-        persistPlaybackSession()
+    }
+
+    @MainThread
+    private fun onPersistentShuffleModeChanged(persistent: Boolean) {
+        if (!state.value.shuffleEnabled) {
+            oneTimeShuffleActive = false
+            originalUnshuffledQueue = null
+            if (!isCasting && playerDelegate.isInitialized() && player.shuffleModeEnabled) {
+                player.shuffleModeEnabled = false
+            }
+            return
+        }
+        if (isCasting || !playerDelegate.isInitialized() || player.mediaItemCount == 0) {
+            oneTimeShuffleActive = !persistent
+            if (!persistent && playerDelegate.isInitialized()) player.shuffleModeEnabled = false
+            return
+        }
+        cancelCrossfade()
+        if (persistent) {
+            oneTimeShuffleActive = false
+            originalUnshuffledQueue = null
+            val cur = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0
+            if (player.mediaItemCount > 1) reshuffleFrom(cur)
+            player.shuffleModeEnabled = true
+            preloadNextQueueItem(cur)
+            refresh(player)
+        } else if (player.shuffleModeEnabled) {
+            flattenPersistentShuffleToOneTimeOnPlayer()
+        }
     }
 
     /** A fresh shuffle order that keeps [current] playing first. */
@@ -4105,6 +4297,8 @@ class MusicPlayer @Inject constructor(
         // this reset the next fresh queue silently inherits shuffle while the
         // fresh state says off â€” until the first refresh() flips it back on.
         player.shuffleModeEnabled = false
+        oneTimeShuffleActive = false
+        originalUnshuffledQueue = null
         preparedStreams.clear()
         if (clearSession) {
             _state.update { live -> MusicPlayerState().withSubsystemStateFrom(live) }
@@ -4218,6 +4412,7 @@ class MusicPlayer @Inject constructor(
             sourceLabel = snapshot.sourceLabel,
             endlessDiscover = snapshot.isEndlessQueue,
             startShuffled = snapshot.shuffleEnabled,
+            preserveExistingQueueOrder = true,
         )
     }
 
@@ -5298,7 +5493,7 @@ class MusicPlayer @Inject constructor(
                 _state.update { it.copy(positionMs = 0L, isPlaying = true) }
                 return
             } else if (isRepeatAll && player.mediaItemCount > 0) {
-                nextIndex = if (player.shuffleModeEnabled) {
+                nextIndex = if (persistentShufflePref && player.shuffleModeEnabled) {
                     (timeline.getFirstWindowIndex(true).takeIf { it != C.INDEX_UNSET } ?: 0)
                         .also { if (player.mediaItemCount > 2) reshuffleFrom(it) }
                 } else {
@@ -5797,7 +5992,11 @@ class MusicPlayer @Inject constructor(
             unavailableMediaIds += failedMediaId
             if (!hasTimeline) {
                 unavailableSkipJob = null
-                val nextIndex = nextQueueIndex(snapshot, wrap = snapshot.repeatMode == Player.REPEAT_MODE_ALL)
+                val nextIndex = nextQueueIndex(
+                    state = snapshot,
+                    wrap = snapshot.repeatMode == Player.REPEAT_MODE_ALL,
+                    persistentShuffle = persistentShufflePref,
+                )
                 if (nextIndex == C.INDEX_UNSET) {
                     player.pause()
                     player.stop()
@@ -5824,7 +6023,7 @@ class MusicPlayer @Inject constructor(
             // Wrap past the end only on repeat-all: a failed last song used to
             // restart the playlist from the top even with repeat off.
             if (nextIndex == C.INDEX_UNSET && player.mediaItemCount > 1 && repeatMode == Player.REPEAT_MODE_ALL) {
-                val candidateIndices = if (player.shuffleModeEnabled) {
+                val candidateIndices = if (persistentShufflePref && player.shuffleModeEnabled) {
                     shuffledUnplayedFirst((0 until player.mediaItemCount).toList()) { player.getMediaItemAt(it).mediaId }
                 } else {
                     ((failedIndex + 1 until player.mediaItemCount) + (0 until failedIndex)).toList()
@@ -9004,7 +9203,7 @@ class MusicPlayer @Inject constructor(
             positionMs = pos,
             bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0),
             durationMs = dur,
-            shuffleEnabled = player.shuffleModeEnabled,
+            shuffleEnabled = if (persistentShufflePref) player.shuffleModeEnabled else oneTimeShuffleActive,
             repeatMode = player.repeatMode,
             speed = (autoMixCoordinator.get().userParametersFor(player) ?: player.playbackParameters).speed,
             pitch = (autoMixCoordinator.get().userParametersFor(player) ?: player.playbackParameters).pitch,
