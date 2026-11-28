@@ -73,6 +73,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -100,6 +102,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import com.lastwave.app.R
+import com.lastwave.app.data.local.DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -227,6 +230,7 @@ class DownloadMenuViewModel @Inject constructor(
         artworkUrl: String? = null,
         videoId: String? = null,
         durationMs: Long? = null,
+        qualityOverride: Int? = null,
     ) {
         downloadManager.downloadTrack(
             title = title,
@@ -235,6 +239,7 @@ class DownloadMenuViewModel @Inject constructor(
             artworkUrl = artworkUrl,
             videoId = videoId,
             durationMs = durationMs,
+            qualityOverride = qualityOverride,
         )
         routeNavigator.navigateTo(com.lastwave.app.ui.navigation.Screen.Downloads.route)
     }
@@ -247,6 +252,7 @@ fun downloadLabelForQuality(context: android.content.Context, quality: Int): Str
 
 private fun downloadTierForQuality(context: android.content.Context, quality: Int): String {
     val tier = when (quality) {
+        DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME -> context.getString(R.string.settings_download_quality_select)
         28 -> context.getString(R.string.menu_quality_atmos)
         27, 7 -> context.getString(R.string.menu_quality_hires)
         6 -> context.getString(R.string.menu_quality_cd)
@@ -256,6 +262,76 @@ private fun downloadTierForQuality(context: android.content.Context, quality: In
         else -> context.getString(R.string.menu_quality_hires)
     }
     return tier
+}
+
+@Composable
+private fun DownloadMenuAction(
+    modern: Boolean,
+    position: GroupPosition? = null,
+    label: String? = null,
+    downloadQuality: Int,
+    downloadTier: String,
+    enabled: Boolean,
+    onDownload: (Int?) -> Unit,
+) {
+    var qualityMenuExpanded by remember { mutableStateOf(false) }
+    val qualityOptions = listOf(
+        28 to stringResource(R.string.menu_quality_atmos),
+        27 to "${stringResource(R.string.menu_quality_hires)} (24/192)",
+        7 to "${stringResource(R.string.menu_quality_hires)} (24/96)",
+        6 to stringResource(R.string.menu_quality_cd),
+        5 to stringResource(R.string.menu_quality_standard),
+        4 to stringResource(R.string.menu_quality_saver),
+        -1 to "${stringResource(R.string.menu_quality_youtube)} Music",
+    )
+    Box {
+        val onClick = {
+            if (downloadQuality == DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME) {
+                qualityMenuExpanded = true
+            } else {
+                onDownload(null)
+            }
+        }
+        if (position != null) {
+            ClassicMenuActionRow(
+                Icons.Outlined.Download,
+                label ?: stringResource(R.string.details_download),
+                position = position,
+                enabled = enabled,
+                onClick = onClick,
+            )
+        } else if (modern) {
+            ModernMenuActionRow(
+                Icons.Outlined.Download,
+                stringResource(R.string.details_download),
+                supportingText = downloadTier,
+                enabled = enabled,
+                onClick = onClick,
+            )
+        } else {
+            MenuActionRow(
+                Icons.Outlined.Download,
+                stringResource(R.string.details_download),
+                supportingText = downloadTier,
+                enabled = enabled,
+                onClick = onClick,
+            )
+        }
+        DropdownMenu(
+            expanded = qualityMenuExpanded,
+            onDismissRequest = { qualityMenuExpanded = false },
+        ) {
+            qualityOptions.forEach { (quality, label) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        qualityMenuExpanded = false
+                        onDownload(quality)
+                    },
+                )
+            }
+        }
+    }
 }
 
 /** Same idea, for the Genre row — every caller (Home, Discover, Playlist,
@@ -425,7 +501,11 @@ fun TrackContextMenuSheet(
     var resolvingGenre by remember(target) { mutableStateOf(false) }
     val activeDownloads by downloadViewModel.activeDownloads.collectAsStateWithLifecycle()
     val downloadQuality by downloadViewModel.downloadQuality.collectAsStateWithLifecycle()
-    val downloadTier = downloadTierForQuality(context, downloadQuality)
+    val downloadTier = if (downloadQuality == DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME) {
+        stringResource(R.string.settings_download_quality_select)
+    } else {
+        downloadTierForQuality(context, downloadQuality)
+    }
     val downloadLabel = remember(downloadQuality) { downloadLabelForQuality(context, downloadQuality) }
     var isDownloaded by remember(target) { mutableStateOf(false) }
 
@@ -613,6 +693,7 @@ fun TrackContextMenuSheet(
                 isDownloaded = isDownloaded,
                 activeDownloads = activeDownloads,
                 downloadLabel = downloadLabel,
+                downloadQuality = downloadQuality,
                 downloadViewModel = downloadViewModel,
                 startMixViewModel = startMixViewModel,
                 artistAlbumViewModel = artistAlbumViewModel,
@@ -647,6 +728,7 @@ fun TrackContextMenuSheet(
                 isDownloaded = isDownloaded,
                 activeDownloads = activeDownloads,
                 downloadTier = downloadTier,
+                downloadQuality = downloadQuality,
                 downloadViewModel = downloadViewModel,
                 startMixViewModel = startMixViewModel,
                 artistAlbumViewModel = artistAlbumViewModel,
@@ -686,6 +768,7 @@ private fun ColumnScope.RedesignedTrackMenuContent(
     isDownloaded: Boolean,
     activeDownloads: Map<String, com.lastwave.app.data.download.DownloadProgress>,
     downloadTier: String,
+    downloadQuality: Int,
     downloadViewModel: DownloadMenuViewModel,
     startMixViewModel: StartMixMenuViewModel,
     artistAlbumViewModel: ArtistAlbumMenuViewModel,
@@ -815,15 +898,17 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                                         android.widget.Toast.LENGTH_SHORT).show()
                                     dismissMenu()
                                 }
-                                else -> MenuActionRow(
-                                    Icons.Outlined.Download, stringResource(R.string.details_download),
-                                    supportingText = downloadTier,
+                                else -> DownloadMenuAction(
+                                    modern = false,
+                                    downloadQuality = downloadQuality,
+                                    downloadTier = downloadTier,
                                     enabled = !dismissing,
-                                ) {
+                                ) { qualityOverride ->
                                     downloadViewModel.download(
                                         title = t.name, artist = t.artist, album = playable.album,
                                         artworkUrl = playable.artworkUrl, videoId = playable.videoId,
                                         durationMs = playable.durationMs,
+                                        qualityOverride = qualityOverride,
                                     )
                                     dismissMenu()
                                 }
@@ -968,6 +1053,7 @@ private fun ColumnScope.ClassicTrackMenuContent(
     isDownloaded: Boolean,
     activeDownloads: Map<String, com.lastwave.app.data.download.DownloadProgress>,
     downloadLabel: String,
+    downloadQuality: Int,
     downloadViewModel: DownloadMenuViewModel,
     startMixViewModel: StartMixMenuViewModel,
     artistAlbumViewModel: ArtistAlbumMenuViewModel,
@@ -1081,7 +1167,14 @@ private fun ColumnScope.ClassicTrackMenuContent(
                             }
                         }
                         else -> {
-                            ClassicMenuActionRow(Icons.Outlined.Download, downloadLabel, position = pos, enabled = !dismissing) {
+                            DownloadMenuAction(
+                                modern = false,
+                                position = pos,
+                                label = downloadLabel,
+                                downloadQuality = downloadQuality,
+                                downloadTier = downloadTierForQuality(context, downloadQuality),
+                                enabled = !dismissing,
+                            ) { qualityOverride ->
                                 downloadViewModel.download(
                                     title = t.name,
                                     artist = t.artist,
@@ -1089,6 +1182,7 @@ private fun ColumnScope.ClassicTrackMenuContent(
                                     artworkUrl = playable.artworkUrl,
                                     videoId = playable.videoId,
                                     durationMs = playable.durationMs,
+                                    qualityOverride = qualityOverride,
                                 )
                                 dismissMenu()
                             }

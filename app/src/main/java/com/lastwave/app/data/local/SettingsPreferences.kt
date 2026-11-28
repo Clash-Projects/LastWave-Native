@@ -152,6 +152,7 @@ enum class DsdOutputMode(val id: String, val title: String, val subtitle: String
 
 /** Cellular-only streaming choice: adapt to the link and buffer, never above the Wi-Fi choice. */
 const val CELLULAR_QUALITY_AUTO = 0
+const val DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME = -2
 
 data class MiscSettings(
     /** When on, the app's accent color follows the dominant color of the
@@ -1302,7 +1303,7 @@ class SettingsPreferences @Inject constructor(
     }
     private companion object {
         val STREAMING_QUALITIES = setOf(-1, 4, 5, 6, 27, 28)
-        val DOWNLOAD_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
+        val DOWNLOAD_QUALITIES = setOf(DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME, -1, 4, 5, 6, 7, 27, 28)
     }
 
     private fun normalizeStreamingQuality(quality: Int): Int? = when (quality) {
