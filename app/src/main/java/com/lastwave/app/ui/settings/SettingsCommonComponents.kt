@@ -274,7 +274,7 @@ data class ToggleDetailInfo(
 val LocalToggleDetailViewer = staticCompositionLocalOf<((ToggleDetailInfo) -> Unit)?> { null }
 
 // -- Expressive shape scale used only within this screen --
-internal val CardOuterShape = RoundedCornerShape(28.dp)
+internal val CardOuterShape = RoundedCornerShape(22.dp)
 internal val IconBadgeShape = RoundedCornerShape(14.dp)
 
 /** Where a row sits within a visually-connected group of settings rows —
@@ -283,7 +283,7 @@ internal val IconBadgeShape = RoundedCornerShape(14.dp)
  *  below and the GROUP_GAP spacing used between rows in a group's Column). */
 internal enum class GroupPosition { SINGLE, TOP, MIDDLE, BOTTOM }
 
-internal val GROUP_OUTER_RADIUS = 28.dp
+internal val GROUP_OUTER_RADIUS = 22.dp
 internal val GROUP_INNER_RADIUS = 6.dp
 internal val GROUP_GAP = 3.dp
 
@@ -401,8 +401,8 @@ internal fun SettingsToggleCard(
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainer,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
@@ -429,12 +429,13 @@ internal fun SettingsToggleCard(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconBadge(
-                painter,
-                if (enabled) iconContainer else iconContainer.copy(alpha = 0.5f),
-                if (enabled) iconTint else iconTint.copy(alpha = 0.5f),
+            Icon(
+                painter = painter,
+                contentDescription = null,
+                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                modifier = Modifier.size(24.dp),
             )
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -457,15 +458,13 @@ internal fun SettingsToggleCard(
                 checked = checked,
                 enabled = enabled,
                 onCheckedChange = if (enabled) onCheckedChange else null,
-                thumbContent = if (checked) {
-                    {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(SwitchDefaults.IconSize),
-                        )
-                    }
-                } else null,
+                thumbContent = {
+                    Icon(
+                        imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Close,
+                        contentDescription = null,
+                        modifier = Modifier.size(SwitchDefaults.IconSize),
+                    )
+                },
             )
         }
     }
@@ -498,8 +497,8 @@ internal fun SettingsToggleCard(
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainer,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
@@ -526,12 +525,13 @@ internal fun SettingsToggleCard(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconBadge(
-                icon,
-                if (enabled) iconContainer else iconContainer.copy(alpha = 0.5f),
-                if (enabled) iconTint else iconTint.copy(alpha = 0.5f),
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                modifier = Modifier.size(24.dp),
             )
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -554,15 +554,13 @@ internal fun SettingsToggleCard(
                 checked = checked,
                 enabled = enabled,
                 onCheckedChange = if (enabled) onCheckedChange else null,
-                thumbContent = if (checked) {
-                    {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(SwitchDefaults.IconSize),
-                        )
-                    }
-                } else null,
+                thumbContent = {
+                    Icon(
+                        imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Close,
+                        contentDescription = null,
+                        modifier = Modifier.size(SwitchDefaults.IconSize),
+                    )
+                },
             )
         }
     }
@@ -589,7 +587,7 @@ internal fun SettingsActionCard(
         onClick = onClick,
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainer
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         interactionSource = interactionSource,
@@ -605,8 +603,13 @@ internal fun SettingsActionCard(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconBadge(icon, iconContainer, iconTint)
-            Spacer(Modifier.width(14.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = titleColor, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)

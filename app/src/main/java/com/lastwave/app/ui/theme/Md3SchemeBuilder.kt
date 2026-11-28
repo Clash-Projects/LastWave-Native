@@ -4,11 +4,12 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import com.google.android.material.color.utilities.DynamicScheme
 import com.google.android.material.color.utilities.Hct
 import com.google.android.material.color.utilities.MaterialDynamicColors
-import com.google.android.material.color.utilities.SchemeNeutral
+import com.google.android.material.color.utilities.SchemeTonalSpot
 import com.google.android.material.color.utilities.TonalPalette
 import com.google.android.material.color.utilities.Variant
 import kotlin.math.abs
@@ -98,34 +99,34 @@ object Md3SchemeBuilder {
             val surfContainerHighest = if (useLegacyColors) Color(mdc.surfaceContainerHighest().getArgb(this)) else DarkSurfaceContainerHighest
             val surfVariant = if (useLegacyColors) Color(mdc.surfaceVariant().getArgb(this)) else DarkSurfaceVariant
             ColorScheme(
-                primary = Color(primaryPalette.tone(72)),
-                onPrimary = Color(primaryPalette.tone(10)),
-                primaryContainer = Color(primaryPalette.tone(22)),
-                onPrimaryContainer = Color(primaryPalette.tone(85)),
-                inversePrimary = Color(primaryPalette.tone(40)),
-                secondary = Color(secondaryPalette.tone(72)),
-                onSecondary = Color(secondaryPalette.tone(10)),
-                secondaryContainer = Color(secondaryPalette.tone(22)),
-                onSecondaryContainer = Color(secondaryPalette.tone(85)),
-                tertiary = Color(tertiaryPalette.tone(72)),
-                onTertiary = Color(tertiaryPalette.tone(10)),
-                tertiaryContainer = Color(tertiaryPalette.tone(22)),
-                onTertiaryContainer = Color(tertiaryPalette.tone(85)),
+                primary = Color(mdc.primary().getArgb(this)),
+                onPrimary = Color(mdc.onPrimary().getArgb(this)),
+                primaryContainer = Color(mdc.primaryContainer().getArgb(this)),
+                onPrimaryContainer = Color(mdc.onPrimaryContainer().getArgb(this)),
+                inversePrimary = Color(mdc.inversePrimary().getArgb(this)),
+                secondary = Color(mdc.secondary().getArgb(this)),
+                onSecondary = Color(mdc.onSecondary().getArgb(this)),
+                secondaryContainer = Color(mdc.secondaryContainer().getArgb(this)),
+                onSecondaryContainer = Color(mdc.onSecondaryContainer().getArgb(this)),
+                tertiary = Color(mdc.tertiary().getArgb(this)),
+                onTertiary = Color(mdc.onTertiary().getArgb(this)),
+                tertiaryContainer = Color(mdc.tertiaryContainer().getArgb(this)),
+                onTertiaryContainer = Color(mdc.onTertiaryContainer().getArgb(this)),
                 background = bg,
-                onBackground = Color(neutralPalette.tone(90)),
+                onBackground = Color(mdc.onBackground().getArgb(this)),
                 surface = surf,
-                onSurface = Color(neutralPalette.tone(90)),
+                onSurface = Color(mdc.onSurface().getArgb(this)),
                 surfaceVariant = surfVariant,
-                onSurfaceVariant = Color(neutralVariantPalette.tone(75)),
-                surfaceTint = Color(primaryPalette.tone(72)),
-                inverseSurface = Color(neutralPalette.tone(90)),
-                inverseOnSurface = Color(neutralPalette.tone(20)),
-                error = Color(errorPalette.tone(70)),
-                onError = Color(errorPalette.tone(10)),
-                errorContainer = Color(errorPalette.tone(20)),
-                onErrorContainer = Color(errorPalette.tone(85)),
-                outline = Color(neutralVariantPalette.tone(45)),
-                outlineVariant = Color(neutralVariantPalette.tone(25)),
+                onSurfaceVariant = Color(mdc.onSurfaceVariant().getArgb(this)),
+                surfaceTint = Color(mdc.primary().getArgb(this)),
+                inverseSurface = Color(mdc.inverseSurface().getArgb(this)),
+                inverseOnSurface = Color(mdc.inverseOnSurface().getArgb(this)),
+                error = Color(mdc.error().getArgb(this)),
+                onError = Color(mdc.onError().getArgb(this)),
+                errorContainer = Color(mdc.errorContainer().getArgb(this)),
+                onErrorContainer = Color(mdc.onErrorContainer().getArgb(this)),
+                outline = Color(mdc.outline().getArgb(this)),
+                outlineVariant = Color(mdc.outlineVariant().getArgb(this)),
                 scrim = Color.Black,
                 surfaceBright = surfBright,
                 surfaceContainer = surfContainer,
@@ -194,9 +195,8 @@ object Md3SchemeBuilder {
             )
         }
         val hct = Hct.fromInt(argb)
-        val baseScheme = SchemeNeutral(hct, isDark, 0.0)
-        // Allow vivid covers to slightly influence primary chroma (8..16) while keeping it deeply muted
-        val priChroma = hct.chroma.coerceIn(8.0, 16.0)
+        val baseScheme = SchemeTonalSpot(hct, isDark, 0.0)
+        val priChroma = hct.chroma.coerceIn(16.0, 48.0)
         val priPalette = TonalPalette.fromHueAndChroma(hct.hue, priChroma)
 
         return DynamicScheme(
@@ -230,14 +230,12 @@ object Md3SchemeBuilder {
         surface = AmoledBlack,
         surfaceDim = AmoledBlack,
         surfaceContainerLowest = AmoledBlack,
-        surfaceContainerLow = AmoledSurfaceContainerLow,
-        surfaceContainer = AmoledSurfaceContainer,
-        surfaceContainerHigh = AmoledSurfaceContainerHigh,
-        surfaceContainerHighest = AmoledSurfaceContainerHighest,
-        surfaceVariant = AmoledSurfaceVariant,
-        surfaceBright = AmoledSurfaceBright,
-        inverseSurface = AmoledSurfaceContainerHighest,
-        inverseOnSurface = Color.White,
+        surfaceContainerLow = lerp(scheme.surfaceContainerLow, AmoledBlack, 0.72f),
+        surfaceContainer = lerp(scheme.surfaceContainer, AmoledBlack, 0.56f),
+        surfaceContainerHigh = lerp(scheme.surfaceContainerHigh, AmoledBlack, 0.40f),
+        surfaceContainerHighest = lerp(scheme.surfaceContainerHighest, AmoledBlack, 0.25f),
+        surfaceVariant = lerp(scheme.surfaceVariant, AmoledBlack, 0.50f),
+        surfaceBright = lerp(scheme.surfaceBright, AmoledBlack, 0.40f),
     )
 
     /**

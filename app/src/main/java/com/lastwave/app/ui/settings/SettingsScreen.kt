@@ -1264,7 +1264,7 @@ fun SettingsScreen(
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 title = stringResource(R.string.settings_legacy_colors),
                                 subtitle = stringResource(R.string.settings_legacy_colors_sub),
-                                checked = theme?.useLegacyColors ?: false,
+                                checked = theme?.useLegacyColors ?: true,
                                 enabled = !(theme?.amoled ?: false),
                                 onCheckedChange = viewModel::setLegacyColors,
                                 position = position,
@@ -1292,7 +1292,7 @@ fun SettingsScreen(
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 title = stringResource(R.string.settings_liquid_glass),
                                 subtitle = stringResource(R.string.settings_liquid_glass_sub),
-                                checked = theme?.liquidGlass ?: true,
+                                checked = theme?.liquidGlass ?: false,
                                 onCheckedChange = viewModel::setLiquidGlass,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.liquid_glass"),
@@ -1396,7 +1396,7 @@ fun SettingsScreen(
                     Card(
                         shape = CardOuterShape,
                         colors = CardDefaults.cardColors(
-                            containerColor = if (highlightedSettingId == "appearance.accent_preset") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
+                            containerColor = if (highlightedSettingId == "appearance.accent_preset") MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainer
                         ),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                         modifier = Modifier

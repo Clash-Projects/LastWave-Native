@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -105,8 +106,9 @@ fun ExpressiveHeader(
     val resolvedContainerColor = when {
         isCustomColor -> containerColor
         useGlass -> Color.Transparent
-        else -> MaterialTheme.colorScheme.surfaceContainer
+        else -> MaterialTheme.colorScheme.surface
     }
+    val headerShape = if (useGlass && !isTransparent) HeaderShape else RectangleShape
 
     Box(modifier.fillMaxWidth().zIndex(1f)) {
         if (useGlass && backdrop == null && headerBackdrop != null) {
@@ -121,10 +123,10 @@ fun ExpressiveHeader(
         }
 
         Surface(
-            shape = if (isTransparent) RectangleShape else HeaderShape,
+            shape = headerShape,
             color = resolvedContainerColor,
-            tonalElevation = if (useGlass || isTransparent) 0.dp else 2.dp,
-            shadowElevation = if (useGlass || isTransparent) 0.dp else 4.dp,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
@@ -144,32 +146,43 @@ fun ExpressiveHeader(
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                     )
-                    .padding(bottom = if (bottomContent != null) 4.dp else 10.dp),
+                    .padding(bottom = if (bottomContent != null) 4.dp else 8.dp),
             ) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 2.dp, bottom = if (bottomContent != null) 4.dp else 0.dp),
+                    .padding(
+                        start = if (onBack != null && !useGlass) 8.dp else 20.dp,
+                        end = if (useGlass) 20.dp else 12.dp,
+                    )
+                    .padding(top = 4.dp, bottom = if (bottomContent != null) 4.dp else 0.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (onBack != null) {
-                        FilledTonalIconButton(
-                            onClick = onBack,
-                            shapes = IconButtonDefaults.shapes(),
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                containerColor = if (useGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
-                                else MaterialTheme.colorScheme.surfaceContainerHighest,
-                                contentColor = if (useGlass) (if (isDark) Color.White else Color.Black)
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        if (useGlass) {
+                            FilledTonalIconButton(
+                                onClick = onBack,
+                                shapes = IconButtonDefaults.shapes(),
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = Color.White.copy(alpha = if (isDark) 0.12f else 0.20f),
+                                    contentColor = if (isDark) Color.White else Color.Black,
+                                ),
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(Modifier.width(12.dp))
+                        } else {
+                            IconButton(
+                                onClick = onBack,
+                                shapes = IconButtonDefaults.shapes(),
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(Modifier.width(4.dp))
                         }
-                        Spacer(Modifier.width(12.dp))
                     }
 
                     Column(Modifier.weight(1f)) {
@@ -195,7 +208,7 @@ fun ExpressiveHeader(
                         }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                         actions()
                     }
                 }
@@ -207,7 +220,8 @@ fun ExpressiveHeader(
 }
 
 /**
- * A trailing action icon for [ExpressiveHeader] styled with glass-compatible translucent tonal styling.
+ * A trailing action icon for [ExpressiveHeader]. Uses borderless Material 3 IconButton styling
+ * in standard mode (matching TopAppBar), or translucent tonal styling in Liquid Glass mode.
  */
 @Composable
 fun HeaderActionIcon(
@@ -217,16 +231,23 @@ fun HeaderActionIcon(
 ) {
     val isGlass = LocalLiquidGlass.current && isLiquidGlassBackdropSupported()
     val isDark = LocalIsDarkTheme.current
-    FilledTonalIconButton(
-        onClick = onClick,
-        shapes = IconButtonDefaults.shapes(),
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = if (isGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
-            else MaterialTheme.colorScheme.surfaceContainerHighest,
-            contentColor = if (isGlass) (if (isDark) Color.White else Color.Black)
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
-    ) {
-        Icon(icon, contentDescription = contentDescription)
+    if (isGlass) {
+        FilledTonalIconButton(
+            onClick = onClick,
+            shapes = IconButtonDefaults.shapes(),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = Color.White.copy(alpha = if (isDark) 0.12f else 0.20f),
+                contentColor = if (isDark) Color.White else Color.Black,
+            ),
+        ) {
+            Icon(icon, contentDescription = contentDescription)
+        }
+    } else {
+        IconButton(
+            onClick = onClick,
+            shapes = IconButtonDefaults.shapes(),
+        ) {
+            Icon(icon, contentDescription = contentDescription)
+        }
     }
 }

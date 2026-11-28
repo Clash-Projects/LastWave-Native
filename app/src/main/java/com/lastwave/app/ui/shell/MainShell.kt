@@ -51,6 +51,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import com.lastwave.app.R
 import androidx.compose.material.icons.filled.Bedtime
@@ -66,6 +67,8 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Leaderboard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -107,6 +110,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -931,6 +935,29 @@ private fun FloatingNavBar(
     val fabInteraction = remember { MutableInteractionSource() }
     
     if (!md3NavBar) {
+        if (!liquidGlass) {
+            NavigationBar(
+                modifier = modifier.fillMaxWidth(),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                tabs.forEachIndexed { index, tab ->
+                    val selected = selectedIndex == index
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = remember(index) { { onSelect(index) } },
+                        icon = { Icon(tab.icon(selected), contentDescription = null) },
+                        label = {
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(tab.labelRes),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
+            }
+            return
+        }
         val navContainerColor = liquidGlassContainerColor(
             MaterialTheme.colorScheme.surfaceContainer,
             enabled = liquidGlass,
@@ -1234,10 +1261,10 @@ private fun FloatingNavItem(
     }
 }
 
-private fun MainTab.icon(): ImageVector = when (this) {
-    MainTab.FEED -> Icons.Filled.Home
-    MainTab.STATS -> Icons.Filled.Leaderboard
-    MainTab.PLAYLISTS -> Icons.AutoMirrored.Filled.QueueMusic
+private fun MainTab.icon(selected: Boolean = true): ImageVector = when (this) {
+    MainTab.FEED -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
+    MainTab.STATS -> if (selected) Icons.Filled.Leaderboard else Icons.Outlined.Leaderboard
+    MainTab.PLAYLISTS -> if (selected) Icons.AutoMirrored.Filled.QueueMusic else Icons.AutoMirrored.Outlined.QueueMusic
 }
 
 @Composable

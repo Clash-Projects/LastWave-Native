@@ -10,11 +10,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalToggleButton
-import androidx.compose.material3.FilledTonalToggleButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,11 +44,11 @@ fun ConnectedButtonGroup(
     modifier: Modifier = Modifier,
 ) {
     val haptic = LocalHapticFeedback.current
-    val colors = FilledTonalToggleButtonDefaults.filledTonalToggleButtonColors(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+    val colors = ToggleButtonDefaults.toggleButtonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        checkedContainerColor = MaterialTheme.colorScheme.primary,
+        checkedContentColor = MaterialTheme.colorScheme.onPrimary,
     )
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -65,7 +64,7 @@ fun ConnectedButtonGroup(
                 else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
             }
 
-            FilledTonalToggleButton(
+            ToggleButton(
                 checked = isSelected,
                 onCheckedChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)

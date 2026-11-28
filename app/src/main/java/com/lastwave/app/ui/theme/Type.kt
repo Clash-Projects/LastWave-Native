@@ -146,27 +146,81 @@ fun lyricsLeadFontFamily(bold: Boolean): FontFamily = if (bold) LyricsLeadBoldFo
 fun lyricsBackingFontFamily(bold: Boolean): FontFamily = if (bold) LyricsBackingBoldFontFamily else LyricsBackingFontFamily
 fun lyricsSubLineFontFamily(bold: Boolean): FontFamily = if (bold) LyricsSubLineBoldFontFamily else LyricsSubLineFontFamily
 
-// boost = 0 is exactly the tag 2.0 type scale; regular trims it, bold mode adds on top.
+// Google Sans Flex tuned with expressive roundness (ROND=100 for display/headline/title,
+// ROND=55 for body/label) and clean M3 Expressive sizing, plus optional bold-font boost.
+private val BaseM3Typography = Typography()
+
 private fun lastWaveTypography(boost: Float) = Typography(
-    displayLarge = TextStyle(fontFamily = gsFlex(weight = (760f + boost).coerceAtMost(1000f), width = 122f, round = 42f, opticalSize = 57f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
-    displayMedium = TextStyle(fontFamily = gsFlex(weight = (740f + boost).coerceAtMost(1000f), width = 120f, round = 40f, opticalSize = 45f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),
-    displaySmall = TextStyle(fontFamily = gsFlex(weight = (720f + boost).coerceAtMost(1000f), width = 118f, round = 38f, opticalSize = 36f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp),
-    headlineLarge = TextStyle(fontFamily = gsFlex(weight = (800f + boost).coerceAtMost(1000f), width = 122f, round = 40f, opticalSize = 32f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 32.sp, lineHeight = 40.sp),
-    headlineMedium = TextStyle(fontFamily = gsFlex(weight = (780f + boost).coerceAtMost(1000f), width = 120f, round = 38f, opticalSize = 28f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
-    headlineSmall = TextStyle(fontFamily = gsFlex(weight = (760f + boost).coerceAtMost(1000f), width = 116f, round = 36f, opticalSize = 24f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),
-    titleLarge = TextStyle(fontFamily = gsFlex(weight = (640f + boost).coerceAtMost(1000f), width = 110f, round = 30f, opticalSize = 22f), fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
-    titleMedium = TextStyle(fontFamily = gsFlex(weight = (600f + boost).coerceAtMost(1000f), width = 106f, round = 28f, opticalSize = 16f), fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 24.sp),
-    titleSmall = TextStyle(fontFamily = gsFlex(weight = (580f + boost).coerceAtMost(1000f), width = 105f, round = 26f, opticalSize = 14f), fontWeight = if (boost > 0f) FontWeight.SemiBold else FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
-    bodyLarge = TextStyle(fontFamily = gsFlex(weight = (440f + boost).coerceAtMost(1000f), width = 102f, round = 18f, opticalSize = 16f), fontWeight = if (boost > 0f) FontWeight.Medium else FontWeight.Normal, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = gsFlex(weight = (430f + boost).coerceAtMost(1000f), width = 102f, round = 18f, opticalSize = 15f), fontWeight = if (boost > 0f) FontWeight.Medium else FontWeight.Normal, fontSize = 15.sp, lineHeight = 22.sp),
-    bodySmall = TextStyle(fontFamily = gsFlex(weight = (420f + boost).coerceAtMost(1000f), width = 100f, round = 16f, opticalSize = 13f), fontWeight = if (boost > 0f) FontWeight.Medium else FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontFamily = gsFlex(weight = (680f + boost).coerceAtMost(1000f), width = 108f, round = 46f, opticalSize = 14f), fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold, fontSize = 14.sp, lineHeight = 20.sp),
-    labelMedium = TextStyle(fontFamily = gsFlex(weight = (660f + boost).coerceAtMost(1000f), width = 108f, round = 44f, opticalSize = 12f), fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = gsFlex(weight = (660f + boost).coerceAtMost(1000f), width = 108f, round = 44f, opticalSize = 11f), fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp),
+    displayLarge = BaseM3Typography.displayLarge.copy(
+        fontFamily = gsFlex(weight = (700f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 57f),
+        fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold,
+        letterSpacing = (-1.0).sp,
+    ),
+    displayMedium = BaseM3Typography.displayMedium.copy(
+        fontFamily = gsFlex(weight = (700f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 45f),
+        fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold,
+        letterSpacing = (-0.75).sp,
+    ),
+    displaySmall = BaseM3Typography.displaySmall.copy(
+        fontFamily = gsFlex(weight = (700f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 36f),
+        fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold,
+        letterSpacing = (-0.5).sp,
+    ),
+    headlineLarge = BaseM3Typography.headlineLarge.copy(
+        fontFamily = gsFlex(weight = (700f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 32f),
+        fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold,
+        letterSpacing = (-0.5).sp,
+        lineHeight = 38.sp,
+    ),
+    headlineMedium = BaseM3Typography.headlineMedium.copy(
+        fontFamily = gsFlex(weight = (600f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 28f),
+        fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold,
+        letterSpacing = (-0.25).sp,
+    ),
+    headlineSmall = BaseM3Typography.headlineSmall.copy(
+        fontFamily = gsFlex(weight = (600f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 24f),
+        fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold,
+    ),
+    titleLarge = BaseM3Typography.titleLarge.copy(
+        fontFamily = gsFlex(weight = (700f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 22f),
+        fontWeight = if (boost > 0f) FontWeight.ExtraBold else FontWeight.Bold,
+        letterSpacing = (-0.2).sp,
+    ),
+    titleMedium = BaseM3Typography.titleMedium.copy(
+        fontFamily = gsFlex(weight = (600f + boost).coerceAtMost(1000f), width = 100f, round = 100f, opticalSize = 16f),
+        fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold,
+    ),
+    titleSmall = BaseM3Typography.titleSmall.copy(
+        fontFamily = gsFlex(weight = (600f + boost).coerceAtMost(1000f), width = 100f, round = 55f, opticalSize = 14f),
+        fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold,
+    ),
+    bodyLarge = BaseM3Typography.bodyLarge.copy(
+        fontFamily = gsFlex(weight = (400f + boost).coerceAtMost(1000f), width = 100f, round = 55f, opticalSize = 16f),
+        fontWeight = if (boost > 0f) FontWeight.Medium else FontWeight.Normal,
+    ),
+    bodyMedium = BaseM3Typography.bodyMedium.copy(
+        fontFamily = gsFlex(weight = (400f + boost).coerceAtMost(1000f), width = 100f, round = 55f, opticalSize = 15f),
+        fontWeight = if (boost > 0f) FontWeight.Medium else FontWeight.Normal,
+    ),
+    bodySmall = BaseM3Typography.bodySmall.copy(
+        fontFamily = gsFlex(weight = (400f + boost).coerceAtMost(1000f), width = 100f, round = 55f, opticalSize = 13f),
+        fontWeight = if (boost > 0f) FontWeight.Medium else FontWeight.Normal,
+    ),
+    labelLarge = BaseM3Typography.labelLarge.copy(
+        fontFamily = gsFlex(weight = (600f + boost).coerceAtMost(1000f), width = 100f, round = 55f, opticalSize = 14f),
+        fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold,
+    ),
+    labelMedium = BaseM3Typography.labelMedium.copy(
+        fontFamily = gsFlex(weight = (600f + boost).coerceAtMost(1000f), width = 100f, round = 55f, opticalSize = 12f),
+        fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.SemiBold,
+    ),
+    labelSmall = BaseM3Typography.labelSmall.copy(
+        fontFamily = gsFlex(weight = (500f + boost).coerceAtMost(1000f), width = 100f, round = 55f, opticalSize = 11f),
+        fontWeight = if (boost > 0f) FontWeight.Bold else FontWeight.Medium,
+    ),
 )
 
-// Regular app font sits a little lighter than the 2.0 values (wght axis); bold mode is unchanged.
-const val REGULAR_FONT_TRIM = -60f
+const val REGULAR_FONT_TRIM = 0f
 val LastWaveTypography = lastWaveTypography(REGULAR_FONT_TRIM)
 val LastWaveBoldTypography = lastWaveTypography(BOLD_FONT_BOOST)
 
