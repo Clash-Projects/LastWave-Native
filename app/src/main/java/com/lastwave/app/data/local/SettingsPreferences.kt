@@ -63,7 +63,6 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
     BETTER_LYRICS_PORTATO("better_lyrics_portato", "QQ Karaoke", "QQ Music karaoke word timings first"),
     KUGOU("kugou", "Kugou", "KRC word-synced lyrics first"),
     BINI_LYRICS("bini_lyrics", "Syllable-Sync", "Recording-matched syllable lyrics first"),
-    SIMP_MUSIC("simp_music", "Video-Match", "Matched on the playing video first"),
     MUSIXMATCH("musixmatch", "Catalog", "Largest catalogue line-sync first"),
     LRCLIB("lrclib", "LRCLIB", "Line-synced community lyrics first"),
     LYRICS_PLUS("lyrics_plus", "LyricsPlus", "Syllable-synced on community mirrors first"),
@@ -76,7 +75,7 @@ enum class LyricsProvider(val id: String, val title: String, val subtitle: Strin
 
     val isWordProvider: Boolean get() =
         this == LASTWAVE || this == LRC_RED || this == APPLE_MUSIC || this == BETTER_LYRICS || this == KUGOU ||
-            this == BINI_LYRICS || this == SIMP_MUSIC || this == MUSIXMATCH || this == SPOTIFY ||
+            this == BINI_LYRICS || this == MUSIXMATCH || this == SPOTIFY ||
             this == BETTER_LYRICS_PORTATO || this == LYRICS_PLUS || this == UNISON ||
             this == YOUTUBE_CAPTIONS || this == YOUTUBE_MUSIC || this == MEGALOBIZ || this == GENIUS
 
@@ -133,8 +132,27 @@ enum class HiResStart(val id: String, val title: String, val subtitle: String) {
     }
 }
 
+/** Output mode for 1-bit Direct Stream Digital (DSF / DFF) audio. */
+enum class DsdOutputMode(val id: String, val title: String, val subtitle: String) {
+    NATIVE(
+        id = "native",
+        title = "Native (DoP)",
+        subtitle = "Bit-perfect 1-bit DSD stream via universal DoP v1.0 standard to supported USB DACs (bypasses DSP & EQ)",
+    ),
+    PCM(
+        id = "pcm",
+        title = "Convert to PCM",
+        subtitle = "Decimates DSD to high-res 32-bit float PCM; compatible with all outputs and enables EQ & DSP",
+    );
+
+    companion object {
+        fun fromId(id: String?): DsdOutputMode = entries.firstOrNull { it.id == id } ?: NATIVE
+    }
+}
+
 /** Cellular-only streaming choice: adapt to the link and buffer, never above the Wi-Fi choice. */
 const val CELLULAR_QUALITY_AUTO = 0
+const val DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME = -2
 
 data class MiscSettings(
     /** When on, the app's accent color follows the dominant color of the
@@ -177,6 +195,8 @@ data class MiscSettings(
     val clarityAtmosBypass: Boolean = false,
     /** When true, completely bypasses DSP, EQ, tone effects, and software volume ducking for bit-exact audio. */
     val isBitPerfectEnabled: Boolean = false,
+    /** Output mode for 1-bit DSD files (DSF / DFF): Native (DoP) or Convert to PCM. */
+    val dsdOutputMode: DsdOutputMode = DsdOutputMode.NATIVE,
     /** System audio-effects mode (Settings -> Experimental). Off by default:
      *  when on, the app flattens its own DSP on mixer routes and publishes
      *  the audio session so external equalizer apps / OEM Dolby can process
@@ -186,8 +206,6 @@ data class MiscSettings(
     val buttonNowPlayingEnabled: Boolean = false,
     /** When true, shows synced music video option in the Now Playing menu (Settings -> Experimental). On by default. */
     val musicVideoEnabled: Boolean = true,
-    /** When true, shows watch video button on the Now Playing screen when music video is enabled. */
-    val musicVideoNowPlayingButtonEnabled: Boolean = false,
     /** When true (default), shows AutoEQ and Parametric EQ card in Now Playing audio controls sheet. */
     val showAutoEqInVolumePanel: Boolean = true,
     val wordByWordLyrics: Boolean = true,
@@ -307,7 +325,10 @@ data class MiscSettings(
     val useLegacyTrackMenu: Boolean = false,
     /** When true, enables blur effect behind and around song options menus. */
     val useMenuBlur: Boolean = true,
-)
+) {
+    val enabledHttpAddons: List<HttpAddonConfig>
+        get() = httpAddons.filter { it.enabled && it.url.isNotBlank() }
+}
 
 val MiscSettings.musicHapticsConfig: MusicHapticsConfig
     get() = MusicHapticsConfig(
@@ -462,6 +483,7 @@ class SettingsPreferences @Inject constructor(
         val CLARITY_PRESET = intPreferencesKey("lw_clarity_preset")
         val CLARITY_ATMOS_BYPASS = booleanPreferencesKey("lw_clarity_atmos_bypass")
         val BIT_PERFECT_ENABLED = booleanPreferencesKey("lw_bit_perfect_enabled")
+        val DSD_OUTPUT_MODE = stringPreferencesKey("lw_dsd_output_mode")
         val WORD_BY_WORD_LYRICS = booleanPreferencesKey("lw_word_by_word_lyrics")
         val LYRICS_PROVIDER = stringPreferencesKey("lw_lyrics_provider")
         val RECOMMENDATION_SOURCE = stringPreferencesKey("lw_recommendation_source")
@@ -497,7 +519,6 @@ class SettingsPreferences @Inject constructor(
         val SYSTEM_EFFECTS_MODE = booleanPreferencesKey("lw_system_effects_mode")
         val BUTTON_NOW_PLAYING_ENABLED = booleanPreferencesKey("lw_button_now_playing_enabled")
         val MUSIC_VIDEO_ENABLED = booleanPreferencesKey("lw_music_video_enabled")
-        val MUSIC_VIDEO_NP_BUTTON_ENABLED = booleanPreferencesKey("lw_music_video_np_button_enabled")
         val SHOW_AUTO_EQ_IN_VOLUME_PANEL = booleanPreferencesKey("lw_show_auto_eq_in_volume_panel")
         val USE_ALBUM_ARTIST_FOLDERS = booleanPreferencesKey("lw_use_album_artist_folders")
         val PRIMARY_ARTIST_ONLY = booleanPreferencesKey("lw_primary_artist_only")
@@ -581,13 +602,13 @@ class SettingsPreferences @Inject constructor(
                 systemEffectsMode = p.readSafely(Keys.SYSTEM_EFFECTS_MODE) ?: false,
                 buttonNowPlayingEnabled = p.readSafely(Keys.BUTTON_NOW_PLAYING_ENABLED) ?: false,
                 musicVideoEnabled = p.readSafely(Keys.MUSIC_VIDEO_ENABLED) ?: true,
-                musicVideoNowPlayingButtonEnabled = p.readSafely(Keys.MUSIC_VIDEO_NP_BUTTON_ENABLED) ?: false,
                 showAutoEqInVolumePanel = p.readSafely(Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL) ?: true,
                 isStudioMasterClarityEnabled = p.readSafely(Keys.MUSIC_ENHANCER) ?: true,
                 // Clarity is a single on/off again: always the Reference curve, never bypassed on spatial.
                 clarityPreset = 0,
                 clarityAtmosBypass = false,
                 isBitPerfectEnabled = p.readSafely(Keys.BIT_PERFECT_ENABLED) ?: false,
+                dsdOutputMode = DsdOutputMode.fromId(p.readSafely(Keys.DSD_OUTPUT_MODE)),
                 wordByWordLyrics = p.readSafely(Keys.WORD_BY_WORD_LYRICS) ?: true,
                 lyricsProvider = LyricsProvider.fromId(p.readSafely(Keys.LYRICS_PROVIDER)),
                 recommendationSource = RecommendationSource.fromId(p.readSafely(Keys.RECOMMENDATION_SOURCE)),
@@ -954,10 +975,6 @@ class SettingsPreferences @Inject constructor(
         dataStore.edit { it[Keys.MUSIC_VIDEO_ENABLED] = enabled }
     }
 
-    suspend fun setMusicVideoNowPlayingButtonEnabled(enabled: Boolean) {
-        dataStore.edit { it[Keys.MUSIC_VIDEO_NP_BUTTON_ENABLED] = enabled }
-    }
-
     suspend fun setShowAutoEqInVolumePanel(enabled: Boolean) {
         dataStore.edit { it[Keys.SHOW_AUTO_EQ_IN_VOLUME_PANEL] = enabled }
     }
@@ -980,6 +997,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setBitPerfectEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.BIT_PERFECT_ENABLED] = enabled }
+    }
+
+    suspend fun setDsdOutputMode(mode: DsdOutputMode) {
+        dataStore.edit { it[Keys.DSD_OUTPUT_MODE] = mode.id }
     }
 
     suspend fun setWordByWordLyrics(enabled: Boolean) {
@@ -1282,7 +1303,7 @@ class SettingsPreferences @Inject constructor(
     }
     private companion object {
         val STREAMING_QUALITIES = setOf(-1, 4, 5, 6, 27, 28)
-        val DOWNLOAD_QUALITIES = setOf(-1, 4, 5, 6, 7, 27, 28)
+        val DOWNLOAD_QUALITIES = setOf(DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME, -1, 4, 5, 6, 7, 27, 28)
     }
 
     private fun normalizeStreamingQuality(quality: Int): Int? = when (quality) {

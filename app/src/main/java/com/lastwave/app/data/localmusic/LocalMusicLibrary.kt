@@ -661,6 +661,85 @@ class LocalMusicLibrary @Inject constructor(
                 }
                 true
             } ?: false
+
+            // Android MediaStore does not index DSD (DSF / DFF) files under MediaStore.Audio.Media.
+            // Query MediaStore.Files for .dsf and .dff files so they are discovered on storage.
+            val filesUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            } else {
+                MediaStore.Files.getContentUri("external")
+            }
+            val fileCols = mutableListOf(
+                MediaStore.Files.FileColumns._ID,
+                MediaStore.Files.FileColumns.DISPLAY_NAME,
+                @Suppress("DEPRECATION") MediaStore.Files.FileColumns.DATA,
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                fileCols += MediaStore.Files.FileColumns.RELATIVE_PATH
+            }
+            val selection = "(${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE '%.dsf' OR " +
+                "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE '%.DSF' OR " +
+                "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE '%.dff' OR " +
+                "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE '%.DFF' OR " +
+                "${MediaStore.Files.FileColumns.DATA} LIKE '%.dsf' OR " +
+                "${MediaStore.Files.FileColumns.DATA} LIKE '%.DSF' OR " +
+                "${MediaStore.Files.FileColumns.DATA} LIKE '%.dff' OR " +
+                "${MediaStore.Files.FileColumns.DATA} LIKE '%.DFF')"
+
+            runCatching {
+                context.contentResolver.query(
+                    filesUri,
+                    fileCols.toTypedArray(),
+                    selection,
+                    null,
+                    null,
+                )?.use { c ->
+                    val idxId = c.getColumnIndex(MediaStore.Files.FileColumns._ID)
+                    val idxName = c.getColumnIndex(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                    @Suppress("DEPRECATION")
+                    val idxData = c.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+                    val idxRelPath = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        c.getColumnIndex(MediaStore.Files.FileColumns.RELATIVE_PATH)
+                    } else -1
+
+                    while (c.moveToNext()) {
+                        currentCoroutineContext().ensureActive()
+                        val id = if (idxId >= 0) c.getLong(idxId) else continue
+                        val dataPath = if (idxData >= 0) c.getString(idxData)?.takeIf { it.isNotBlank() } else null
+                        val displayName = (if (idxName >= 0) c.getString(idxName) else null)
+                            ?: dataPath?.substringAfterLast('/')
+                            ?: continue
+                        val relPath = if (idxRelPath >= 0) c.getString(idxRelPath) else null
+
+                        if (filterNonMusic && LocalMusicFilters.isNonMusicAudio(
+                                filePathOrRelative = dataPath ?: "${relPath.orEmpty()}/$displayName",
+                                durationMs = null,
+                            )
+                        ) {
+                            continue
+                        }
+
+                        val directFile = dataPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+                        val contentUri = ContentUris.withAppendedId(filesUri, id)
+                        val audioUrl = directFile?.absolutePath ?: contentUri.toString()
+                        if (!seenUrls.add(audioUrl)) continue
+
+                        val fsLrc = directFile?.absolutePath?.let(LocalAudioFormats::lrcPathFor)
+                            ?.takeIf { File(it).isFile }
+
+                        out += DiscoveredEntry(
+                            audioUrl = audioUrl,
+                            displayName = displayName,
+                            filterPath = dataPath ?: "${relPath.orEmpty()}/$displayName",
+                            docUri = contentUri,
+                            lrcUri = fsLrc,
+                        )
+                        if (out.size % 25 == 0) _state.value = ImportState.Scanning(out.size)
+                    }
+                }
+            }
+
+            true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -818,6 +897,25 @@ class LocalMusicLibrary @Inject constructor(
 
         if (durationMs == null) {
             durationMs = AudioHeaderInspector.inspect(context, entry.audioUrl)?.durationMs
+        }
+
+        val ext = LocalAudioFormats.extensionOf(entry.displayName).lowercase()
+        val isDsd = ext == "dsf" || ext == "dff" ||
+            entry.audioUrl.lowercase().endsWith(".dsf") || entry.audioUrl.lowercase().endsWith(".dff")
+        if (isDsd) {
+            com.lastwave.app.playback.dsd.DsdMetadataReader.read(context, entry.audioUrl)?.let { meta ->
+                if (title.isNullOrBlank()) title = meta.title
+                if (artist.isNullOrBlank()) artist = meta.artist
+                if (album.isNullOrBlank()) album = meta.album
+                if (albumArtist.isNullOrBlank()) albumArtist = meta.albumArtist
+                if (trackNumber == null) trackNumber = meta.trackNumber
+                if (discNumber == null) discNumber = meta.discNumber
+                if (artwork == null && meta.artworkBytes != null && meta.artworkBytes.isNotEmpty()) {
+                    val art = File(artDir, LocalMusicNaming.stableId(meta.artworkBytes) + ".img")
+                    if (!art.exists()) runCatching { art.writeBytes(meta.artworkBytes) }
+                    if (art.exists()) artwork = Uri.fromFile(art).toString()
+                }
+            }
         }
 
         // Folder artwork fallback: SAF cover document or filesystem sibling cover image

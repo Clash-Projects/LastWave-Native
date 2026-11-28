@@ -1,6 +1,27 @@
+/*
+ * Copyright (C) 2026 LastWave Authors (https://github.com/Clash-Projects/LastWave-Native)
+ *
+ * SPDX-License-Identifier: GPL-3.0-only
+ *
+ * This file is part of LastWave.
+ *
+ * LastWave is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * LastWave is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with LastWave. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package com.lastwave.app.playback
 
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.PlaybackParams
@@ -27,7 +48,10 @@ import java.nio.ByteOrder
  * track accepts them. [probeDirect] runs that test before playback starts.
  */
 @RequiresApi(Build.VERSION_CODES.S)
-class DirectTrackStream(private val attributes: AudioAttributes) {
+class DirectTrackStream(
+    private val attributes: AudioAttributes,
+    private val usbBitPerfect: UsbBitPerfectOutput? = null,
+) {
 
     private var track: AudioTrack? = null
     var encoding: Int = -1
@@ -35,6 +59,8 @@ class DirectTrackStream(private val attributes: AudioAttributes) {
     var sampleRateHz: Int = 0
         private set
     var channelCount: Int = 0
+        private set
+    var isBitPerfectMixerActive: Boolean = false
         private set
     private var bytesPerFrame = 0
 
@@ -59,7 +85,13 @@ class DirectTrackStream(private val attributes: AudioAttributes) {
         }
     }
 
-    fun open(rateHz: Int, channels: Int, wireEncoding: Int): Boolean {
+    fun open(
+        rateHz: Int,
+        channels: Int,
+        wireEncoding: Int,
+        preferredUsbDevice: AudioDeviceInfo? = null,
+        requestBitPerfectMixer: Boolean = false,
+    ): Boolean {
         release()
         val androidEncoding = androidEncodingOf(wireEncoding) ?: return false
         val mask = when (channels) {
@@ -73,9 +105,20 @@ class DirectTrackStream(private val attributes: AudioAttributes) {
                 .setEncoding(androidEncoding)
                 .setChannelMask(mask)
                 .build()
+            if (usbBitPerfect != null) {
+                usbBitPerfect.setAttributes(attributes)
+                usbBitPerfect.setDevice(preferredUsbDevice)
+                usbBitPerfect.setFormat(if (requestBitPerfectMixer) format else null)
+                usbBitPerfect.setEnabled(requestBitPerfectMixer && preferredUsbDevice != null)
+            }
+            val bitPerfectGranted = requestBitPerfectMixer && usbBitPerfect?.isConfigured() == true
+
             val frameBytes = InternalDirectStream.bytesPerSample(wireEncoding) * channels
             val minBytes = AudioTrack.getMinBufferSize(rateHz, mask, androidEncoding)
-            if (minBytes <= 0) return false
+            if (minBytes <= 0) {
+                usbBitPerfect?.setEnabled(false)
+                return false
+            }
             // ~500 ms: a music player, not a game. Large buffers also keep the
             // track off the FAST mixer path, which would skew the direct test.
             val size = maxOf(minBytes * 4, rateHz / 2 * frameBytes)
@@ -88,13 +131,18 @@ class DirectTrackStream(private val attributes: AudioAttributes) {
                 .build()
             if (created.state != AudioTrack.STATE_INITIALIZED) {
                 created.release()
+                usbBitPerfect?.setEnabled(false)
                 return false
+            }
+            if (preferredUsbDevice != null) {
+                runCatching { created.preferredDevice = preferredUsbDevice }
             }
             track = created
             encoding = wireEncoding
             sampleRateHz = rateHz
             channelCount = channels
             bytesPerFrame = frameBytes
+            isBitPerfectMixerActive = bitPerfectGranted
             dead = false
             routedDeviceId = null
             runCatching { created.addOnRoutingChangedListener(routingListener, Handler(Looper.getMainLooper())) }
@@ -113,6 +161,7 @@ class DirectTrackStream(private val attributes: AudioAttributes) {
      * is mixed. Null = inconclusive. Must run before [play].
      */
     fun probeDirect(): Boolean? {
+        if (isBitPerfectMixerActive) return true
         val target = track ?: return null
         return try {
             target.playbackParams = PlaybackParams().setSpeed(1.01f).setPitch(1.0f)
@@ -201,12 +250,14 @@ class DirectTrackStream(private val attributes: AudioAttributes) {
         val target = track
         track = null
         pending = null
+        isBitPerfectMixerActive = false
         if (target != null) {
             runCatching { target.removeOnRoutingChangedListener(routingListener) }
             runCatching { target.pause() }
             runCatching { target.flush() }
             runCatching { target.release() }
         }
+        usbBitPerfect?.setEnabled(false)
         resetCounters()
     }
 

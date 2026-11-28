@@ -22,6 +22,8 @@ internal class AlacDashManifestParser : DashManifestParser() {
         roleDescriptors: List<Descriptor>,
         accessibilityDescriptors: List<Descriptor>,
         codecs: String?,
+        supplementalCodecs: String?,
+        supplementalProfiles: String?,
         essentialProperties: List<Descriptor>,
         supplementalProperties: List<Descriptor>,
     ): Format {
@@ -38,6 +40,8 @@ internal class AlacDashManifestParser : DashManifestParser() {
             roleDescriptors,
             accessibilityDescriptors,
             codecs,
+            supplementalCodecs,
+            supplementalProfiles,
             essentialProperties,
             supplementalProperties,
         )

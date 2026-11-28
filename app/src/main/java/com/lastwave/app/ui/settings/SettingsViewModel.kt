@@ -628,6 +628,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setDsdOutputMode(mode: com.lastwave.app.data.local.DsdOutputMode) = launchSettingsAction("update DSD output mode") {
+        settingsPreferences.setDsdOutputMode(mode)
+    }
+
     /** System audio-effects mode (Settings -> Experimental, default OFF):
      *  flattens in-app DSP on mixer routes and publishes the audio session
      *  for external equalizer / OEM Dolby processing. Bypass routes suspend
@@ -639,10 +643,6 @@ class SettingsViewModel @Inject constructor(
     /** Synced Music Video (Settings -> Experimental, default OFF). */
     fun setMusicVideoEnabled(enabled: Boolean) = launchSettingsAction("update music video setting") {
         settingsPreferences.setMusicVideoEnabled(enabled)
-    }
-
-    fun setMusicVideoNowPlayingButtonEnabled(enabled: Boolean) = launchSettingsAction("update music video now playing button setting") {
-        settingsPreferences.setMusicVideoNowPlayingButtonEnabled(enabled)
     }
 
     fun setShowAutoEqInVolumePanel(enabled: Boolean) = launchSettingsAction("update show autoeq in volume panel") {

@@ -147,8 +147,21 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
 
+    /**
+     * Ends any transition now. Every interruption (seek, skip, queue edit,
+     * speed, Cast, error, release) calls this, so it is also the one place an
+     * AutoMix blend is committed or reverted; [endAutoMix] = false only for
+     * callers that merely re-check the plain crossfade's own settings.
+     */
     @MainThread
-internal fun MusicPlayer.cancelCrossfade() {
+internal fun MusicPlayer.cancelCrossfade(endAutoMix: Boolean = true) {
+        if (endAutoMix) {
+            autoMixCoordinator.get().endTransition()
+        } else if (autoMixCoordinator.get().isBlending) {
+            // Caller explicitly preserved AutoMix (e.g. settings write);
+            // do not stop its outgoingPlayer or snap incoming volume mid-blend.
+            return
+        }
         crossfadeStandbyArmed = false
         crossfadeStandbyPreparing = false
         lastCrossfadeLogKey = null

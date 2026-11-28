@@ -56,6 +56,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import com.lastwave.app.ui.player.automix.AutoMixPopupHost
+import com.lastwave.app.ui.player.automix.AutoMixPopupState
+import com.lastwave.app.ui.player.automix.autoMixIdentity
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.cos
@@ -371,7 +374,6 @@ internal fun FullPlayer(
     canvasFullBleedEnabled: Boolean = true,
     canvasGradientBlurEnabled: Boolean = false,
     musicVideoEnabled: Boolean = true,
-    musicVideoNowPlayingButtonEnabled: Boolean = false,
     showAutoEqInVolumePanel: Boolean = true,
     currentTab: FullPlayerTab,
     onTabChange: (FullPlayerTab) -> Unit,
@@ -512,6 +514,15 @@ internal fun FullPlayer(
     }
     var showTrackMenu by remember(track.videoId, track.title) { mutableStateOf(false) }
     var showSignalPath by remember { mutableStateOf(false) }
+    val autoMixUi = remember { AutoMixPopupState() }
+    val autoMixTracks = remember(state.queue, track) {
+        if (track in state.queue) state.queue else state.queue + track
+    }
+    val openBadge = {
+        if (!autoMixUi.open(state.deckBlendTelemetry, progressState.value, track.autoMixIdentity())) {
+            showSignalPath = true
+        }
+    }
     var showAudioControls by remember { mutableStateOf(false) }
     var showAutoEq by remember { mutableStateOf(false) }
     val signalPath by player.signalPath.collectAsStateWithLifecycle()
@@ -1237,28 +1248,6 @@ internal fun FullPlayer(
                                         )
                                     }
                                 }
-                                if (musicVideoEnabled && musicVideoNowPlayingButtonEnabled && onToggleSyncedVideo != null) {
-                                    LiquidGlassSurface(
-                                        onClick = hapticClick { onToggleSyncedVideo() },
-                                        shape = CircleShape,
-                                        color = if (isVideoActive) MaterialTheme.colorScheme.primaryContainer
-                                        else liquidGlassContainerColor(if (isThemeLight) Color.Black.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.14f)),
-                                        contentColor = if (isVideoActive) MaterialTheme.colorScheme.onPrimaryContainer
-                                        else (if (isThemeLight) Color(0xFF222226) else Color.White.copy(alpha = 0.94f)),
-                                        glassModifier = Modifier.liquidGlassChrome(
-                                            CircleShape,
-                                            LocalLiquidGlass.current,
-                                            LiquidGlassPreset.FloatingControls,
-                                        ),
-                                        modifier = Modifier.size(44.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isVideoActive) Icons.Filled.SmartDisplay else Icons.Outlined.SmartDisplay,
-                                            contentDescription = "Watch video",
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                    }
-                                }
                                 LiquidGlassSurface(
                                     onClick = hapticClick { showTrackMenu = true },
                                     shape = CircleShape,
@@ -1288,8 +1277,10 @@ internal fun FullPlayer(
                     modifier = Modifier
                         .weight(1f)
                         .then(
+                            // No cap in landscape: the split's art pane must reach the
+                            // screen edge, or wide (>1200dp) tablets get a hard-edged band.
                             if (isTabletLandscape) {
-                                Modifier.widthIn(max = 1200.dp).fillMaxWidth()
+                                Modifier.fillMaxWidth()
                             } else {
                                 Modifier.adaptiveContentWidth(maxWidth = 680.dp)
                             }
@@ -1333,12 +1324,15 @@ internal fun FullPlayer(
                                     }
                                 },
                             ) {
-                                // Landscape: lyrics beside the same full-bleed art pane as
-                                // Now Playing.
-                                // Lyrics' own fullscreen still takes the whole width.
-                                val landscapeSplit = isTabletLandscape && !lyricsFullscreen
+                                // Landscape: lyrics beside the same art pane as Now Playing, fullscreen too.
+                                // Tablet fullscreen lyrics span a wide screen; side-staged rows
+                                // read as ragged, so they are always centred there.
+                                val tabletFullscreen = isTablet && lyricsFullscreen
+                                CompositionLocalProvider(
+                                    LocalLyricsAlignment provides if (tabletFullscreen) LyricsAlignment(centered = true) else LocalLyricsAlignment.current,
+                                ) {
                                 Row(Modifier.fillMaxSize()) {
-                                if (landscapeSplit) {
+                                if (isTabletLandscape) {
                                     LandscapeArtworkPane(
                                         track = track,
                                         state = state,
@@ -1393,7 +1387,7 @@ internal fun FullPlayer(
                                     secondaryColor = ambientCompanion,
                                     tertiaryColor = ambientDeep,
                                     resolvedArtworkUrl = resolvedAmbientUrl,
-                                    modifier = if (landscapeSplit) {
+                                    modifier = if (isTabletLandscape) {
                                         Modifier
                                             .weight(1.15f)
                                             .fillMaxHeight()
@@ -1403,6 +1397,7 @@ internal fun FullPlayer(
                                             .adaptiveContentWidth(maxWidth = if (isTabletLandscape) 960.dp else 720.dp)
                                     },
                                 )
+                                }
                                 }
                             }
                         }
@@ -1449,7 +1444,8 @@ internal fun FullPlayer(
                                     onTabChange = onTabChange,
                                     shownDismissY = shownDismissY,
                                     swipeThreshold = swipeThreshold,
-                                    onOpenSignalPath = { showSignalPath = true },
+                                    onOpenSignalPath = openBadge,
+                                    autoMixUi = autoMixUi,
                                     onOpenAudioControls = { showAudioControls = true },
                                     musicVideoEnabled = musicVideoEnabled,
                                     isVideoActive = isVideoActive,
@@ -2001,7 +1997,9 @@ internal fun FullPlayer(
                                         state = state,
                                         signalPath = signalPath,
                                         isTranslucent = LocalLiquidGlass.current || showFullBleed,
-                                        onClick = { showSignalPath = true },
+                                        autoMixUi = autoMixUi,
+                                        progressState = progressState,
+                                        onClick = openBadge,
                                         modifier = Modifier.offset(y = (-2).dp),
                                     )
                                     Spacer(Modifier.height(12.dp))
@@ -2086,6 +2084,15 @@ internal fun FullPlayer(
             onDismiss = { showLyricsOffsetDialog = false },
         )
     }
+    AutoMixPopupHost(
+        ui = autoMixUi,
+        telemetry = state.deckBlendTelemetry,
+        progressState = progressState,
+        trackKey = track.autoMixIdentity(),
+        isPlayerOpen = isOpen,
+        player = player,
+        tracks = autoMixTracks,
+    )
     if (showSignalPath) {
         val dac = usbDac.dac
         val internalAvailability by player.internalDirectAvailability.collectAsStateWithLifecycle()

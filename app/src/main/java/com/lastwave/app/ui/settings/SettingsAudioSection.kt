@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Vibration
+import com.lastwave.app.data.local.DsdOutputMode
 import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
@@ -526,14 +527,14 @@ internal fun AutoMixControlsCard(
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        "DJ Spectral Filter Sweeps",
+                        "Bass swap",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "3-band Linkwitz-Riley sub-bass swap and resonant filter sweeps",
+                        "Hands the low end over on the beat so basslines never stack",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -831,6 +832,60 @@ internal fun LoudnessModeDialog(
                             )
                             Text(
                                 loudnessModeSubtitle(LocalContext.current, mode),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
+@Composable
+internal fun DsdOutputModeDialog(
+    current: DsdOutputMode,
+    onSelect: (DsdOutputMode) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("DSD Output Mode") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    "Choose how 1-bit DSD audio streams to your playback device:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                DsdOutputMode.entries.forEach { mode ->
+                    val selected = mode == current
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSelect(mode) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selected, onClick = { onSelect(mode) })
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                mode.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            )
+                            Text(
+                                mode.subtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

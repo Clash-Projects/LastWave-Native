@@ -1,3 +1,23 @@
+/*
+ * Copyright (C) 2026 LastWave Authors (https://github.com/Clash-Projects/LastWave-Native)
+ *
+ * SPDX-License-Identifier: GPL-3.0-only
+ *
+ * This file is part of LastWave.
+ *
+ * LastWave is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * LastWave is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with LastWave. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package com.lastwave.app.playback
 
 import android.content.Context
@@ -191,9 +211,6 @@ internal fun MusicPlayer.exclusiveUsbWanted(streamCodec: String? = null): Boolea
         if (isCasting) return false
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return false
         if (!bitPerfectEnabled || !usbExclusivePrefEnabled) return false
-        // E-AC-3 JOC / 360 RA is multichannel. Exclusive USB is stereo PCM
-        // only — keep Android's decoder+mixer so Atmos actually plays.
-        if (isSpatialAudioCodec(streamCodec) || isSpatialAudioCodec(_state.value.audioCodec)) return false
         val dac = usbDacMonitor.state.value.dac
         return dac?.hasUsbPeripheral == true && dac.usbPermissionGranted
     }
@@ -251,42 +268,14 @@ internal fun MusicPlayer.recomputeUsbExclusivePref() {
         usbExclusivePrefEnabled = bitPerfectEnabled && usbExclusiveRawPref
     }
 
-    /** True only for genuine Atmos decode: an E-AC-3 JOC decoder. A plain
-     *  `audio/eac3`/`ac3` decoder (common, video-passthrough silicon) cannot
-     *  render an Atmos music stream â€” treating it as capable used to request
-     *  spatial manifests that ExoPlayer then choked on (3003 â†’ retry loop â†’
-     *  "Playback interrupted") instead of dropping to stereo. */
     private val isAtmosDecoderAvailable: Boolean by lazy {
-        val platform = runCatching {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { type ->
-                    type.equals("audio/eac3-joc", ignoreCase = true) ||
-                        type.equals("audio/eac3", ignoreCase = true) ||
-                        type.equals("audio/ac3", ignoreCase = true)
-                }
-            }
-        }.getOrDefault(false)
-        // Bundled FFmpeg decodes the E-AC-3 core of JOC streams on any device.
-        val ffmpeg = FfmpegCompat.isUsable && runCatching {
-            androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() &&
-                androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(MimeTypes.AUDIO_E_AC3)
-        }.getOrDefault(false)
+        val platform = FfmpegCompat.hasPlatformAtmosDecoder()
+        val ffmpeg = FfmpegCompat.supportsMime(MimeTypes.AUDIO_E_AC3)
         android.util.Log.i("MusicPlayer", "[ATMOS] decoder availability platform=$platform ffmpeg=$ffmpeg")
         platform || ffmpeg
     }
 
-fun MusicPlayer.isSpatialAudioSupportedOnDevice(): Boolean {
-        if (isAtmosDecoderAvailable) return true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
-            val am = audioManager ?: return false
-            val spatializer = am.spatializer
-            if (spatializer.isAvailable || spatializer.isEnabled) {
-                return true
-            }
-        }
-        return false
-    }
+fun MusicPlayer.isSpatialAudioSupportedOnDevice(): Boolean = isAtmosDecoderAvailable
 
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.S_V2)
 internal object SpatializerHelper {
@@ -339,7 +328,7 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         val isSpatial = isSpatialAudioCodec(streamCodec) || isSpatialAudioCodec(_state.value.audioCodec)
         val effectiveRateHz = if (isSpatial) 48000 else sourceRateHz
         val dac = usbDacMonitor.state.value.dac
-        val exclusiveWanted = !isSpatial && exclusiveUsbWanted(streamCodec)
+        val exclusiveWanted = exclusiveUsbWanted(streamCodec)
         val wasExclusive = exclusiveUsbOutput.isActive()
         exclusiveUsbOutput.setWanted(exclusiveWanted)
         val internalWanted = !isSpatial && internalDirectWanted()
@@ -369,10 +358,13 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         // The signal path stays honest automatically â€” the resampler check
         // fails, so a converted track can never report gold.
         val usbRates = exclusiveUsbOutput.supportedHardwareRatesHz()
+        val platformRates = dac?.sampleRatesHz.orEmpty()
+        exclusiveUsbOutput.setPlatformSupportedRatesHz(platformRates)
         // Android AudioDeviceInfo rates describe the mixer route and may be
-        // incomplete for usbdevfs exclusive access. Only an open USB descriptor
-        // query may pre-select an exclusive fallback; otherwise let configure()
-        // attempt the source clock and verify it with the DAC handshake.
+        // incomplete for usbdevfs exclusive access (e.g. capping at 192 kHz on
+        // a 384 kHz DAC). Only an open USB descriptor query may pre-select an
+        // exclusive fallback; configureLocked still falls back to platformRates
+        // if the USB descriptor query itself returns empty.
         val fallbackHz = if (exclusiveWanted && dac != null && usbRates.isNotEmpty()) {
             selectExclusiveRateFallback(effectiveRateHz, usbRates)
         } else {
@@ -385,10 +377,19 @@ internal fun MusicPlayer.applyDacRoutingFor(sourceRateHz: Int?, streamCodec: Str
         } else {
             null
         }
+        val routedRates = if (dac != null) platformRates else emptyList()
+        val androidRateOverride = if (isSpatial) {
+            null
+        } else if (routedRates.isNotEmpty() && effectiveRateHz != null && effectiveRateHz !in routedRates) {
+            selectExclusiveRateFallback(effectiveRateHz, routedRates) ?: effectiveRateHz
+        } else {
+            effectiveRateHz
+        }
         routedDacDeviceId = device?.id
         audioSinks.forEach { sink ->
             runCatching { sink.setPreferredDevice(if (exclusive) null else device) }
-            runCatching { sink.setOutputSampleRateOverride(if (isSpatial) null else effectiveRateHz) }
+            runCatching { sink.setPreferredDeviceSupportedRates(routedRates) }
+            runCatching { sink.setOutputSampleRateOverride(androidRateOverride) }
             runCatching { sink.setExclusiveFallbackRateHz(fallbackHz, effectiveRateHz) }
         }
         if (isSpatial && device == null && dac != null) {

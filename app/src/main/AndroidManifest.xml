@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Target audio playback and known music players without requiring QUERY_ALL_PACKAGES -->
@@ -172,6 +173,37 @@
                 <data android:mimeType="application/x-ogg" />
                 <data android:mimeType="application/flac" />
                 <data android:mimeType="application/x-flac" />
+                <data android:mimeType="application/x-dsf" />
+                <data android:mimeType="application/x-dff" />
+                <data android:mimeType="audio/x-dsf" />
+                <data android:mimeType="audio/x-dff" />
+                <data android:mimeType="audio/dsf" />
+                <data android:mimeType="audio/dff" />
+            </intent-filter>
+
+            <!-- Local DSD files by file extension / generic MIME ("Open With" from Files / file managers) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:pathSuffix=".dsf" />
+                <data android:pathSuffix=".DSF" />
+                <data android:pathSuffix=".dff" />
+                <data android:pathSuffix=".DFF" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="*/*" />
+                <data android:pathSuffix=".dsf" />
+                <data android:pathSuffix=".DSF" />
+                <data android:pathSuffix=".dff" />
+                <data android:pathSuffix=".DFF" />
             </intent-filter>
 
             <!-- Share target for music links & song titles -->
@@ -273,6 +305,12 @@
                 <action android:name="com.vivo.musicwidgetmix.support.service" />
             </intent-filter>
         </service>
+
+        <!-- Foreground service required on Android 10+ (and enforced on API 34+) for internal playback capture via MediaProjection -->
+        <service
+            android:name=".data.recognition.AudioPlaybackCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <receiver
             android:name="androidx.media.session.MediaButtonReceiver"

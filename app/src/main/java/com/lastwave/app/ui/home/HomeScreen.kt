@@ -201,7 +201,6 @@ fun HomeScreen(
                     modifier = Modifier.adaptiveContentWidth(maxWidth = 860.dp),
                     actions = {
                         HeaderActionIcon(Icons.Filled.Search, "Search", onOpenSearch)
-                        com.lastwave.app.ui.recognition.MusicRecognitionButton(key = "recognition_stats")
                         IconButton(onClick = onOpenSettings) {
                             val displayAvatar = uiState.stats?.avatarUrl ?: avatarUrl
                             ProfileAvatar(avatarUrl = displayAvatar, modifier = Modifier.size(38.dp))

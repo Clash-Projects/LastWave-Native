@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Vibration
 import com.lastwave.app.data.local.CELLULAR_QUALITY_AUTO
+import com.lastwave.app.data.local.DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME
 import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
@@ -461,6 +462,7 @@ fun SettingsScreen(
     var showLyricsAutoHideDialog by remember { mutableStateOf(false) }
     var showTranslationLanguageDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
+    var showDsdOutputModeDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
     var showYtChannelSheet by remember { mutableStateOf(false) }
@@ -807,6 +809,7 @@ fun SettingsScreen(
                     val wifiQualitySubtitle = streamingQualityLabel(misc.wifiStreamingQuality)
                     val cellularQualitySubtitle = streamingQualityLabel(misc.cellularStreamingQuality)
                     val downloadQualitySubtitle = when (misc.downloadQuality) {
+                        DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME -> stringResource(R.string.settings_download_quality_select)
                         28 -> "Dolby Atmos (Spatial Immersive Audio)"
                         27 -> "Hi-Res (24-bit / 192 kHz FLAC)"
                         7 -> "Hi-Res (24-bit / 96 kHz FLAC)"
@@ -904,7 +907,7 @@ fun SettingsScreen(
                                         "Active \u2022 Custom DJ blend (${hfSettings.targetDurationSeconds}s)"
                                     }
                                 } else {
-                                    "Beat-matched, key-locked seamless dual-deck mixing"
+                                    "Beat-matched mixes when the songs allow, clean fades when not"
                                 },
                                 checked = hfSettings.autoMixEnabled,
                                 onCheckedChange = viewModel::setAutoMixEnabled,
@@ -1073,7 +1076,7 @@ fun SettingsScreen(
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 9) { index, position ->
+                    SettingsGroup(rowCount = 10) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
@@ -1210,6 +1213,16 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setShowAutoEqInVolumePanel,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.show_autoeq_in_volume_panel"),
+                            )
+                            9 -> SettingsActionCard(
+                                icon = Icons.Filled.Tune,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "DSD Output Mode",
+                                subtitle = "${misc.dsdOutputMode.title} \u2022 ${if (misc.dsdOutputMode == com.lastwave.app.data.local.DsdOutputMode.NATIVE) "Direct bit-perfect stream to USB DACs" else "Decimate to 32-bit Float PCM"}",
+                                onClick = { showDsdOutputModeDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.dsd_output_mode"),
                             )
                         }
                     }
@@ -1520,8 +1533,7 @@ fun SettingsScreen(
                             )
                         }
                     }
-                    val additionalRowCount = if (misc.musicVideoEnabled) 4 else 3
-                    SettingsGroup(rowCount = additionalRowCount) { index, position ->
+                    SettingsGroup(rowCount = 3) { index, position ->
                         when (index) {
                             0 -> SettingsActionCard(
                                 icon = Icons.Filled.Translate,
@@ -1552,36 +1564,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.music_video"),
                             )
-                            2 -> if (misc.musicVideoEnabled) {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.SmartDisplay,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = stringResource(R.string.settings_music_video_np_button),
-                                    subtitle = stringResource(R.string.settings_music_video_np_button_desc),
-                                    checked = misc.musicVideoNowPlayingButtonEnabled,
-                                    onCheckedChange = viewModel::setMusicVideoNowPlayingButtonEnabled,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "appearance.music_video_np_button"),
-                                )
-                            } else {
-                                SettingsToggleCard(
-                                    icon = Icons.Filled.PlayCircle,
-                                    iconContainer = MaterialTheme.colorScheme.secondaryContainer,
-                                    iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    title = "Button Now playing",
-                                    subtitle = if (misc.buttonNowPlayingEnabled) {
-                                        "Floating button mode active • Card hidden"
-                                    } else {
-                                        "Classic bottom now playing card"
-                                    },
-                                    checked = misc.buttonNowPlayingEnabled,
-                                    onCheckedChange = viewModel::setButtonNowPlayingEnabled,
-                                    position = position,
-                                    isHighlighted = (highlightedSettingId == "appearance.button_now_playing"),
-                                )
-                            }
-                            3 -> SettingsToggleCard(
+                            2 -> SettingsToggleCard(
                                 icon = Icons.Filled.PlayCircle,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -2921,6 +2904,17 @@ fun SettingsScreen(
         )
     }
 
+    if (showDsdOutputModeDialog) {
+        DsdOutputModeDialog(
+            current = misc.dsdOutputMode,
+            onSelect = {
+                viewModel.setDsdOutputMode(it)
+                showDsdOutputModeDialog = false
+            },
+            onDismiss = { showDsdOutputModeDialog = false },
+        )
+    }
+
     // -- Selective Playlist Sync sheet --
     if (showSyncPlaylistsSheet) {
         SyncPlaylistsSheet(
@@ -3145,6 +3139,7 @@ fun SettingsScreen(
 
     if (showDownloadQualityDialog) {
         val downloadTiers = listOf(
+            Triple(DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME, stringResource(R.string.settings_download_quality_select), "Choose a quality before each download" to "SELECT"),
             Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Master Audio" to "ATMOS"),
             Triple(27, "Hi-Res Audio (Max)", "Up to 24-bit / 192 kHz • Studio Master FLAC" to "24-BIT / 192k"),
             Triple(7, "Hi-Res Audio", "24-bit / 96 kHz • Studio FLAC" to "24-BIT / 96k"),
