@@ -422,6 +422,7 @@ fun SettingsScreen(
     val usbExclusiveEnabled by viewModel.usbExclusiveEnabled.collectAsStateWithLifecycle()
     val internalDirectEnabled by viewModel.internalDirectEnabled.collectAsStateWithLifecycle()
     val forceSoftwareVolume by viewModel.forceSoftwareVolume.collectAsStateWithLifecycle()
+    val usbVolumeMode by viewModel.usbVolumeMode.collectAsStateWithLifecycle()
     val internalDirectAvailability by viewModel.internalDirectAvailability.collectAsStateWithLifecycle()
     val loudness by viewModel.loudness.collectAsStateWithLifecycle()
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
@@ -463,6 +464,7 @@ fun SettingsScreen(
     var showTranslationLanguageDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
     var showDsdOutputModeDialog by remember { mutableStateOf(false) }
+    var showUsbVolumeModeDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
     var showYtChannelSheet by remember { mutableStateOf(false) }
@@ -1122,18 +1124,13 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.internal_direct"),
                             )
                             }
-                            2 -> SettingsToggleCard(
+                            2 -> SettingsActionCard(
                                 icon = Icons.Filled.VolumeDown,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                title = stringResource(R.string.settings_force_sw_volume),
-                                subtitle = if (forceSoftwareVolume) {
-                                    stringResource(R.string.settings_force_sw_volume_on)
-                                } else {
-                                    stringResource(R.string.settings_force_sw_volume_off)
-                                },
-                                checked = forceSoftwareVolume,
-                                onCheckedChange = viewModel::setForceSoftwareVolume,
+                                title = "USB DAC Volume Mode",
+                                subtitle = "${usbVolumeMode.title} \u2022 ${usbVolumeMode.subtitle}",
+                                onClick = { showUsbVolumeModeDialog = true },
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.force_software_volume"),
                             )
@@ -2912,6 +2909,17 @@ fun SettingsScreen(
                 showDsdOutputModeDialog = false
             },
             onDismiss = { showDsdOutputModeDialog = false },
+        )
+    }
+
+    if (showUsbVolumeModeDialog) {
+        UsbVolumeModeDialog(
+            current = usbVolumeMode,
+            onSelect = {
+                viewModel.setUsbVolumeMode(it)
+                showUsbVolumeModeDialog = false
+            },
+            onDismiss = { showUsbVolumeModeDialog = false },
         )
     }
 

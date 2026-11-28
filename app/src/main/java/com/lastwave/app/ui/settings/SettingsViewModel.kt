@@ -726,6 +726,11 @@ class SettingsViewModel @Inject constructor(
             .withSettingsFallback("software volume", false)
             .stateIn(viewModelScope, SettingsSharing, false)
 
+    val usbVolumeMode: StateFlow<com.lastwave.app.playback.usb.UsbVolumeMode> =
+        com.lastwave.app.playback.usb.InternalDirectPrefs.usbVolumeModeFlow(context)
+            .withSettingsFallback("usb volume mode", com.lastwave.app.playback.usb.UsbVolumeMode.AUTO)
+            .stateIn(viewModelScope, SettingsSharing, com.lastwave.app.playback.usb.UsbVolumeMode.AUTO)
+
     /** Collecting this (settings screen visible) lets route changes re-probe the output. */
     val internalDirectAvailability = musicPlayer.internalDirectAvailability
 
@@ -751,6 +756,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setForceSoftwareVolume(enabled: Boolean) = launchSettingsAction("update software volume") {
         com.lastwave.app.playback.usb.InternalDirectPrefs.setForceSoftwareVolume(context, enabled)
+    }
+
+    fun setUsbVolumeMode(mode: com.lastwave.app.playback.usb.UsbVolumeMode) = launchSettingsAction("update usb volume mode") {
+        com.lastwave.app.playback.usb.InternalDirectPrefs.setUsbVolumeMode(context, mode)
     }
 
     // ── Clarity output preset + spatial bypass ──

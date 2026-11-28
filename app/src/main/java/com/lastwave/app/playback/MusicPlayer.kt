@@ -2679,8 +2679,9 @@ class MusicPlayer @Inject constructor(
         }
 
         applicationScope.launch {
-            com.lastwave.app.playback.usb.InternalDirectPrefs.forceSoftwareVolumeFlow(appContext).collect { force ->
-                exclusiveUsbOutput.setForceSoftwareVolume(force)
+            com.lastwave.app.playback.usb.InternalDirectPrefs.usbVolumeModeFlow(appContext).collect { mode ->
+                exclusiveUsbOutput.setForceSoftwareVolume(mode == com.lastwave.app.playback.usb.UsbVolumeMode.SOFTWARE)
+                exclusiveUsbOutput.setFixedBitPerfectVolume(mode == com.lastwave.app.playback.usb.UsbVolumeMode.FIXED)
                 onMain { updateSignalPath() }
             }
         }
