@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,6 +64,8 @@ fun SignalPathDialog(
     needsUsbPermission: Boolean,
     onRequestUsbAccess: () -> Unit,
     onDismiss: () -> Unit,
+    onReleaseUsbAccess: (() -> Unit)? = null,
+    onEngageUsbAccess: (() -> Unit)? = null,
     internalAvailability: InternalDirectAvailability? = null,
     internalEnabled: Boolean = false,
     internalUnderruns: Long? = null,
@@ -481,6 +484,29 @@ fun SignalPathDialog(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(stringResource(R.string.signal_grant_usb))
+                    }
+                }
+                if (report.usbExclusiveActive && onReleaseUsbAccess != null) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            onReleaseUsbAccess()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Release USB DAC (Exit Exclusive Mode)")
+                    }
+                } else if (!report.usbExclusiveActive && !needsUsbPermission && onEngageUsbAccess != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            onEngageUsbAccess()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Use Exclusive USB DAC")
                     }
                 }
                 Row(

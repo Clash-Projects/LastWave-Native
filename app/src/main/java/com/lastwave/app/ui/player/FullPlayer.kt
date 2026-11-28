@@ -2097,11 +2097,14 @@ internal fun FullPlayer(
         val dac = usbDac.dac
         val internalAvailability by player.internalDirectAvailability.collectAsStateWithLifecycle()
         LaunchedEffect(Unit) { player.refreshInternalDirectAvailability() }
+        val canEngageUsb = dac != null && dac.hasUsbPeripheral && dac.usbPermissionGranted && !signalPath.usbExclusiveActive
         SignalPathDialog(
             report = signalPath,
             needsUsbPermission = dac != null && dac.hasUsbPeripheral && !dac.usbPermissionGranted,
             onRequestUsbAccess = player::requestUsbPermission,
             onDismiss = { showSignalPath = false },
+            onReleaseUsbAccess = if (signalPath.usbExclusiveActive) player::releaseExclusiveUsb else null,
+            onEngageUsbAccess = if (canEngageUsb) player::engageExclusiveUsb else null,
             internalAvailability = internalAvailability,
             internalEnabled = player.isInternalDirectPrefEnabled,
             internalUnderruns = if (signalPath.internalDirectActive) player.internalDirectUnderruns() else null,

@@ -30,6 +30,7 @@ import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.media.AudioManager
+import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -1061,7 +1062,9 @@ class ExclusiveUsbOutput @Inject constructor(
         stopWriterLocked()
         writerStop = false
         flushRequested = false
-        val thread = Thread({ writeLoop(target) }, "ExclusiveUsbWriter")
+        val thread = Thread({ writeLoop(target) }, "ExclusiveUsbWriter").apply {
+            priority = Thread.MAX_PRIORITY
+        }
         writer = thread
         thread.start()
     }
@@ -1086,6 +1089,7 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     private fun writeLoop(target: UsbAudioStream) {
+        runCatching { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) }
         while (!writerStop) {
             val next = synchronized(pcmLock) {
                 if (!writerStop && !flushRequested && (paused || pcmQueue.isEmpty())) {
