@@ -10,11 +10,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalToggleButton
+import androidx.compose.material3.FilledTonalToggleButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButtonDefaults
-import androidx.compose.material3.TonalToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +45,7 @@ fun ConnectedButtonGroup(
     modifier: Modifier = Modifier,
 ) {
     val haptic = LocalHapticFeedback.current
-    val colors = ToggleButtonDefaults.tonalToggleButtonColors(
+    val colors = FilledTonalToggleButtonDefaults.filledTonalToggleButtonColors(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = MaterialTheme.colorScheme.onSurface,
         checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -58,13 +59,13 @@ fun ConnectedButtonGroup(
         items.forEachIndexed { index, item ->
             val isSelected = index == selectedIndex
             val shapes = when {
-                items.size == 1 -> ToggleButtonDefaults.shapes()
+                items.size == 1 -> ToggleButtonDefaults.shapesFor(44.dp)
                 index == 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                 index == items.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                 else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
             }
 
-            TonalToggleButton(
+            FilledTonalToggleButton(
                 checked = isSelected,
                 onCheckedChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)

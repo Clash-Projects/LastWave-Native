@@ -62,6 +62,8 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalToggleButton
+import androidx.compose.material3.FilledTonalToggleButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -69,8 +71,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButtonDefaults
-import androidx.compose.material3.TonalToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1102,7 +1102,7 @@ private fun SearchFilterPills(
         SearchTab.PLAYLISTS to R.string.search_tab_playlists,
         SearchTab.USERS to R.string.search_tab_users,
     )
-    val colors = ToggleButtonDefaults.tonalToggleButtonColors(
+    val colors = FilledTonalToggleButtonDefaults.filledTonalToggleButtonColors(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -1122,7 +1122,7 @@ private fun SearchFilterPills(
                 tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                 else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
             }
-            TonalToggleButton(
+            FilledTonalToggleButton(
                 checked = selected,
                 onCheckedChange = { onTabSelected(tab) },
                 shapes = shapes,

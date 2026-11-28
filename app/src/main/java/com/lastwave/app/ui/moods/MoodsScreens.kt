@@ -126,6 +126,6 @@ private fun moodsPagePadding(topInset: androidx.compose.ui.unit.Dp) = PaddingVal
 private fun MoodsPageLoading() {
     val description = stringResource(R.string.moods_loading)
     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-        ExpressiveLoadingIndicator(Modifier.semantics { contentDescription = description })
+        ExpressiveLoadingIndicator(modifier = Modifier.semantics { contentDescription = description })
     }
 }

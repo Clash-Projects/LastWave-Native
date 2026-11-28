@@ -67,6 +67,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalToggleButton
+import androidx.compose.material3.FilledTonalToggleButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -77,8 +79,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButtonDefaults
-import androidx.compose.material3.TonalToggleButton
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -131,7 +131,7 @@ internal fun DownloadTabBar(
     albumCount: Int,
 ) {
     val tabs = DownloadTab.entries
-    val colors = ToggleButtonDefaults.tonalToggleButtonColors(
+    val colors = FilledTonalToggleButtonDefaults.filledTonalToggleButtonColors(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -156,7 +156,7 @@ internal fun DownloadTabBar(
                 tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                 else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
             }
-            TonalToggleButton(
+            FilledTonalToggleButton(
                 checked = isSelected,
                 onCheckedChange = { onTabSelected(tab) },
                 shapes = shapes,
@@ -323,7 +323,7 @@ internal fun DownloadFilterControls(
 
         // Filter chips for Songs tab
         if (selectedTab == DownloadTab.SONGS) {
-            val filterColors = ToggleButtonDefaults.tonalToggleButtonColors(
+            val filterColors = FilledTonalToggleButtonDefaults.filledTonalToggleButtonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -335,7 +335,7 @@ internal fun DownloadFilterControls(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {
-                TonalToggleButton(
+                FilledTonalToggleButton(
                     checked = !filterLossless && !filterLyrics,
                     onCheckedChange = {
                         if (filterLossless) onToggleLossless()
@@ -348,7 +348,7 @@ internal fun DownloadFilterControls(
                 ) {
                     Text(stringResource(com.lastwave.app.R.string.dl_filter_all), style = MaterialTheme.typography.labelLarge)
                 }
-                TonalToggleButton(
+                FilledTonalToggleButton(
                     checked = filterLossless,
                     onCheckedChange = { onToggleLossless() },
                     shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
@@ -358,7 +358,7 @@ internal fun DownloadFilterControls(
                 ) {
                     Text(stringResource(com.lastwave.app.R.string.dl_filter_lossless), style = MaterialTheme.typography.labelLarge)
                 }
-                TonalToggleButton(
+                FilledTonalToggleButton(
                     checked = filterLyrics,
                     onCheckedChange = { onToggleLyrics() },
                     shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),

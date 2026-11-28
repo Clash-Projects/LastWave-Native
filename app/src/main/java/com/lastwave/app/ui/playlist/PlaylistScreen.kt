@@ -55,9 +55,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalToggleButton
+import androidx.compose.material3.FilledTonalToggleButtonDefaults
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.ToggleButtonDefaults
-import androidx.compose.material3.TonalToggleButton
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
@@ -316,7 +316,7 @@ fun PlaylistScreen(
 
             // Material 3 Expressive connected toggle button group for playlist filters
             val filterEntries = PlaylistFilter.entries
-            val filterColors = ToggleButtonDefaults.tonalToggleButtonColors(
+            val filterColors = FilledTonalToggleButtonDefaults.filledTonalToggleButtonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -337,7 +337,7 @@ fun PlaylistScreen(
                         filterEntries.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                         else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                     }
-                    TonalToggleButton(
+                    FilledTonalToggleButton(
                         checked = isSelected,
                         onCheckedChange = {
                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
