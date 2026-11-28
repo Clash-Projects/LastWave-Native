@@ -70,6 +70,8 @@
 -keep class io.ktor.client.HttpClientJvmKt { *; }
 -keep class io.ktor.client.HttpClientKt { *; }
 -keep class io.ktor.client.engine.cio.** { *; }
+-keep class io.ktor.client.engine.okhttp.** { *; }
+-keep class io.ktor.client.HttpClientConfig { *; }
 
 # Kyant Backdrop (AndroidLiquidGlass): AGSL RuntimeShader strings and
 # RenderEffect bridges are reached via Compose runtime — keep in release builds.

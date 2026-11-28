@@ -64,6 +64,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @androidx.compose.runtime.Immutable
+@kotlinx.serialization.Serializable
 data class YouTubeMusicTrack(
     val videoId: String,
     val title: String,
@@ -164,6 +165,7 @@ data class YouTubePlaylistResult(
 )
 
 @androidx.compose.runtime.Immutable
+@kotlinx.serialization.Serializable
 data class YouTubePlaylistSummary(
     val id: String,
     val title: String,
