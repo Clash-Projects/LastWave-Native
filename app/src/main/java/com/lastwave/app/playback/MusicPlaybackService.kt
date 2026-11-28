@@ -721,6 +721,8 @@ class MusicPlaybackService : MediaBrowserServiceCompat() {
         val playerState = musicPlayer.state.value
         if (playerState.isPlaying || playerState.isBuffering) {
             musicPlayer.stopAndClear(clearSession = false)
+        } else {
+            musicPlayer.releaseExclusiveUsbOnServiceDestroy()
         }
         wakeLockReleaseJob?.cancel()
         wakeLockReleaseJob = null

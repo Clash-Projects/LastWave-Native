@@ -622,7 +622,7 @@ internal fun MusicPlayer.updateSignalPath() {
                 appVolume = exclusiveAppVolume,
                 systemVolume = sysVol,
                 systemVolumeMax = sysMax,
-                systemVolumeFixed = sysFixed || hardwareVolume,
+                systemVolumeFixed = sysFixed || hardwareVolume || (exclusive && exclusiveUsbOutput.isFixedBitPerfectVolume()),
                 dac = dac,
                 routedToDac = routedRequested,
                 routeVerified = exclusive && !clockFallback && exclusiveUsbOutput.isClockMatched(),

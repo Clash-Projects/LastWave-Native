@@ -850,19 +850,29 @@ class UsbAudioDevice private constructor(private val context: Context) {
         lastRateWriteTrusted = false
         val conn = connection
         val fd = conn?.fileDescriptor ?: -1
-        claimedControlInterface?.let { iface ->
+        val controlIface = claimedControlInterface
+        val streamIface = claimedInterface
+        claimedControlInterface = null
+        claimedInterface = null
+        // Release ALL interfaces BEFORE calling USBDEVFS_CONNECT on AudioControl:
+        // snd-usb-audio probes AudioControl and immediately claims all AudioStreaming
+        // interfaces; if AudioStreaming is still claimed by us, probe fails with -EBUSY.
+        streamIface?.let { iface ->
             runCatching { conn?.releaseInterface(iface) }
-            if (fd >= 0) {
-                runCatching { UsbAudioStream.nativeUsbAttachKernelDriver(fd, iface.id) }
-            }
-            claimedControlInterface = null
         }
-        claimedInterface?.let { iface ->
+        controlIface?.let { iface ->
             runCatching { conn?.releaseInterface(iface) }
-            if (fd >= 0) {
+        }
+        if (fd >= 0) {
+            val controlAttachRet = controlIface?.let { iface ->
+                runCatching { UsbAudioStream.nativeUsbAttachKernelDriver(fd, iface.id) }.getOrDefault(-1)
+            } ?: 0
+            streamIface?.let { iface ->
                 runCatching { UsbAudioStream.nativeUsbAttachKernelDriver(fd, iface.id) }
             }
-            claimedInterface = null
+            if (controlAttachRet < 0) {
+                runCatching { UsbAudioStream.nativeUsbReset(fd) }
+            }
         }
         runCatching { conn?.close() }
         connection = null

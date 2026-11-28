@@ -25,6 +25,7 @@ package com.lastwave.app.playback
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.os.Build
+import android.os.Looper
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.AuxEffectInfo
@@ -107,6 +108,8 @@ class NativeProcessingAudioSink(
     @Volatile private var usbExclusive = false
     @Volatile private var exclusiveStartFailed = false
     @Volatile private var exclusiveEnded = false
+    @Volatile private var playbackLooper: Looper? = null
+    @Volatile private var pendingAndroidReconfigure = false
     /**
      * Same-family fallback target for exclusive USB (e.g. 44.1 kHz for an
      * 88.2 kHz source whose rate the DAC descriptor lacks), pushed per
@@ -266,6 +269,8 @@ class NativeProcessingAudioSink(
     }
 
     override fun configure(format: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
+        playbackLooper = Looper.myLooper()
+        pendingAndroidReconfigure = false
         loudness?.beginTrack(format)
         if (canReuseNativeProcessing(format, outputChannels)) {
             configuredFormat = format
@@ -703,8 +708,10 @@ class NativeProcessingAudioSink(
         bufferPresentationTimeUs: Long,
         encodedAccessUnitCount: Int,
     ): Boolean {
+        playbackLooper = Looper.myLooper()
         maybeAdoptExclusiveUsb()
         maybeAdoptInternalDirect()
+        maybeReconfigureAndroidOutput()
         var presentationTimeUs = bufferPresentationTimeUs
         if (skipCheckedBuffer !== buffer) {
             skipCheckedBuffer = buffer
@@ -1388,6 +1395,21 @@ class NativeProcessingAudioSink(
         clearExclusiveConverter()
         runCatching { internalDirect?.reset() }
         if (!configureAndroid) return
+        val expectedLooper = playbackLooper
+        if (expectedLooper != null && Looper.myLooper() != expectedLooper) {
+            pendingAndroidReconfigure = true
+            return
+        }
+        reconfigureAndroidOutput()
+    }
+
+    private fun maybeReconfigureAndroidOutput() {
+        if (!pendingAndroidReconfigure || usbExclusive || internalActive) return
+        pendingAndroidReconfigure = false
+        reconfigureAndroidOutput()
+    }
+
+    private fun reconfigureAndroidOutput() {
         val format = configuredFormat ?: return
         if (bitPerfectRequested &&
             tryConfigureBitPerfectDirect(format, configuredBufferSize, configuredOutputChannels)
@@ -1610,15 +1632,13 @@ class NativeProcessingAudioSink(
         clearExclusiveConverter()
         runCatching { exclusiveUsb?.reset() }
         if (!configureAndroid) return
-        val format = configuredFormat ?: return
-        if (bitPerfectRequested &&
-            tryConfigureBitPerfectDirect(format, configuredBufferSize, configuredOutputChannels)
-        ) {
-            bitPerfectAtConfigure = true
+        // DefaultAudioSink.configure() throws if called off ExoPlayer's playback looper.
+        val expectedLooper = playbackLooper
+        if (expectedLooper != null && Looper.myLooper() != expectedLooper) {
+            pendingAndroidReconfigure = true
             return
         }
-        configureFallback(format, configuredBufferSize, configuredOutputChannels)
-        bitPerfectAtConfigure = false
+        reconfigureAndroidOutput()
     }
 
     /**

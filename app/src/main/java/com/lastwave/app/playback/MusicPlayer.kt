@@ -261,6 +261,39 @@ class MusicPlayer @Inject constructor(
 
     fun initializeCast(): Boolean = initializeCastImpl()
     fun requestUsbPermission() = usbDacMonitor.requestPermission()
+
+    /** Re-engage Exclusive USB mode when a permitted USB DAC is attached. */
+    fun engageExclusiveUsb() {
+        exclusiveUsbOutput.clearBlockedDevices()
+        usbExclusiveRawPref = true
+        recomputeUsbExclusivePref()
+        applicationScope.launch {
+            runCatching { com.lastwave.app.playback.usb.UsbExclusivePrefs.setEnabled(appContext, true) }
+        }
+        onMain {
+            applyDacRoutingFor(currentSourceRateHz())
+            updateSignalPath()
+        }
+    }
+
+    /** Disengage Exclusive USB mode and re-attach the kernel USB audio driver so other apps can use the DAC. */
+    fun releaseExclusiveUsb() {
+        usbExclusiveRawPref = false
+        recomputeUsbExclusivePref()
+        applicationScope.launch {
+            runCatching { com.lastwave.app.playback.usb.UsbExclusivePrefs.setEnabled(appContext, false) }
+        }
+        onMain {
+            applyDacRoutingFor(currentSourceRateHz())
+            updateSignalPath()
+        }
+    }
+
+    internal fun releaseExclusiveUsbOnServiceDestroy() {
+        runCatching { audioSinks.forEach { it.syncExclusiveUsb(false) } }
+        runCatching { exclusiveUsbOutput.release() }
+        runCatching { usbDacMonitor.refresh() }
+    }
     fun usbDiagnosticReport(): String = exclusiveUsbOutput.diagnosticReport()
 
     internal val playbackPreferences = appContext.getSharedPreferences(
@@ -2646,8 +2679,9 @@ class MusicPlayer @Inject constructor(
         }
 
         applicationScope.launch {
-            com.lastwave.app.playback.usb.InternalDirectPrefs.forceSoftwareVolumeFlow(appContext).collect { force ->
-                exclusiveUsbOutput.setForceSoftwareVolume(force)
+            com.lastwave.app.playback.usb.InternalDirectPrefs.usbVolumeModeFlow(appContext).collect { mode ->
+                exclusiveUsbOutput.setForceSoftwareVolume(mode == com.lastwave.app.playback.usb.UsbVolumeMode.SOFTWARE)
+                exclusiveUsbOutput.setFixedBitPerfectVolume(mode == com.lastwave.app.playback.usb.UsbVolumeMode.FIXED)
                 onMain { updateSignalPath() }
             }
         }
@@ -4101,6 +4135,8 @@ class MusicPlayer @Inject constructor(
         abandonMediaAudioFocus()
         player.stop()
         player.clearMediaItems()
+        // Release the USB DAC and re-attach snd-usb-audio so other apps can use it immediately.
+        releaseExclusiveUsbOnServiceDestroy()
         // Shuffle is engine state that survives stop()/clearMediaItems(): without
         // this reset the next fresh queue silently inherits shuffle while the
         // fresh state says off â€” until the first refresh() flips it back on.

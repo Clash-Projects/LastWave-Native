@@ -954,3 +954,57 @@ internal fun ClarityPresetDialog(
         },
     )
 }
+
+@Composable
+internal fun UsbVolumeModeDialog(
+    current: com.lastwave.app.playback.usb.UsbVolumeMode,
+    onSelect: (com.lastwave.app.playback.usb.UsbVolumeMode) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("USB DAC Volume Mode") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    "Choose how volume is controlled during Exclusive USB playback:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                com.lastwave.app.playback.usb.UsbVolumeMode.entries.forEach { mode ->
+                    val selected = mode == current
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSelect(mode) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selected, onClick = { onSelect(mode) })
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                mode.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            )
+                            Text(
+                                mode.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}

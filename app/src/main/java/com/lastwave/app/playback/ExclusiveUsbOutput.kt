@@ -30,6 +30,7 @@ import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.media.AudioManager
+import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -113,6 +114,7 @@ class ExclusiveUsbOutput @Inject constructor(
     @Volatile private var ignoreStreamMusicMax = false
     /** Fork setting: never let the DAC's Feature Unit own the listening level. */
     @Volatile private var forceSoftwareVolume = false
+    @Volatile private var fixedBitPerfectVolume = false
 
     private val sessionBlockedDevices = java.util.concurrent.ConcurrentHashMap<String, String>()
     @Volatile private var currentDeviceKey: String? = null
@@ -200,6 +202,27 @@ class ExclusiveUsbOutput @Inject constructor(
 
     fun isForceSoftwareVolume(): Boolean = forceSoftwareVolume
 
+    /**
+     * When true, never attenuate PCM in software (softwareGain() == 1.0f) and do not
+     * touch DAC hardware volume; the user controls volume on the DAC itself.
+     */
+    fun setFixedBitPerfectVolume(value: Boolean) {
+        synchronized(stateLock) {
+            if (fixedBitPerfectVolume == value) return
+            fixedBitPerfectVolume = value
+            if (value) {
+                hardwareVolume = false
+                softwareGainValue = 1f
+            } else if (active) {
+                lastAppliedListening = Float.NaN
+                applyVolumeLocked()
+            }
+            Log.i(TAG, "fixedBitPerfectVolume=$value")
+        }
+    }
+
+    fun isFixedBitPerfectVolume(): Boolean = fixedBitPerfectVolume
+
     /** True when the attached DAC exposes a usable hardware volume (even if not used). */
     fun hasHardwareVolumeControl(): Boolean = active && featureVolume != null && (hardwareVolume || featureVolumeAttached)
 
@@ -217,7 +240,7 @@ class ExclusiveUsbOutput @Inject constructor(
      * PCM software gain for exclusive output: the Media3 volume, times the
      * curved STREAM_MUSIC level when no Feature Unit carries it.
      */
-    fun softwareGain(): Float = if (isDsdStream) 1f else if (!active) 1f else softwareGainValue
+    fun softwareGain(): Float = if (isDsdStream || fixedBitPerfectVolume) 1f else if (!active) 1f else softwareGainValue
 
     fun currentRateHz(): Int = if (active) configuredRateHz else 0
 
@@ -868,7 +891,11 @@ class ExclusiveUsbOutput @Inject constructor(
                 it.interfaceClass == UsbConstants.USB_CLASS_AUDIO && it.interfaceSubclass == 1
             }?.id ?: 0
         val volumeControl = UacFeatureVolume(info.connection, controlId)
-        if (!forceSoftwareVolume) {
+        if (fixedBitPerfectVolume) {
+            featureVolume = null
+            featureVolumeAttached = false
+            hardwareVolume = false
+        } else if (!forceSoftwareVolume) {
             featureVolume = volumeControl
             val attached = volumeControl.attach()
             featureVolumeAttached = attached
@@ -1046,6 +1073,11 @@ class ExclusiveUsbOutput @Inject constructor(
      * on top. Curving the product made two 50% sliders -40 dB instead of -31.
      */
     private fun applyVolumeLocked() {
+        if (fixedBitPerfectVolume) {
+            hardwareVolume = false
+            softwareGainValue = 1f
+            return
+        }
         val listening = listeningGain.coerceIn(0f, 1f)
         val unchanged = lastAppliedListening.isFinite() && kotlin.math.abs(listening - lastAppliedListening) < 1e-4f
         lastAppliedListening = listening
@@ -1061,7 +1093,9 @@ class ExclusiveUsbOutput @Inject constructor(
         stopWriterLocked()
         writerStop = false
         flushRequested = false
-        val thread = Thread({ writeLoop(target) }, "ExclusiveUsbWriter")
+        val thread = Thread({ writeLoop(target) }, "ExclusiveUsbWriter").apply {
+            priority = Thread.MAX_PRIORITY
+        }
         writer = thread
         thread.start()
     }
@@ -1086,6 +1120,7 @@ class ExclusiveUsbOutput @Inject constructor(
     }
 
     private fun writeLoop(target: UsbAudioStream) {
+        runCatching { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) }
         while (!writerStop) {
             val next = synchronized(pcmLock) {
                 if (!writerStop && !flushRequested && (paused || pcmQueue.isEmpty())) {
@@ -1130,7 +1165,7 @@ class ExclusiveUsbOutput @Inject constructor(
     /** Writer thread only: applies the current software gain, then hands the chunk to USB. */
     private fun writeScaled(target: UsbAudioStream, chunk: QueuedPcm) {
         val rawBytes = chunk.raw
-        if (isDsdStream && rawBytes != null) {
+        if ((isDsdStream || fixedBitPerfectVolume) && rawBytes != null) {
             target.writeRaw(rawBytes, chunk.encoding)
             return
         }
