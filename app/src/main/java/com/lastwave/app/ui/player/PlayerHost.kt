@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -196,6 +197,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
@@ -348,8 +350,10 @@ val LocalAddToPlaylist = staticCompositionLocalOf<(PlayableTrack) -> Unit> {
  * screen. The Material 3 bar is about 86dp tall; 88dp clears it without
  * leaving a large empty band at the end of short lists.
  */
-val LocalMiniPlayerScrollClearance = staticCompositionLocalOf { 0.dp }
-val LocalMiniPlayerSnackbarClearance = staticCompositionLocalOf { 0.dp }
+// Dynamic, not static: these follow the route and the player sheet, and a static change
+// recomposed every screen under PlayerHost on each push, pop and player open.
+val LocalMiniPlayerScrollClearance = compositionLocalOf { 0.dp }
+val LocalMiniPlayerSnackbarClearance = compositionLocalOf { 0.dp }
 
 
 val LocalBottomNavSlot = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.runtime.MutableState<BottomNavigationContent>> {
@@ -719,10 +723,18 @@ fun PlayerHost(
                 }
             }
 
-            if (hasBottomNavigation && showBottomNav) {
+            if (showBottomNav) {
                 Box(
                     Modifier
                         .fillMaxSize()
+                        // Kept composed off Home and only left unplaced: rebuilding the bar was
+                        // most of the work in the first frame back.
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, placeable.height) {
+                                if (hasBottomNavigation) placeable.place(0, 0)
+                            }
+                        }
                         .graphicsLayer {
                             val p = if (state.current == null) 1f else (1f - playerExpansion.value * 1.6f).coerceIn(0f, 1f)
                             val e = if (state.current == null) 0f else playerExpansion.value.coerceIn(0f, 1f)

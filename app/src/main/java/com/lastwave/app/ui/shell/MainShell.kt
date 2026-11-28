@@ -102,6 +102,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -263,6 +264,8 @@ fun MainShell(
     onOpenPodcastShow: (String) -> Unit = {},
     onOpenYouTubeLogin: () -> Unit = {},
     onReturnToHome: () -> Boolean = { false },
+    /** True once Home is the only screen showing; false while a page covers it or slides over it. */
+    isCurrent: () -> Boolean = { true },
     mainShellViewModel: MainShellViewModel = hiltViewModel(),
 ) {
     val tabs = MainTab.entries
@@ -427,7 +430,9 @@ fun MainShell(
                 .then(if (chromeCollapse != null) Modifier.nestedScroll(chromeCollapse.connection) else Modifier)
                 .then(
                 if (navigationLiquidState != null) {
-                    Modifier.liquefiable(navigationLiquidState).background(backgroundColor)
+                    // The liquid source re-renders the whole pager offscreen each frame for the
+                    // bar to refract; skip it while the bar is hidden.
+                    (if (isCurrent()) Modifier.liquefiable(navigationLiquidState) else Modifier).background(backgroundColor)
                 } else {
                     Modifier.liquidGlassSource(if (navGlass) navigationBackdrop else null)
                 },
@@ -550,10 +555,20 @@ fun MainShell(
             selectLiquidTab(index, refreshIfSelected = false)
         }
 
+        val currentIsCurrent by androidx.compose.runtime.rememberUpdatedState(isCurrent)
         androidx.compose.runtime.DisposableEffect(navigationBackdrop, navigationLiquidState, tabs, hideNavTabs) {
             if (!hideNavTabs) {
                 bottomNavSlot.value = { material3NavigationEnabled ->
-                    Box(Modifier.fillMaxSize()) {
+                    // Placed only once Home has settled: during the back slide the bar and its
+                    // liquid source doubled the GPU work of every frame.
+                    Box(
+                        Modifier.fillMaxSize().layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, placeable.height) {
+                                if (currentIsCurrent()) placeable.place(0, 0)
+                            }
+                        },
+                    ) {
                         val collapse = LocalChromeCollapse.current
                         val collapseProgress = collapse?.progress ?: { 0f }
                         val barModifier = Modifier.align(Alignment.BottomCenter).collapsingNavBar(collapseProgress)

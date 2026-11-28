@@ -12,17 +12,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.LocalOwnersProvider
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -197,6 +204,92 @@ fun LastWaveNavHost(
         }
     }
 
+    // Home stays composed under pushed screens and only stops drawing while covered:
+    // when NavHost disposed it, every back press rebuilt the Feed in one ~90 ms frame.
+    val visibleEntries = navController.visibleEntries.collectAsState()
+    val shellEntry = remember(currentBackStackEntry) {
+        runCatching { navController.getBackStackEntry(Screen.MainShell.route) }.getOrNull()
+    }
+    val shellStateHolder = rememberSaveableStateHolder()
+    Box(Modifier.fillMaxSize()) {
+        if (shellEntry != null) key(shellEntry.id) {
+            KeptShell(navController, shellEntry, shellStateHolder, visibleEntries)
+        }
+        RootNavHost(navController)
+    }
+}
+
+// Its own restart scope: LastWaveNavHost recomposes on every navigation, and
+// re-running Home from there redrew every visible Feed row on each push and pop.
+@Composable
+private fun KeptShell(
+    navController: NavHostController,
+    entry: NavBackStackEntry,
+    stateHolder: SaveableStateHolder,
+    visibleEntries: State<List<NavBackStackEntry>>,
+) {
+    Box(
+        // Still measured while covered, so coming back only re-places it; the read sits in
+        // placement so a flip never recomposes Home.
+        Modifier.fillMaxSize().layout { measurable, constraints ->
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) {
+                if (visibleEntries.value.any { it.id == entry.id }) placeable.place(0, 0)
+            }
+        },
+    ) {
+        entry.LocalOwnersProvider(stateHolder) {
+            MainShell(
+                isCurrent = { visibleEntries.value.singleOrNull()?.id == entry.id },
+                onOpenSettings = {
+                    navController.navigate(Screen.Settings.route) { launchSingleTop = true }
+                },
+                onOpenSearch = { navController.navigate(Screen.Search.createRoute()) },
+                onOpenDiscover = { navController.navigate(Screen.Discover.route) },
+                onOpenGenres = { navController.navigate(Screen.Genres.route) },
+                onOpenListeningStats = { navController.navigate(Screen.ListeningStats.route) },
+                onOpenFriends = { navController.navigate(Screen.Friends.route) },
+                onOpenFriendProfile = { username, displayName, avatarUrl ->
+                    navController.navigate(Screen.FriendProfile.createRoute(username, displayName, avatarUrl))
+                },
+                onOpenPlaylist = { playlistId ->
+                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onOpenFeedPlaylist = { playlistId ->
+                    navController.navigate(Screen.FeedPlaylistDetail.createRoute(playlistId))
+                },
+                onOpenGenerator = {
+                    navController.navigate(Screen.Create.route) { launchSingleTop = true }
+                },
+                onOpenNewReleases = {
+                    navController.navigate(Screen.NewReleases.route)
+                },
+                onOpenDownloads = {
+                    navController.navigate(Screen.Downloads.route)
+                },
+                onOpenPodcasts = {
+                    navController.navigate(Screen.Podcasts.route)
+                },
+                onOpenPodcastShow = { showId ->
+                    navController.navigate(Screen.PodcastShow.createRoute(showId))
+                },
+                onOpenYouTubeLogin = {
+                    navController.navigate(Screen.YouTubeLogin.route)
+                },
+                onReturnToHome = {
+                    if (navController.currentDestination?.route != Screen.MainShell.route) {
+                        navController.popBackStack(Screen.MainShell.route, inclusive = false)
+                    } else {
+                        false
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RootNavHost(navController: NavHostController) {
     NavHost(
         navController = navController,
         startDestination = Screen.Splash.route,
@@ -268,52 +361,8 @@ fun LastWaveNavHost(
         // (profile icon / search icon / discover icon), on this same root
         // nav controller, so they can pop back cleanly and (on log out /
         // clear session) return all the way to Login.
-        composable(Screen.MainShell.route) {
-            MainShell(
-                onOpenSettings = {
-                    navController.navigate(Screen.Settings.route) { launchSingleTop = true }
-                },
-                onOpenSearch = { navController.navigate(Screen.Search.createRoute()) },
-                onOpenDiscover = { navController.navigate(Screen.Discover.route) },
-                onOpenGenres = { navController.navigate(Screen.Genres.route) },
-                onOpenListeningStats = { navController.navigate(Screen.ListeningStats.route) },
-                onOpenFriends = { navController.navigate(Screen.Friends.route) },
-                onOpenFriendProfile = { username, displayName, avatarUrl ->
-                    navController.navigate(Screen.FriendProfile.createRoute(username, displayName, avatarUrl))
-                },
-                onOpenPlaylist = { playlistId ->
-                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
-                },
-                onOpenFeedPlaylist = { playlistId ->
-                    navController.navigate(Screen.FeedPlaylistDetail.createRoute(playlistId))
-                },
-                onOpenGenerator = {
-                    navController.navigate(Screen.Create.route) { launchSingleTop = true }
-                },
-                onOpenNewReleases = {
-                    navController.navigate(Screen.NewReleases.route)
-                },
-                onOpenDownloads = {
-                    navController.navigate(Screen.Downloads.route)
-                },
-                onOpenPodcasts = {
-                    navController.navigate(Screen.Podcasts.route)
-                },
-                onOpenPodcastShow = { showId ->
-                    navController.navigate(Screen.PodcastShow.createRoute(showId))
-                },
-                onOpenYouTubeLogin = {
-                    navController.navigate(Screen.YouTubeLogin.route)
-                },
-                onReturnToHome = {
-                    if (navController.currentDestination?.route != Screen.MainShell.route) {
-                        navController.popBackStack(Screen.MainShell.route, inclusive = false)
-                    } else {
-                        false
-                    }
-                },
-            )
-        }
+        // Drawn by LastWaveNavHost underneath, so it survives pushes.
+        composable(Screen.MainShell.route) {}
 
         composable(Screen.Create.route) { backStackEntry ->
             PredictiveBackScreen(onBack = { navController.safePopBackStack(backStackEntry) }) {

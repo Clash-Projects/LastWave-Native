@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -235,11 +236,15 @@ class ThemeRepository @Inject constructor(
         }.getOrNull()
     }
 
+    // Every key lives in one DataStore, so any unrelated write re-emitted both flows;
+    // each rebuild made new ColorSchemes and recomposed the whole app mid-navigation.
     val uiState: StateFlow<ThemeUiState> = combine(
-        themePreferences.prefs,
+        themePreferences.prefs.distinctUntilChanged(),
         dynamicHex,
         nowPlayingAccent,
-        settingsPreferences.settings,
+        settingsPreferences.settings.distinctUntilChangedBy {
+            Triple(it.dynamicNowPlayingEnabled, it.useCustomFont, it.useBoldFont)
+        },
     ) { prefs: ThemePrefs, dynamic: String?, nowPlaying: ArtworkAccent?, misc: MiscSettings ->
         val isAmoled = prefs.amoled
         val isGlass = prefs.liquidGlass
