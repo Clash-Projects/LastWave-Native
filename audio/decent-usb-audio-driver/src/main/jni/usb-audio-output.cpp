@@ -2,9 +2,7 @@
  * @file usb-audio-output.cpp
  * @brief Direct USB audio output via Linux usbdevfs isochronous transfers.
  *
- * Pipeline: pre-allocated ring buffer of USB_AUDIO_NUM_URBS (= 80) URBs.
- * No malloc/free during streaming — completely avoids ARM MTE pointer tag
- * issues on Samsung devices.
+ * Pipeline: a preallocated ring with an adjustable limit on in-flight URBs.
  *
  * ISO URBs with ISO_ASAP complete in FIFO order, so we use a simple ring
  * with submit/reap indices. No need to identify which URB was reaped.
@@ -81,55 +79,41 @@ static void convertFloatToInt32(const float *src, uint8_t *dst, int n) {
 
 // ── Ring buffer management ──────────────────────────────────────────
 
-/**
- * Allocate all URB slots in the ring buffer.
- * Called once at stream creation. All memory stays alive until destroy.
- */
-static bool allocRing(UsbAudioContext *ctx) {
-    size_t urbStructSize = sizeof(struct usbdevfs_urb) +
-                           USB_AUDIO_PACKETS_PER_URB * sizeof(struct usbdevfs_iso_packet_desc);
-    for (int i = 0; i < USB_AUDIO_NUM_URBS; i++) {
-        ctx->ring[i].urb = (struct usbdevfs_urb *)calloc(1, urbStructSize);
-        ctx->ring[i].buffer = (uint8_t *)malloc(USB_AUDIO_URB_BUFFER_SIZE);
-        ctx->ring[i].dataLength = 0;
-        if (!ctx->ring[i].urb || !ctx->ring[i].buffer) {
-            LOGE("allocRing: OOM at slot %d", i);
-            // Free what we allocated
-            for (int j = 0; j <= i; j++) {
-                free(ctx->ring[j].urb);
-                free(ctx->ring[j].buffer);
-            }
-            return false;
-        }
-    }
-    ctx->ringAllocated = true;
-    return true;
+constexpr int kMaxBufferMs = 480;
+
+static int packetPeriodMicroframes(const UsbAudioContext *ctx) {
+    // Isochronous bInterval is an exponent in frames (full speed) or
+    // microframes (high speed and faster).
+    const int exponent = std::clamp(ctx->dataInterval, 1, 16) - 1;
+    return (ctx->usbSpeed == USB_SPEED_FULL ? 8 : 1) << exponent;
 }
 
-/**
- * Free all URB slots. Called once at stream destruction.
- */
+static int bufferUrbCount(const UsbAudioContext *ctx, int bufferMs) {
+    const int urbUs = packetPeriodMicroframes(ctx) * 125 * USB_AUDIO_PACKETS_PER_URB;
+    const int requestedUs = std::clamp(bufferMs, 40, kMaxBufferMs) * 1000;
+    return (requestedUs + urbUs - 1) / urbUs;
+}
+
+static bool allocRing(UsbAudioContext *ctx, int bufferMs) {
+    ctx->ringCapacity = bufferUrbCount(ctx, kMaxBufferMs);
+    ctx->targetUrbs = bufferUrbCount(ctx, bufferMs);
+    const int maxPacketBytes = USB_AUDIO_URB_BUFFER_SIZE / USB_AUDIO_PACKETS_PER_URB;
+    ctx->slotBytes = ctx->maxPacketSize > 0
+            ? std::min(ctx->maxPacketSize, maxPacketBytes) * USB_AUDIO_PACKETS_PER_URB
+            : USB_AUDIO_URB_BUFFER_SIZE;
+    ctx->ring = static_cast<UrbSlot *>(calloc(ctx->ringCapacity, sizeof(UrbSlot)));
+    ctx->ringPcm = static_cast<uint8_t *>(malloc(
+            static_cast<size_t>(ctx->ringCapacity) * ctx->slotBytes));
+    return ctx->ring && ctx->ringPcm;
+}
+
 static void freeRing(UsbAudioContext *ctx) {
-    if (!ctx->ringAllocated) return;
-    for (int i = 0; i < USB_AUDIO_NUM_URBS; i++) {
-        free(ctx->ring[i].urb);
-        free(ctx->ring[i].buffer);
-        ctx->ring[i].urb = nullptr;
-        ctx->ring[i].buffer = nullptr;
-    }
-    ctx->ringAllocated = false;
+    free(ctx->ringPcm);
+    free(ctx->ring);
 }
 
-// ── USB helpers ─────────────────────────────────────────────────────
-
-static double packetPeriodMicroframes(const UsbAudioContext *ctx) {
-    const int interval = ctx->dataInterval > 0 ? ctx->dataInterval : 1;
-    if (ctx->usbSpeed == USB_SPEED_FULL) {
-        // Full-speed bInterval counts 1 ms frames, not an exponent.
-        return 8.0 * interval;
-    }
-    const int exponent = std::min(interval - 1, 15);
-    return static_cast<double>(1u << exponent);
+static void setBufferDuration(UsbAudioContext *ctx, int bufferMs) {
+    ctx->targetUrbs = bufferUrbCount(ctx, bufferMs);
 }
 
 // ── Continuous feedback ─────────────────────────────────────────────
@@ -195,9 +179,9 @@ static void handleFeedbackCompletion(UsbAudioContext *ctx) {
         // Feedback describes its service interval; scale to the data
         // endpoint's interval before sizing packets.
         const double period = ctx->usbSpeed == USB_SPEED_FULL
-                ? static_cast<double>(ctx->dataInterval)
+                ? packetPeriodMicroframes(ctx) / 8.0
                 : packetPeriodMicroframes(ctx);
-        const double nominal = ctx->sampleRate * period / 8000.0;
+        const double nominal = ctx->sampleRate * packetPeriodMicroframes(ctx) / 8000.0;
         newFpmf *= period;
         if (newFpmf > nominal * 0.99 && newFpmf < nominal * 1.01) {
             ctx->calibratedFpmf = newFpmf;
@@ -222,7 +206,7 @@ static void handleFeedbackCompletion(UsbAudioContext *ctx) {
  */
 static int submitRingUrb(UsbAudioContext *ctx, const int *pktSizes, int numPackets, int totalBytes) {
     UrbSlot *slot = &ctx->ring[ctx->submitIdx];
-    struct usbdevfs_urb *u = slot->urb;
+    struct usbdevfs_urb *u = slot->urb();
 
     // Clear the full URB struct including iso_frame_desc (stale actual_length/status)
     size_t clearSize = sizeof(struct usbdevfs_urb) +
@@ -232,13 +216,11 @@ static int submitRingUrb(UsbAudioContext *ctx, const int *pktSizes, int numPacke
     u->type = USBDEVFS_URB_TYPE_ISO;
     u->flags = USBDEVFS_URB_ISO_ASAP;
     u->endpoint = (unsigned char)ctx->endpointOut;
-    u->buffer = slot->buffer;
+    u->buffer = ctx->ringPcm + ctx->submitIdx * ctx->slotBytes;
     u->buffer_length = totalBytes;
     u->number_of_packets = numPackets;
     for (int i = 0; i < numPackets; i++)
         u->iso_frame_desc[i].length = (unsigned)pktSizes[i];
-
-    slot->dataLength = totalBytes;
 
     int ret = ioctl(ctx->fd, USBDEVFS_SUBMITURB, u);
     if (ret < 0) {
@@ -247,7 +229,7 @@ static int submitRingUrb(UsbAudioContext *ctx, const int *pktSizes, int numPacke
         return -1;
     }
 
-    ctx->submitIdx = (ctx->submitIdx + 1) % USB_AUDIO_NUM_URBS;
+    ctx->submitIdx = (ctx->submitIdx + 1) % ctx->ringCapacity;
     ctx->urbsInFlight++;
     return 0;
 }
@@ -281,10 +263,11 @@ static int reapOldestUrb(UsbAudioContext *ctx, int timeoutMs) {
                 continue;
             }
             // Audio URB reaped successfully
-            ctx->reapIdx = (ctx->reapIdx + 1) % USB_AUDIO_NUM_URBS;
+            ctx->reapIdx = (ctx->reapIdx + 1) % ctx->ringCapacity;
             ctx->urbsInFlight--;
             return 0;
         }
+        if (ret < 0 && errno == EINTR) continue;
         if (ret < 0 && errno != EAGAIN) {
             LOGE("reapOldestUrb: error errno=%d (%s)", errno, strerror(errno));
             return -1;
@@ -294,114 +277,40 @@ static int reapOldestUrb(UsbAudioContext *ctx, int timeoutMs) {
     return -2;  // timeout
 }
 
-/**
- * Drain ALL in-flight URBs. Blocks until every URB is reaped or timeout.
- * @return Number of URBs successfully drained
- */
-static int drainAllUrbs(UsbAudioContext *ctx) {
-    int drained = 0;
-    int initialCount = ctx->urbsInFlight;
-    LOGI("drainAllUrbs: draining %d URBs (feedback=%s)...",
-         initialCount, ctx->feedbackInFlight ? "in-flight" : "idle");
-
-    // Discard the feedback URB first so it doesn't interfere with draining
-    if (ctx->feedbackInFlight && ctx->feedbackUrb) {
+// The writer has stopped. Keep URB memory alive until every completion has
+// been reaped or the caller closes the USB connection.
+static bool drainAllUrbs(UsbAudioContext *ctx) {
+    if (ctx->feedbackInFlight) {
         ioctl(ctx->fd, USBDEVFS_DISCARDURB, ctx->feedbackUrb);
-        // Reap returns completions from any endpoint. Audio URBs seen here must
-        // still be counted, or the ring accounting below waits on URBs already gone.
-        for (int i = 0; i < 500 && ctx->feedbackInFlight; i++) {
-            struct usbdevfs_urb *c = nullptr;
-            if (ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c) == 0 && c != nullptr) {
-                if (c == ctx->feedbackUrb) {
-                    ctx->feedbackInFlight = false;
-                } else if (ctx->urbsInFlight > 0) {
-                    ctx->reapIdx = (ctx->reapIdx + 1) % USB_AUDIO_NUM_URBS;
-                    ctx->urbsInFlight--;
-                    drained++;
-                }
+    }
+
+    while (ctx->urbsInFlight > 0 && reapOldestUrb(ctx, 500) == 0) {}
+
+    for (int i = 0; i < ctx->urbsInFlight; ++i) {
+        const int slotIdx = (ctx->reapIdx + i) % ctx->ringCapacity;
+        ioctl(ctx->fd, USBDEVFS_DISCARDURB, ctx->ring[slotIdx].urb());
+    }
+
+    int idleWaits = 0;
+    while (ctx->urbsInFlight > 0 || ctx->feedbackInFlight) {
+        struct usbdevfs_urb *completed = nullptr;
+        if (ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &completed) == 0) {
+            if (ctx->feedbackInFlight && completed == ctx->feedbackUrb) {
+                ctx->feedbackInFlight = false;
                 continue;
             }
-            if (errno != EAGAIN) break;
-            usleep(100);
-        }
-    }
-
-    // Phase 1: try to reap naturally (URBs that completed normally)
-    while (ctx->urbsInFlight > 0) {
-        int result = reapOldestUrb(ctx, 500);
-        if (result == 0) {
-            drained++;
-        } else {
-            break;
-        }
-    }
-
-    if (ctx->urbsInFlight > 0) {
-        LOGW("drainAllUrbs: %d/%d reaped naturally, discarding remaining %d",
-             drained, initialCount, ctx->urbsInFlight);
-
-        // Phase 2: DISCARD all remaining URBs first
-        int toDiscard = ctx->urbsInFlight;
-        for (int i = 0; i < toDiscard; i++) {
-            int slotIdx = (ctx->reapIdx + i) % USB_AUDIO_NUM_URBS;
-            ioctl(ctx->fd, USBDEVFS_DISCARDURB, ctx->ring[slotIdx].urb);
-        }
-
-        // Phase 3: Reap ALL pending completions from the event ring.
-        // CRITICAL: Don't match 1:1 with discards — REAPURBNDELAY returns
-        // completions from ANY endpoint in ANY order. We must drain the
-        // entire completion queue to prevent event ring accumulation that
-        // would corrupt future streams.
-        int reaped = 0;
-        for (int attempt = 0; attempt < 500 && reaped < toDiscard; attempt++) {
-            struct usbdevfs_urb *c = nullptr;
-            int ret = ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c);
-            if (ret == 0 && c == ctx->feedbackUrb) {
-                ctx->feedbackInFlight = false;
-            } else if (ret == 0 && c != nullptr) {
-                reaped++;
-            } else if (ret < 0 && errno != EAGAIN) {
-                LOGE("drainAllUrbs: reap error errno=%d", errno);
-                break;
-            } else {
-                usleep(1000);  // 1ms
+            if (completed && ctx->urbsInFlight > 0) {
+                --ctx->urbsInFlight;
+                continue;
             }
+        } else if (errno != EAGAIN && errno != EINTR) {
+            return false;
         }
-        LOGI("drainAllUrbs: discarded %d, reaped %d completions", toDiscard, reaped);
-        drained += reaped;
-
-        // Phase 4: Flush any remaining stale completions (from previous
-        // sessions' leaked feedback URBs, etc.)
-        for (int i = 0; i < 10; i++) {
-            struct usbdevfs_urb *c = nullptr;
-            if (ioctl(ctx->fd, USBDEVFS_REAPURBNDELAY, &c) == 0 && c != nullptr) {
-                LOGW("drainAllUrbs: flushed stale completion %p", c);
-                drained++;
-            } else {
-                break;
-            }
-        }
+        if (++idleWaits == 500) return false;
+        usleep(1000);
     }
-
-    // Reset ring to clean state
-    ctx->urbsInFlight = 0;
-    ctx->submitIdx = 0;
-    ctx->reapIdx = 0;
-    ctx->frameAccumulator = 0.0;
-    ctx->residualBytes = 0;
-    memset(ctx->residualBuffer, 0, sizeof(ctx->residualBuffer));
-    if (ctx->running.load() && ctx->endpointFeedback > 0 && !ctx->feedbackInFlight) {
-        submitFeedbackUrb(ctx);
-    }
-
-    LOGI("drainAllUrbs: drained %d/%d, ring reset", drained, initialCount);
-    return drained;
+    return true;
 }
-
-// ── JNI entry points ────────────────────────────────────────────────
-
-// Forward declaration (defined after integer padding functions, non-static for native-audio-engine)
-void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalBytes);
 
 extern "C" {
 
@@ -409,7 +318,8 @@ JNIEXPORT jlong JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
         JNIEnv *, jobject, jint fd, jint ifId, jint epOut, jint epFb,
         jint rate, jint ch, jint bits, jint maxPkt, jint dataInterval,
-        jint feedbackPacketSize, jint feedbackInterval, jboolean continuousFeedback) {
+        jint feedbackPacketSize, jint feedbackInterval, jboolean continuousFeedback,
+        jint bufferMs) {
     const int usbSpeed = ioctl(fd, USBDEVFS_GET_SPEED, 0);
     if (usbSpeed != USB_SPEED_FULL && usbSpeed != USB_SPEED_HIGH &&
         usbSpeed != USB_SPEED_SUPER && usbSpeed != USB_SPEED_SUPER_PLUS) {
@@ -447,18 +357,18 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     ctx->submitIdx = 0;
     ctx->reapIdx = 0;
     ctx->urbsInFlight = 0;
-    ctx->ringAllocated = false;
     ctx->frameAccumulator = 0.0;
     ctx->calibratedFpmf = rate * packetPeriodMicroframes(ctx) / 8000.0;
     ctx->residualBytes = 0;
     memset(ctx->residualBuffer, 0, sizeof(ctx->residualBuffer));
-    memset(ctx->ring, 0, sizeof(ctx->ring));
     ctx->feedbackUrb = nullptr;
     ctx->feedbackInFlight = false;
     ctx->continuousFeedback = continuousFeedback == JNI_TRUE && epFb > 0;
     memset(ctx->feedbackBuffer, 0, sizeof(ctx->feedbackBuffer));
 
-    if (!allocRing(ctx)) {
+    if (!allocRing(ctx, bufferMs)) {
+        LOGE("USB ring allocation failed");
+        freeRing(ctx);
         delete ctx;
         return 0;
     }
@@ -470,6 +380,13 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioCreate(
     }
 
     return reinterpret_cast<jlong>(ctx);
+}
+
+JNIEXPORT void JNICALL
+Java_com_decent_usbaudio_UsbAudioStream_nativeSetBufferDuration(
+        JNIEnv *, jobject, jlong h, jint bufferMs) {
+    auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
+    if (ctx) setBufferDuration(ctx, bufferMs);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -498,7 +415,7 @@ JNIEXPORT jboolean JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
         JNIEnv *, jobject, jlong h) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
-    if (!ctx) return JNI_FALSE;
+    if (!ctx || ctx->urbsInFlight > 0 || ctx->feedbackInFlight) return JNI_FALSE;
     ctx->running.store(true);
     ctx->framesWritten = 0;
     ctx->submitIdx = 0;
@@ -514,7 +431,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioStart(
 
     LOGI("Start: rate=%d ch=%d bits=%d ring=%d slots×%dpkt fpmf=%.4f feedback=%s",
          ctx->sampleRate, ctx->channelCount, ctx->bitDepth,
-         USB_AUDIO_NUM_URBS, USB_AUDIO_PACKETS_PER_URB,
+         ctx->targetUrbs, USB_AUDIO_PACKETS_PER_URB,
          ctx->calibratedFpmf,
          ctx->feedbackInFlight ? "continuous" : "off");
     return JNI_TRUE;
@@ -607,7 +524,7 @@ Java_com_decent_usbaudio_UsbAudioStream_nativePump(
                 handleFeedbackCompletion(ctx);
                 continue;
             }
-            ctx->reapIdx = (ctx->reapIdx + 1) % USB_AUDIO_NUM_URBS;
+            ctx->reapIdx = (ctx->reapIdx + 1) % ctx->ringCapacity;
             if (ctx->urbsInFlight > 0) {
                 ctx->urbsInFlight--;
             }
@@ -629,13 +546,13 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeFlush(
          (long long)ctx->framesWritten);
 }
 
-JNIEXPORT jint JNICALL
+JNIEXPORT jboolean JNICALL
 Java_com_decent_usbaudio_UsbAudioStream_nativeDrainUrbs(
         JNIEnv *, jobject, jlong h) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
-    if (!ctx) return 0;
+    if (!ctx) return JNI_TRUE;
     ctx->running.store(false);
-    return drainAllUrbs(ctx);
+    return drainAllUrbs(ctx) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
@@ -643,21 +560,8 @@ Java_com_decent_usbaudio_UsbAudioStream_nativeUsbAudioDestroy(
         JNIEnv *, jobject, jlong h) {
     auto *ctx = reinterpret_cast<UsbAudioContext *>(h);
     if (!ctx) return;
-    ctx->running.store(false);
-
-    if (ctx->urbsInFlight > 0 || ctx->feedbackInFlight) {
-        drainAllUrbs(ctx);
-    }
-
     freeRing(ctx);
-    // A URB the kernel never gave back is leaked on purpose: a later reap on
-    // this fd would write its completion status into freed memory.
-    if (ctx->feedbackInFlight) {
-        LOGW("Destroy: feedback URB still owned by the kernel; not freeing it");
-    } else {
-        free(ctx->feedbackUrb);
-    }
-    ctx->feedbackUrb = nullptr;
+    free(ctx->feedbackUrb);
     free(ctx->transferBuffer);
     LOGI("Destroy: %lld frames total", (long long)ctx->framesWritten);
     delete ctx;
@@ -803,11 +707,14 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
     if (ctx->residualBytes > 0 && totalBytes > 0) {
         dataLen = ctx->residualBytes + totalBytes;
         mergedBuf = (uint8_t *)malloc(dataLen);
-        if (mergedBuf) {
-            memcpy(mergedBuf, ctx->residualBuffer, ctx->residualBytes);
-            memcpy(mergedBuf + ctx->residualBytes, pcmData, totalBytes);
-            data = mergedBuf;
+        if (!mergedBuf) {
+            LOGE("USB PCM buffer allocation failed");
+            ctx->running.store(false);
+            return;
         }
+        memcpy(mergedBuf, ctx->residualBuffer, ctx->residualBytes);
+        memcpy(mergedBuf + ctx->residualBytes, pcmData, totalBytes);
+        data = mergedBuf;
         ctx->residualBytes = 0;
     }
 
@@ -838,7 +745,7 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
                 break;
             }
 
-            if (urbBytes + b > USB_AUDIO_URB_BUFFER_SIZE) {
+            if (urbBytes + b > ctx->slotBytes) {
                 break;
             }
 
@@ -872,29 +779,24 @@ void submitPcmToUrbs(UsbAudioContext *ctx, const uint8_t *pcmData, int totalByte
             break;
         }
 
-        if (ctx->urbsInFlight >= USB_AUDIO_NUM_URBS) {
+        while (ctx->running.load() && ctx->urbsInFlight >= ctx->targetUrbs) {
             int result = reapOldestUrb(ctx, 200);
-            if (result == -2) {
-                // Reap timed out: retry with a longer wait instead of discarding
-                // in-flight URBs, which would destroy valid audio frames.
+            if (result == -2 && ctx->running.load()) {
                 result = reapOldestUrb(ctx, 300);
-                if (result == -2) {
-                    LOGW("submitPcmToUrbs: reap timeout, inflight=%d", ctx->urbsInFlight);
-                    usleep(1000);
-                    continue;
-                }
+            }
+            if (result == -2) {
+                LOGW("submitPcmToUrbs: reap timeout, inflight=%d", ctx->urbsInFlight);
             } else if (result < 0) {
                 ctx->running.store(false);
-                free(mergedBuf);
-                return;
             }
         }
-
-        UrbSlot *slot = &ctx->ring[ctx->submitIdx];
-        if (slot->dataLength > urbBytes) {
-            memset(slot->buffer + urbBytes, 0, slot->dataLength - urbBytes);
+        if (!ctx->running.load()) {
+            free(mergedBuf);
+            return;
         }
-        memcpy(slot->buffer, data + offset, urbBytes);
+
+        uint8_t *slotPcm = ctx->ringPcm + ctx->submitIdx * ctx->slotBytes;
+        memcpy(slotPcm, data + offset, urbBytes);
 
         if (submitRingUrb(ctx, pktSizes, numPackets, urbBytes) < 0) {
             LOGE("submitPcmToUrbs: submit failed, stopping stream");

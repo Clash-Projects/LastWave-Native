@@ -10,15 +10,14 @@ import android.util.Log
  * DAC via Linux usbdevfs isochronous transfers, bypassing the entire Android
  * audio stack (AudioFlinger, AudioTrack, AAudio).
  *
- * Pipeline: 80 URBs in flight, each carrying 8 ISO packets (1 ms of audio).
- * Total pipeline buffer: ~80 ms.
+ * Each URB spans eight endpoint service intervals. The configured duration
+ * controls how many audio URBs can be queued.
  *
  * Rate transition lifecycle (per USB Audio Class 2.0 spec, verified via xHCI ftrace):
  * ```
  * stream.stop()           // stop accepting writes
- * stream.drainUrbs()      // block until ALL in-flight URBs complete
- * stream.release()        // free native context
- * // Kotlin layer does: setAlt(0) -> SET_CUR rate -> setAlt(N)
+ * stream.release(closeDevice) // drain transfers before releasing the native context
+ * // Kotlin layer does: close and reopen the connection, then set the rate and alternate setting.
  * newStream = UsbAudioStream(fd, ...)
  * newStream.start()
  * newStream.write(pcm)    // pipeline fills naturally
@@ -46,7 +45,8 @@ class UsbAudioStream(
         dataInterval: Int,
         feedbackPacketSize: Int,
         feedbackInterval: Int,
-        continuousFeedback: Boolean = false
+        continuousFeedback: Boolean = false,
+        bufferMs: Int = 80,
 ) {
 
     /** Native UsbAudioContext pointer. Exposed for NativeAudioEngine which
@@ -58,7 +58,7 @@ class UsbAudioStream(
         nativeHandle = nativeUsbAudioCreate(
                 fd, interfaceId, endpointOut, endpointFeedback,
                 sampleRate, channelCount, bitDepth, maxPacketSize,
-                dataInterval, feedbackPacketSize, feedbackInterval, continuousFeedback
+                dataInterval, feedbackPacketSize, feedbackInterval, continuousFeedback, bufferMs,
         )
         if (nativeHandle == 0L) {
             Log.e(TAG, "nativeUsbAudioCreate returned 0 — check logcat for native errors")
@@ -115,7 +115,7 @@ class UsbAudioStream(
      * Write interleaved float32 PCM to the USB DAC.
      *
      * The native layer converts to the target bit depth, splits into
-     * 1ms URBs (8 ISO packets each), and manages the 64-URB pipeline.
+     * URBs of eight endpoint service intervals each.
      * This call blocks when the pipeline is full (natural backpressure
      * matching the DAC's clock rate).
      *
@@ -147,9 +147,14 @@ class UsbAudioStream(
         nativeUsbAudioWriteRaw(nativeHandle, pcmBuffer, inputBitDepth)
     }
 
+    /** Apply a new duration on the writer thread that owns the URB queue. */
+    fun setBufferDuration(bufferMs: Int) {
+        if (nativeHandle != 0L) nativeSetBufferDuration(nativeHandle, bufferMs)
+    }
+
     /**
      * Stop accepting new writes. Does NOT drain the pipeline.
-     * Call [drainUrbs] after this to wait for all in-flight URBs to complete.
+     * Call [release] after the writer has exited.
      */
     fun stop() {
         if (nativeHandle == 0L) return
@@ -171,26 +176,13 @@ class UsbAudioStream(
         nativePump(nativeHandle)
     }
 
-    /**
-     * Drain all in-flight URBs. Blocks until every URB is reaped.
-     *
-     * This MUST be called after [stop] and BEFORE the Kotlin layer calls
-     * setAlt(0) on the USB device. The xHCI Configure Endpoint Command
-     * triggered by setAlt(0) frees the isochronous ring — if any URBs
-     * are still in the ring, the host controller state becomes corrupted.
-     *
-     * @return Number of URBs successfully drained
-     */
-    fun drainUrbs(): Int {
-        if (nativeHandle == 0L) return 0
-        return nativeDrainUrbs(nativeHandle)
-    }
-
-    /**
-     * Release all native resources. The instance must not be used after this.
-     */
-    fun release() {
+    /** Drain transfers before freeing their buffers. Close the device if the drain fails. */
+    fun release(closeDevice: () -> Unit) {
         if (nativeHandle == 0L) return
+        if (!nativeDrainUrbs(nativeHandle)) {
+            Log.w(TAG, "USB drain incomplete, closing the device before freeing buffers")
+            closeDevice()
+        }
         nativeUsbAudioDestroy(nativeHandle)
         nativeHandle = 0L
         Log.i(TAG, "UsbAudioStream released")
@@ -202,9 +194,10 @@ class UsbAudioStream(
             fd: Int, interfaceId: Int, endpointOut: Int, endpointFeedback: Int,
             sampleRate: Int, channelCount: Int, bitDepth: Int, maxPacketSize: Int,
             dataInterval: Int, feedbackPacketSize: Int, feedbackInterval: Int,
-            continuousFeedback: Boolean
+            continuousFeedback: Boolean, bufferMs: Int,
     ): Long
 
+    private external fun nativeSetBufferDuration(handle: Long, bufferMs: Int)
     private external fun nativeUsbAudioSetAltSetting(handle: Long, altSetting: Int): Boolean
     private external fun nativeUsbAudioSetSampleRate(handle: Long, sampleRateHz: Int, clockSourceId: Int): Boolean
     private external fun nativeUsbAudioStart(handle: Long): Boolean
@@ -213,7 +206,7 @@ class UsbAudioStream(
     private external fun nativeUsbAudioStop(handle: Long)
     private external fun nativeFlush(handle: Long)
     private external fun nativePump(handle: Long)
-    private external fun nativeDrainUrbs(handle: Long): Int
+    private external fun nativeDrainUrbs(handle: Long): Boolean
     private external fun nativeUsbAudioDestroy(handle: Long)
     private external fun nativeIsRunning(handle: Long): Boolean
     private external fun nativeGetFramesWritten(handle: Long): Long

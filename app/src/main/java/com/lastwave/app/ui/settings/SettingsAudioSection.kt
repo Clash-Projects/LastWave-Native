@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Vibration
+import com.lastwave.app.playback.usb.UsbExclusivePrefs
 import com.lastwave.app.data.local.DsdOutputMode
 import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
@@ -320,18 +321,7 @@ internal fun CrossfadeDurationRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Text(
-                        "${sliderValue.roundToInt()}s",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
+                DurationValueBadge("${sliderValue.roundToInt()}s")
             }
             Slider(
                 value = sliderValue,
@@ -353,15 +343,42 @@ internal fun CrossfadeDurationRow(
                     .fillMaxWidth()
                     .padding(top = 6.dp),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(stringResource(R.string.set_xfade_1), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                Text(stringResource(R.string.set_xfade_6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                Text(stringResource(R.string.set_xfade_12), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-            }
+            DurationScaleLabels(
+                stringResource(R.string.set_xfade_1),
+                stringResource(R.string.set_xfade_6),
+                stringResource(R.string.set_xfade_12),
+            )
         }
+    }
+}
+
+@Composable
+private fun DurationValueBadge(value: String) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun DurationScaleLabels(min: String, middle: String, max: String) {
+    val style = MaterialTheme.typography.labelSmall
+    val color = MaterialTheme.colorScheme.outline
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(min, style = style, color = color)
+        Text(middle, style = style, color = color)
+        Text(max, style = style, color = color)
     }
 }
 
@@ -792,6 +809,58 @@ internal fun clarityPresetDescription(preset: com.lastwave.app.playback.ClarityP
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun UsbBufferDurationDialog(bufferMs: Int, onSave: (Int) -> Unit, onDismiss: () -> Unit) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var selectedMs by rememberSaveable(bufferMs) { mutableStateOf(bufferMs) }
+    val min = UsbExclusivePrefs.MIN_BUFFER_MS
+    val max = UsbExclusivePrefs.MAX_BUFFER_MS
+    val step = UsbExclusivePrefs.BUFFER_STEP_MS
+    val intervals = (max - min) / step
+    val middle = min + (intervals / 2) * step
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.set_usb_buffer_title)) },
+        text = {
+            Column {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    DurationValueBadge(stringResource(R.string.set_usb_buffer_ms, selectedMs))
+                }
+                Slider(
+                    value = selectedMs.toFloat(),
+                    onValueChange = { value ->
+                        val durationMs = UsbExclusivePrefs.normalizeBufferMs(value.roundToInt())
+                        if (durationMs != selectedMs) {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            selectedMs = durationMs
+                        }
+                    },
+                    valueRange = min.toFloat()..max.toFloat(),
+                    steps = intervals - 1,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+                DurationScaleLabels(
+                    stringResource(R.string.set_usb_buffer_ms, min),
+                    stringResource(R.string.set_usb_buffer_ms, middle),
+                    stringResource(R.string.set_usb_buffer_ms, max),
+                )
+                TextButton(
+                    onClick = { selectedMs = UsbExclusivePrefs.DEFAULT_BUFFER_MS },
+                    enabled = selectedMs != UsbExclusivePrefs.DEFAULT_BUFFER_MS,
+                ) {
+                    Text(stringResource(R.string.set_usb_buffer_reset))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(selectedMs) }) { Text(stringResource(R.string.common_done)) }
+        },
+    )
+}
+
 @Composable
 internal fun LoudnessModeDialog(
     current: LoudnessMode,

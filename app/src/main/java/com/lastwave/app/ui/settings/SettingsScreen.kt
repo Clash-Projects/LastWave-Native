@@ -420,6 +420,9 @@ fun SettingsScreen(
     val spotifyConnected by viewModel.spotifyConnected.collectAsStateWithLifecycle()
     val eq by viewModel.equalizer.collectAsStateWithLifecycle()
     val usbExclusiveEnabled by viewModel.usbExclusiveEnabled.collectAsStateWithLifecycle()
+    val showUsbBuffer = usbExclusiveEnabled &&
+        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+    val usbBufferDurationMs by viewModel.usbBufferDurationMs.collectAsStateWithLifecycle()
     val internalDirectEnabled by viewModel.internalDirectEnabled.collectAsStateWithLifecycle()
     val forceSoftwareVolume by viewModel.forceSoftwareVolume.collectAsStateWithLifecycle()
     val internalDirectAvailability by viewModel.internalDirectAvailability.collectAsStateWithLifecycle()
@@ -462,6 +465,7 @@ fun SettingsScreen(
     var showLyricsAutoHideDialog by remember { mutableStateOf(false) }
     var showTranslationLanguageDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
+    var showUsbBufferDialog by rememberSaveable(showUsbBuffer) { mutableStateOf(false) }
     var showDsdOutputModeDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
@@ -472,7 +476,7 @@ fun SettingsScreen(
     var showCookieLoginDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showJamSheet by remember { mutableStateOf(false) }
-    var activeToggleDetail by remember { mutableStateOf<ToggleDetailInfo?>(null) }
+    var activeSettingDetail by remember { mutableStateOf<SettingDetailInfo?>(null) }
     val currentLanguage = remember(misc.appLanguageTag) { AppLanguage.fromTag(misc.appLanguageTag) }
 
     // Sends the user to Android's own Notification Listener access screen
@@ -506,7 +510,7 @@ fun SettingsScreen(
     }
 
     CompositionLocalProvider(
-        LocalToggleDetailViewer provides { activeToggleDetail = it },
+        LocalSettingDetailViewer provides { activeSettingDetail = it },
     ) {
         var activeTab by remember { mutableStateOf<SettingsTab?>(null) }
         var isSearchBarVisible by rememberSaveable { mutableStateOf(false) }
@@ -1076,8 +1080,9 @@ fun SettingsScreen(
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 10) { index, position ->
-                        when (index) {
+                    SettingsGroup(rowCount = if (showUsbBuffer) 11 else 10) { index, position ->
+                        val row = if (!showUsbBuffer && index > 0) index + 1 else index
+                        when (row) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
@@ -1095,7 +1100,20 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.usb_exclusive"),
                             )
-                            1 -> {
+                            1 -> SettingsActionCard(
+                                icon = Icons.Filled.Tune,
+                                iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                title = stringResource(R.string.set_usb_buffer_title),
+                                subtitle = stringResource(R.string.set_usb_buffer_ms, usbBufferDurationMs),
+                                onClick = { showUsbBufferDialog = true },
+                                position = position,
+                                detailDescription = stringResource(
+                                    R.string.set_usb_buffer_description,
+                                    com.lastwave.app.playback.usb.UsbExclusivePrefs.DEFAULT_BUFFER_MS,
+                                ),
+                            )
+                            2 -> {
                                 // Probe what this output accepts only once the row is on screen.
                                 LaunchedEffect(Unit) { viewModel.refreshInternalDirectAvailability() }
                                 SettingsToggleCard(
@@ -1122,7 +1140,7 @@ fun SettingsScreen(
                                 isHighlighted = (highlightedSettingId == "audio.internal_direct"),
                             )
                             }
-                            2 -> SettingsToggleCard(
+                            3 -> SettingsToggleCard(
                                 icon = Icons.Filled.VolumeDown,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1137,7 +1155,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.force_software_volume"),
                             )
-                            3 -> SettingsActionCard(
+                            4 -> SettingsActionCard(
                                 icon = Icons.Filled.VolumeUp,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1147,7 +1165,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.loudness_normalization"),
                             )
-                            4 -> SettingsActionCard(
+                            5 -> SettingsActionCard(
                                 icon = Icons.Filled.GraphicEq,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1163,7 +1181,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.equalizer"),
                             )
-                            5 -> SettingsToggleCard(
+                            6 -> SettingsToggleCard(
                                 icon = Icons.Filled.SurroundSound,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1178,7 +1196,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.system_audio_effects"),
                             )
-                            6 -> SettingsToggleCard(
+                            7 -> SettingsToggleCard(
                                 icon = Icons.Filled.Waves,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1193,7 +1211,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.studio_clarity"),
                             )
-                            7 -> SettingsActionCard(
+                            8 -> SettingsActionCard(
                                 icon = Icons.Filled.Headphones,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1203,7 +1221,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.autoeq"),
                             )
-                            8 -> SettingsToggleCard(
+                            9 -> SettingsToggleCard(
                                 icon = Icons.Filled.LinearScale,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1214,7 +1232,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.show_autoeq_in_volume_panel"),
                             )
-                            9 -> SettingsActionCard(
+                            10 -> SettingsActionCard(
                                 icon = Icons.Filled.Tune,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -2893,6 +2911,17 @@ fun SettingsScreen(
         )
     }
 
+    if (showUsbBuffer && showUsbBufferDialog) {
+        UsbBufferDurationDialog(
+            bufferMs = usbBufferDurationMs,
+            onSave = {
+                viewModel.setUsbBufferDuration(it)
+                showUsbBufferDialog = false
+            },
+            onDismiss = { showUsbBufferDialog = false },
+        )
+    }
+
     if (showLoudnessDialog) {
         LoudnessModeDialog(
             current = loudness.mode,
@@ -3322,10 +3351,11 @@ fun SettingsScreen(
         }
     }
 
-    if (activeToggleDetail != null) {
-        val detail = activeToggleDetail!!
+    if (activeSettingDetail != null) {
+        val detail = activeSettingDetail!!
+        val emphasized = detail.checked != false
         Dialog(
-            onDismissRequest = { activeToggleDetail = null },
+            onDismissRequest = { activeSettingDetail = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Box(
@@ -3340,7 +3370,7 @@ fun SettingsScreen(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = { activeToggleDetail = null },
+                            onClick = { activeSettingDetail = null },
                         ),
                 )
                 Card(
@@ -3369,27 +3399,27 @@ fun SettingsScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = if (detail.checked) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                color = if (emphasized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier.size(44.dp),
                             ) {
                                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                     Icon(
-                                        imageVector = if (detail.checked) Icons.Filled.Check else Icons.Filled.Info,
+                                        imageVector = if (detail.checked == true) Icons.Filled.Check else Icons.Filled.Info,
                                         contentDescription = null,
-                                        tint = if (detail.checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(24.dp),
                                     )
                                 }
                             }
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (detail.checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                color = if (emphasized) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
                             ) {
                                 Text(
-                                    text = if (detail.checked) "Enabled" else "Disabled",
+                                    text = detail.value ?: if (detail.checked == true) "Enabled" else "Disabled",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (detail.checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                 )
                             }
@@ -3410,7 +3440,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(20.dp))
                         FilledTonalButton(
-                            onClick = { activeToggleDetail = null },
+                            onClick = { activeSettingDetail = null },
                             modifier = Modifier.align(Alignment.End),
                             shape = CircleShape,
                         ) {

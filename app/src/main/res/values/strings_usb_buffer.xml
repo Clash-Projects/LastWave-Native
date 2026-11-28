@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="set_usb_buffer_title">USB Buffer</string>
+    <string name="set_usb_buffer_ms">%1$d ms</string>
+    <string name="set_usb_buffer_reset">Reset to default</string>
+    <string name="set_usb_buffer_description">Controls how much audio LastWave queues for USB Exclusive Output. A larger buffer can help prevent dropouts, but pause and seek may respond more slowly. The default is %1$d ms.</string>
+</resources>

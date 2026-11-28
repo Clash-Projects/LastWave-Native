@@ -38,6 +38,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import com.decent.usbaudio.UsbAudioDevice
 import com.decent.usbaudio.UsbAudioStream
+import com.lastwave.app.playback.usb.UsbExclusivePrefs
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -73,6 +74,7 @@ class ExclusiveUsbOutput @Inject constructor(
 
     private val usbAudio = UsbAudioDevice.getInstance(appContext)
     private var stream: UsbAudioStream? = null
+    @Volatile private var bufferDurationMs = UsbExclusivePrefs.DEFAULT_BUFFER_MS
     private val pcmLock = Object()
     private val pcmQueue = ArrayDeque<QueuedPcm>()
     // Arrays the writer has finished with (guarded by pcmLock). Media3 hands over
@@ -161,6 +163,10 @@ class ExclusiveUsbOutput @Inject constructor(
                 }
             }
         }
+    }
+
+    fun setBufferDuration(durationMs: Int) {
+        bufferDurationMs = durationMs
     }
 
     fun isWanted(): Boolean = wanted
@@ -819,6 +825,7 @@ class ExclusiveUsbOutput @Inject constructor(
         val pollFeedback = selectedFeedback != null &&
             UsbAudioDevice.needsContinuousFeedback(usbDevice.vendorId, usbDevice.productId)
         if (pollFeedback) waitForClockValid()
+        val initialBufferMs = bufferDurationMs
         val created = UsbAudioStream(
             info.fd,
             info.interfaceId,
@@ -832,9 +839,10 @@ class ExclusiveUsbOutput @Inject constructor(
             feedbackPacketSize,
             feedbackInterval,
             pollFeedback,
+            bufferMs = initialBufferMs,
         )
         if (!created.isReady || !created.start()) {
-            created.release()
+            created.release(usbAudio::closeDevice)
             return failLocked("decent USB start failed")
         }
         connection = info.connection
@@ -902,7 +910,7 @@ class ExclusiveUsbOutput @Inject constructor(
         sessionSummary = "started rate=${effectiveRate}Hz alt=$alt wireBits=$wireBits reported=$reported " +
             "clockMatched=$clockMatched fallback=$autoNegotiatedFallback hardwareVolume=$hardwareVolume " +
             "maxPacket=$maxPacket interval=$dataInterval feedback=${selectedFeedback != null} feedbackPolled=$pollFeedback"
-        startWriterLocked(created)
+        startWriterLocked(created, initialBufferMs)
         return true
     }
 
@@ -1057,11 +1065,11 @@ class ExclusiveUsbOutput @Inject constructor(
         softwareGainValue = if (hardwareVolume) app else UacFeatureVolume.perceptualLinearGain(listening) * app
     }
 
-    private fun startWriterLocked(target: UsbAudioStream) {
+    private fun startWriterLocked(target: UsbAudioStream, bufferMs: Int) {
         stopWriterLocked()
         writerStop = false
         flushRequested = false
-        val thread = Thread({ writeLoop(target) }, "ExclusiveUsbWriter")
+        val thread = Thread({ writeLoop(target, bufferMs) }, "ExclusiveUsbWriter")
         writer = thread
         thread.start()
     }
@@ -1085,8 +1093,14 @@ class ExclusiveUsbOutput @Inject constructor(
         writer = null
     }
 
-    private fun writeLoop(target: UsbAudioStream) {
+    private fun writeLoop(target: UsbAudioStream, initialBufferMs: Int) {
+        var lastBufferMs = initialBufferMs
         while (!writerStop) {
+            val requestedBufferMs = bufferDurationMs
+            if (requestedBufferMs != lastBufferMs) {
+                target.setBufferDuration(requestedBufferMs)
+                lastBufferMs = requestedBufferMs
+            }
             val next = synchronized(pcmLock) {
                 if (!writerStop && !flushRequested && (paused || pcmQueue.isEmpty())) {
                     pcmLock.wait(20)
@@ -1170,10 +1184,7 @@ class ExclusiveUsbOutput @Inject constructor(
         stopWriterLocked()
         // The writer thread is now guaranteed dead, so releasing native state is
         // safe. Releasing it while the writer was still alive was a use-after-free.
-        if (running != null) {
-            runCatching { running.drainUrbs() }
-            runCatching { running.release() }
-        }
+        running?.release(usbAudio::closeDevice)
         stream = null
         isDsdStream = false
         synchronized(stateLock) {
@@ -1297,13 +1308,9 @@ class ExclusiveUsbOutput @Inject constructor(
             usbSpeed: Int = 3,
         ): Int {
             val bpf = ((bitDepth + 7) / 8).coerceAtLeast(1) * channels.coerceIn(1, 8)
-            val safeInterval = interval.coerceAtLeast(1)
-            val nominalPerPacket = if (usbSpeed == 2) {
-                rateHz.toDouble() * safeInterval / 1000.0
-            } else {
-                val microframes = 1 shl (safeInterval - 1).coerceAtMost(15)
-                rateHz.toDouble() * microframes / 8000.0
-            }
+            val serviceInterval = 1 shl (interval.coerceIn(1, 16) - 1)
+            val intervalsPerSecond = if (usbSpeed == 2) 1000.0 else 8000.0
+            val nominalPerPacket = rateHz * serviceInterval.toDouble() / intervalsPerSecond
             val frames = kotlin.math.ceil(nominalPerPacket).toInt().coerceAtLeast(1)
             return frames * bpf
         }
