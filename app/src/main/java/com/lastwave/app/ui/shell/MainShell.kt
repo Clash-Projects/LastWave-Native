@@ -235,6 +235,7 @@ object FloatingNavDefaults {
         val basePadding = when {
             hideNav -> 16.dp
             LocalMd3NavBar.current -> ContentBottomPadding
+            !LocalLiquidGlass.current -> 94.dp
             else -> 80.dp
         }
         return basePadding +

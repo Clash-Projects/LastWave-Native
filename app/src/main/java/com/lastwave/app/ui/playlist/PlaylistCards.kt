@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -93,6 +94,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -375,13 +377,16 @@ internal fun PlaylistCard(
     }
 }
 
-/** Library's Downloads entry: side-by-side hero card opening the Downloads screen. */
+/** Shared hero card for Library's top shortcuts (Local songs & Downloads) using consistent theme accent colors. */
 @Composable
-internal fun DownloadsHeroCard(
-    downloadedCount: Int,
+private fun LibraryHeroCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    shape: androidx.compose.ui.graphics.Shape,
     onClick: () -> Unit,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
     modifier: Modifier = Modifier,
+    badgeOverlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -389,13 +394,13 @@ internal fun DownloadsHeroCard(
     val cardScale by animateFloatAsState(
         targetValue = if (isPressed) 0.98f else 1f,
         animationSpec = ExpressiveMotion.spatialFast(),
-        label = "downloadsHeroScale",
+        label = "libraryHeroScale",
     )
-    val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
     Card(
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .fillMaxWidth()
@@ -414,26 +419,29 @@ internal fun DownloadsHeroCard(
                 .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.size(52.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.Download,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onTertiary,
-                        modifier = Modifier.size(26.dp),
-                    )
+            Box(Modifier.size(52.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
                 }
+                badgeOverlay?.invoke(this)
             }
 
             Spacer(Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "Downloads",
+                    text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = contentColor,
@@ -442,11 +450,7 @@ internal fun DownloadsHeroCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = if (downloadedCount > 0) {
-                        stringResource(R.string.pd_track_count, downloadedCount)
-                    } else {
-                        "0 tracks"
-                    },
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = contentColor.copy(alpha = 0.78f),
                     maxLines = 1,
@@ -457,116 +461,54 @@ internal fun DownloadsHeroCard(
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+/** Library's Downloads entry: side-by-side hero card opening the Downloads screen. */
+@Composable
+internal fun DownloadsHeroCard(
+    downloadedCount: Int,
+    onClick: () -> Unit,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
+    modifier: Modifier = Modifier,
+) {
+    LibraryHeroCard(
+        title = "Downloads",
+        subtitle = if (downloadedCount > 0) stringResource(R.string.pd_track_count, downloadedCount) else "0 tracks",
+        icon = Icons.Filled.Download,
+        shape = shape,
+        onClick = onClick,
+        modifier = modifier,
+    )
+}
+
 @Composable
 internal fun LocalSongsHeroCard(
     playlist: SavedPlaylist,
     isPlaying: Boolean,
     playbackSource: String,
     onClick: () -> Unit,
-    onPlay: () -> Unit = {},
+    @Suppress("UNUSED_PARAMETER") onPlay: () -> Unit = {},
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(GroupOuterRadius),
     modifier: Modifier = Modifier,
 ) {
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val isThisPlaylistPlaying = isPlaying && playbackSource == playlist.title
-
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val cardScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.98f else 1f,
-        animationSpec = ExpressiveMotion.spatialFast(),
-        label = "localHeroScale",
-    )
-    val containerColor by animateColorAsState(
-        targetValue = if (isThisPlaylistPlaying) {
-            MaterialTheme.colorScheme.primaryContainer
+    LibraryHeroCard(
+        title = "Local songs",
+        subtitle = if (playlist.tracks.isNotEmpty()) {
+            stringResource(R.string.pd_track_count, playlist.tracks.size)
         } else {
-            MaterialTheme.colorScheme.secondaryContainer
+            stringResource(R.string.local_choose_folder)
         },
-        animationSpec = ExpressiveMotion.effectsDefault(),
-        label = "localHeroBg",
-    )
-    val contentColor = if (isThisPlaylistPlaying) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSecondaryContainer
-    }
-
-    Card(
+        icon = Icons.Filled.FolderOpen,
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = cardScale
-                scaleY = cardScale
-            },
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
-                        onClick()
-                    },
-                )
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(52.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.FolderOpen,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondary,
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-                }
-                if (isThisPlaylistPlaying) {
-                    com.lastwave.app.ui.player.PlayingWaveBars(
-                        Modifier.align(Alignment.BottomEnd).padding(3.dp).size(20.dp, 16.dp),
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = "Local songs",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = contentColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = if (playlist.tracks.isNotEmpty()) {
-                        stringResource(R.string.pd_track_count, playlist.tracks.size)
-                    } else {
-                        stringResource(R.string.local_choose_folder)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = 0.78f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        onClick = onClick,
+        modifier = modifier,
+        badgeOverlay = if (isThisPlaylistPlaying) {
+            {
+                com.lastwave.app.ui.player.PlayingWaveBars(
+                    Modifier.align(Alignment.BottomEnd).padding(3.dp).size(20.dp, 16.dp),
                 )
             }
-        }
-    }
+        } else null,
+    )
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
