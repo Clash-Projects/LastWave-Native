@@ -72,6 +72,7 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import com.lastwave.app.data.discover.DiscoverRepository
 import com.lastwave.app.data.generate.GeneratedTrack
+import com.lastwave.app.data.generate.normalizeTrackText
 import com.lastwave.app.data.generate.youtubeVideoIdOrNull
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.CacheStoragePolicy
@@ -247,6 +248,172 @@ internal fun MusicPlayer.replaceMediaItemPreservingShuffle(index: Int, mediaItem
     }
 
 /**
+ * Snapshot + reordered queue produced by enabling or disabling One-Time Queue Shuffle.
+ */
+internal data class OneTimeShuffleResult<T>(
+    val queue: List<T>,
+    val currentIndex: Int,
+    val originalQueue: List<T>?,
+)
+
+/**
+ * Pure, unit-testable queue & index transitions for One-Time Queue Shuffle
+ * (`persistentShuffle == false`) and Persistent Shuffle (`persistentShuffle == true`).
+ */
+internal object ShuffleQueueLogic {
+
+    /**
+     * Stable key for matching tracks across stream resolution / metadata enrichment:
+     * genuine local files keep their path/URI; streamed tracks match by normalized artist|title
+     * (never by transient resolved URLs or lazily-learned videoIds).
+     */
+    fun stableTrackKey(track: PlayableTrack): String =
+        if (track.isLocalTrack()) {
+            "local:${track.playbackUrl.orEmpty()}"
+        } else {
+            "${track.artist.normalizeTrackText().lowercase()}|${track.title.normalizeTrackText().lowercase()}"
+        }
+
+    fun <T> enableOneTimeShuffle(
+        queue: List<T>,
+        currentIndex: Int,
+        originalSnapshot: List<T>? = null,
+        random: Random = Random.Default,
+    ): OneTimeShuffleResult<T> {
+        if (queue.isEmpty()) {
+            return OneTimeShuffleResult(queue = emptyList(), currentIndex = -1, originalQueue = null)
+        }
+        val safeIndex = currentIndex.coerceIn(queue.indices)
+        val snapshot = originalSnapshot?.takeIf { it.isNotEmpty() } ?: queue.toList()
+        if (queue.size == 1) {
+            return OneTimeShuffleResult(queue = queue.toList(), currentIndex = 0, originalQueue = snapshot)
+        }
+        val currentTrack = queue[safeIndex]
+        val remaining = queue.indices
+            .filter { it != safeIndex }
+            .map { queue[it] }
+            .shuffled(random)
+        return OneTimeShuffleResult(
+            queue = listOf(currentTrack) + remaining,
+            currentIndex = 0,
+            originalQueue = snapshot,
+        )
+    }
+
+    fun <T> disableOneTimeShuffle(
+        shuffledQueue: List<T>,
+        currentIndex: Int,
+        originalQueue: List<T>?,
+        keyOf: (T) -> String,
+    ): OneTimeShuffleResult<T> {
+        if (shuffledQueue.isEmpty()) {
+            return OneTimeShuffleResult(queue = emptyList(), currentIndex = -1, originalQueue = null)
+        }
+        val safeIndex = currentIndex.coerceIn(shuffledQueue.indices)
+        val activeTrack = shuffledQueue[safeIndex]
+        if (originalQueue.isNullOrEmpty()) {
+            return OneTimeShuffleResult(
+                queue = shuffledQueue.toList(),
+                currentIndex = safeIndex,
+                originalQueue = null,
+            )
+        }
+
+        val remainingCounts = HashMap<String, Int>()
+        for (item in shuffledQueue) {
+            val k = keyOf(item)
+            remainingCounts[k] = (remainingCounts[k] ?: 0) + 1
+        }
+        val restored = ArrayList<T>(shuffledQueue.size)
+        for (orig in originalQueue) {
+            val k = keyOf(orig)
+            val left = remainingCounts[k] ?: 0
+            if (left > 0) {
+                restored.add(orig)
+                remainingCounts[k] = left - 1
+            }
+        }
+        if (remainingCounts.values.any { it > 0 }) {
+            val usedInOriginal = HashMap<String, Int>()
+            for (orig in restored) {
+                val k = keyOf(orig)
+                usedInOriginal[k] = (usedInOriginal[k] ?: 0) + 1
+            }
+            for (item in shuffledQueue) {
+                val k = keyOf(item)
+                val skip = usedInOriginal[k] ?: 0
+                if (skip > 0) {
+                    usedInOriginal[k] = skip - 1
+                } else {
+                    restored.add(item)
+                }
+            }
+        }
+
+        val activeKey = keyOf(activeTrack)
+        val restoredIndex = restored.indexOfFirst { it === activeTrack }
+            .takeIf { it >= 0 }
+            ?: restored.indexOfFirst { keyOf(it) == activeKey }
+                .takeIf { it >= 0 }
+            ?: 0
+
+        return OneTimeShuffleResult(
+            queue = restored,
+            currentIndex = restoredIndex,
+            originalQueue = null,
+        )
+    }
+
+    fun <T> resolveNextIndex(
+        queue: List<T>,
+        currentIndex: Int,
+        shuffleEnabled: Boolean,
+        persistentShuffle: Boolean,
+        repeatMode: Int,
+        unavailableKeys: Set<String> = emptySet(),
+        playedKeys: Set<String> = emptySet(),
+        wrapWhenPersistentOrSequential: Boolean = true,
+        keyOf: (T) -> String,
+        random: Random = Random.Default,
+    ): Int {
+        if (queue.isEmpty()) return C.INDEX_UNSET
+        val start = (currentIndex + 1).coerceAtLeast(0)
+        val useDynamicRandom = shuffleEnabled && persistentShuffle
+        val ordered = if (useDynamicRandom) {
+            val historyFilter = if (wrapWhenPersistentOrSequential) emptySet() else playedKeys
+            queue.indices.toList()
+                .shuffled(random)
+                .sortedBy { keyOf(queue[it]) in playedKeys }
+                .filter { keyOf(queue[it]) !in historyFilter }
+        } else {
+            val shouldWrap = if (shuffleEnabled) {
+                repeatMode == Player.REPEAT_MODE_ALL
+            } else {
+                wrapWhenPersistentOrSequential || repeatMode == Player.REPEAT_MODE_ALL
+            }
+            (start until queue.size) + if (shouldWrap) (0 until start.coerceAtMost(queue.size)) else emptyList()
+        }
+        return ordered.firstOrNull { it != currentIndex && keyOf(queue[it]) !in unavailableKeys }
+            ?: C.INDEX_UNSET
+    }
+
+    fun <T> resolvePreviousIndex(
+        queue: List<T>,
+        currentIndex: Int,
+        repeatMode: Int,
+        unavailableKeys: Set<String> = emptySet(),
+        keyOf: (T) -> String,
+    ): Int {
+        if (queue.isEmpty()) return C.INDEX_UNSET
+        val start = currentIndex - 1
+        val wrapRepeat = repeatMode == Player.REPEAT_MODE_ALL
+        val ordered = (start downTo 0) + if (wrapRepeat) (queue.lastIndex downTo 0) else emptyList()
+        return ordered.firstOrNull { keyOf(queue[it]) !in unavailableKeys }
+            ?: C.INDEX_UNSET
+    }
+}
+
+/**
  * Shuffled [indices] with songs not yet played this queue session first.
  * A plain random pick ignored history, so users heard the same songs again
  * and never reached the rest of the playlist.
@@ -257,33 +424,136 @@ internal fun MusicPlayer.shuffledUnplayedFirst(indices: List<Int>, keyAt: (Int) 
     }
 
 /** [wrap] = false stops at the end of the queue (shuffle: no replays) instead
- *  of starting the songs over; manual next keeps wrapping. */
-internal fun MusicPlayer.nextQueueIndex(state: MusicPlayerState, wrap: Boolean = true): Int {
-        val queue = state.queue
-        if (queue.isEmpty()) return C.INDEX_UNSET
-        val start = (state.currentIndex + 1).coerceAtLeast(0)
-        val ordered = if (state.shuffleEnabled) {
-            val played = if (wrap) emptySet() else synchronized(playHistory) { playHistory.toHashSet() }
-            shuffledUnplayedFirst(queue.indices.toList()) { queue[it].mediaIdKey() }
-                .filter { queue[it].mediaIdKey() !in played }
-        } else {
-            (start until queue.size) + if (wrap) (0 until start) else emptyList()
-        }
-        return ordered.firstOrNull { it != state.currentIndex && queue[it].mediaIdKey() !in unavailableMediaIds }
-            ?: C.INDEX_UNSET
+ *  of starting the songs over; manual next keeps wrapping when persistent or sequential. */
+internal fun MusicPlayer.nextQueueIndex(
+    state: MusicPlayerState,
+    wrap: Boolean = true,
+    persistentShuffle: Boolean = persistentShufflePref,
+): Int {
+        val played = synchronized(playHistory) { playHistory.toHashSet() }
+        return ShuffleQueueLogic.resolveNextIndex(
+            queue = state.queue,
+            currentIndex = state.currentIndex,
+            shuffleEnabled = state.shuffleEnabled,
+            persistentShuffle = persistentShuffle,
+            repeatMode = state.repeatMode,
+            unavailableKeys = unavailableMediaIds,
+            playedKeys = played,
+            wrapWhenPersistentOrSequential = wrap,
+            keyOf = PlayableTrack::mediaIdKey,
+        )
     }
 
-internal fun MusicPlayer.previousQueueIndex(state: MusicPlayerState): Int {
-        val queue = state.queue
-        if (queue.isEmpty()) return C.INDEX_UNSET
-        val start = state.currentIndex - 1
-        // Manual navigation only: repeat-one wraps like repeat-all so a
-        // manual previous never silently does nothing (auto-advance still
-        // replays in place on ONE via handleNaturalTrackEnd).
-        val wrapRepeat = state.repeatMode == Player.REPEAT_MODE_ALL
-        val ordered = (start downTo 0) + if (wrapRepeat) (queue.lastIndex downTo 0) else emptyList()
-        return ordered.firstOrNull { queue[it].mediaIdKey() !in unavailableMediaIds }
-            ?: C.INDEX_UNSET
+internal fun MusicPlayer.previousQueueIndex(state: MusicPlayerState): Int =
+    ShuffleQueueLogic.resolvePreviousIndex(
+        queue = state.queue,
+        currentIndex = state.currentIndex,
+        repeatMode = state.repeatMode,
+        unavailableKeys = unavailableMediaIds,
+        keyOf = PlayableTrack::mediaIdKey,
+    )
+
+@MainThread
+internal fun MusicPlayer.enableOneTimeShuffleOnPlayer(currentIndex: Int) {
+        val count = player.mediaItemCount
+        if (count == 0) {
+            oneTimeShuffleActive = true
+            player.shuffleModeEnabled = false
+            return
+        }
+        val safeCurrent = currentIndex.coerceIn(0, count - 1)
+        val allItems = (0 until count).map { player.getMediaItemAt(it) }
+        val currentTracks = allItems.map { it.toPlayableTrack() }
+        val plan = ShuffleQueueLogic.enableOneTimeShuffle(
+            queue = currentTracks.indices.toList(),
+            currentIndex = safeCurrent,
+            originalSnapshot = null,
+        )
+        originalUnshuffledQueue = originalUnshuffledQueue ?: currentTracks
+        if (count > 1) {
+            if (safeCurrent != 0) {
+                player.moveMediaItem(safeCurrent, 0)
+            }
+            val restMediaItems = plan.queue.drop(1).map { allItems[it] }
+            player.removeMediaItems(1, count)
+            player.addMediaItems(1, restMediaItems)
+        }
+        player.shuffleModeEnabled = false
+        oneTimeShuffleActive = true
+    }
+
+@MainThread
+internal fun MusicPlayer.disableOneTimeShuffleOnPlayer(currentIndex: Int) {
+        val count = player.mediaItemCount
+        val savedOriginal = originalUnshuffledQueue
+        oneTimeShuffleActive = false
+        originalUnshuffledQueue = null
+        player.shuffleModeEnabled = false
+        if (count == 0 || savedOriginal.isNullOrEmpty()) return
+        val safeCurrent = currentIndex.coerceIn(0, count - 1)
+        val liveItems = (0 until count).map { player.getMediaItemAt(it) }
+        val liveTracks = liveItems.map { it.toPlayableTrack() }
+        val plan = ShuffleQueueLogic.disableOneTimeShuffle(
+            shuffledQueue = liveTracks,
+            currentIndex = safeCurrent,
+            originalQueue = savedOriginal,
+            keyOf = ShuffleQueueLogic::stableTrackKey,
+        )
+        val pool = HashMap<String, ArrayDeque<MediaItem>>()
+        for (i in 0 until count) {
+            if (i == safeCurrent) continue
+            val k = ShuffleQueueLogic.stableTrackKey(liveTracks[i])
+            pool.getOrPut(k) { ArrayDeque() }.addLast(liveItems[i])
+        }
+        fun takeMediaItem(track: PlayableTrack): MediaItem {
+            val k = ShuffleQueueLogic.stableTrackKey(track)
+            return pool[k]?.removeFirstOrNull() ?: track.toMediaItem()
+        }
+        val targetIndex = plan.currentIndex.coerceIn(plan.queue.indices)
+        val beforeItems = plan.queue.subList(0, targetIndex).map(::takeMediaItem)
+        val afterItems = plan.queue.subList(targetIndex + 1, plan.queue.size).map(::takeMediaItem)
+
+        if (safeCurrent + 1 < count) {
+            player.removeMediaItems(safeCurrent + 1, count)
+        }
+        if (safeCurrent > 0) {
+            player.removeMediaItems(0, safeCurrent)
+        }
+        if (beforeItems.isNotEmpty()) {
+            player.addMediaItems(0, beforeItems)
+        }
+        if (afterItems.isNotEmpty()) {
+            player.addMediaItems(beforeItems.size + 1, afterItems)
+        }
+    }
+
+@MainThread
+internal fun MusicPlayer.flattenPersistentShuffleToOneTimeOnPlayer() {
+        val count = player.mediaItemCount
+        if (count == 0) {
+            player.shuffleModeEnabled = false
+            oneTimeShuffleActive = true
+            return
+        }
+        val liveOrder = currentPlayOrder(player)
+        val currentIndex = player.currentMediaItemIndex.coerceIn(0, count - 1)
+        val allItems = (0 until count).map { player.getMediaItemAt(it) }
+        val unshuffledTracks = allItems.map { it.toPlayableTrack() }
+        originalUnshuffledQueue = originalUnshuffledQueue ?: unshuffledTracks
+        if (count > 1 && liveOrder.size == count) {
+            val pos = liveOrder.indexOf(currentIndex).takeIf { it >= 0 } ?: 0
+            val rotatedIndices = liveOrder.subList(pos, liveOrder.size) + liveOrder.subList(0, pos)
+            if (currentIndex != 0) {
+                player.moveMediaItem(currentIndex, 0)
+            }
+            val restMediaItems = rotatedIndices.drop(1).map { allItems[it] }
+            player.removeMediaItems(1, count)
+            player.addMediaItems(1, restMediaItems)
+        }
+        player.shuffleModeEnabled = false
+        oneTimeShuffleActive = true
+        preloadNextQueueItem(player.currentMediaItemIndex)
+        refresh(player)
     }
 
     @MainThread
@@ -299,6 +569,7 @@ internal fun MusicPlayer.playPendingQueueItem(index: Int, pendingState: MusicPla
                 sourceLabel = pendingState.sourceLabel,
                 endlessDiscover = pendingState.isEndlessQueue,
                 startShuffled = pendingState.shuffleEnabled,
+                preserveExistingQueueOrder = true,
             )
         }
     }

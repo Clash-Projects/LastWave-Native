@@ -307,6 +307,7 @@ data class MiscSettings(
      *  the background after the task is removed. */
     val stopPlaybackOnTaskRemoved: Boolean = false,
     val pauseOnZeroVolume: Boolean = false,
+    val persistentShuffle: Boolean = false,
     val suppressYouTubeLoginPrompt: Boolean = false,
     val hasDismissedJoinSupportPrompt: Boolean = false,
     /** Display name used in LastWave Jam sessions. */
@@ -539,6 +540,7 @@ class SettingsPreferences @Inject constructor(
         val PODCASTS_ENABLED = booleanPreferencesKey("lw_podcasts_enabled")
         val STOP_PLAYBACK_ON_TASK_REMOVED = booleanPreferencesKey("lw_stop_playback_on_task_removed")
         val PAUSE_ON_ZERO_VOLUME = booleanPreferencesKey("lw_pause_on_zero_volume")
+        val PERSISTENT_SHUFFLE = booleanPreferencesKey("persistent_shuffle")
         val SUPPRESS_YOUTUBE_LOGIN_PROMPT = booleanPreferencesKey("lw_suppress_youtube_login_prompt")
         val HAS_DISMISSED_JOIN_SUPPORT_PROMPT = booleanPreferencesKey("lw_has_dismissed_join_support_prompt")
         val JAM_DISPLAY_NAME = stringPreferencesKey("lw_jam_display_name")
@@ -655,6 +657,7 @@ class SettingsPreferences @Inject constructor(
                 podcastsEnabled = p.readSafely(Keys.PODCASTS_ENABLED) ?: true,
                 stopPlaybackOnTaskRemoved = p.readSafely(Keys.STOP_PLAYBACK_ON_TASK_REMOVED) ?: false,
                 pauseOnZeroVolume = p.readSafely(Keys.PAUSE_ON_ZERO_VOLUME) ?: false,
+                persistentShuffle = p.readSafely(Keys.PERSISTENT_SHUFFLE) ?: false,
                 suppressYouTubeLoginPrompt = p.readSafely(Keys.SUPPRESS_YOUTUBE_LOGIN_PROMPT) ?: false,
                 hasDismissedJoinSupportPrompt = p.readSafely(Keys.HAS_DISMISSED_JOIN_SUPPORT_PROMPT) ?: false,
                 jamDisplayName = p.readSafely(Keys.JAM_DISPLAY_NAME)?.trim().orEmpty(),
@@ -912,6 +915,10 @@ class SettingsPreferences @Inject constructor(
 
     suspend fun setPauseOnZeroVolume(enabled: Boolean) {
         dataStore.edit { it[Keys.PAUSE_ON_ZERO_VOLUME] = enabled }
+    }
+
+    suspend fun setPersistentShuffle(enabled: Boolean) {
+        dataStore.edit { it[Keys.PERSISTENT_SHUFFLE] = enabled }
     }
 
     suspend fun setSuppressYouTubeLoginPrompt(suppress: Boolean) {

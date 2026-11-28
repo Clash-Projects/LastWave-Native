@@ -171,6 +171,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.filled.History
@@ -1028,6 +1029,19 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setPauseOnZeroVolume,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.pause_on_zero_volume"),
+                            )
+                        }
+                        add { position ->
+                            SettingsToggleCard(
+                                icon = Icons.Filled.Shuffle,
+                                iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                title = stringResource(R.string.settings_persistent_shuffle),
+                                subtitle = stringResource(R.string.settings_persistent_shuffle_desc),
+                                checked = misc.persistentShuffle,
+                                onCheckedChange = viewModel::setPersistentShuffle,
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.persistent_shuffle"),
                             )
                         }
                         add { position ->
