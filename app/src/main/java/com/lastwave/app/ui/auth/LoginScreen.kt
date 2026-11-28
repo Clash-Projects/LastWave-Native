@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -128,7 +129,7 @@ fun LoginScreen(
                 Button(
                     onClick = onLoginWithYouTube,
                     enabled = !isBusy,
-                    shape = ExpressivePillShape,
+                    shapes = ButtonDefaults.shapes(),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
                     Icon(
@@ -144,7 +145,7 @@ fun LoginScreen(
                 OutlinedButton(
                     onClick = onContinueAsGuest,
                     enabled = !isBusy,
-                    shape = ExpressivePillShape,
+                    shapes = ButtonDefaults.shapes(),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
                     Icon(
@@ -167,7 +168,7 @@ fun LoginScreen(
                     OutlinedButton(
                         onClick = { restoreBackupLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
                         enabled = !isBusy,
-                        shape = ExpressivePillShape,
+                        shapes = ButtonDefaults.shapes(),
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                     ) {
                         Icon(

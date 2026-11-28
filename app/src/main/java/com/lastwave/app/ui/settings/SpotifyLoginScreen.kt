@@ -47,7 +47,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -436,7 +436,7 @@ fun SpotifyLoginScreen(
                 // a flicker (and can steal the focus of the field being
                 // typed into).
                 if (isLoading) {
-                    LinearProgressIndicator(
+                    LinearWavyProgressIndicator(
                         modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                     )
                 }

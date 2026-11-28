@@ -58,8 +58,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -362,7 +362,7 @@ fun JamScreen(
                             Button(
                                 onClick = { viewModel.joinJamSession() },
                                 enabled = !uiState.isConnecting && uiState.pendingInputCode.isNotBlank(),
-                                shape = RoundedCornerShape(14.dp),
+                                shapes = ButtonDefaults.shapes(shape = RoundedCornerShape(14.dp)),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = jamAccent,
                                     contentColor = onJamAccent,
@@ -372,7 +372,7 @@ fun JamScreen(
                                     .height(50.dp),
                             ) {
                                 if (uiState.isConnecting) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = onJamAccent, strokeWidth = 2.5.dp)
+                                    ExpressiveInlineLoadingIndicator(size = 20.dp, color = onJamAccent)
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text("Connecting...", fontWeight = FontWeight.Bold)
                                 } else {
@@ -426,7 +426,7 @@ fun JamScreen(
                             Button(
                                 onClick = { viewModel.startJamSession() },
                                 enabled = !uiState.isConnecting,
-                                shape = RoundedCornerShape(14.dp),
+                                shapes = ButtonDefaults.shapes(shape = RoundedCornerShape(14.dp)),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = jamAccent,
                                     contentColor = onJamAccent,
@@ -436,7 +436,7 @@ fun JamScreen(
                                     .height(50.dp),
                             ) {
                                 if (uiState.isConnecting) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = onJamAccent, strokeWidth = 2.5.dp)
+                                    ExpressiveInlineLoadingIndicator(size = 20.dp, color = onJamAccent)
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text("Creating...", fontWeight = FontWeight.Bold)
                                 } else {

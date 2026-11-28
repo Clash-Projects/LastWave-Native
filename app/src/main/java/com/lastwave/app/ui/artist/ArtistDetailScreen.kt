@@ -73,6 +73,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -432,7 +433,7 @@ fun ArtistDetailScreen(
                                             viewModel.playShuffle()
                                         },
                                         enabled = data.topSongs.isNotEmpty(),
-                                        shape = CircleShape,
+                                        shapes = IconButtonDefaults.shapes(),
                                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                         ),
@@ -451,7 +452,7 @@ fun ArtistDetailScreen(
                                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                             viewModel.startArtistMix()
                                         },
-                                        shape = CircleShape,
+                                        shapes = IconButtonDefaults.shapes(),
                                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                         ),
@@ -466,27 +467,25 @@ fun ArtistDetailScreen(
                                     }
                                 }
 
-                                // Large Floating Primary Play Button (56dp circle)
-                                Surface(
+                                // Large Floating Primary Play Button (56dp) with M3 Expressive morphing shapes
+                                FilledIconButton(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playAll()
                                     },
                                     enabled = data.topSongs.isNotEmpty(),
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    shadowElevation = 6.dp,
+                                    shapes = IconButtonDefaults.shapes(),
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    ),
                                     modifier = Modifier.size(56.dp),
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            if (isArtistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                            contentDescription = stringResource(R.string.art_play_cd),
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(30.dp),
-                                        )
-                                    }
+                                    Icon(
+                                        if (isArtistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        contentDescription = stringResource(R.string.art_play_cd),
+                                        modifier = Modifier.size(30.dp),
+                                    )
                                 }
                             }
                         }

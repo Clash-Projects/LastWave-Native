@@ -299,9 +299,18 @@ fun HomeScreen(
             }
 
 
+            val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
             PullToRefreshBox(
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = viewModel::refresh,
+                state = pullState,
+                indicator = {
+                    androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.LoadingIndicator(
+                        state = pullState,
+                        isRefreshing = uiState.isRefreshing,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                },
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
                 LaunchedEffect(listState, uiState.allTracks.size) {

@@ -54,7 +54,7 @@ data class ThemeUiState(
     /** Experimental liquid-glass materials (Settings → Experimental). When
      *  true, container roles in [colorScheme] are semi-translucent and the
      *  chrome surfaces get specular glass dressing. */
-    val liquidGlass: Boolean = true,
+    val liquidGlass: Boolean = false,
     val md3NavBar: Boolean = false,
     val hideNavTabs: Boolean = false,
     /** Haptic feedback on taps, buttons, toggles and gestures (Settings toggle). */
@@ -66,7 +66,7 @@ data class ThemeUiState(
     val isNowPlayingThemed: Boolean = false,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val isLastWaveTheme: Boolean = false,
-    val useLegacyColors: Boolean = false,
+    val useLegacyColors: Boolean = true,
     val appIcon: AppIcon = AppIcon.DEFAULT,
 )
 
@@ -313,19 +313,19 @@ class ThemeRepository @Inject constructor(
         applicationScope,
         SharingStarted.Eagerly,
         ThemeUiState(
-            darkColorScheme = Md3SchemeBuilder.buildDarkScheme("#E03030", false, true),
-            lightColorScheme = Md3SchemeBuilder.buildLightScheme("#E03030", true),
+            darkColorScheme = Md3SchemeBuilder.buildDarkScheme("#006B58", false, false, useLegacyColors = true),
+            lightColorScheme = Md3SchemeBuilder.buildLightScheme("#006B58", false),
             themeMode = ThemeMode.SYSTEM,
-            colorScheme = Md3SchemeBuilder.buildDarkScheme("#E03030", false, true),
+            colorScheme = Md3SchemeBuilder.buildDarkScheme("#006B58", false, false, useLegacyColors = true),
             amoled = false,
-            mode = AccentMode.MANUAL,
-            accentColorHex = "#E03030",
+            mode = AccentMode.DYNAMIC,
+            accentColorHex = "#006B58",
             useCustomFont = true,
-            liquidGlass = true,
+            liquidGlass = false,
             md3NavBar = false,
             hideNavTabs = false,
             isLastWaveTheme = false,
-            useLegacyColors = false,
+            useLegacyColors = true,
             appIcon = AppIcon.DEFAULT,
         ),
     )

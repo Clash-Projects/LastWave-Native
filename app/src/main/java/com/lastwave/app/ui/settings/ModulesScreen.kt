@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +32,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -330,7 +330,7 @@ fun ModulesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (busy) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                            ExpressiveInlineLoadingIndicator(size = 22.dp)
                         } else {
                             Icon(Icons.Filled.Add, contentDescription = null)
                         }

@@ -36,7 +36,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -49,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -233,13 +233,13 @@ fun YouTubeImportSheet(
                 Button(
                     onClick = { fetchPlaylist() },
                     enabled = urlInput.isNotBlank() && !isLoading,
-                    shape = CircleShape,
+                    shapes = ButtonDefaults.shapes(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        ExpressiveInlineLoadingIndicator(size = 20.dp, color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.ytimport_fetching))
                     } else {
@@ -349,13 +349,13 @@ fun YouTubeImportSheet(
                 Button(
                     onClick = { startImport() },
                     enabled = selectedVideoIds.isNotEmpty() && !isImporting,
-                    shape = CircleShape,
+                    shapes = ButtonDefaults.shapes(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
                 ) {
                     if (isImporting) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        ExpressiveInlineLoadingIndicator(size = 20.dp, color = MaterialTheme.colorScheme.onPrimary)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.ytimport_importing))
                     } else {

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -122,7 +123,7 @@ fun ExpressiveHeader(
         Surface(
             shape = if (isTransparent) RectangleShape else HeaderShape,
             color = resolvedContainerColor,
-            tonalElevation = if (useGlass || isTransparent) 0.dp else 2.dp,
+            tonalElevation = 0.dp,
             shadowElevation = if (useGlass || isTransparent) 0.dp else 4.dp,
             modifier = Modifier
                 .fillMaxWidth()
@@ -158,6 +159,7 @@ fun ExpressiveHeader(
                     if (onBack != null) {
                         FilledTonalIconButton(
                             onClick = onBack,
+                            shapes = IconButtonDefaults.shapes(),
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                 containerColor = if (useGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
                                 else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -205,7 +207,8 @@ fun ExpressiveHeader(
 }
 
 /**
- * A trailing action icon for [ExpressiveHeader] styled with glass-compatible translucent tonal styling.
+ * A trailing action icon for [ExpressiveHeader] styled with glass-compatible translucent tonal styling
+ * or solid tonal container styling when Liquid Glass is off.
  */
 @Composable
 fun HeaderActionIcon(
@@ -217,6 +220,7 @@ fun HeaderActionIcon(
     val isDark = LocalIsDarkTheme.current
     FilledTonalIconButton(
         onClick = onClick,
+        shapes = IconButtonDefaults.shapes(),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
             else MaterialTheme.colorScheme.surfaceContainerHighest,

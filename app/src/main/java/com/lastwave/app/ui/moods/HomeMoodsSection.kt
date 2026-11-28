@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -20,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lastwave.app.R
+import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
 import com.lastwave.app.ui.feed.FeedSectionHeader
 
 @Composable
@@ -39,7 +39,8 @@ internal fun HomeMoodsSection(
             onLongClick = onLongClick,
         )
         when {
-            state.isLoading -> CircularProgressIndicator(
+            state.isLoading -> ExpressiveInlineLoadingIndicator(
+                size = 32.dp,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
                     .semantics { contentDescription = loadingDescription },
             )

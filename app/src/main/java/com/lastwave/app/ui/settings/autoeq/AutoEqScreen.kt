@@ -55,7 +55,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -186,7 +186,7 @@ fun AutoEqScreen(
                 )
                 Switch(checked = enabled, onCheckedChange = viewModel::setEnabled)
             }
-            if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            if (busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         }
 
         if (onOpenGraphicEq != null) {
@@ -962,7 +962,7 @@ private fun SearchSheet(viewModel: AutoEqViewModel, onDismiss: () -> Unit) {
                 }
                 else -> Unit
             }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy) LinearWavyProgressIndicator(Modifier.fillMaxWidth())
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 520.dp)) {
                 items(results, key = { it.encodedPath }) { entry ->
                     Column(

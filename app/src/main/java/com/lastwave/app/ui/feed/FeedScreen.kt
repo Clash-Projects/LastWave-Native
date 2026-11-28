@@ -384,7 +384,7 @@ fun FeedScreen(
                 onRefresh = viewModel::refresh,
                 state = pullState,
                 indicator = {
-                    androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                    androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.LoadingIndicator(
                         state = pullState,
                         isRefreshing = state.isRefreshIndicatorVisible,
                         modifier = Modifier

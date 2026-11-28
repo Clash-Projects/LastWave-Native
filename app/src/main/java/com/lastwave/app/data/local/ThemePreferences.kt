@@ -17,7 +17,7 @@ enum class AccentMode(val storageValue: String) {
 
     companion object {
         fun fromStorage(value: String?): AccentMode =
-            entries.firstOrNull { it.storageValue == value } ?: MANUAL
+            entries.firstOrNull { it.storageValue == value } ?: DYNAMIC
     }
 }
 
@@ -34,12 +34,12 @@ enum class ThemeMode(val storageValue: String) {
 
 data class ThemePrefs(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val accentColor: String = "#E03030",
-    val accentLight: String = "#FF6060",
-    val accentMode: AccentMode = AccentMode.MANUAL,
+    val accentColor: String = "#006B58",
+    val accentLight: String = "#5ADBBC",
+    val accentMode: AccentMode = AccentMode.DYNAMIC,
     val amoled: Boolean = false,
-    /** iOS-style liquid-glass materials. Enabled by default. */
-    val liquidGlass: Boolean = true,
+    /** Optional translucent glass chrome. Off by default for clean Material You Expressive surfaces. */
+    val liquidGlass: Boolean = false,
     /** Optional compact Material 3 floating dock instead of the standard bottom tabs. */
     val md3NavBar: Boolean = false,
     /** Whether bottom navigation tabs are completely hidden. */
@@ -48,7 +48,7 @@ data class ThemePrefs(
     val uiHaptics: Boolean = true,
     /** Dedicated LastWave Signature Theme inspired by the app logo icon (#C9FB00 & #012226). */
     val lastWaveTheme: Boolean = false,
-    val useLegacyColors: Boolean = false,
+    val useLegacyColors: Boolean = true,
     val appIcon: AppIcon = AppIcon.DEFAULT,
 )
 
@@ -76,16 +76,16 @@ class ThemePreferences @Inject constructor(
         .map { p ->
             ThemePrefs(
                 themeMode = ThemeMode.fromStorage(p.readSafely(Keys.THEME_MODE)),
-                accentColor = p.readSafely(Keys.ACCENT_COLOR) ?: "#E03030",
-                accentLight = p.readSafely(Keys.ACCENT_LIGHT) ?: "#FF6060",
+                accentColor = p.readSafely(Keys.ACCENT_COLOR) ?: "#006B58",
+                accentLight = p.readSafely(Keys.ACCENT_LIGHT) ?: "#5ADBBC",
                 accentMode = AccentMode.fromStorage(p.readSafely(Keys.ACCENT_MODE)),
                 amoled = p.readSafely(Keys.AMOLED) ?: false,
-                liquidGlass = p.readSafely(Keys.LIQUID_GLASS) ?: true,
+                liquidGlass = p.readSafely(Keys.LIQUID_GLASS) ?: false,
                 md3NavBar = p.readSafely(Keys.MD3_NAV_BAR) ?: false,
                 hideNavTabs = p.readSafely(Keys.HIDE_NAV_TABS) ?: false,
                 uiHaptics = p.readSafely(Keys.UI_HAPTICS) ?: true,
                 lastWaveTheme = p.readSafely(Keys.LASTWAVE_THEME) ?: false,
-                useLegacyColors = p.readSafely(Keys.USE_LEGACY_COLORS) ?: false,
+                useLegacyColors = p.readSafely(Keys.USE_LEGACY_COLORS) ?: true,
                 appIcon = AppIcon.fromId(p.readSafely(Keys.APP_ICON)),
             )
         }

@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +38,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.lastwave.app.ui.common.ExpressiveInlineLoadingIndicator
+import com.lastwave.app.ui.common.ExpressiveLoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -91,9 +92,8 @@ fun ListeningStatsScreen(
                     )
                     IconButton(onClick = viewModel::refresh) {
                         if (uiState.isRefreshing) {
-                            CircularProgressIndicator(
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(20.dp),
+                            ExpressiveInlineLoadingIndicator(
+                                size = 20.dp,
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         } else {
@@ -115,7 +115,7 @@ fun ListeningStatsScreen(
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                ExpressiveLoadingIndicator()
             }
             return@Scaffold
         }

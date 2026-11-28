@@ -18,9 +18,10 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -151,7 +152,7 @@ fun LocalSongsPanel(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { picker.launch(null) }, enabled = !running, modifier = Modifier.weight(1f)) {
+                Button(onClick = { picker.launch(null) }, enabled = !running, shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.CreateNewFolder, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.local_choose_folder), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -159,6 +160,7 @@ fun LocalSongsPanel(
                 OutlinedButton(
                     onClick = viewModel::rescan,
                     enabled = !running && folders.isNotEmpty(),
+                    shapes = ButtonDefaults.shapes(),
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -169,7 +171,7 @@ fun LocalSongsPanel(
 
             when (val s = state) {
                 is ImportState.Scanning -> {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Text(
                         stringResource(R.string.local_scanning, s.filesFound),
                         style = MaterialTheme.typography.bodySmall,
@@ -177,7 +179,7 @@ fun LocalSongsPanel(
                 }
                 is ImportState.Copying -> {
                     val fraction = if (s.total > 0) s.done.toFloat() / s.total else 0f
-                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                    LinearWavyProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
                     Text(
                         stringResource(R.string.local_copying, s.done, s.total, s.currentName),
                         style = MaterialTheme.typography.bodySmall,

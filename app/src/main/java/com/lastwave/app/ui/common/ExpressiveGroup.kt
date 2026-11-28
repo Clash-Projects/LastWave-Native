@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -74,7 +75,7 @@ import androidx.compose.ui.unit.dp
  */
 enum class GroupPosition { SINGLE, TOP, MIDDLE, BOTTOM }
 
-val GroupOuterRadius = 28.dp
+val GroupOuterRadius = 22.dp
 val GroupInnerRadius = 6.dp
 val GroupGap = 3.dp
 internal val GroupIconBadgeShape = RoundedCornerShape(14.dp)
@@ -246,7 +247,7 @@ fun ExpressiveGroupRow(
     Card(
         onClick = onClick,
         shape = shape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         // 0dp deliberately: Material3's Card blends a primary-tinted alpha
         // layer on top of containerColor above 0dp tonalElevation, which
         // read as a second, unintended layer behind these rows' own tonal
@@ -261,11 +262,16 @@ fun ExpressiveGroupRow(
             },
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            GroupIconBadge(icon, iconContainer, iconTint)
-            Spacer(Modifier.width(14.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -325,7 +331,7 @@ fun ExpressiveGroupTrackRow(
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = if (isPlaying) playingContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = if (isPlaying) playingContainer else MaterialTheme.colorScheme.surfaceContainer,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
@@ -403,9 +409,13 @@ fun ExpressiveGroupToggleRow(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                thumbContent = if (checked) {
-                    { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
-                } else null,
+                thumbContent = {
+                    Icon(
+                        imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Close,
+                        contentDescription = null,
+                        modifier = Modifier.size(SwitchDefaults.IconSize),
+                    )
+                },
             )
         },
     )
@@ -441,7 +451,7 @@ fun ExpressiveGroupSelectRow(
         targetValue = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
+            MaterialTheme.colorScheme.surfaceContainer
         },
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "groupSelectRowBg",

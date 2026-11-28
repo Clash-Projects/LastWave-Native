@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -227,7 +228,7 @@ fun GenerateScreen(
                                 Button(
                                     onClick = viewModel::generate,
                                     enabled = !state.isGenerating,
-                                    shape = ExpressivePillShape,
+                                    shapes = ButtonDefaults.shapes(),
                                     modifier = Modifier.fillMaxWidth().height(52.dp),
                                 ) {
                                     Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))

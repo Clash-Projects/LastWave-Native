@@ -32,7 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -294,7 +294,7 @@ fun YouTubeLoginScreen(
             }
 
             if (loadProgressVisible && state.connectedName == null) {
-                LinearProgressIndicator(
+                LinearWavyProgressIndicator(
                     modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                 )
             }
