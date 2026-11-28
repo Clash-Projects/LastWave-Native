@@ -6,10 +6,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 
@@ -68,27 +64,16 @@ object ExpressiveMotion {
     // Legacy alias
     fun <T> smoothSpring() = effectsDefault<T>()
 
-    // Screen transitions in the same language as the player open/close
-    // morph: the incoming screen grows into place from slightly smaller while
-    // the one it covers recedes a touch; going back reverses it. A short
-    // horizontal drift keeps the forward/back direction readable.
-    fun forwardEnter(): EnterTransition =
-        fadeIn(effectsDefault()) +
-            scaleIn(spatialDefault(), initialScale = 0.92f) +
-            slideInHorizontally(spatialDefault()) { it / 24 }
+    // Pages slide over each other, no fade or scale: an animated alpha on a
+    // full-screen page made HWUI copy it offscreen on every frame of the push.
+    // No bounce, or the overshoot uncovers the page underneath at the edge.
+    fun forwardEnter(): EnterTransition = slideInHorizontally(effectsDefault()) { it }
 
-    fun forwardExit(): ExitTransition =
-        fadeOut(effectsDefault()) +
-            scaleOut(effectsDefault(), targetScale = 0.95f)
+    fun forwardExit(): ExitTransition = slideOutHorizontally(effectsDefault()) { -it / 4 }
 
-    fun backEnter(): EnterTransition =
-        fadeIn(effectsDefault()) +
-            scaleIn(spatialDefault(), initialScale = 0.95f)
+    fun backEnter(): EnterTransition = slideInHorizontally(effectsDefault()) { -it / 4 }
 
-    fun backExit(): ExitTransition =
-        fadeOut(effectsFast()) +
-            scaleOut(effectsDefault(), targetScale = 0.92f) +
-            slideOutHorizontally(spatialDefault()) { it / 24 }
+    fun backExit(): ExitTransition = slideOutHorizontally(effectsDefault()) { it }
 }
 
 /**

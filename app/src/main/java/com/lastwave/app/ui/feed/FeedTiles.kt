@@ -103,7 +103,6 @@ import com.lastwave.app.ui.navigation.resolveFeedTapAction
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -308,10 +307,12 @@ internal fun InfiniteRadioHero(
                     model = heroArt,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    // Paint alpha, not Modifier.alpha: a layer alpha re-rendered the
+                    // full-width card offscreen on every frame Home was drawn.
+                    alpha = 0.32f,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(224.dp)
-                        .alpha(0.32f),
+                        .height(224.dp),
                 )
             }
             Box(

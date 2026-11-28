@@ -25,6 +25,7 @@ import kotlinx.serialization.json.contentOrNull
  * port of normaliseTracks()'s extra fields in app.js.
  */
 @Immutable
+@kotlinx.serialization.Serializable
 data class GeneratedTrack(
     val name: String,
     val artist: String,

@@ -1,7 +1,10 @@
 package com.lastwave.app.data.feed
 
 import androidx.compose.runtime.Immutable
+import android.content.Context
 import com.lastwave.app.data.artwork.ArtworkNormalizer
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import com.lastwave.app.util.ArtistHelper
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -41,6 +44,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class FeedQuickTile(
     val title: String,
     val subtitle: String? = null,
@@ -53,9 +57,11 @@ data class FeedQuickTile(
 )
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class FeedMix(val title: String, val seed: YouTubeMusicTrack)
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class FeedSectionData<T>(
     val title: String,
     val subtitle: String? = null,
@@ -63,6 +69,7 @@ data class FeedSectionData<T>(
 )
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class FeedArtist(
     val name: String,
     val browseId: String? = null,
@@ -70,6 +77,7 @@ data class FeedArtist(
 )
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class FeedAlbum(
     val title: String,
     val artist: String,
@@ -78,6 +86,7 @@ data class FeedAlbum(
 )
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class FeedSpotlight(
     val artistName: String,
     val artworkUrl: String? = null,
@@ -89,6 +98,7 @@ data class FeedSpotlight(
 )
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class FeedData(
     val isYtConnected: Boolean = false,
     val ytAccountName: String? = null,
@@ -140,14 +150,31 @@ class FeedRepository @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val podcastRepository: PodcastRepository,
     private val settingsPreferences: SettingsPreferences,
+    @ApplicationContext context: Context,
 ) {
     @Volatile private var cached: Pair<String, FeedData>? = null
     private val artistEntityCache = ConcurrentHashMap<String, FeedArtist>()
+    private val diskFile = File(context.filesDir, "home_feed.json")
+
+    @kotlinx.serialization.Serializable
+    private class DiskFeed(val account: String, val feed: FeedData)
+
+    // The disk key leaves out cookies: they must not be written to a file, and they rotate.
+    private fun diskAccount(username: String?, connection: YtConnection) =
+        "${username.orEmpty()}|${connection.accountName}|${connection.channelHandle.orEmpty()}"
 
     fun getCachedFeed(): FeedData? = cached?.second
 
-    fun getCachedFeed(username: String?, connection: YtConnection): FeedData? =
+    /**
+     * The in-memory feed, else the last one saved to disk. Without the disk copy every cold
+     * start showed skeletons until the whole Home load finished (20-35 s on a weak connection).
+     */
+    suspend fun getCachedFeed(username: String?, connection: YtConnection): FeedData? =
         cached?.takeIf { it.first.startsWith("${username.orEmpty()}|$connection|") }?.second
+            ?: withContext(Dispatchers.IO) {
+                runCatching { diskJson.decodeFromString(DiskFeed.serializer(), diskFile.readText()) }.getOrNull()
+                    ?.takeIf { it.account == diskAccount(username, connection) }?.feed
+            }
 
     suspend fun loadFeed(
         username: String?,
@@ -909,7 +936,18 @@ class FeedRepository @Inject constructor(
         )
         ensureActive()
         cached = cacheKey to result
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val tmp = File(diskFile.path + ".tmp")
+                tmp.writeText(diskJson.encodeToString(DiskFeed.serializer(), DiskFeed(diskAccount(username, connectionPre), result)))
+                tmp.renameTo(diskFile)
+            }
+        }
         result
+    }
+
+    private companion object {
+        val diskJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     }
 
 }

@@ -16,6 +16,7 @@ import androidx.compose.runtime.Immutable
  * UI selection state is managed independently in the ViewModel.
  */
 @Immutable
+@kotlinx.serialization.Serializable
 data class HomeChip(
     val title: String,
     val params: String? = null,

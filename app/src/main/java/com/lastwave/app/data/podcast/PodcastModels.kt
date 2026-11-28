@@ -5,6 +5,7 @@ import com.lastwave.app.playback.MediaType
 import com.lastwave.app.playback.PlayableTrack
 
 @Immutable
+@kotlinx.serialization.Serializable
 data class PodcastShow(
     val showId: String,
     val title: String,
