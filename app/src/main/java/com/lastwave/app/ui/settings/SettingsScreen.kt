@@ -1332,7 +1332,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.hide_nav_tabs"),
                             )
-                            6 -> SettingsToggleCard(
+                            9 -> SettingsToggleCard(
                                 icon = Icons.Filled.ColorLens,
                                 iconContainer = MaterialTheme.colorScheme.tertiaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1343,7 +1343,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.dynamic_now_playing"),
                             )
-                            7 -> SettingsToggleCard(
+                            10 -> SettingsToggleCard(
                                 icon = Icons.Filled.TextFields,
                                 iconContainer = MaterialTheme.colorScheme.secondaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1354,7 +1354,7 @@ fun SettingsScreen(
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "appearance.app_font"),
                             )
-                            8 -> SettingsToggleCard(
+                            11 -> SettingsToggleCard(
                                 icon = Icons.Filled.FormatBold,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -1364,7 +1364,7 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setUseBoldFont,
                                 position = position,
                             )
-                            9 -> SettingsToggleCard(
+                            12 -> SettingsToggleCard(
                                 icon = Icons.Filled.Vibration,
                                 iconContainer = MaterialTheme.colorScheme.primaryContainer,
                                 iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
