@@ -266,7 +266,6 @@ private fun downloadTierForQuality(context: android.content.Context, quality: In
 
 @Composable
 private fun DownloadMenuAction(
-    modern: Boolean,
     position: GroupPosition? = null,
     label: String? = null,
     downloadQuality: Int,
@@ -297,14 +296,6 @@ private fun DownloadMenuAction(
                 Icons.Outlined.Download,
                 label ?: stringResource(R.string.details_download),
                 position = position,
-                enabled = enabled,
-                onClick = onClick,
-            )
-        } else if (modern) {
-            ModernMenuActionRow(
-                Icons.Outlined.Download,
-                stringResource(R.string.details_download),
-                supportingText = downloadTier,
                 enabled = enabled,
                 onClick = onClick,
             )
@@ -899,7 +890,6 @@ private fun ColumnScope.RedesignedTrackMenuContent(
                                     dismissMenu()
                                 }
                                 else -> DownloadMenuAction(
-                                    modern = false,
                                     downloadQuality = downloadQuality,
                                     downloadTier = downloadTier,
                                     enabled = !dismissing,
@@ -1168,7 +1158,6 @@ private fun ColumnScope.ClassicTrackMenuContent(
                         }
                         else -> {
                             DownloadMenuAction(
-                                modern = false,
                                 position = pos,
                                 label = downloadLabel,
                                 downloadQuality = downloadQuality,
