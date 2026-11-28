@@ -2215,6 +2215,7 @@ class InnerTubeMusicApi @Inject constructor(
                 ?: item.obj("title")?.array("runs")?.firstOrNull()?.asObject()?.obj("navigationEndpoint")?.obj("browseEndpoint")
             val browseId = nav?.string("browseId") ?: ""
             if (browseId.isBlank() || browseId.startsWith("UC")) return@mapNotNull null
+            if (isPlaylistBrowseEndpoint(nav)) return@mapNotNull null
             val subtitleRuns = item.obj("subtitle")?.array("runs")?.mapNotNull { it.asObject()?.string("text") }.orEmpty()
             val year = subtitleRuns.firstOrNull { it.trim().matches(com.lastwave.app.util.ArtistHelper.YEAR) }
             // The type label is localized too ("Albüm", "Tekli", "Single'lar"),
