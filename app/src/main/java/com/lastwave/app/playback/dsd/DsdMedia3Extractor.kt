@@ -13,6 +13,7 @@ import androidx.media3.extractor.PositionHolder
 import androidx.media3.extractor.SeekMap
 import androidx.media3.extractor.SeekPoint
 import androidx.media3.extractor.TrackOutput
+import com.lastwave.app.data.local.DsdOutputMode
 import com.lastwave.app.playback.AudioHeaderInspector
 import kotlin.math.min
 
@@ -21,13 +22,19 @@ import kotlin.math.min
  * - **DSF** (`"DSD "` planar block container, LSB/MSB bit order)
  * - **DFF / DSDIFF** (`"FRM8"` + `"DSD "` uncompressed interleaved MSB container)
  *
- * Streams raw DSD blocks through [DsdNativeDecimator] (C++ Kaiser FIR decimator)
- * and publishes standard `MimeTypes.AUDIO_RAW` (`C.ENCODING_PCM_FLOAT`) frames at
- * 176.4 kHz or 192 kHz so playback flows natively through Oboe, EQ, Automix,
- * ReplayGain, and USB DAC bit-perfect routing.
+ * Supports two playback modes:
+ * - **Native (DoP v1.0)**: Packages raw 1-bit DSD bitstreams directly into 24-bit
+ *   PCM frames at 176.4 kHz (DSD64) or 352.8 kHz (DSD128) with standard alternating
+ *   0x05 / 0xFA marker bytes for bit-perfect hardware decoding on USB DACs.
+ * - **Convert to PCM**: Decimates DSD into 32-bit float PCM at 176.4 kHz / 192 kHz
+ *   via [DsdNativeDecimator] (C++ Kaiser FIR decimator) for universal compatibility
+ *   across phone speakers, Bluetooth, and full DSP / EQ pipelines.
  */
 @UnstableApi
-class DsdMedia3Extractor : Extractor {
+class DsdMedia3Extractor @JvmOverloads constructor(
+    private val modeProvider: () -> DsdOutputMode = { defaultModeProvider() },
+    private val usbDacActiveProvider: () -> Boolean = { defaultUsbActiveProvider() },
+) : Extractor {
 
     private enum class ContainerKind {
         DSF,
@@ -51,6 +58,8 @@ class DsdMedia3Extractor : Extractor {
     private var state = STATE_HEADER
     private var spec: DsdStreamSpec? = null
     private var decimator: DsdNativeDecimator? = null
+    private var isDoPMode = false
+    private var dopMarkerToggle = false
 
     private var currentByteFrame = 0L
     private var pendingSeekByteFrame = 0L
@@ -80,6 +89,7 @@ class DsdMedia3Extractor : Extractor {
             return
         }
         decimator?.reset()
+        dopMarkerToggle = false
         val byteFramesPerSec = s.dsdSampleRateHz / 8L
         val targetFrame = ((timeUs * byteFramesPerSec) / 1_000_000L).coerceIn(0L, s.totalByteFrames)
         pendingSeekByteFrame = if (s.kind == ContainerKind.DSF) {
@@ -122,13 +132,15 @@ class DsdMedia3Extractor : Extractor {
         }
 
         val s = spec ?: return Extractor.RESULT_END_OF_INPUT
-        val dec = decimator ?: return Extractor.RESULT_END_OF_INPUT
-        if (!dec.isReady) return Extractor.RESULT_END_OF_INPUT
+        if (!isDoPMode) {
+            val dec = decimator ?: return Extractor.RESULT_END_OF_INPUT
+            if (!dec.isReady) return Extractor.RESULT_END_OF_INPUT
+        }
         if (currentByteFrame >= s.totalByteFrames) return Extractor.RESULT_END_OF_INPUT
 
         return when (s.kind) {
-            ContainerKind.DSF -> readDsfBlock(input, out, s, dec)
-            ContainerKind.DFF -> readDffChunk(input, out, s, dec)
+            ContainerKind.DSF -> if (isDoPMode) readDsfBlockDoP(input, out, s) else readDsfBlock(input, out, s, decimator!!)
+            ContainerKind.DFF -> if (isDoPMode) readDffChunkDoP(input, out, s) else readDffChunk(input, out, s, decimator!!)
         }
     }
 
@@ -234,6 +246,111 @@ class DsdMedia3Extractor : Extractor {
         return Extractor.RESULT_CONTINUE
     }
 
+    private fun readDsfBlockDoP(
+        input: ExtractorInput,
+        out: TrackOutput,
+        s: DsdStreamSpec,
+    ): Int {
+        val fullBlockBytes = s.channels * s.blockSizePerChannel
+        if (inputBuffer.size < fullBlockBytes) inputBuffer = ByteArray(fullBlockBytes)
+        if (!input.readFully(inputBuffer, 0, fullBlockBytes, true)) {
+            return Extractor.RESULT_END_OF_INPUT
+        }
+
+        val remainingFrames = (s.totalByteFrames - currentByteFrame).toInt()
+        val validFramesInBlock = min(s.blockSizePerChannel, remainingFrames)
+        if (validFramesInBlock <= 0) return Extractor.RESULT_END_OF_INPUT
+
+        val usableFrames = (validFramesInBlock / 2) * 2
+        if (usableFrames <= 0) return Extractor.RESULT_END_OF_INPUT
+
+        val dopSamples = usableFrames / 2
+        val neededOut = dopSamples * s.channels * 3
+        if (outputBuffer.size < neededOut) outputBuffer = ByteArray(neededOut)
+
+        var outIdx = 0
+        val lsb = s.lsbFirst
+        for (f in 0 until dopSamples) {
+            val marker: Byte = if (dopMarkerToggle) 0x05.toByte() else 0xFA.toByte()
+            dopMarkerToggle = !dopMarkerToggle
+
+            for (ch in 0 until s.channels) {
+                val byteOffset = ch * s.blockSizePerChannel + 2 * f
+                val bA = inputBuffer[byteOffset].toInt() and 0xFF
+                val bB = inputBuffer[byteOffset + 1].toInt() and 0xFF
+
+                val ordA = if (lsb) BIT_REVERSE_TABLE[bA] else bA.toByte()
+                val ordB = if (lsb) BIT_REVERSE_TABLE[bB] else bB.toByte()
+
+                outputBuffer[outIdx++] = ordB
+                outputBuffer[outIdx++] = ordA
+                outputBuffer[outIdx++] = marker
+            }
+        }
+
+        val timeUs = (currentByteFrame * 8L * 1_000_000L) / s.dsdSampleRateHz
+        currentByteFrame += usableFrames.toLong()
+
+        if (neededOut > 0) {
+            parsableOut.reset(outputBuffer, neededOut)
+            out.sampleData(parsableOut, neededOut)
+            out.sampleMetadata(timeUs, C.BUFFER_FLAG_KEY_FRAME, neededOut, 0, null)
+        }
+        return Extractor.RESULT_CONTINUE
+    }
+
+    private fun readDffChunkDoP(
+        input: ExtractorInput,
+        out: TrackOutput,
+        s: DsdStreamSpec,
+    ): Int {
+        val remainingFrames = s.totalByteFrames - currentByteFrame
+        val maxReadFrames = min(remainingFrames, (4096L).coerceAtMost((inputBuffer.size / (s.channels * 2)).toLong() * 2)).toInt()
+        val usableFrames = (maxReadFrames / 2) * 2
+        if (usableFrames <= 0) return Extractor.RESULT_END_OF_INPUT
+
+        val byteLen = usableFrames * s.channels
+        if (!input.readFully(inputBuffer, 0, byteLen, true)) {
+            return Extractor.RESULT_END_OF_INPUT
+        }
+
+        val dopSamples = usableFrames / 2
+        val neededOut = dopSamples * s.channels * 3
+        if (outputBuffer.size < neededOut) outputBuffer = ByteArray(neededOut)
+
+        var outIdx = 0
+        var inIdx = 0
+        for (f in 0 until dopSamples) {
+            val marker: Byte = if (dopMarkerToggle) 0x05.toByte() else 0xFA.toByte()
+            dopMarkerToggle = !dopMarkerToggle
+
+            val chA = ByteArray(s.channels)
+            val chB = ByteArray(s.channels)
+            for (ch in 0 until s.channels) {
+                chA[ch] = inputBuffer[inIdx++]
+            }
+            for (ch in 0 until s.channels) {
+                chB[ch] = inputBuffer[inIdx++]
+            }
+
+            for (ch in 0 until s.channels) {
+                outputBuffer[outIdx++] = chB[ch]
+                outputBuffer[outIdx++] = chA[ch]
+                outputBuffer[outIdx++] = marker
+            }
+        }
+
+        val timeUs = (currentByteFrame * 8L * 1_000_000L) / s.dsdSampleRateHz
+        currentByteFrame += usableFrames.toLong()
+
+        if (neededOut > 0) {
+            parsableOut.reset(outputBuffer, neededOut)
+            out.sampleData(parsableOut, neededOut)
+            out.sampleMetadata(timeUs, C.BUFFER_FLAG_KEY_FRAME, neededOut, 0, null)
+        }
+        return Extractor.RESULT_CONTINUE
+    }
+
     private fun parseHeader(input: ExtractorInput) {
         val magic = ByteArray(16)
         input.readFully(magic, 0, 16)
@@ -245,31 +362,50 @@ class DsdMedia3Extractor : Extractor {
             else -> throw ParserException.createForMalformedContainer("Unsupported DSD container", null)
         }
 
-        val dec = DsdNativeDecimator(
-            channelCount = parsed.channels,
-            dsdSampleRateHz = parsed.dsdSampleRateHz,
-            lsbFirst = parsed.lsbFirst,
-        )
-        if (!dec.isReady) {
-            dec.close()
-            throw ParserException.createForUnsupportedContainerFeature("Native DSD decimator unavailable")
-        }
+        val mode = modeProvider()
+        val usbActive = usbDacActiveProvider()
+        val engageDoP = (mode == DsdOutputMode.NATIVE) && usbActive
+
+        val dec = if (!engageDoP) {
+            val d = DsdNativeDecimator(
+                channelCount = parsed.channels,
+                dsdSampleRateHz = parsed.dsdSampleRateHz,
+                lsbFirst = parsed.lsbFirst,
+            )
+            if (!d.isReady) {
+                d.close()
+                throw ParserException.createForUnsupportedContainerFeature("Native DSD decimator unavailable")
+            }
+            d
+        } else null
 
         spec = parsed
         decimator = dec
+        isDoPMode = engageDoP
+        dopMarkerToggle = false
         currentByteFrame = 0L
         pendingSeekByteFrame = 0L
 
         val durationUs = (parsed.totalByteFrames * 8L * 1_000_000L) / parsed.dsdSampleRateHz
+        val outputSampleRate = if (engageDoP) parsed.dsdSampleRateHz / 16 else dec!!.outputSampleRateHz
+        val pcmEncoding = if (engageDoP) C.ENCODING_PCM_24BIT else C.ENCODING_PCM_FLOAT
+        val bitDepth = if (engageDoP) 24 else 32
 
+        val dsdBadge = DsdNativeDecimator.dsdBadgeForRate(parsed.dsdSampleRateHz)
         trackOutput?.format(
             Format.Builder()
                 .setSampleMimeType(MimeTypes.AUDIO_RAW)
                 .setChannelCount(parsed.channels)
-                .setSampleRate(dec.outputSampleRateHz)
-                .setPcmEncoding(C.ENCODING_PCM_FLOAT)
-                .setAverageBitrate(dec.outputSampleRateHz * parsed.channels * 32)
-                .setPeakBitrate(dec.outputSampleRateHz * parsed.channels * 32)
+                .setSampleRate(outputSampleRate)
+                .setPcmEncoding(pcmEncoding)
+                .setLabel(dsdBadge)
+                .apply {
+                    if (engageDoP) {
+                        setCodecs("dsd")
+                    }
+                }
+                .setAverageBitrate(outputSampleRate * parsed.channels * bitDepth)
+                .setPeakBitrate(outputSampleRate * parsed.channels * bitDepth)
                 .build()
         )
         extractorOutput?.endTracks()
@@ -461,5 +597,21 @@ class DsdMedia3Extractor : Extractor {
         private const val STATE_HEADER = 0
         private const val STATE_SEEK_TO_DATA = 1
         private const val STATE_READING = 2
+
+        @Volatile
+        var defaultModeProvider: () -> DsdOutputMode = { DsdOutputMode.NATIVE }
+
+        @Volatile
+        var defaultUsbActiveProvider: () -> Boolean = { false }
+
+        private val BIT_REVERSE_TABLE = ByteArray(256) { i ->
+            var v = i
+            var r = 0
+            for (b in 0 until 8) {
+                r = (r shl 1) or (v and 1)
+                v = v ushr 1
+            }
+            r.toByte()
+        }
     }
 }

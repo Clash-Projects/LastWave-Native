@@ -461,6 +461,7 @@ fun SettingsScreen(
     var showLyricsAutoHideDialog by remember { mutableStateOf(false) }
     var showTranslationLanguageDialog by remember { mutableStateOf(false) }
     var showLoudnessDialog by remember { mutableStateOf(false) }
+    var showDsdOutputModeDialog by remember { mutableStateOf(false) }
     var showSyncPlaylistsSheet by remember { mutableStateOf(false) }
     var showYtLibraryVisibilitySheet by remember { mutableStateOf(false) }
     var showYtChannelSheet by remember { mutableStateOf(false) }
@@ -1073,7 +1074,7 @@ fun SettingsScreen(
                         LoudnessMode.ALBUM -> "Album \u2022 Keep intentional album dynamics"
                         else -> "Off \u2022 Play tagged tracks at original level"
                     }
-                    SettingsGroup(rowCount = 9) { index, position ->
+                    SettingsGroup(rowCount = 10) { index, position ->
                         when (index) {
                             0 -> SettingsToggleCard(
                                 icon = Icons.Filled.Usb,
@@ -1210,6 +1211,16 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::setShowAutoEqInVolumePanel,
                                 position = position,
                                 isHighlighted = (highlightedSettingId == "audio.show_autoeq_in_volume_panel"),
+                            )
+                            9 -> SettingsActionCard(
+                                icon = Icons.Filled.Tune,
+                                iconContainer = MaterialTheme.colorScheme.secondaryContainer,
+                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                title = "DSD Output Mode",
+                                subtitle = "${misc.dsdOutputMode.title} \u2022 ${if (misc.dsdOutputMode == com.lastwave.app.data.local.DsdOutputMode.NATIVE) "Direct bit-perfect stream to USB DACs" else "Decimate to 32-bit Float PCM"}",
+                                onClick = { showDsdOutputModeDialog = true },
+                                position = position,
+                                isHighlighted = (highlightedSettingId == "audio.dsd_output_mode"),
                             )
                         }
                     }
@@ -2888,6 +2899,17 @@ fun SettingsScreen(
                 showLoudnessDialog = false
             },
             onDismiss = { showLoudnessDialog = false },
+        )
+    }
+
+    if (showDsdOutputModeDialog) {
+        DsdOutputModeDialog(
+            current = misc.dsdOutputMode,
+            onSelect = {
+                viewModel.setDsdOutputMode(it)
+                showDsdOutputModeDialog = false
+            },
+            onDismiss = { showDsdOutputModeDialog = false },
         )
     }
 

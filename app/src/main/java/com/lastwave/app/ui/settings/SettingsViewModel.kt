@@ -628,6 +628,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setDsdOutputMode(mode: com.lastwave.app.data.local.DsdOutputMode) = launchSettingsAction("update DSD output mode") {
+        settingsPreferences.setDsdOutputMode(mode)
+    }
+
     /** System audio-effects mode (Settings -> Experimental, default OFF):
      *  flattens in-app DSP on mixer routes and publishes the audio session
      *  for external equalizer / OEM Dolby processing. Bypass routes suspend
