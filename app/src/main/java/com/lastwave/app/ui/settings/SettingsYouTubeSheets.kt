@@ -327,11 +327,8 @@ internal fun YouTubeChannelSheet(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Text(
-                            stringResource(R.string.set_yt_loading),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        com.lastwave.app.ui.common.ExpressiveLoadingIndicator(
+                            message = stringResource(R.string.set_yt_loading),
                         )
                     }
                 }

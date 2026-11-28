@@ -41,7 +41,10 @@ fun OverflowMenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     )
     FilledTonalIconButton(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shapes = IconButtonDefaults.shapes(
+            shape = RoundedCornerShape(12.dp),
+            pressedShape = RoundedCornerShape(8.dp),
+        ),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = darkThemeTone,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,

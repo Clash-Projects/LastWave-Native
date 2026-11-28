@@ -22,7 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -160,9 +160,9 @@ fun PodcastEpisodeRow(
             val fraction = progress?.fraction ?: 0f
             if (fraction > 0f) {
                 Column(horizontalAlignment = Alignment.End) {
-                    LinearProgressIndicator(
+                    LinearWavyProgressIndicator(
                         progress = { fraction },
-                        modifier = Modifier.width(56.dp).height(4.dp),
+                        modifier = Modifier.width(56.dp),
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(

@@ -88,7 +88,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -2288,7 +2288,7 @@ private fun LocalImportStatusCard(
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             when (state) {
                 is LocalMusicLibrary.ImportState.Scanning -> {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Text(
                         stringResource(R.string.local_scanning, state.filesFound),
                         style = MaterialTheme.typography.bodySmall,
@@ -2297,7 +2297,7 @@ private fun LocalImportStatusCard(
                 }
                 is LocalMusicLibrary.ImportState.Copying -> {
                     val fraction = if (state.total > 0) state.done.toFloat() / state.total else 0f
-                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                    LinearWavyProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
                     Text(
                         stringResource(R.string.local_copying, state.done, state.total, state.currentName),
                         style = MaterialTheme.typography.bodySmall,

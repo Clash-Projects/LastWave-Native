@@ -49,6 +49,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -334,7 +335,7 @@ fun AlbumDetailScreen(
                                             viewModel.playShuffle()
                                         },
                                         enabled = data.tracks.isNotEmpty(),
-                                        shape = CircleShape,
+                                        shapes = IconButtonDefaults.shapes(),
                                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                         ),
@@ -354,7 +355,7 @@ fun AlbumDetailScreen(
                                             viewModel.saveToLibrary()
                                         },
                                         enabled = !saveState.isSaving && !saveState.savedToLibrary && data.tracks.isNotEmpty(),
-                                        shape = CircleShape,
+                                        shapes = IconButtonDefaults.shapes(),
                                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                                             containerColor = if (saveState.savedToLibrary) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
                                         ),
@@ -369,27 +370,25 @@ fun AlbumDetailScreen(
                                     }
                                 }
 
-                                // Large Floating Primary Play Button (56dp circle)
-                                Surface(
+                                // Large Floating Primary Play Button (56dp) with M3 Expressive morphing shapes
+                                FilledIconButton(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         viewModel.playAll()
                                     },
                                     enabled = data.tracks.isNotEmpty(),
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    shadowElevation = 6.dp,
+                                    shapes = IconButtonDefaults.shapes(),
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    ),
                                     modifier = Modifier.size(56.dp),
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            if (isAlbumPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                            contentDescription = stringResource(R.string.alb_play_cd),
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(30.dp),
-                                        )
-                                    }
+                                    Icon(
+                                        if (isAlbumPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        contentDescription = stringResource(R.string.alb_play_cd),
+                                        modifier = Modifier.size(30.dp),
+                                    )
                                 }
                             }
 

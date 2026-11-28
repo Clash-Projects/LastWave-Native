@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledIconButton
@@ -68,6 +69,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.TonalToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1099,45 +1102,40 @@ private fun SearchFilterPills(
         SearchTab.PLAYLISTS to R.string.search_tab_playlists,
         SearchTab.USERS to R.string.search_tab_users,
     )
+    val colors = ToggleButtonDefaults.tonalToggleButtonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    )
     Row(
         modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        tabs.forEach { (tab, labelRes) ->
+        tabs.forEachIndexed { index, (tab, labelRes) ->
             val selected = selectedTab == tab
-            val interactionSource = remember { MutableInteractionSource() }
-
-            val pillBg = when {
-                selected -> MaterialTheme.colorScheme.primary
-                else -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.60f)
+            val shapes = when (index) {
+                0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
             }
-
-            val contentColor = when {
-                selected -> MaterialTheme.colorScheme.onPrimary
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            }
-
-            Surface(
-                shape = CircleShape,
-                color = pillBg,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                        onClick = { onTabSelected(tab) },
-                    ),
+            TonalToggleButton(
+                checked = selected,
+                onCheckedChange = { onTabSelected(tab) },
+                shapes = shapes,
+                colors = colors,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.height(36.dp),
             ) {
                 Text(
                     text = stringResource(labelRes),
                     style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                     ),
-                    color = contentColor,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+                    maxLines = 1,
                 )
             }
         }

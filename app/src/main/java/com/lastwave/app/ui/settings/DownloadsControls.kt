@@ -59,17 +59,16 @@ import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -78,6 +77,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.TonalToggleButton
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -129,53 +130,49 @@ internal fun DownloadTabBar(
     artistCount: Int,
     albumCount: Int,
 ) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    val tabs = DownloadTab.entries
+    val colors = ToggleButtonDefaults.tonalToggleButtonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    )
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            DownloadTab.entries.forEach { tab ->
-                val isSelected = selectedTab == tab
-                val count = when (tab) {
-                    DownloadTab.SONGS -> songCount
-                    DownloadTab.ARTISTS -> artistCount
-                    DownloadTab.ALBUMS -> albumCount
-                }
-                val bgColor by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent,
-                    label = "tabBg",
+        tabs.forEachIndexed { index, tab ->
+            val isSelected = selectedTab == tab
+            val count = when (tab) {
+                DownloadTab.SONGS -> songCount
+                DownloadTab.ARTISTS -> artistCount
+                DownloadTab.ALBUMS -> albumCount
+            }
+            val shapes = when (index) {
+                0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+            }
+            TonalToggleButton(
+                checked = isSelected,
+                onCheckedChange = { onTabSelected(tab) },
+                shapes = shapes,
+                colors = colors,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(42.dp),
+            ) {
+                Text(
+                    text = "${tab.label} ($count)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                val textColor by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    label = "tabText",
-                )
-
-                Surface(
-                    onClick = { onTabSelected(tab) },
-                    shape = RoundedCornerShape(16.dp),
-                    color = bgColor,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Text(
-                            text = "${tab.label} ($count)",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = textColor,
-                            maxLines = 1,
-                        )
-                    }
-                }
             }
         }
     }
@@ -252,7 +249,7 @@ internal fun DownloadFilterControls(
             Box {
                 FilledTonalButton(
                     onClick = { sortMenuExpanded = true },
-                    shape = RoundedCornerShape(16.dp),
+                    shapes = ButtonDefaults.shapes(shape = RoundedCornerShape(16.dp)),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     modifier = Modifier.height(52.dp),
                 ) {
@@ -326,33 +323,51 @@ internal fun DownloadFilterControls(
 
         // Filter chips for Songs tab
         if (selectedTab == DownloadTab.SONGS) {
+            val filterColors = ToggleButtonDefaults.tonalToggleButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {
-                FilterChip(
-                    selected = !filterLossless && !filterLyrics,
-                    onClick = {
+                TonalToggleButton(
+                    checked = !filterLossless && !filterLyrics,
+                    onCheckedChange = {
                         if (filterLossless) onToggleLossless()
                         if (filterLyrics) onToggleLyrics()
                     },
-                    label = { Text(stringResource(com.lastwave.app.R.string.dl_filter_all)) },
-                    shape = RoundedCornerShape(12.dp),
-                )
-                FilterChip(
-                    selected = filterLossless,
-                    onClick = onToggleLossless,
-                    label = { Text(stringResource(com.lastwave.app.R.string.dl_filter_lossless)) },
-                    shape = RoundedCornerShape(12.dp),
-                )
-                FilterChip(
-                    selected = filterLyrics,
-                    onClick = onToggleLyrics,
-                    label = { Text(stringResource(com.lastwave.app.R.string.dl_filter_lyrics)) },
-                    shape = RoundedCornerShape(12.dp),
-                )
+                    shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
+                    colors = filterColors,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.height(36.dp),
+                ) {
+                    Text(stringResource(com.lastwave.app.R.string.dl_filter_all), style = MaterialTheme.typography.labelLarge)
+                }
+                TonalToggleButton(
+                    checked = filterLossless,
+                    onCheckedChange = { onToggleLossless() },
+                    shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
+                    colors = filterColors,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.height(36.dp),
+                ) {
+                    Text(stringResource(com.lastwave.app.R.string.dl_filter_lossless), style = MaterialTheme.typography.labelLarge)
+                }
+                TonalToggleButton(
+                    checked = filterLyrics,
+                    onCheckedChange = { onToggleLyrics() },
+                    shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                    colors = filterColors,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.height(36.dp),
+                ) {
+                    Text(stringResource(com.lastwave.app.R.string.dl_filter_lyrics), style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

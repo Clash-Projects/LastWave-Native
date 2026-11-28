@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -122,8 +124,9 @@ fun LastWaveTheme(
         }
     }
 
-    MaterialTheme(
+    MaterialExpressiveTheme(
         colorScheme = activeColorScheme,
+        motionScheme = MotionScheme.expressive(),
         typography = when {
             !themeState.useCustomFont -> if (themeState.useBoldFont) SystemBoldTypography else SystemTypography
             themeState.useBoldFont -> LastWaveBoldTypography

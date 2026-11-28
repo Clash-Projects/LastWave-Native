@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -158,6 +159,7 @@ fun ExpressiveHeader(
                     if (onBack != null) {
                         FilledTonalIconButton(
                             onClick = onBack,
+                            shapes = IconButtonDefaults.shapes(),
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                 containerColor = if (useGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
                                 else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -217,6 +219,7 @@ fun HeaderActionIcon(
     val isDark = LocalIsDarkTheme.current
     FilledTonalIconButton(
         onClick = onClick,
+        shapes = IconButtonDefaults.shapes(),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isGlass) Color.White.copy(alpha = if (isDark) 0.12f else 0.20f)
             else MaterialTheme.colorScheme.surfaceContainerHighest,

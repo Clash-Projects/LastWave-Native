@@ -1,39 +1,29 @@
 package com.lastwave.app.ui.common
 
-import androidx.compose.ui.zIndex
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.TonalToggleButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.lastwave.app.ui.theme.M3ExpressiveShape
 
 data class ConnectedButtonItem(
     val label: String,
@@ -42,8 +32,10 @@ data class ConnectedButtonItem(
 
 /**
  * Material 3 Expressive Connected Button Group.
- * Replaces segmented buttons with tactile, shared-border asymmetric button groups.
+ * Uses [ButtonGroupDefaults] connected shapes and [TonalToggleButton] with
+ * spring-driven shape morphing on press and selection.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ConnectedButtonGroup(
     items: List<ConnectedButtonItem>,
@@ -52,103 +44,54 @@ fun ConnectedButtonGroup(
     modifier: Modifier = Modifier,
 ) {
     val haptic = LocalHapticFeedback.current
+    val colors = ToggleButtonDefaults.tonalToggleButtonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    )
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy((-1).dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         items.forEachIndexed { index, item ->
             val isSelected = index == selectedIndex
-            val shape = when {
-                items.size == 1 -> M3ExpressiveShape.GroupSingle
-                index == 0 -> M3ExpressiveShape.GroupLeft
-                index == items.lastIndex -> M3ExpressiveShape.GroupRight
-                else -> M3ExpressiveShape.GroupMiddle
+            val shapes = when {
+                items.size == 1 -> ToggleButtonDefaults.shapes()
+                index == 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                index == items.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
             }
 
-            val interactionSource = remember { MutableInteractionSource() }
-            val isPressed by interactionSource.collectIsPressedAsState()
-            val scale by animateFloatAsState(
-                targetValue = if (isPressed) 0.96f else 1f,
-                animationSpec = ExpressiveMotion.spatialFast(),
-                label = "connectedBtnScale_$index",
-            )
-
-            val containerColor by animateColorAsState(
-                targetValue = if (isSelected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHigh
+            TonalToggleButton(
+                checked = isSelected,
+                onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onSelect(index)
                 },
-                animationSpec = ExpressiveMotion.effectsDefault(),
-                label = "connectedBtnBg_$index",
-            )
-
-            val contentColor by animateColorAsState(
-                targetValue = if (isSelected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                animationSpec = ExpressiveMotion.effectsDefault(),
-                label = "connectedBtnFg_$index",
-            )
-
-
-
-            Surface(
+                shapes = shapes,
+                colors = colors,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                 modifier = Modifier
                     .weight(1f)
-                    .zIndex(if (isSelected) 1f else 0f)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = ripple(),
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSelect(index)
-                        },
-                    ),
-                shape = shape,
-                color = containerColor,
-                contentColor = contentColor,
-                border = BorderStroke(
-                    width = if (isSelected) 1.dp else 1.dp,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                ),
-                tonalElevation = if (isSelected) 2.dp else 0.dp,
+                    .defaultMinSize(minHeight = 44.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .defaultMinSize(minHeight = 44.dp)
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        if (item.icon != null) {
-                            Icon(
-                                imageVector = item.icon,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = contentColor,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        Text(
-                            text = item.label,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = contentColor,
-                            maxLines = 1,
-                        )
-                    }
+                if (item.icon != null) {
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
                 }
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

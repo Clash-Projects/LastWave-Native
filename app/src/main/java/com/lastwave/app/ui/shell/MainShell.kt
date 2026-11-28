@@ -371,7 +371,7 @@ fun MainShell(
                         promptDismissedThisSession = true
                         onOpenYouTubeLogin()
                     },
-                    shape = RoundedCornerShape(20.dp),
+                    shapes = ButtonDefaults.shapes(),
                 ) {
                     Text("Take me to YT Music login")
                 }
@@ -983,22 +983,22 @@ private fun FloatingNavBar(
                             targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(
                                 alpha = if (liquidGlass) 0.35f else 1f,
                             ) else Color.Transparent,
-                            animationSpec = ExpressiveMotion.effectsDefault(),
+                            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
                             label = "md3IndicatorColor_$index",
                         )
                         val indicatorWidth by animateDpAsState(
                             targetValue = if (selected) 64.dp else 32.dp,
-                            animationSpec = navSpring(),
+                            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                             label = "md3IndicatorWidth_$index",
                         )
                         val iconTint by animateColorAsState(
                             targetValue = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            animationSpec = ExpressiveMotion.effectsDefault(),
+                            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
                             label = "md3IconTint_$index",
                         )
                         val labelColor by animateColorAsState(
                             targetValue = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                            animationSpec = ExpressiveMotion.effectsDefault(),
+                            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
                             label = "md3LabelColor_$index",
                         )
 

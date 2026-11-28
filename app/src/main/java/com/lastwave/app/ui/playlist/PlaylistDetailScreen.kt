@@ -471,7 +471,7 @@ fun PlaylistDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Circular Shuffle Button
+                        // Circular Shuffle Button with M3 Expressive shape-morphing
                         FilledTonalIconButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -498,7 +498,7 @@ fun PlaylistDetailScreen(
                                     )
                                 }
                             },
-                            shape = CircleShape,
+                            shapes = IconButtonDefaults.shapes(),
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                 containerColor = if (isThisPlaylistPlaying && playbackState.shuffleEnabled) {
                                     MaterialTheme.colorScheme.primary
@@ -515,15 +515,7 @@ fun PlaylistDetailScreen(
                         ) {
                             Icon(Icons.Filled.Shuffle, contentDescription = stringResource(com.lastwave.app.R.string.pd_shuffle_cd), modifier = Modifier.size(22.dp))
                         }
-                        // Prominent Center Play / Playing Pill Button with Spring Physics
-                        val playInteractionSource = remember { MutableInteractionSource() }
-                        val isPlayPressed by playInteractionSource.collectIsPressedAsState()
-                        val playScale by animateFloatAsState(
-                            targetValue = if (isPlayPressed) 0.92f else 1f,
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                            label = "heroPlayScale",
-                        )
-
+                        // Prominent Center Play / Playing Pill Button with M3 Expressive shape-morphing
                         Button(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -535,8 +527,7 @@ fun PlaylistDetailScreen(
                                     )
                                 }
                             },
-                            interactionSource = playInteractionSource,
-                            shape = CircleShape,
+                            shapes = ButtonDefaults.shapes(),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -544,11 +535,7 @@ fun PlaylistDetailScreen(
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 8.dp),
                             modifier = Modifier
                                 .height(50.dp)
-                                .padding(horizontal = 4.dp)
-                                .graphicsLayer {
-                                    scaleX = playScale
-                                    scaleY = playScale
-                                },
+                                .padding(horizontal = 4.dp),
                         ) {
                             Icon(
                                 if (isThisPlaylistPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -574,7 +561,7 @@ fun PlaylistDetailScreen(
                                     }
                                 }
                             },
-                            shape = CircleShape,
+                            shapes = IconButtonDefaults.shapes(),
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             ),
