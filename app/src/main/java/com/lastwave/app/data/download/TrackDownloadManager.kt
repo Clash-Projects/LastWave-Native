@@ -38,6 +38,7 @@ import com.lastwave.app.data.plugin.OfflineSidecar
 import com.lastwave.app.data.plugin.SegmentedDashBridge
 import com.lastwave.app.data.plugin.SegmentedStreamDescriptor
 import com.lastwave.app.data.local.DownloadFolderStructure
+import com.lastwave.app.data.local.DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.SettingsPreferences
 import com.lastwave.app.data.local.sanitizeDownloadFolderName
@@ -491,6 +492,7 @@ class TrackDownloadManager @Inject constructor(
         year: String? = null,
         videoId: String? = null,
         durationMs: Long? = null,
+        qualityOverride: Int? = null,
     ) {
         val key = makeDownloadKey(title, artist)
         // Admission and job registration share [admissionLock] with the wipe so a
@@ -500,7 +502,7 @@ class TrackDownloadManager @Inject constructor(
             if (!activeKeys.add(key)) return
             reconnectGenerations[key] = AtomicLong()
             val job = applicationScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                runDownloadJob(key, title, artist, album, artworkUrl, year, videoId, durationMs)
+                runDownloadJob(key, title, artist, album, artworkUrl, year, videoId, durationMs, qualityOverride)
             }
             activeJobs[key] = job
             job.start()
@@ -516,6 +518,7 @@ class TrackDownloadManager @Inject constructor(
         year: String?,
         videoId: String?,
         durationMs: Long?,
+        qualityOverride: Int?,
     ) {
             // Bound the number of simultaneous downloads: each one holds
             // sockets, buffers and (during tagging) a decoded cover bitmap,
@@ -762,7 +765,9 @@ class TrackDownloadManager @Inject constructor(
 
                 // Honor the download-quality setting (Dolby Atmos / stereo tiers / YouTube).
                 // Do not force Dolby Atmos unless the user explicitly selected it as download quality.
-                val requestedDownloadQuality = misc.downloadQuality
+                val requestedDownloadQuality = qualityOverride
+                    ?: misc.downloadQuality.takeUnless { it == DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME }
+                    ?: LosslessMusicApi.QUALITY_MAX_HI_RES
                 val isYouTubeRequested = requestedDownloadQuality == LosslessMusicApi.QUALITY_YOUTUBE
 
                 // 1. Provider module (.lwp engine): progressive clear FLAC/MP3 or segmented DASH (Dolby Atmos / Tidal Hi-Res)

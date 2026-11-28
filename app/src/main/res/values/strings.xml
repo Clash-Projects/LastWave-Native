@@ -199,6 +199,7 @@
     <string name="settings_section_audio">Audio &amp; Streaming</string>
     <string name="settings_streaming_quality">Streaming Quality</string>
     <string name="settings_download_quality">Download Quality</string>
+    <string name="settings_download_quality_select">Select at Download Time</string>
     <string name="settings_bit_perfect">Bit-Perfect Mode (Direct Passthrough)</string>
     <string name="settings_bit_perfect_sub">Bypass all DSP, EQ &amp; audio processing for bit-exact reproduction</string>
     <string name="settings_crossfade">Crossfade</string>

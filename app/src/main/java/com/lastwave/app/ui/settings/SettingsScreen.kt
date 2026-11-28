@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Vibration
 import com.lastwave.app.data.local.CELLULAR_QUALITY_AUTO
+import com.lastwave.app.data.local.DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME
 import com.lastwave.app.data.local.musicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
@@ -808,6 +809,7 @@ fun SettingsScreen(
                     val wifiQualitySubtitle = streamingQualityLabel(misc.wifiStreamingQuality)
                     val cellularQualitySubtitle = streamingQualityLabel(misc.cellularStreamingQuality)
                     val downloadQualitySubtitle = when (misc.downloadQuality) {
+                        DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME -> stringResource(R.string.settings_download_quality_select)
                         28 -> "Dolby Atmos (Spatial Immersive Audio)"
                         27 -> "Hi-Res (24-bit / 192 kHz FLAC)"
                         7 -> "Hi-Res (24-bit / 96 kHz FLAC)"
@@ -3137,6 +3139,7 @@ fun SettingsScreen(
 
     if (showDownloadQualityDialog) {
         val downloadTiers = listOf(
+            Triple(DOWNLOAD_QUALITY_SELECT_AT_DOWNLOAD_TIME, stringResource(R.string.settings_download_quality_select), "Choose a quality before each download" to "SELECT"),
             Triple(28, "Dolby Atmos", "Spatial Immersive Audio • Master Audio" to "ATMOS"),
             Triple(27, "Hi-Res Audio (Max)", "Up to 24-bit / 192 kHz • Studio Master FLAC" to "24-BIT / 192k"),
             Triple(7, "Hi-Res Audio", "24-bit / 96 kHz • Studio FLAC" to "24-BIT / 96k"),
