@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">LastWave プレーヤー</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">SoundDrop プレーヤー</string>
     <string name="widget_description">すべてのメディアアプリのジャケット、曲情報、再生コントロール</string>
 
     <string name="nav_feed">フィード</string>
@@ -11,7 +11,7 @@
     <string name="update_available">アップデートあり</string>
     <string name="update">更新</string>
     <string name="dismiss_update">アップデートを閉じる</string>
-    <string name="update_ready_to_install">LastWave v%1$s をインストールできます</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s をインストールできます</string>
 
     <string name="settings">設定</string>
     <string name="settings_section_language">言語</string>
@@ -116,7 +116,7 @@
     <string name="dialog_clear_all_text">認証情報、プレイリスト、キャッシュデータが削除されます。元に戻せません。</string>
     <string name="dialog_clear_all_confirm">すべて消去</string>
     <string name="dialog_disconnect_yt_title">YouTube Music を切断しますか?</string>
-    <string name="dialog_disconnect_yt_text">アカウントにミラー済みのプレイリストは残りますが、LastWave は同期を停止し接続を忘れます。</string>
+    <string name="dialog_disconnect_yt_text">アカウントにミラー済みのプレイリストは残りますが、SoundDrop は同期を停止し接続を忘れます。</string>
     <string name="dialog_logout_title">Last.fm からログアウトしますか?</string>
     <string name="dialog_logout_text">プレイリストとキャッシュデータは保持されます。</string>
     <string name="common_save">保存</string>
@@ -259,7 +259,7 @@
     <string name="desc_repeat">リピート</string>
     <string name="desc_play_pause">再生 / 一時停止</string>
 
-    <string name="widget_obsidian_name">LastWave 黒曜石ガラス</string>
+    <string name="widget_obsidian_name">SoundDrop 黒曜石ガラス</string>
     <string name="widget_obsidian_description">半透明の深みとクリスタルの縁を備えた曇り黒曜石ガラスプレーヤー</string>
     <string name="nav_generator">発電機</string>
     <string name="settings_downloads_sub_custom">%1$d 曲 • %2$s • %3$s</string>
@@ -762,7 +762,7 @@
     <string name="set_lfm_disc_title">Last.fm を切断しますか?</string>
     <string name="set_lfm_disc_text">グローバル スクロブルは一時停止します。統計情報はローカルのリスニング履歴に切り替わります。何も削除されません。</string>
     <string name="set_lfm_disc_btn">切断する</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">カスタムカラー</string>
     <string name="set_hue">色相</string>
     <string name="set_sat">彩度</string>
@@ -771,7 +771,7 @@
     <string name="set_eq_enable">イコライザーを有効にする</string>
     <string name="set_eq_custom">カスタム</string>
     <string name="set_yt_channel">YouTube チャンネル</string>
-    <string name="set_yt_channel_sub">LastWave が使用するチャンネルのライブラリ、いいね、履歴を選択してください</string>
+    <string name="set_yt_channel_sub">SoundDrop が使用するチャンネルのライブラリ、いいね、履歴を選択してください</string>
     <string name="set_yt_loading">チャンネルを読み込み中…</string>
     <string name="set_yt_empty_title">チャンネルが見つかりません</string>
     <string name="set_yt_empty_sub">接続を確認してから、もう一度試してください。</string>
@@ -809,11 +809,11 @@
     <string name="set_usb_old">Android 10以降が必要です</string>
     <string name="set_usb_on">usbdevfs を DAC に直接接続します。 • Bit-Perfect がこれを自動的に実行します。</string>
     <string name="set_usb_off">オフ • USB DAC と Bit-Perfect (またはこのトグル) が必要です</string>
-    <string name="set_yt_hist_on">オン • LastWave で聴いた曲 (ロスレスやダウンロードを含む) が YouTube Music の履歴に表示されます。</string>
-    <string name="set_yt_hist_off">オフ • LastWave でのリスニングは YouTube Music 履歴から除外されます</string>
+    <string name="set_yt_hist_on">オン • SoundDrop で聴いた曲 (ロスレスやダウンロードを含む) が YouTube Music の履歴に表示されます。</string>
+    <string name="set_yt_hist_off">オフ • SoundDrop でのリスニングは YouTube Music 履歴から除外されます</string>
     <string name="set_discord_title">Discord のリッチなプレゼンス</string>
     <string name="set_discord_on">オン • トラック、品質、カバーが Discord プロフィールに表示されます</string>
-    <string name="set_discord_off">オフ • LastWave は Discord プロフィールから除外されます</string>
+    <string name="set_discord_off">オフ • SoundDrop は Discord プロフィールから除外されます</string>
     <string name="set_tg_sub">Telegram で @clashprojects に参加してください</string>
     <string name="set_discord_support">Discordのサポート</string>
     <string name="set_discord_support_sub">Discord コミュニティに参加してください</string>
@@ -839,9 +839,9 @@
     <string name="toast_sync_fail">プレイリストの同期に失敗しました: %1$s</string>
     <string name="toast_synced">ローカル JSON から同期された %1$d プレイリスト</string>
     <string name="toast_restored">%1$d プレイリスト%2$s を復元しました</string>
-    <string name="toast_newer_backup">このバックアップは、新しいバージョンの LastWave を使用して作成されました。</string>
-    <string name="toast_not_backup">そのファイルは LastWave バックアップのようには見えません</string>
-    <string name="toast_not_json">それは LastWave バックアップまたはプレイリスト JSON ではありません</string>
+    <string name="toast_newer_backup">このバックアップは、新しいバージョンの SoundDrop を使用して作成されました。</string>
+    <string name="toast_not_backup">そのファイルは SoundDrop バックアップのようには見えません</string>
+    <string name="toast_not_json">それは SoundDrop バックアップまたはプレイリスト JSON ではありません</string>
     <string name="toast_empty_file">選択したファイルは空であるか、読み取ることができません</string>
     <string name="toast_restore_fail">復元に失敗しました: %1$s</string>
     <string name="toast_restore_read">復元読み取りエラー: %1$s</string>
@@ -1053,7 +1053,7 @@
     <string name="lyshare_mode_lyrics">歌詞</string>
     <string name="lyshare_action_share">共有</string>
     <string name="lyshare_action_save">保存</string>
-    <string name="lyshare_saved_to_gallery">Pictures/LastWave に保存しました</string>
+    <string name="lyshare_saved_to_gallery">Pictures/SoundDrop に保存しました</string>
     <string name="lyshare_save_failed">画像を保存できませんでした</string>
     <string name="lyshare_share_failed">画像を共有できませんでした</string>
     <string name="lyshare_button_cd">歌詞を共有</string>
@@ -1068,7 +1068,7 @@
     <string name="lyshare_color_white">ホワイト</string>
     <string name="lyshare_color_black">ブラック</string>
     <string name="lyshare_color_accent">アクセント</string>
-    <string name="lyshare_color_brand">LastWave ライム</string>
+    <string name="lyshare_color_brand">SoundDrop ライム</string>
     <string name="lyshare_accessibility_line_selected">選択中、%1$d / %2$d 行目</string>
     <string name="lyshare_accessibility_line_unselected">%1$d / %2$d 行目</string>
 

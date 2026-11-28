@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">Trình phát LastWave</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">Trình phát SoundDrop</string>
     <string name="widget_description">Ảnh bìa, thông tin bài hát và nút điều khiển phát cho mọi ứng dụng nhạc</string>
-    <string name="widget_obsidian_name">LastWave Kính Obsidian</string>
+    <string name="widget_obsidian_name">SoundDrop Kính Obsidian</string>
     <string name="widget_obsidian_description">Trình phát kính obsidian mờ với độ sâu trong suốt và viền pha lê</string>
 
     <!-- Wave home-screen widgets -->
-    <string name="wave_widget_strip_name">LastWave Strip · 3×1–4×1</string>
+    <string name="wave_widget_strip_name">SoundDrop Strip · 3×1–4×1</string>
     <string name="wave_widget_strip_description">Trình phát ảnh bìa toàn khung với nút thích, trước, phát, tiếp theo và ngẫu nhiên; đổi kích thước từ 3×1 đến 4×1</string>
-    <string name="wave_widget_glass_name">LastWave Glass · 2×2</string>
+    <string name="wave_widget_glass_name">SoundDrop Glass · 2×2</string>
     <string name="wave_widget_glass_description">Trình phát kính hình vuông cố định với màu ảnh bìa, tiến trình và nút điều khiển phát</string>
-    <string name="wave_widget_circular_name">LastWave Wave Circular · 2×2</string>
+    <string name="wave_widget_circular_name">SoundDrop Wave Circular · 2×2</string>
     <string name="wave_widget_circular_description">Ảnh bìa tròn cố định với vòng sóng và các nút trước, phát, tiếp theo</string>
-    <string name="wave_widget_library_name">LastWave Library Grid</string>
+    <string name="wave_widget_library_name">SoundDrop Library Grid</string>
     <string name="wave_widget_library_description">Đang phát, bốn bài gần đây và truy cập nhanh; đổi kích thước từ 3×2 đến 4×2</string>
     <string name="wave_widget_recently_played">Đã phát gần đây</string>
     <string name="wave_widget_coming_next">Sắp phát</string>
@@ -38,7 +38,7 @@
     <string name="wave_widget_playlist_recent">Gần đây</string>
     <string name="wave_widget_playlist_most_played">Nghe nhiều nhất</string>
     <string name="wave_widget_preview_title">Midnight Current</string>
-    <string name="wave_widget_preview_artist">LastWave Radio</string>
+    <string name="wave_widget_preview_artist">SoundDrop Radio</string>
     <string name="wave_widget_preview_next_one">Afterglow &#183; Lumen</string>
     <string name="wave_widget_preview_next_two">Low Tide &#183; Nocturne</string>
     <string name="wave_widget_preview_next_three">Signal Bloom &#183; Arc</string>
@@ -54,7 +54,7 @@
     <string name="update_available">Có bản cập nhật</string>
     <string name="update">Cập nhật</string>
     <string name="dismiss_update">Bỏ qua cập nhật</string>
-    <string name="update_ready_to_install">LastWave v%1$s đã sẵn sàng để cài đặt</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s đã sẵn sàng để cài đặt</string>
 
     <!-- Settings -->
     <string name="settings">Cài đặt</string>
@@ -110,12 +110,12 @@
     <string name="app_icon_default">Mặc định</string>
     <string name="app_icon_default_sub">Electric Lime &amp; Obsidian Teal nguyên bản</string>
     <string name="app_icon_desktop">Desktop</string>
-    <string name="app_icon_desktop_sub">Phiên bản LastWave Desktop Player</string>
+    <string name="app_icon_desktop_sub">Phiên bản SoundDrop Desktop Player</string>
     <string name="app_icon_white">Trắng tinh</string>
     <string name="app_icon_white_sub">Logo trắng với các vạch đen</string>
     <string name="app_icon_black">Đen Obsidian</string>
     <string name="app_icon_black_sub">Logo đen với các vạch trắng</string>
-    <string name="settings_lastwave_theme">Chủ đề đặc trưng LastWave</string>
+    <string name="settings_lastwave_theme">Chủ đề đặc trưng SoundDrop</string>
     <string name="settings_lastwave_theme_sub">Bảng màu logo riêng • Electric Lime &amp; Obsidian Teal</string>
     <string name="settings_amoled">Chế độ AMOLED</string>
     <string name="settings_amoled_sub">Nền đen tuyền (chỉ ở chế độ tối)</string>
@@ -187,7 +187,7 @@
     <string name="settings_keep_lyrics_screen_awake">Giữ màn hình sáng khi xem lời bài hát</string>
     <string name="settings_keep_lyrics_screen_awake_desc">Ngăn màn hình tắt khi đang xem lời bài hát</string>
     <string name="settings_stop_on_recents">Dừng phát khi vuốt đóng ứng dụng</string>
-    <string name="settings_stop_on_recents_on">Gỡ LastWave khỏi danh sách gần đây sẽ dừng phát</string>
+    <string name="settings_stop_on_recents_on">Gỡ SoundDrop khỏi danh sách gần đây sẽ dừng phát</string>
     <string name="settings_stop_on_recents_off">Tiếp tục phát nền sau khi rời danh sách gần đây</string>
     <string name="settings_download_lyrics">Tải lời bài hát đồng bộ</string>
     <string name="settings_download_lyrics_on">Lưu tệp .lrc đi kèm &amp; nhúng lời vào bản tải xuống</string>
@@ -222,7 +222,7 @@
     <string name="storage_cache_last_cleared">Xóa lần cuối %1$s • giải phóng %2$s</string>
     <string name="storage_cache_limit">Giới hạn dung lượng bộ nhớ đệm</string>
     <string name="storage_cache_limit_summary">Dung lượng bộ nhớ đệm tổng tối đa: %1$s. Các mục cũ nhất sẽ bị xóa khi cần; nhạc đã tải xuống không bị ảnh hưởng.</string>
-    <string name="storage_quality_note">Ảnh bìa dùng ảnh thu nhỏ khi dùng dữ liệu di động. Nếu ảnh bìa độ phân giải cao đã có trong bộ nhớ đệm, LastWave sẽ dùng lại mà không tải lại.</string>
+    <string name="storage_quality_note">Ảnh bìa dùng ảnh thu nhỏ khi dùng dữ liệu di động. Nếu ảnh bìa độ phân giải cao đã có trong bộ nhớ đệm, SoundDrop sẽ dùng lại mà không tải lại.</string>
     <string name="storage_clear_cache">Xóa bộ nhớ đệm</string>
     <string name="storage_clear_cache_title">Xóa ảnh bìa và âm thanh trong bộ nhớ đệm?</string>
     <string name="storage_clear_cache_message">Thao tác này xóa ảnh bìa và âm thanh đã phát trong bộ nhớ đệm. Nhạc đã tải xuống vẫn được giữ trên thiết bị.</string>
@@ -250,7 +250,7 @@
     <string name="settings_check_updates">Kiểm tra cập nhật</string>
     <string name="settings_source_code">Mã nguồn</string>
     <string name="settings_desktop_app">Tải ứng dụng Desktop</string>
-    <string name="about_made_by">Được tạo bởi LastWave Team</string>
+    <string name="about_made_by">Được tạo bởi SoundDrop Team</string>
 
     <!-- Common dialog buttons -->
     <string name="common_cancel">Hủy</string>
@@ -451,7 +451,7 @@
     <string name="dialog_clear_all_text">Thao tác này xóa thông tin đăng nhập, danh sách phát, bài hát đã tải và dữ liệu bộ nhớ đệm của bạn. Không thể hoàn tác.</string>
     <string name="dialog_clear_all_confirm">Xóa tất cả</string>
     <string name="dialog_disconnect_yt_title">Ngắt kết nối YouTube Music?</string>
-    <string name="dialog_disconnect_yt_text">Các danh sách phát đã được phản chiếu lên tài khoản của bạn vẫn còn ở đó, nhưng LastWave sẽ ngừng đồng bộ và quên kết nối.</string>
+    <string name="dialog_disconnect_yt_text">Các danh sách phát đã được phản chiếu lên tài khoản của bạn vẫn còn ở đó, nhưng SoundDrop sẽ ngừng đồng bộ và quên kết nối.</string>
     <string name="dialog_logout_title">Đăng xuất khỏi Last.fm?</string>
     <string name="dialog_logout_text">Danh sách phát và dữ liệu bộ nhớ đệm của bạn sẽ được giữ lại.</string>
 
@@ -621,7 +621,7 @@
     <string name="menu_quick_play_next">Phát tiếp theo</string>
     <string name="menu_quick_add_playlist">Thêm vào danh sách phát</string>
     <string name="menu_quick_jam">Jam</string>
-    <string name="settings_jam_title">LastWave Jam</string>
+    <string name="settings_jam_title">SoundDrop Jam</string>
     <string name="settings_jam_sub">Cùng nghe theo thời gian thực \u2022 Tạo phòng hoặc tham gia bằng mã</string>
 
     <!-- Playlists screen -->
@@ -943,7 +943,7 @@
     <string name="set_lfm_disc_title">Ngắt kết nối Last.fm?</string>
     <string name="set_lfm_disc_text">Scrobble toàn cầu sẽ tạm dừng. Thống kê của bạn chuyển sang lịch sử nghe cục bộ — không có gì bị xóa.</string>
     <string name="set_lfm_disc_btn">Ngắt kết nối</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">Màu tùy chỉnh</string>
     <string name="set_hue">Sắc độ</string>
     <string name="set_sat">Độ bão hòa</string>
@@ -952,7 +952,7 @@
     <string name="set_eq_enable">Bật bộ cân bằng âm</string>
     <string name="set_eq_custom">Tùy chỉnh</string>
     <string name="set_yt_channel">Kênh YouTube</string>
-    <string name="set_yt_channel_sub">Chọn kênh mà LastWave dùng thư viện, mục thích &amp; lịch sử</string>
+    <string name="set_yt_channel_sub">Chọn kênh mà SoundDrop dùng thư viện, mục thích &amp; lịch sử</string>
     <string name="set_yt_loading">Đang tải các kênh…</string>
     <string name="set_yt_empty_title">Không tìm thấy kênh nào</string>
     <string name="set_yt_empty_sub">Hãy kiểm tra kết nối rồi thử lại.</string>
@@ -990,11 +990,11 @@
     <string name="set_usb_old">Yêu cầu Android 10 trở lên</string>
     <string name="set_usb_on">usbdevfs trực tiếp đến DAC • Bit-Perfect tự động kích hoạt chế độ này</string>
     <string name="set_usb_off">Tắt • Cần DAC USB và Bit-Perfect (hoặc bật mục này)</string>
-    <string name="set_yt_hist_on">Bật • các bài bạn nghe trong LastWave, kể cả lossless &amp; bản tải xuống, sẽ xuất hiện trong lịch sử YouTube Music</string>
-    <string name="set_yt_hist_off">Tắt • việc nghe trong LastWave không xuất hiện trong lịch sử YouTube Music</string>
+    <string name="set_yt_hist_on">Bật • các bài bạn nghe trong SoundDrop, kể cả lossless &amp; bản tải xuống, sẽ xuất hiện trong lịch sử YouTube Music</string>
+    <string name="set_yt_hist_off">Tắt • việc nghe trong SoundDrop không xuất hiện trong lịch sử YouTube Music</string>
     <string name="set_discord_title">Discord Rich Presence</string>
     <string name="set_discord_on">Bật • bài hát, chất lượng và ảnh bìa hiển thị trên hồ sơ Discord của bạn</string>
-    <string name="set_discord_off">Tắt • LastWave không hiển thị trên hồ sơ Discord của bạn</string>
+    <string name="set_discord_off">Tắt • SoundDrop không hiển thị trên hồ sơ Discord của bạn</string>
     <string name="set_tg_sub">Tham gia @clashprojects trên Telegram</string>
     <string name="set_discord_support">Hỗ trợ Discord</string>
     <string name="set_discord_support_sub">Tham gia cộng đồng Discord của chúng tôi</string>
@@ -1020,9 +1020,9 @@
     <string name="toast_sync_fail">Đồng bộ danh sách phát thất bại: %1$s</string>
     <string name="toast_synced">Đã đồng bộ %1$d danh sách phát từ JSON cục bộ</string>
     <string name="toast_restored">Đã khôi phục %1$d danh sách phát%2$s</string>
-    <string name="toast_newer_backup">Bản sao lưu này được tạo bằng phiên bản LastWave mới hơn</string>
-    <string name="toast_not_backup">Tệp này không giống bản sao lưu LastWave</string>
-    <string name="toast_not_json">Đây không phải bản sao lưu LastWave hoặc JSON danh sách phát</string>
+    <string name="toast_newer_backup">Bản sao lưu này được tạo bằng phiên bản SoundDrop mới hơn</string>
+    <string name="toast_not_backup">Tệp này không giống bản sao lưu SoundDrop</string>
+    <string name="toast_not_json">Đây không phải bản sao lưu SoundDrop hoặc JSON danh sách phát</string>
     <string name="toast_empty_file">Tệp đã chọn trống hoặc không đọc được</string>
     <string name="toast_restore_fail">Khôi phục thất bại: %1$s</string>
     <string name="toast_restore_read">Lỗi đọc khi khôi phục: %1$s</string>
@@ -1250,7 +1250,7 @@
     <string name="lyshare_mode_lyrics">Lời bài hát</string>
     <string name="lyshare_action_share">Chia sẻ</string>
     <string name="lyshare_action_save">Lưu</string>
-    <string name="lyshare_saved_to_gallery">Đã lưu vào Pictures/LastWave</string>
+    <string name="lyshare_saved_to_gallery">Đã lưu vào Pictures/SoundDrop</string>
     <string name="lyshare_save_failed">Không thể lưu ảnh</string>
     <string name="lyshare_share_failed">Không thể chia sẻ ảnh</string>
     <string name="lyshare_button_cd">Chia sẻ lời bài hát</string>
@@ -1265,7 +1265,7 @@
     <string name="lyshare_color_white">Trắng</string>
     <string name="lyshare_color_black">Đen</string>
     <string name="lyshare_color_accent">Màu nhấn</string>
-    <string name="lyshare_color_brand">LastWave Lime</string>
+    <string name="lyshare_color_brand">SoundDrop Lime</string>
     <string name="lyshare_accessibility_line_selected">Đã chọn, dòng %1$d trên %2$d</string>
     <string name="lyshare_accessibility_line_unselected">Dòng %1$d trên %2$d</string>
     <!-- Remaining screen strings -->
@@ -1377,8 +1377,8 @@
     <string name="autoeq_msg_download_failed">Không thể tải hồ sơ này</string>
     <string name="autoeq_msg_device_saved">Đã lưu hồ sơ cho thiết bị này</string>
     <string name="signal_label_autoeq">AutoEQ</string>
-    <string name="signal_detail_autoeq">LastWave áp dụng hiệu chỉnh (làm thay đổi mẫu âm, bộ trộn Android vẫn bị bỏ qua)</string>
-    <string name="signal_verdict_direct_eq">Đã bỏ qua bộ trộn Android. LastWave áp dụng hiệu chỉnh AutoEQ của bạn, sau đó mẫu âm đi thẳng đến HAL.</string>
+    <string name="signal_detail_autoeq">SoundDrop áp dụng hiệu chỉnh (làm thay đổi mẫu âm, bộ trộn Android vẫn bị bỏ qua)</string>
+    <string name="signal_verdict_direct_eq">Đã bỏ qua bộ trộn Android. SoundDrop áp dụng hiệu chỉnh AutoEQ của bạn, sau đó mẫu âm đi thẳng đến HAL.</string>
     <string name="signal_direct_eq">TRỰC TIẾP + EQ</string>
 
     <!-- Recommendations -->

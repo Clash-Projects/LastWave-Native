@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LastWave</string>
-    <string name="widget_name">LastWave 플레이어</string>
+    <string name="app_name">SoundDrop</string>
+    <string name="widget_name">SoundDrop 플레이어</string>
     <string name="widget_description">모든 미디어 앱의 앨범아트, 곡 정보 및 재생 컨트롤</string>
 
     <string name="nav_feed">피드</string>
@@ -11,7 +11,7 @@
     <string name="update_available">업데이트 있음</string>
     <string name="update">업데이트</string>
     <string name="dismiss_update">업데이트 닫기</string>
-    <string name="update_ready_to_install">LastWave v%1$s를 설치할 수 있습니다</string>
+    <string name="update_ready_to_install">SoundDrop v%1$s를 설치할 수 있습니다</string>
 
     <string name="settings">설정</string>
     <string name="settings_section_language">언어</string>
@@ -116,7 +116,7 @@
     <string name="dialog_clear_all_text">로그인 정보, 플레이리스트, 캐시 데이터가 삭제됩니다. 되돌릴 수 없습니다.</string>
     <string name="dialog_clear_all_confirm">모두 지우기</string>
     <string name="dialog_disconnect_yt_title">YouTube Music 연결을 해제할까요?</string>
-    <string name="dialog_disconnect_yt_text">계정에 미러링된 플레이리스트는 유지되지만 LastWave는 동기화를 중단하고 연결을 삭제합니다.</string>
+    <string name="dialog_disconnect_yt_text">계정에 미러링된 플레이리스트는 유지되지만 SoundDrop은 동기화를 중단하고 연결을 삭제합니다.</string>
     <string name="dialog_logout_title">Last.fm에서 로그아웃할까요?</string>
     <string name="dialog_logout_text">플레이리스트와 캐시 데이터는 유지됩니다.</string>
     <string name="common_save">저장</string>
@@ -259,7 +259,7 @@
     <string name="desc_repeat">반복</string>
     <string name="desc_play_pause">재생 또는 일시정지</string>
 
-    <string name="widget_obsidian_name">LastWave 흑요석 유리</string>
+    <string name="widget_obsidian_name">SoundDrop 흑요석 유리</string>
     <string name="widget_obsidian_description">반투명한 깊이와 크리스탈 테두리를 갖춘 반투명 흑요석 유리 플레이어</string>
     <string name="nav_generator">발전기</string>
     <string name="settings_downloads_sub_custom">%1$d 노래 • %2$s • %3$s</string>
@@ -762,7 +762,7 @@
     <string name="set_lfm_disc_title">Last.fm을 연결 해제하시겠습니까?</string>
     <string name="set_lfm_disc_text">전역 스크롤이 일시 중지됩니다. 통계가 로컬 청취 기록으로 전환되며 아무것도 삭제되지 않습니다.</string>
     <string name="set_lfm_disc_btn">연결 끊기</string>
-    <string name="set_about_title">LastWave</string>
+    <string name="set_about_title">SoundDrop</string>
     <string name="set_color_title">사용자 정의 색상</string>
     <string name="set_hue">색조</string>
     <string name="set_sat">채도</string>
@@ -771,7 +771,7 @@
     <string name="set_eq_enable">이퀄라이저 활성화</string>
     <string name="set_eq_custom">맞춤</string>
     <string name="set_yt_channel">유튜브 채널</string>
-    <string name="set_yt_channel_sub">LastWave에서 사용할 채널의 라이브러리, 좋아요 및 기록을 선택하세요.</string>
+    <string name="set_yt_channel_sub">SoundDrop에서 사용할 채널의 라이브러리, 좋아요 및 기록을 선택하세요.</string>
     <string name="set_yt_loading">채널 로드 중…</string>
     <string name="set_yt_empty_title">채널을 찾을 수 없습니다</string>
     <string name="set_yt_empty_sub">연결을 확인한 후 다시 시도하세요.</string>
@@ -809,11 +809,11 @@
     <string name="set_usb_old">Android 10 이상이 필요합니다.</string>
     <string name="set_usb_on">usbdevfs을 DAC에 직접 연결 • Bit-Perfect은 이를 자동으로 실행합니다.</string>
     <string name="set_usb_off">꺼짐 • USB DAC 및 Bit-Perfect(또는 이 토글)이 필요합니다.</string>
-    <string name="set_yt_hist_on">켜기 • 무손실 및 다운로드를 포함하여 LastWave에서 듣는 노래가 YouTube Music 기록에 표시됩니다.</string>
-    <string name="set_yt_hist_off">꺼짐 • LastWave에서 듣는 것은 YouTube Music 기록에 남지 않습니다.</string>
+    <string name="set_yt_hist_on">켜기 • 무손실 및 다운로드를 포함하여 SoundDrop에서 듣는 노래가 YouTube Music 기록에 표시됩니다.</string>
+    <string name="set_yt_hist_off">꺼짐 • SoundDrop에서 듣는 것은 YouTube Music 기록에 남지 않습니다.</string>
     <string name="set_discord_title">불일치의 풍부한 존재</string>
     <string name="set_discord_on">켜짐 • 트랙, 품질, 커버가 Discord 프로필에 표시됩니다.</string>
-    <string name="set_discord_off">꺼짐 • LastWave이(가) Discord 프로필에서 제외됩니다.</string>
+    <string name="set_discord_off">꺼짐 • SoundDrop이(가) Discord 프로필에서 제외됩니다.</string>
     <string name="set_tg_sub">텔레그램에서 @clashprojects에 가입하세요</string>
     <string name="set_discord_support">불일치 지원</string>
     <string name="set_discord_support_sub">Discord 커뮤니티에 참여하세요</string>
@@ -839,9 +839,9 @@
     <string name="toast_sync_fail">재생목록 동기화 실패: %1$s</string>
     <string name="toast_synced">로컬 JSON에서 동기화된 %1$d 재생 목록</string>
     <string name="toast_restored">%1$d 재생목록%2$s을(를) 복원했습니다.</string>
-    <string name="toast_newer_backup">이 백업은 LastWave의 최신 버전으로 만들어졌습니다.</string>
-    <string name="toast_not_backup">해당 파일은 LastWave 백업처럼 보이지 않습니다</string>
-    <string name="toast_not_json">LastWave 백업 또는 재생목록 JSON이 아닙니다.</string>
+    <string name="toast_newer_backup">이 백업은 SoundDrop의 최신 버전으로 만들어졌습니다.</string>
+    <string name="toast_not_backup">해당 파일은 SoundDrop 백업처럼 보이지 않습니다</string>
+    <string name="toast_not_json">SoundDrop 백업 또는 재생목록 JSON이 아닙니다.</string>
     <string name="toast_empty_file">선택한 파일이 비어 있거나 읽을 수 없습니다.</string>
     <string name="toast_restore_fail">복원 실패: %1$s</string>
     <string name="toast_restore_read">복원 읽기 오류: %1$s</string>
@@ -1053,7 +1053,7 @@
     <string name="lyshare_mode_lyrics">가사</string>
     <string name="lyshare_action_share">공유</string>
     <string name="lyshare_action_save">저장</string>
-    <string name="lyshare_saved_to_gallery">Pictures/LastWave에 저장되었습니다</string>
+    <string name="lyshare_saved_to_gallery">Pictures/SoundDrop에 저장되었습니다</string>
     <string name="lyshare_save_failed">이미지를 저장하지 못했습니다</string>
     <string name="lyshare_share_failed">이미지를 공유하지 못했습니다</string>
     <string name="lyshare_button_cd">가사 공유</string>
@@ -1068,7 +1068,7 @@
     <string name="lyshare_color_white">화이트</string>
     <string name="lyshare_color_black">블랙</string>
     <string name="lyshare_color_accent">강조 색상</string>
-    <string name="lyshare_color_brand">라스트웨이브 라임</string>
+    <string name="lyshare_color_brand">SoundDrop 라임</string>
     <string name="lyshare_accessibility_line_selected">선택됨, %2$d줄 중 %1$d번째 줄</string>
     <string name="lyshare_accessibility_line_unselected">%2$d줄 중 %1$d번째 줄</string>
 
