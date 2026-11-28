@@ -2623,6 +2623,10 @@ class MusicPlayer @Inject constructor(
         }
 
         applicationScope.launch {
+            UsbExclusivePrefs.bufferDurationFlow(appContext).collect(exclusiveUsbOutput::setBufferDuration)
+        }
+
+        applicationScope.launch {
             UsbExclusivePrefs.enabledFlow(appContext).collect { enabled ->
                 if (enabled && !usbExclusiveRawPref) exclusiveUsbOutput.clearBlockedDevices()
                 usbExclusiveRawPref = enabled

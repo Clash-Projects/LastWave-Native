@@ -210,6 +210,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.nativeDisplayName
 import com.lastwave.app.data.lyrics.TRANSLATION_LANGUAGES
@@ -265,13 +266,14 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 
-data class ToggleDetailInfo(
+data class SettingDetailInfo(
     val title: String,
     val subtitle: String,
-    val checked: Boolean,
+    val checked: Boolean? = null,
+    val value: String? = null,
 )
 
-val LocalToggleDetailViewer = staticCompositionLocalOf<((ToggleDetailInfo) -> Unit)?> { null }
+val LocalSettingDetailViewer = staticCompositionLocalOf<((SettingDetailInfo) -> Unit)?> { null }
 
 // -- Expressive shape scale used only within this screen --
 internal val CardOuterShape = RoundedCornerShape(28.dp)
@@ -391,7 +393,7 @@ internal fun SettingsToggleCard(
     val scale = rememberPressScale(interactionSource)
     val shape = groupShape(position)
     val haptic = LocalHapticFeedback.current
-    val detailViewer = LocalToggleDetailViewer.current
+    val detailViewer = LocalSettingDetailViewer.current
     @Suppress("NAME_SHADOWING")
     val onCheckedChange: (Boolean) -> Unit = { value ->
         haptic.performHapticFeedback(if (value) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
@@ -421,7 +423,7 @@ internal fun SettingsToggleCard(
                 onClick = { onCheckedChange(!checked) },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    detailViewer?.invoke(ToggleDetailInfo(title, subtitle, checked))
+                    detailViewer?.invoke(SettingDetailInfo(title, subtitle, checked))
                 },
             ),
     ) {
@@ -488,7 +490,7 @@ internal fun SettingsToggleCard(
     val scale = rememberPressScale(interactionSource)
     val shape = groupShape(position)
     val haptic = LocalHapticFeedback.current
-    val detailViewer = LocalToggleDetailViewer.current
+    val detailViewer = LocalSettingDetailViewer.current
     @Suppress("NAME_SHADOWING")
     val onCheckedChange: (Boolean) -> Unit = { value ->
         haptic.performHapticFeedback(if (value) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
@@ -518,7 +520,7 @@ internal fun SettingsToggleCard(
                 onClick = { onCheckedChange(!checked) },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    detailViewer?.invoke(ToggleDetailInfo(title, subtitle, checked))
+                    detailViewer?.invoke(SettingDetailInfo(title, subtitle, checked))
                 },
             ),
     ) {
@@ -579,27 +581,43 @@ internal fun SettingsActionCard(
     onClick: () -> Unit,
     position: GroupPosition = GroupPosition.SINGLE,
     isHighlighted: Boolean = false,
+    detailDescription: String? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interactionSource)
     val titleColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     val shape = groupShape(position)
 
+    val haptic = LocalHapticFeedback.current
+    val detailViewer = LocalSettingDetailViewer.current
+    val showDetails: (() -> Unit)? = if (detailDescription != null && detailViewer != null) {
+        {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            detailViewer(SettingDetailInfo(title, detailDescription, value = subtitle))
+        }
+    } else null
+
     Card(
-        onClick = onClick,
         shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceContainerHigh
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape),
+            .settingHighlightGlow(isHighlighted = isHighlighted, shape = shape)
+            .clip(shape)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(),
+                role = Role.Button,
+                onClick = onClick,
+                onLongClick = showDetails,
+            ),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),

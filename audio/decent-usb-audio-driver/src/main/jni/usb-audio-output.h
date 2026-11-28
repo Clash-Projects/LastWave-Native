@@ -3,10 +3,10 @@
  * @brief Direct USB audio output context for bit-perfect playback.
  *
  * Pipeline architecture:
- * - Pre-allocated ring buffer of 64 URB slots
+ * - URB ring sized from the selected USB buffer duration
  * - Each URB = 8 ISO packets (1ms of audio at high-speed)
  * - URBs complete in FIFO order (ISO_ASAP guarantees this)
- * - No malloc/free during streaming — avoids MTE pointer tag issues
+ * - URB addresses stay stable until transfers are drained
  */
 
 #pragma once
@@ -20,16 +20,6 @@
  * At USB high-speed (125us microframes), 8 packets = 1ms of audio.
  */
 #define USB_AUDIO_PACKETS_PER_URB 8
-
-/**
- * Number of URBs in the ring buffer.
- * 80 URBs ≈ 80 ms of in-flight audio at 44.1 kHz, which empirically gives
- * the xHCI host controller enough scheduling headroom to maintain
- * continuous isochronous output without underruns on commodity Android
- * SoCs. Smaller pipelines (< ~64 URBs at 44.1 kHz) trigger glitches as
- * the ring drains faster than the URB submit/reap cycle can refill it.
- */
-#define USB_AUDIO_NUM_URBS 80
 
 /**
  * Max bytes per URB data buffer.
@@ -89,19 +79,18 @@ struct UsbAudioContext {
 
     // ── Ring buffer ─────────────────────────────────────────────
     /** Pre-allocated URB slots. Never freed during streaming. */
-    UrbSlot ring[USB_AUDIO_NUM_URBS];
+    UrbSlot *ring;
+    int ringCapacity;
+    int targetUrbs;
 
-    /** Index of next slot to fill and submit (wraps modulo NUM_URBS). */
+    /** Index of next slot to fill and submit (wraps modulo ringCapacity). */
     int submitIdx;
 
-    /** Index of next slot to reap (wraps modulo NUM_URBS). */
+    /** Index of next slot to reap (wraps modulo ringCapacity). */
     int reapIdx;
 
     /** Number of URBs currently submitted and not yet reaped. */
     int urbsInFlight;
-
-    /** Whether ring buffers have been allocated. */
-    bool ringAllocated;
 
     /** Fractional accumulator for sample-rate-to-packet-size conversion. */
     double frameAccumulator;

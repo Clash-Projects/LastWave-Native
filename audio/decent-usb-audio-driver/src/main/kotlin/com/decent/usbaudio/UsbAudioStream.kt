@@ -10,8 +10,8 @@ import android.util.Log
  * DAC via Linux usbdevfs isochronous transfers, bypassing the entire Android
  * audio stack (AudioFlinger, AudioTrack, AAudio).
  *
- * Pipeline: 80 URBs in flight, each carrying 8 ISO packets (1 ms of audio).
- * Total pipeline buffer: ~80 ms.
+ * Each URB spans eight endpoint service intervals. The configured duration
+ * controls how many audio URBs can be queued.
  *
  * Rate transition lifecycle (per USB Audio Class 2.0 spec, verified via xHCI ftrace):
  * ```
@@ -46,7 +46,8 @@ class UsbAudioStream(
         dataInterval: Int,
         feedbackPacketSize: Int,
         feedbackInterval: Int,
-        continuousFeedback: Boolean = false
+        continuousFeedback: Boolean = false,
+        bufferMs: Int = 80,
 ) {
 
     /** Native UsbAudioContext pointer. Exposed for NativeAudioEngine which
@@ -58,7 +59,7 @@ class UsbAudioStream(
         nativeHandle = nativeUsbAudioCreate(
                 fd, interfaceId, endpointOut, endpointFeedback,
                 sampleRate, channelCount, bitDepth, maxPacketSize,
-                dataInterval, feedbackPacketSize, feedbackInterval, continuousFeedback
+                dataInterval, feedbackPacketSize, feedbackInterval, continuousFeedback, bufferMs,
         )
         if (nativeHandle == 0L) {
             Log.e(TAG, "nativeUsbAudioCreate returned 0 — check logcat for native errors")
@@ -115,7 +116,7 @@ class UsbAudioStream(
      * Write interleaved float32 PCM to the USB DAC.
      *
      * The native layer converts to the target bit depth, splits into
-     * 1ms URBs (8 ISO packets each), and manages the 64-URB pipeline.
+     * URBs of eight endpoint service intervals each.
      * This call blocks when the pipeline is full (natural backpressure
      * matching the DAC's clock rate).
      *
@@ -146,6 +147,10 @@ class UsbAudioStream(
         }
         nativeUsbAudioWriteRaw(nativeHandle, pcmBuffer, inputBitDepth)
     }
+
+    /** Apply a new duration on the writer thread that owns the URB queue. */
+    fun setBufferDuration(bufferMs: Int): Boolean =
+        nativeHandle != 0L && nativeSetBufferDuration(nativeHandle, bufferMs)
 
     /**
      * Stop accepting new writes. Does NOT drain the pipeline.
@@ -202,9 +207,10 @@ class UsbAudioStream(
             fd: Int, interfaceId: Int, endpointOut: Int, endpointFeedback: Int,
             sampleRate: Int, channelCount: Int, bitDepth: Int, maxPacketSize: Int,
             dataInterval: Int, feedbackPacketSize: Int, feedbackInterval: Int,
-            continuousFeedback: Boolean
+            continuousFeedback: Boolean, bufferMs: Int,
     ): Long
 
+    private external fun nativeSetBufferDuration(handle: Long, bufferMs: Int): Boolean
     private external fun nativeUsbAudioSetAltSetting(handle: Long, altSetting: Int): Boolean
     private external fun nativeUsbAudioSetSampleRate(handle: Long, sampleRateHz: Int, clockSourceId: Int): Boolean
     private external fun nativeUsbAudioStart(handle: Long): Boolean

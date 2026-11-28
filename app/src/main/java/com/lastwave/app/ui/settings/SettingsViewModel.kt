@@ -13,6 +13,7 @@ import com.lastwave.app.data.local.AppLanguage
 import com.lastwave.app.data.local.EqualizerSettings
 import com.lastwave.app.data.local.MiscSettings
 import com.lastwave.app.data.local.SeekbarStyle
+import com.lastwave.app.playback.usb.UsbExclusivePrefs
 import com.lastwave.app.playback.haptics.MusicHapticsConfig
 import com.lastwave.app.playback.haptics.MusicHapticsEngineMode
 import com.lastwave.app.playback.haptics.MusicHapticsIntensity
@@ -611,7 +612,7 @@ class SettingsViewModel @Inject constructor(
                 // Enabling DSP clarity disables Bit-Perfect mode
                 settingsPreferences.setBitPerfectEnabled(false)
                 applyNativeAudio { it.setBitPerfect(false) }
-                com.lastwave.app.playback.usb.UsbExclusivePrefs.setEnabled(context, false)
+                UsbExclusivePrefs.setEnabled(context, false)
             }
         }
     }
@@ -619,7 +620,7 @@ class SettingsViewModel @Inject constructor(
         launchSettingsAction("update Bit-Perfect mode") {
             applyNativeAudio { it.setBitPerfect(enabled) }
             settingsPreferences.setBitPerfectEnabled(enabled)
-            com.lastwave.app.playback.usb.UsbExclusivePrefs.setEnabled(context, enabled)
+            UsbExclusivePrefs.setEnabled(context, enabled)
             if (enabled) {
                 // When Bit-Perfect is turned on, automatically turn off Studio Master Clarity
                 settingsPreferences.setStudioMasterClarity(false)
@@ -695,16 +696,23 @@ class SettingsViewModel @Inject constructor(
     // ── USB exclusive output (direct DAC, default OFF) ──
 
     val usbExclusiveEnabled: StateFlow<Boolean> =
-        com.lastwave.app.playback.usb.UsbExclusivePrefs.enabledFlow(context)
+        UsbExclusivePrefs.enabledFlow(context)
             .withSettingsFallback("USB exclusive output", false)
             .stateIn(viewModelScope, SettingsSharing, false)
+
+    val usbBufferDurationMs = UsbExclusivePrefs.bufferDurationFlow(context)
+        .stateIn(viewModelScope, SettingsSharing, UsbExclusivePrefs.DEFAULT_BUFFER_MS)
+
+    fun setUsbBufferDuration(durationMs: Int) = launchSettingsAction("update USB buffer duration") {
+        UsbExclusivePrefs.setBufferDuration(context, durationMs)
+    }
 
     fun setUsbExclusiveEnabled(enabled: Boolean) = launchSettingsAction("update USB exclusive output") {
         if (enabled && android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
             _uiState.update { it.copy(toastMessage = appContext.getString(com.lastwave.app.R.string.toast_usb_old)) }
             return@launchSettingsAction
         }
-        com.lastwave.app.playback.usb.UsbExclusivePrefs.setEnabled(context, enabled)
+        UsbExclusivePrefs.setEnabled(context, enabled)
         if (enabled) {
             applyNativeAudio { it.setBitPerfect(true) }
             settingsPreferences.setBitPerfectEnabled(true)
