@@ -842,7 +842,7 @@ class ExclusiveUsbOutput @Inject constructor(
             bufferMs = initialBufferMs,
         )
         if (!created.isReady || !created.start()) {
-            created.release()
+            created.release(usbAudio::closeDevice)
             return failLocked("decent USB start failed")
         }
         connection = info.connection
@@ -1098,9 +1098,7 @@ class ExclusiveUsbOutput @Inject constructor(
         while (!writerStop) {
             val requestedBufferMs = bufferDurationMs
             if (requestedBufferMs != lastBufferMs) {
-                if (!target.setBufferDuration(requestedBufferMs)) {
-                    Log.w(TAG, "Could not resize USB buffer to ${requestedBufferMs} ms")
-                }
+                target.setBufferDuration(requestedBufferMs)
                 lastBufferMs = requestedBufferMs
             }
             val next = synchronized(pcmLock) {
@@ -1186,10 +1184,7 @@ class ExclusiveUsbOutput @Inject constructor(
         stopWriterLocked()
         // The writer thread is now guaranteed dead, so releasing native state is
         // safe. Releasing it while the writer was still alive was a use-after-free.
-        if (running != null) {
-            runCatching { running.drainUrbs() }
-            runCatching { running.release() }
-        }
+        running?.release(usbAudio::closeDevice)
         stream = null
         isDsdStream = false
         synchronized(stateLock) {

@@ -28,25 +28,11 @@
  */
 #define USB_AUDIO_URB_BUFFER_SIZE 16384
 
-/**
- * One slot in the pre-allocated URB ring buffer.
- * The URB struct and data buffer are allocated once at stream creation
- * and reused for the lifetime of the stream. This avoids all MTE
- * pointer tag issues since we never pass malloc'd pointers through
- * the kernel and back.
- */
 struct UrbSlot {
-    /**
-     * The URB struct, heap-allocated with enough trailing space for
-     * USB_AUDIO_PACKETS_PER_URB iso_frame_desc entries.
-     */
-    struct usbdevfs_urb *urb;
+    alignas(usbdevfs_urb) uint8_t urbStorage[
+            sizeof(usbdevfs_urb) + USB_AUDIO_PACKETS_PER_URB * sizeof(usbdevfs_iso_packet_desc)];
 
-    /** Data buffer for PCM audio. Fixed size, pre-allocated. */
-    uint8_t *buffer;
-
-    /** Actual number of bytes written to buffer for current submission. */
-    int dataLength;
+    usbdevfs_urb *urb() { return reinterpret_cast<usbdevfs_urb *>(urbStorage); }
 };
 
 /**
@@ -80,6 +66,8 @@ struct UsbAudioContext {
     // ── Ring buffer ─────────────────────────────────────────────
     /** Pre-allocated URB slots. Never freed during streaming. */
     UrbSlot *ring;
+    uint8_t *ringPcm;
+    int slotBytes;
     int ringCapacity;
     int targetUrbs;
 
