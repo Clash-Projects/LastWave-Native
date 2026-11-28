@@ -788,6 +788,16 @@ class SettingsViewModel @Inject constructor(
         launchSettingsAction("update pause on zero volume setting") {
             settingsPreferences.setPauseOnZeroVolume(enabled)
         }
+    val persistentShuffle: StateFlow<Boolean> = settingsPreferences.settings
+        .map { it.persistentShuffle }
+        .withSettingsFallback("persistent shuffle", false)
+        .stateIn(viewModelScope, SettingsSharing, false)
+
+    fun setPersistentShuffle(enabled: Boolean) =
+        launchSettingsAction("update persistent shuffle setting") {
+            settingsPreferences.setPersistentShuffle(enabled)
+        }
+
     fun setWordByWordLyrics(enabled: Boolean) = launchSettingsAction("update word-by-word lyrics") { settingsPreferences.setWordByWordLyrics(enabled) }
     fun setLyricsProvider(provider: com.lastwave.app.data.local.LyricsProvider) = launchSettingsAction("update lyrics provider") { settingsPreferences.setLyricsProvider(provider) }
     fun setLyricsOffsetMs(offsetMs: Long) = launchSettingsAction("update lyrics sync offset") {
