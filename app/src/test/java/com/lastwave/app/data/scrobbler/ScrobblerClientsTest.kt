@@ -52,7 +52,7 @@ class ScrobblerClientsTest {
         assertThat(request?.url.toString()).isEqualTo("https://api.listenbrainz.org/1/validate-token")
         assertThat(request?.header("Authorization")).isEqualTo("Token token")
         assertThat(request?.url?.queryParameter("token")).isNull()
-        assertThat(request?.header("User-Agent")).contains("LastWave/")
+        assertThat(request?.header("User-Agent")).contains("SoundDrop/")
         coVerify { prefs.save(ExtraService.LISTENBRAINZ, ScrobblerAccount("token", "listener", "")) }
     }
 

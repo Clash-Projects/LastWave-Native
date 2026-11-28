@@ -7,42 +7,42 @@ class AppUpdateManagerTest {
 
     private val sampleAssets = listOf(
         ReleaseAsset(
-            name = "LastWave-v4.2.4-android7.apk",
-            downloadUrl = "https://github.com/Clash-Projects/LastWave-Native/releases/download/4.2.4/LastWave-v4.2.4-android7.apk",
+            name = "SoundDrop-v4.2.4-android7.apk",
+            downloadUrl = "https://github.com/1f81-official/SoundDrop/releases/download/4.2.4/SoundDrop-v4.2.4-android7.apk",
         ),
         ReleaseAsset(
-            name = "LastWave-v4.2.4-universal-uncompressed.apk",
-            downloadUrl = "https://github.com/Clash-Projects/LastWave-Native/releases/download/4.2.4/LastWave-v4.2.4-universal-uncompressed.apk",
+            name = "SoundDrop-v4.2.4-universal-uncompressed.apk",
+            downloadUrl = "https://github.com/1f81-official/SoundDrop/releases/download/4.2.4/SoundDrop-v4.2.4-universal-uncompressed.apk",
         ),
         ReleaseAsset(
-            name = "LastWave-v4.2.4-universal.apk",
-            downloadUrl = "https://github.com/Clash-Projects/LastWave-Native/releases/download/4.2.4/LastWave-v4.2.4-universal.apk",
+            name = "SoundDrop-v4.2.4-universal.apk",
+            downloadUrl = "https://github.com/1f81-official/SoundDrop/releases/download/4.2.4/SoundDrop-v4.2.4-universal.apk",
         ),
         ReleaseAsset(
             name = "SHA256SUMS.txt",
-            downloadUrl = "https://github.com/Clash-Projects/LastWave-Native/releases/download/4.2.4/SHA256SUMS.txt",
+            downloadUrl = "https://github.com/1f81-official/SoundDrop/releases/download/4.2.4/SHA256SUMS.txt",
         ),
     )
 
     @Test
     fun classifyAsset_recognizesVariantsCorrectly() {
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-android7.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-android7.apk"))
             .isEqualTo(ApkVariant.ANDROID7)
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-legacy.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-legacy.apk"))
             .isEqualTo(ApkVariant.ANDROID7)
 
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-universal-uncompressed.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-universal-uncompressed.apk"))
             .isEqualTo(ApkVariant.UNCOMPRESSED)
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-raw.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-raw.apk"))
             .isEqualTo(ApkVariant.UNCOMPRESSED)
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-beta-raw.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-beta-raw.apk"))
             .isEqualTo(ApkVariant.UNCOMPRESSED)
 
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-universal.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-universal.apk"))
             .isEqualTo(ApkVariant.UNIVERSAL)
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-release.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-release.apk"))
             .isEqualTo(ApkVariant.UNIVERSAL)
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-beta.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-beta.apk"))
             .isEqualTo(ApkVariant.UNIVERSAL)
     }
 
@@ -54,8 +54,8 @@ class AppUpdateManagerTest {
             sdkInt = 34, // Android 14
         )
         assertThat(selected).isNotNull()
-        assertThat(selected?.name).isEqualTo("LastWave-v4.2.4-universal.apk")
-        assertThat(selected?.downloadUrl).contains("LastWave-v4.2.4-universal.apk")
+        assertThat(selected?.name).isEqualTo("SoundDrop-v4.2.4-universal.apk")
+        assertThat(selected?.downloadUrl).contains("SoundDrop-v4.2.4-universal.apk")
     }
 
     @Test
@@ -66,8 +66,8 @@ class AppUpdateManagerTest {
             sdkInt = 34, // Android 14
         )
         assertThat(selected).isNotNull()
-        assertThat(selected?.name).isEqualTo("LastWave-v4.2.4-universal-uncompressed.apk")
-        assertThat(selected?.downloadUrl).contains("LastWave-v4.2.4-universal-uncompressed.apk")
+        assertThat(selected?.name).isEqualTo("SoundDrop-v4.2.4-universal-uncompressed.apk")
+        assertThat(selected?.downloadUrl).contains("SoundDrop-v4.2.4-universal-uncompressed.apk")
     }
 
     @Test
@@ -78,8 +78,8 @@ class AppUpdateManagerTest {
             sdkInt = 26, // Android 8.0 Oreo
         )
         assertThat(selected).isNotNull()
-        assertThat(selected?.name).isEqualTo("LastWave-v4.2.4-android7.apk")
-        assertThat(selected?.downloadUrl).contains("LastWave-v4.2.4-android7.apk")
+        assertThat(selected?.name).isEqualTo("SoundDrop-v4.2.4-android7.apk")
+        assertThat(selected?.downloadUrl).contains("SoundDrop-v4.2.4-android7.apk")
     }
 
     @Test
@@ -99,8 +99,8 @@ class AppUpdateManagerTest {
     @Test
     fun selectBestAsset_fallbackWhenUniversalMissing_fallsBackToUncompressedOrAndroid7() {
         val assetsWithoutUniversal = listOf(
-            ReleaseAsset(name = "LastWave-v4.2.4-android7.apk", downloadUrl = "https://example.com/a7"),
-            ReleaseAsset(name = "LastWave-v4.2.4-universal-uncompressed.apk", downloadUrl = "https://example.com/raw"),
+            ReleaseAsset(name = "SoundDrop-v4.2.4-android7.apk", downloadUrl = "https://example.com/a7"),
+            ReleaseAsset(name = "SoundDrop-v4.2.4-universal-uncompressed.apk", downloadUrl = "https://example.com/raw"),
         )
         val selected = AppUpdateManager.selectBestAsset(
             assets = assetsWithoutUniversal,
@@ -108,17 +108,17 @@ class AppUpdateManagerTest {
             sdkInt = 34,
         )
         assertThat(selected).isNotNull()
-        assertThat(selected?.name).isEqualTo("LastWave-v4.2.4-universal-uncompressed.apk")
+        assertThat(selected?.name).isEqualTo("SoundDrop-v4.2.4-universal-uncompressed.apk")
     }
 
     private val assetsWithVivo = sampleAssets + ReleaseAsset(
-        name = "LastWave-v4.2.4-vivo-origin.apk",
+        name = "SoundDrop-v4.2.4-vivo-origin.apk",
         downloadUrl = "https://example.com/vivo",
     )
 
     @Test
     fun classifyAsset_recognizesVivoOrigin() {
-        assertThat(AppUpdateManager.classifyAsset("LastWave-v4.2.4-vivo-origin.apk"))
+        assertThat(AppUpdateManager.classifyAsset("SoundDrop-v4.2.4-vivo-origin.apk"))
             .isEqualTo(ApkVariant.VIVO_ORIGIN)
     }
 
@@ -130,7 +130,7 @@ class AppUpdateManagerTest {
             sdkInt = 34,
             isVivoOrigin = true,
         )
-        assertThat(selected?.name).isEqualTo("LastWave-v4.2.4-vivo-origin.apk")
+        assertThat(selected?.name).isEqualTo("SoundDrop-v4.2.4-vivo-origin.apk")
     }
 
     @Test
@@ -146,13 +146,13 @@ class AppUpdateManagerTest {
 
     @Test
     fun selectBestAsset_normalBuild_neverSelectsVivoApk() {
-        val onlyVivo = listOf(ReleaseAsset(name = "LastWave-v4.2.4-vivo-origin.apk", downloadUrl = "https://example.com/vivo"))
+        val onlyVivo = listOf(ReleaseAsset(name = "SoundDrop-v4.2.4-vivo-origin.apk", downloadUrl = "https://example.com/vivo"))
         assertThat(
             AppUpdateManager.selectBestAsset(assets = onlyVivo, isUncompressed = false, sdkInt = 34),
         ).isNull()
         assertThat(
             AppUpdateManager.selectBestAsset(assets = assetsWithVivo, isUncompressed = false, sdkInt = 34)?.name,
-        ).isEqualTo("LastWave-v4.2.4-universal.apk")
+        ).isEqualTo("SoundDrop-v4.2.4-universal.apk")
     }
 
     @Test

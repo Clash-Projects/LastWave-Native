@@ -78,12 +78,12 @@ class DiscordPresenceTest {
         val activity = DiscordPresence.buildActivity(state(), NOW_MS)
         assertEquals(2, activity["type"]?.jsonPrimitive?.int) // 2 = Listening
         // The compact member-list line renders "Listening to " + name, so the
-        // name carries the track to read "Listening to LastWave · <song>".
-        assertEquals("LastWave \u00B7 Sunglasses at Night", str(activity, "name"))
+        // name carries the track to read "Listening to SoundDrop · <song>".
+        assertEquals("SoundDrop \u00B7 Sunglasses at Night", str(activity, "name"))
         assertEquals("Sunglasses at Night", str(activity, "details"))
         assertEquals("Moondrop \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz", str(activity, "state"))
         // No status_display_type: the compact member-list line falls back to
-        // the activity name, so others see "Listening to LastWave".
+        // the activity name, so others see "Listening to SoundDrop".
         assertNull(activity["status_display_type"])
         // Discord's mobile clients collapse a newline in `state` to an
         // ellipsis, so the quality must never move to a second line.
@@ -155,7 +155,7 @@ class DiscordPresenceTest {
         // tooltip carries the measured audio-format line.
         assertEquals(DiscordPresence.DISCORD_LOGO_URL, playing["small_image"]?.jsonPrimitive?.content)
         assertEquals(
-            "LastWave \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz",
+            "SoundDrop \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz",
             playing["small_text"]?.jsonPrimitive?.content,
         )
 
@@ -164,7 +164,7 @@ class DiscordPresenceTest {
             state(isLossless = false, bitDepth = null, samplingRateKHz = null, audioCodec = null, bitrateKbps = 128),
             NOW_MS,
         )["assets"]!!.jsonObject
-        assertEquals("LastWave", lossy["small_text"]?.jsonPrimitive?.content)
+        assertEquals("SoundDrop", lossy["small_text"]?.jsonPrimitive?.content)
 
         // No album: the title stands in, exactly as on desktop.
         val noAlbum = DiscordPresence.buildActivity(state(track = track(album = null)), NOW_MS)["assets"]!!.jsonObject
@@ -175,15 +175,15 @@ class DiscordPresenceTest {
     fun buttonsOpenTheTrackAndTheProject() {
         val buttons = DiscordPresence.buildActivity(state(), NOW_MS)["buttons"]!!.jsonArray
         assertEquals(2, buttons.size)
-        assertEquals("Listen On LastWave", buttons[0].jsonObject["label"]?.jsonPrimitive?.content)
+        assertEquals("Listen On SoundDrop", buttons[0].jsonObject["label"]?.jsonPrimitive?.content)
         assertEquals(
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             buttons[0].jsonObject["url"]?.jsonPrimitive?.content,
         )
-        assertEquals("Get LastWave", buttons[1].jsonObject["label"]?.jsonPrimitive?.content)
+        assertEquals("Get SoundDrop", buttons[1].jsonObject["label"]?.jsonPrimitive?.content)
         // Native build, not the desktop one.
         assertEquals(
-            "https://github.com/Clash-Projects/LastWave-Native",
+            "https://sounddrop.framer.website",
             buttons[1].jsonObject["url"]?.jsonPrimitive?.content,
         )
 
@@ -191,7 +191,7 @@ class DiscordPresenceTest {
         // to deep-link, so it falls back to the releases page.
         val local = DiscordPresence.buildActivity(state(track = track(videoId = null)), NOW_MS)["buttons"]!!.jsonArray
         assertEquals(
-            "https://github.com/Clash-Projects/LastWave-Native/releases",
+            "https://sounddrop.framer.website/download",
             local[0].jsonObject["url"]?.jsonPrimitive?.content,
         )
     }
@@ -323,7 +323,7 @@ class DiscordPresenceTest {
                 NOW_MS,
             )["state"]?.jsonPrimitive?.content,
         )
-        assertEquals("LastWave", DiscordPresence.stateLine("", null, ""))
+        assertEquals("SoundDrop", DiscordPresence.stateLine("", null, ""))
     }
 
     // ---- A buffer stall is not a pause ------------------------------------
@@ -369,7 +369,7 @@ class DiscordPresenceTest {
             str(activity, "state"),
         )
         assertEquals(
-            "LastWave \u00B7 Paused \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz",
+            "SoundDrop \u00B7 Paused \u00B7 Hi-Res Lossless \u00B7 24-bit \u00B7 96 kHz",
             str(activity["assets"], "small_text"),
         )
         assertFalse(
